@@ -1,0 +1,135 @@
+{
+ "vectors": [
+  {
+   "name": "plain_token",
+   "enc_b64": "djEw7DnNhGNoWioT7/Go2nle5AR6BHD6Q6OlhlXIHpW2YTwsdTtFaTeNMMQDFCfUL/JH",
+   "expect": "76561198000000000%7C%7CeyToken123"
+  },
+  {
+   "name": "urlencoded_sep",
+   "enc_b64": "djEwOuVq//1XNEb7Ib2/4vwqlOVAhURUw7FnaZsCtNBAvH9fRMLTiSRCXiff66olnZPL",
+   "expect": "76561198012345678%7C%7CAAAABBBBCCCCDDDD"
+  },
+  {
+   "name": "literal_sep",
+   "enc_b64": "djEwrLvbP8ynean5e5cUOmD2Jb7ZKE4RTVfL3OT8FHM2/q0uIY8ihy5rovQx2PGvLTzX",
+   "expect": "76561198099999999||RAWTOKENVALUE"
+  },
+  {
+   "name": "domain_prefix32",
+   "enc_b64": "djEw7Ya39+TDHSBsQ7m+k+QUgkvCq+juvMt67z+9wWv1YMuBDSUgsq1lsXcD1Dhk7cSbtjl4oqoyhzwlNMM/fKX5v5KtiG6a9T7beIcj+kT8Xg0=",
+   "expect": "76561198055555555%7C%7CPREFIXED_TOK"
+  },
+  {
+   "name": "short_value",
+   "enc_b64": "djEwAOtuC0LF6Ny3v1fGEQrxjQ==",
+   "expect": "abc"
+  },
+  {
+   "name": "empty_value",
+   "enc_b64": "djEwK7xxe29GDDor0ALcseSKlw==",
+   "expect": ""
+  },
+  {
+   "name": "not_v10",
+   "enc_b64": "djExAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+   "expect": null
+  },
+  {
+   "name": "empty_input",
+   "enc_b64": "",
+   "expect": null
+  },
+  {
+   "name": "garbage",
+   "enc_b64": "djEwAQID",
+   "expect": null
+  },
+  {
+   "name": "bad_padding",
+   "enc_b64": "djEw7DnNhGNoWioT7/Go2nle5IqM+ACYLHmmpmy0lFg1clw=",
+   "expect": null
+  }
+ ],
+ "sqlite_scenarios": [
+  {
+   "name": "default_valid",
+   "dbs": {
+    "config/htmlcache/Default/Cookies": [
+     {
+      "name": "other",
+      "enc_b64": "djEwMYm7C2lnd9Kt9MEcueqR0A=="
+     },
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": "djEwOuVq//1XNEb7Ib2/4vwqlDa8So8xMxc+MT77UsIG8MFNig5HYAcc1emLQq6M0Rv2"
+     }
+    ]
+   },
+   "expect": "76561198012345678%7C%7CVALIDTOKEN"
+  },
+  {
+   "name": "fallback_only",
+   "dbs": {
+    "config/htmlcache/Default/Cookies": [
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": "djEwhEZhb5zYynZ7CL32gTOZXQ=="
+     }
+    ]
+   },
+   "expect": "NOSEPVALUE"
+  },
+  {
+   "name": "absent",
+   "dbs": {
+    "config/htmlcache/Default/Cookies": [
+     {
+      "name": "other",
+      "enc_b64": "djEwSwBoFhE8zvXEOIV2OjF1uw=="
+     }
+    ]
+   },
+   "expect": null
+  },
+  {
+   "name": "prefer_separator_over_fallback",
+   "dbs": {
+    "config/htmlcache/Default/Cookies": [
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": "djEwNMVh8qlsTsgFDHdwl+NcZg=="
+     }
+    ],
+    "config/htmlcache/Profile2/Cookies": [
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": "djEw/bylBMQhaQIMv8D2o1A4bg2+kFLaQVfDkm0bFH4RWb8="
+     }
+    ]
+   },
+   "expect": "76561198022222222%7C%7CWINSSEP"
+  },
+  {
+   "name": "null_encrypted_ignored",
+   "dbs": {
+    "config/htmlcache/Default/Cookies": [
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": null
+     },
+     {
+      "name": "steamLoginSecure",
+      "enc_b64": "djEw7DhXz+ubUj/erHEU70ICXP3YMj8ldZDf0D5WjGVW+Vk="
+     }
+    ]
+   },
+   "expect": "76561198033333333%7C%7CNONNULL"
+  },
+  {
+   "name": "no_db",
+   "dbs": {},
+   "expect": null
+  }
+ ]
+}

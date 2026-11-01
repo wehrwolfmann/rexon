@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xml:lang="en" lang="en" >
+    <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/archweb.css">
+    <link rel="stylesheet" href="/static/css/aurweb.css">
+
+    <!-- Resources -->
+    <link rel="shortcut icon" href="/static/images/favicon.ico">
+
+    <!-- Alternate resources -->
+    <link rel="alternate" type="application/rss+xml"
+          title="Newest Packages RSS" href="/rss">
+    <link rel="search" type="application/opensearchdescription+xml"
+          href="/static/opensearch.xml"
+          title="Arch Linux User Repository (AUR) Package Search">
+
+    <!-- Include local typeahead -->
+    <script type="text/javascript" src="/static/js/typeahead.js"></script>
+
+    <title>AUR (en) - zuki-themes</title>
+</head>
+
+    <body>
+        <div id="archnavbar" class="anb-aur">
+    <div id="archnavbarlogo">
+        <h1>
+            <a href="/" title="Return to the main page">Arch Linux User Repository</a>
+        </h1>
+    </div>
+    <div id="archnavbarmenu">
+        <ul id="archnavbarlist">
+            <li id="anb-home"><a href="https://www.archlinux.org/" title="Arch news, packages, projects and more">Home</a></li>
+            <li id="anb-packages"><a href="https://www.archlinux.org/packages/" title="Arch Package Database">Packages</a></li>
+            <li id="anb-forums"><a href="https://bbs.archlinux.org/" title="Community forums">Forums</a></li>
+            <li id="anb-wiki"><a href="https://wiki.archlinux.org/" title="Community documentation">Wiki</a></li>
+            <li id="anb-gitlab"><a href="https://gitlab.archlinux.org/archlinux" title="GitLab">GitLab</a></li>
+            <li id="anb-security"><a href="https://security.archlinux.org/" title="Arch Linux Security Tracker">Security</a></li>
+            <li id="anb-aur"><a href="/" title="Arch Linux User Repository">AUR</a></li>
+            <li id="anb-download"><a href="https://www.archlinux.org/download/" title="Get Arch Linux">Download</a></li>
+        </ul>
+    </div>
+</div>
+        <div id="content">
+    <div id="lang_sub">
+    <form method="post" action="/language">
+        <fieldset>
+            <div>
+                <select id="id_setlang" name="set_lang">
+                    
+                    <option
+                        value="ar"
+                        
+                    >
+                        العربية
+                    </option>
+                    
+                    <option
+                        value="ast"
+                        
+                    >
+                        Asturianu
+                    </option>
+                    
+                    <option
+                        value="ca"
+                        
+                    >
+                        Català
+                    </option>
+                    
+                    <option
+                        value="cs"
+                        
+                    >
+                        Český
+                    </option>
+                    
+                    <option
+                        value="da"
+                        
+                    >
+                        Dansk
+                    </option>
+                    
+                    <option
+                        value="de"
+                        
+                    >
+                        Deutsch
+                    </option>
+                    
+                    <option
+                        value="el"
+                        
+                    >
+                        Ελληνικά
+                    </option>
+                    
+                    <option
+                        value="en"
+                        
+                        selected="selected"
+                        
+                    >
+                        English
+                    </option>
+                    
+                    <option
+                        value="es"
+                        
+                    >
+                        Español
+                    </option>
+                    
+                    <option
+                        value="es_419"
+                        
+                    >
+                        Español (Latinoamérica)
+                    </option>
+                    
+                    <option
+                        value="fi"
+                        
+                    >
+                        Suomi
+                    </option>
+                    
+                    <option
+                        value="fr"
+                        
+                    >
+                        Français
+                    </option>
+                    
+                    <option
+                        value="he"
+                        
+                    >
+                        עברית
+                    </option>
+                    
+                    <option
+                        value="hr"
+                        
+                    >
+                        Hrvatski
+                    </option>
+                    
+                    <option
+                        value="hu"
+                        
+                    >
+                        Magyar
+                    </option>
+                    
+                    <option
+                        value="it"
+                        
+                    >
+                        Italiano
+                    </option>
+                    
+                    <option
+                        value="ja"
+                        
+                    >
+                        日本語
+                    </option>
+                    
+                    <option
+                        value="nb"
+                        
+                    >
+                        Norsk
+                    </option>
+                    
+                    <option
+                        value="nl"
+                        
+                    >
+                        Nederlands
+                    </option>
+                    
+                    <option
+                        value="pl"
+                        
+                    >
+                        Polski
+                    </option>
+                    
+                    <option
+                        value="pt_BR"
+                        
+                    >
+                        Português (Brasil)
+                    </option>
+                    
+                    <option
+                        value="pt_PT"
+                        
+                    >
+                        Português (Portugal)
+                    </option>
+                    
+                    <option
+                        value="ro"
+                        
+                    >
+                        Română
+                    </option>
+                    
+                    <option
+                        value="ru"
+                        
+                    >
+                        Русский
+                    </option>
+                    
+                    <option
+                        value="sk"
+                        
+                    >
+                        Slovenčina
+                    </option>
+                    
+                    <option
+                        value="sr"
+                        
+                    >
+                        Srpski
+                    </option>
+                    
+                    <option
+                        value="tr"
+                        
+                    >
+                        Türkçe
+                    </option>
+                    
+                    <option
+                        value="uk"
+                        
+                    >
+                        Українська
+                    </option>
+                    
+                    <option
+                        value="zh_CN"
+                        
+                    >
+                        简体中文
+                    </option>
+                    
+                    <option
+                        value="zh_TW"
+                        
+                    >
+                        正體中文
+                    </option>
+                    
+                </select>
+
+                <!-- Pass our current url path as next. -->
+                <input type="hidden" name="next" value="/packages/zuki-themes">
+
+                <!-- Pass query_params over to /language via POST. -->
+                <input type="hidden" name="q" value="">
+
+                <input type="submit" value="Go">
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="archdev-navbar">
+    <ul>
+        
+            
+            <li><a href="/">AUR Home</a></li>
+        
+
+        
+        <li><a href="/packages">Packages</a></li>
+
+        
+            
+            <li><a href="/register">Register</a></li>
+
+            
+            <li><a href="/login?next=/packages/zuki-themes">Login</a></li>
+        
+    </ul>
+</div>
+
+    
+    <div id="pkglist-search" class="box filter-criteria">
+    <h2>Search Criteria</h2>
+    <form action='/packages' method='get'>
+        <p><input type='hidden' name='O' value='0'/></p>
+
+        <fieldset>
+            <legend>Enter search criteria</legend>
+            <div>
+                <label for="id_method">Search by</label>
+                <select name='SeB'>
+                    <option value="nd" >Name, Description</option>
+                    <option value="n" >Name Only</option>
+                    <option value="b" >Package Base</option>
+                    <option value="N" >Exact Name</option>
+                    <option value="B" >Exact Package Base</option>
+                    <option value="k" >Keywords</option>
+                    <option value="m" >Maintainer</option>
+                    <option value="c" >Co-maintainer</option>
+                    <option value="M" >Maintainer, Co-maintainer</option>
+                    <option value="s" >Submitter</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_q">Keywords</label>
+                <input type='text' name='K' size='30' value="" maxlength='35'/>
+            </div>
+            <div>
+                <label for="id_out_of_date">Out of Date</label>
+                <select name='outdated'>
+                    <option value=''>All</option>
+                    <option value='on' >Flagged</option>
+                    <option value='off' >Not Flagged</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_sort_by">Sort by</label>
+                
+                    
+                
+                <select name='SB'>
+                    <option value='n' >Name</option>
+                    <option value='v' >Votes</option>
+                    <option value='p' selected>Popularity</option>
+                    <option value='w' >Voted</option>
+                    <option value='o' >Notify</option>
+                    <option value='m' >Maintainer</option>
+                    <option value='l' >Last modified</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_order_by">Sort order</label>
+                
+                    
+                
+                <select name='SO'>
+                    <option value='a' >Ascending</option>
+                    <option value='d' selected>Descending</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_per_page">Per page</label>
+                <select name='PP'>
+                    <option value="50" >50</option>
+                    <option value="100" >100</option>
+                    <option value="250" >250</option>
+                </select>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type='submit' class='button' name='submit' value='Go'>
+                    Go
+                </button>
+                <button type='submit' class='button' name='submit' value='Orphans'>
+                    Orphans
+                </button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="pkgdetails" class="box">
+        <h2>Package Details: zuki-themes 4.0-1</h2>
+
+        <!--
+    This partial requires pkgbase.Name to render
+-->
+<div id="detailslinks" class="listing">
+    <div id="actionlist">
+        <h4>Package Actions</h4>
+        <ul class="small">
+            <li>
+                <a href="/cgit/aur.git/tree/PKGBUILD?h=zuki-themes">
+                    View PKGBUILD
+                </a>
+                /
+                <a href="/cgit/aur.git/log/?h=zuki-themes">
+                    View Changes
+                </a>
+            </li>
+            <li>
+                <a href="/cgit/aur.git/snapshot/zuki-themes.tar.gz">
+                    Download snapshot
+                </a>
+            </li>
+            <li>
+                <a href="https://wiki.archlinux.org/title/Special:Search?search=zuki-themes">
+                    Search wiki
+                </a>
+            </li>
+			
+			
+            
+            
+            
+            
+            
+            
+        </ul>
+    </div>
+</div>
+
+        
+        <table id="pkginfo">
+    <tr>
+        <th>Git Clone URL:</th>
+        <td>
+            <a class="copy" href="https://aur.archlinux.org/zuki-themes.git">https://aur.archlinux.org/zuki-themes.git</a> (read-only, click to copy)
+            
+        </td>
+    </tr>
+    
+        <tr>
+            <th>Package Base:</th>
+            <td class="wrap">
+                <a href="/pkgbase/zuki-themes">
+                    zuki-themes
+                </a>
+            </td>
+        </tr>
+        <tr id="pkg-description">
+            <th>Description:</th>
+            <td class="wrap">Zuki themes for GNOME, Xfce and more.</td>
+        </tr>
+        <tr>
+            <th>Upstream URL:</th>
+            <td class="wrap">
+                
+                    <a href="https://github.com/lassekongo83/zuki-themes">https://github.com/lassekongo83/zuki-themes</a>
+                
+            </td>
+        </tr>
+    
+    
+        <tr>
+            <th>Keywords:</th>
+            
+            <td>
+                
+                    <a class="keyword"
+                       href="/packages/?K=GTK&amp;SeB=k"
+                    >
+                        GTK
+                    </a>
+                
+                    <a class="keyword"
+                       href="/packages/?K=theme&amp;SeB=k"
+                    >
+                        theme
+                    </a>
+                
+            </td>
+            
+        </tr>
+    
+    
+      
+        <tr id="licenses">
+            <th>Licenses:</th>
+            <td>GPL3 </td>
+        </tr>
+      
+      
+      
+        <tr id="conflicts">
+            <th>Conflicts:</th>
+            <td class="wrap">
+                zukitwo-themes-git
+            </td>
+        </tr>
+      
+      
+      
+    
+    <tr>
+        <th>Submitter:</th>
+        <td>
+            
+                OmeGa
+            
+        </td>
+    </tr>
+    <tr class="pkgmaint">
+        <th>Maintainer:</th>
+        <td>
+            
+                m8D2
+                
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Last Packager:</th>
+        <td>
+            
+                m8D2
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Votes:</th>
+        
+            <td>483</td>
+        
+    </tr>
+    <tr>
+        <th>Popularity:</th>
+        <td>0.000917</td>
+    </tr>
+    <tr>
+        <th>First Submitted:</th>
+        <td>2016-05-22 17:10 (UTC)</td>
+    </tr>
+    <tr>
+        <th>Last Updated:</th>
+        <td>2022-02-11 16:26 (UTC)</td>
+    </tr>
+</table>
+
+<script type="text/javascript" src="/static/js/copy.js"></script>
+
+        <div id="metadata">
+            <div id="pkgdeps" class="listing">
+    <h3>Dependencies (6)</h3>
+    <ul id="pkgdepslist">
+        
+            
+            <li>
+                
+                
+                    <a href="/packages/gtk-engine-murrine">
+                
+                    gtk-engine-murrine</a><sup><small>AUR</small></sup>
+                    
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="/packages/gtk-engines">
+                
+                    gtk-engines</a><sup><small>AUR</small></sup>
+                    
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=meson">
+                
+                    meson</a>
+                
+
+                
+                    <em>(<a href="/packages/meson-git">meson-git</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em>(make)</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=ninja">
+                
+                    ninja</a>
+                
+
+                
+                    <em>(<a href="/packages/ninja-git">ninja-git</a><sup><small>AUR</small></sup>, <a href="/packages/ninja-mem">ninja-mem</a><sup><small>AUR</small></sup>, <a href="/packages/ninja-noemacs-git">ninja-noemacs-git</a><sup><small>AUR</small></sup>, <a href="/packages/ninja-kitware">ninja-kitware</a><sup><small>AUR</small></sup>, <a href="/packages/ninja-fuchsia-git">ninja-fuchsia-git</a><sup><small>AUR</small></sup>, <a href="/packages/n2-git">n2-git</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em>(make)</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=sassc">
+                
+                    sassc</a>
+                
+
+                
+                    <em>(<a href="/packages/sassc-git">sassc-git</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em>(make)</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=ttf-roboto">
+                
+                    ttf-roboto</a>
+                
+
+                
+                    <em>(<a href="/packages/ttf-roboto-variable">ttf-roboto-variable</a><sup><small>AUR</small></sup>, <a href="/packages/ttf-google-fonts-typewolf">ttf-google-fonts-typewolf</a><sup><small>AUR</small></sup>, <a href="/packages/ttf-roboto-fontconfig">ttf-roboto-fontconfig</a><sup><small>AUR</small></sup>, <a href="/packages/ttf-roboto-android">ttf-roboto-android</a><sup><small>AUR</small></sup>, <a href="/packages/ttf-roboto-android-vf">ttf-roboto-android-vf</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    
+                    <em>(optional)</em>
+                
+            </li>
+        
+        
+    </ul>
+</div>
+
+<div id="pkgreqs" class="listing">
+    <h3>Required by (0)</h3>
+    <ul id="pkgreqslist">
+        
+        
+    </ul>
+</div>
+
+<div id="pkgfiles" class="listing">
+    <h3>Sources (1)</h3>
+</div>
+
+<div>
+    <ul id="pkgsrcslist">
+        
+            
+            <li>
+                <a href="https://github.com/lassekongo83/zuki-themes/archive/v4.0.tar.gz">zuki-themes-4.0.tar.gz</a>
+            </li>
+        
+    </ul>
+</div>
+        </div>
+    </div>
+
+    <!-- On-the-fly comment editing functions -->
+    <script type="text/javascript" src="/static/js/comment-edit.js"></script>
+
+    
+    
+    <!--
+    This partial requires the following  to render properly
+    - pkgname
+    - pkgbase-id
+    - comments (list)
+-->
+
+
+
+
+
+
+    <div class="comments package-comments">
+        <div class="comments-header">
+            <h3>
+                <span class="text">Latest Comments</span>
+                <span class="arrow"></span>
+            </h3>
+            
+            
+
+            
+            <p class="comments-header-nav">
+                  <span class="page">1</span>&nbsp<a class="page" href="?O=10">2</a>&nbsp<a class="page" href="?O=20">3</a>&nbsp<a class="page" href="?O=30">4</a>&nbsp<a class="page" href="?O=40">5</a>&nbsp<a class="page" href="?O=50">6</a>&nbsp..&nbsp<a class="page" href="?O=120">13</a> <a class="page" href="?O=10">Next ›</a> <a class="page" href="?O=120">Last »</a>
+            </p>
+            
+        </div>
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-712925" class="comment-header">
+		
+		
+		JohnRobson commented on <a href="#comment-712925" class="date">2019-10-22 14:35 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-712925-content" class="article-content">
+    <div>
+        
+            <pre><code>sassc: error: no such option: -M
+ninja: build stopped: subcommand failed.
+==&gt; ERROR: A failure occurred in build().
+    Aborting...
+Error making: zuki-themes
+</code></pre>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-672232" class="comment-header">
+		
+		
+		m8D2 commented on <a href="#comment-672232" class="date">2018-11-28 04:09 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-672232-content" class="article-content">
+    <div>
+        
+            <p>Fixed, thanks for pointing it out. Guidelines: <a href="https://wiki.archlinux.org/index.php/Arch_package_guidelines">https://wiki.archlinux.org/index.php/Arch_package_guidelines</a></p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-671858" class="comment-header">
+		
+		
+		TrialnError commented on <a href="#comment-671858" class="date">2018-11-24 18:54 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-671858-content" class="article-content">
+    <div>
+        
+            <p>One change you introduced to the PKGBUILD is against the packaging guidelines and can cause issues with some.</p>
+<p>To quote the package guidelines:
+<code>Quote variables which may contain spaces, such as "$pkgdir" and "$srcdir"</code></p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+	
+	
+
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-460695" class="comment-header">
+		
+		
+		Spike29 commented on <a href="#comment-460695" class="date">2014-10-18 11:11 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-460695-content" class="article-content">
+    <div>
+        
+            Also, I think the gnome-shell theme used to be on $srcdir/Zukitwo directory, but it&#39;s now on $src/ZukiShell.
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-460690" class="comment-header">
+		
+		
+		Spike29 commented on <a href="#comment-460690" class="date">2014-10-18 10:18 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-460690-content" class="article-content">
+    <div>
+        
+            Hello, a new release with GTK+ 3.14 support is available :)
+
+New sha1sums is 9b9b931fee9e6852541607b7bb24fe2152d760df
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+	
+	
+
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-438171" class="comment-header">
+		
+		
+		orschiro commented on <a href="#comment-438171" class="date">2014-06-03 21:27 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-438171-content" class="article-content">
+    <div>
+        
+            @mrueegg
+
+Does that error occur with all GTK applications?
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-438170" class="comment-header">
+		
+		
+		mrueegg commented on <a href="#comment-438170" class="date">2014-06-03 21:27 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-438170-content" class="article-content">
+    <div>
+        
+            Gtk2. Gtk3 is okay. Thanks for your suggestion, but lib32-gtk-engine-murrine forces me to install the whole multilib chain (e.g., gcc-libs-multilib). Do you know any other possibility to get rid of these warnings?
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-438140" class="comment-header">
+		
+		
+		carstene1ns commented on <a href="#comment-438140" class="date">2014-06-03 18:31 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-438140-content" class="article-content">
+    <div>
+        
+            @mrueegg: Gtk2 or gtk3 applications? Murrine is a AFAIK a gtk2 engine. When you use Arch64 you may need &#39;lib32-gtk-engine-murrine&#39; for 32 bit applications as well.
+        
+    </div>
+</div>
+
+
+        
+        <div class="comments-footer">
+            
+            <p class="comments-footer-nav">
+                  <span class="page">1</span>&nbsp<a class="page" href="?O=10">2</a>&nbsp<a class="page" href="?O=20">3</a>&nbsp<a class="page" href="?O=30">4</a>&nbsp<a class="page" href="?O=40">5</a>&nbsp<a class="page" href="?O=50">6</a>&nbsp..&nbsp<a class="page" href="?O=120">13</a> <a class="page" href="?O=10">Next ›</a> <a class="page" href="?O=120">Last »</a>
+            </p>
+            
+        </div>
+    </div>
+
+
+
+    <div id="footer">
+    <p>
+        aurweb <a href="https://gitlab.archlinux.org/archlinux/aurweb/-/commits/v6.5.1">v6.5.1</a>
+        
+    </p>
+    <p>Report issues <a href="https://gitlab.archlinux.org/archlinux/aurweb/-/issues/new?issuable_template=Bug">here</a>.</p>
+    <p>Copyright &copy; 2004-2026 aurweb Development Team.</p>
+    <p>AUR packages are user produced content. Any use of the provided files is at your own risk.</p>
+</div>
+</div>

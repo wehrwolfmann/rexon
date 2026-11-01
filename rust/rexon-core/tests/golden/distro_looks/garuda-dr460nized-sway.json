@@ -1,0 +1,301 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Like Garuda Linux (Dr460nized)”?",
+      "text": "The look <b>Like Garuda Linux (Dr460nized)</b> will be applied to your desktop.<br><br>What will change: colours, Qt application style, GTK theme, icons, cursors, fonts, wallpaper.<br><br>Covered by the other parts: global theme — in Plasma it is one package of the parts listed here; on this desktop Rexon applies them one by one<br><br>Partly: colours — Qt programs pick it up after you log in again<br><br>Partly: Qt application style — Qt programs pick it up after you log in again<br><br>Rexon will install the programs it needs: qt6ct, kvantum, beautyline, ttf-fira-sans, ttf-firacode-nerd. Your system will ask for your password.<br><br>Won't be applied: window frames — Sway draws window borders itself, and there are no themes for them<br><br>Won't be applied: desktop shell theme — Sway has no shell theme of its own. If you use Noctalia or DankMaterialShell, press “Pass Palette to Shell” in Color Schemes after applying: they take the colours of this look<br><br>Won't be applied: panel layout — Sway has no panel of its own: a bar such as Waybar is chosen separately, in the Shells block of its card in Desktops<br><br>Won't be applied: desktop behaviour — it changes only things Plasma has: KWin window effects, the Plasma lock screen picture, KRunner in the middle of the screen — Sway has none of them<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "garuda-dr460nized",
+    "name": "Like Garuda Linux (Dr460nized)",
+    "items": [
+      {
+        "index": 1,
+        "kind": "palette",
+        "consumer": "qt6ct",
+        "path": "sources/sweet/kde/colorschemes/Sweet.colors",
+        "choice": {
+          "choice": "compatible",
+          "consumer": "qt6ct",
+          "from": "kde-colors",
+          "path": "sources/sweet/kde/colorschemes/Sweet.colors"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "qt-style",
+        "consumer": "qt6ct",
+        "path": "sources/garuda/usr/share/Kvantum/Dr460nized",
+        "choice": {
+          "choice": "compatible",
+          "consumer": "qt6ct",
+          "from": "kvantum",
+          "path": "sources/garuda/usr/share/Kvantum/Dr460nized"
+        }
+      },
+      {
+        "index": 5,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/sweet-gtk/Sweet-Dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/sweet-gtk/Sweet-Dark"
+        }
+      },
+      {
+        "index": 6,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/beautyline/usr/share/icons/BeautyLine",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/beautyline/usr/share/icons/BeautyLine"
+        }
+      },
+      {
+        "index": 7,
+        "kind": "cursors",
+        "consumer": "freedesktop",
+        "path": "sources/sweet/kde/cursors/Sweet-cursors",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/sweet/kde/cursors/Sweet-cursors"
+        }
+      },
+      {
+        "index": 8,
+        "kind": "fonts",
+        "consumer": "freedesktop",
+        "path": "sources/fira/usr/share/fonts",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/fira/usr/share/fonts"
+        }
+      },
+      {
+        "index": 9,
+        "kind": "wallpaper",
+        "consumer": "any",
+        "path": "sources/garuda/usr/share/wallpapers/Maldrakor",
+        "choice": {
+          "choice": "native",
+          "consumer": "any",
+          "path": "sources/garuda/usr/share/wallpapers/Maldrakor"
+        }
+      }
+    ],
+    "skipped": [
+      {
+        "kind": "window-decoration",
+        "reason": "Sway draws window borders itself, and there are no themes for them"
+      },
+      {
+        "kind": "shell-theme",
+        "reason": "Sway has no shell theme of its own. If you use Noctalia or DankMaterialShell, press “Pass Palette to Shell” in Color Schemes after applying: they take the colours of this look"
+      },
+      {
+        "kind": "panel-layout",
+        "reason": "Sway has no panel of its own: a bar such as Waybar is chosen separately, in the Shells block of its card in Desktops"
+      },
+      {
+        "kind": "behaviour",
+        "reason": "it changes only things Plasma has: KWin window effects, the Plasma lock screen picture, KRunner in the middle of the screen — Sway has none of them"
+      }
+    ],
+    "install": [
+      {
+        "role": "qt6ct",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "qt6ct"
+          ]
+        }
+      },
+      {
+        "role": "kvantum",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "kvantum"
+          ]
+        }
+      },
+      {
+        "role": "icons-beautyline",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "beautyline"
+          ]
+        }
+      },
+      {
+        "role": "fonts-fira",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "ttf-fira-sans",
+            "ttf-firacode-nerd"
+          ]
+        }
+      }
+    ],
+    "aur": [],
+    "roles": [
+      "fonts-fira",
+      "icons-beautyline",
+      "kvantum",
+      "qt6ct"
+    ],
+    "fetch": [
+      {
+        "id": "sweet",
+        "url": "https://github.com/EliverLara/Sweet.git",
+        "pin": {
+          "pin": "git",
+          "value": "46e3802d3f4d9e992f94264f1d834f5f9621c03b"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-46e3802d3f4d"
+      },
+      {
+        "id": "garuda",
+        "url": "https://gitlab.com/garuda-linux/themes-and-settings/settings/garuda-dr460nized.git",
+        "pin": {
+          "pin": "git",
+          "value": "1280f411dc307847332ecab2f578ed984d33498c"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/garuda-1280f411dc30"
+      },
+      {
+        "id": "sweet-gtk",
+        "url": "https://github.com/EliverLara/Sweet/releases/download/v6.0/Sweet-Dark.tar.xz",
+        "pin": {
+          "pin": "sha256",
+          "value": "123f69effb71acc846502c834c01101c84bfa62f76a5f2eb095d4be07c567599"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-gtk-123f69effb71"
+      }
+    ],
+    "uses_settings": false,
+    "values": {},
+    "covered": [
+      {
+        "kind": "global-look",
+        "reason": "in Plasma it is one package of the parts listed here; on this desktop Rexon applies them one by one"
+      }
+    ],
+    "limits": [
+      {
+        "kind": "palette",
+        "reason": "Qt programs pick it up after you log in again"
+      },
+      {
+        "kind": "qt-style",
+        "reason": "Qt programs pick it up after you log in again"
+      }
+    ]
+  },
+  "calls": [
+    "gsettings get org.gnome.desktop.interface font-name",
+    "kvantummanager --set Dr460nized",
+    "gsettings get org.gnome.desktop.interface gtk-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface gtk-theme",
+    "gsettings get org.gnome.desktop.interface gtk-theme",
+    "gsettings set org.gnome.desktop.interface gtk-theme Sweet-Dark",
+    "gsettings get org.gnome.desktop.interface color-scheme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface color-scheme",
+    "gsettings get org.gnome.desktop.interface color-scheme",
+    "gsettings set org.gnome.desktop.interface color-scheme prefer-dark",
+    "gsettings get org.gnome.desktop.interface icon-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface icon-theme",
+    "gsettings get org.gnome.desktop.interface icon-theme",
+    "gsettings set org.gnome.desktop.interface icon-theme BeautyLine",
+    "gsettings get org.gnome.desktop.interface cursor-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface cursor-theme",
+    "gsettings get org.gnome.desktop.interface cursor-theme",
+    "gsettings set org.gnome.desktop.interface cursor-theme Sweet-cursors",
+    "gsettings get org.gnome.desktop.interface font-name",
+    "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface font-name",
+    "gsettings get org.gnome.desktop.interface font-name",
+    "gsettings set org.gnome.desktop.interface font-name Fira Sans 10"
+  ],
+  "missing": [],
+  "message": "“Like Garuda Linux (Dr460nized)” applied.\nSkipped: window frames — Sway draws window borders itself, and there are no themes for them\nSkipped: desktop shell theme — Sway has no shell theme of its own. If you use Noctalia or DankMaterialShell, press “Pass Palette to Shell” in Color Schemes after applying: they take the colours of this look\nSkipped: panel layout — Sway has no panel of its own: a bar such as Waybar is chosen separately, in the Shells block of its card in Desktops\nSkipped: desktop behaviour — it changes only things Plasma has: KWin window effects, the Plasma lock screen picture, KRunner in the middle of the screen — Sway has none of them",
+  "installed": [
+    "qt6ct",
+    "kvantum",
+    "beautyline",
+    "ttf-fira-sans",
+    "ttf-firacode-nerd"
+  ],
+  "profile": {
+    ".config/": "",
+    ".config/Kvantum/": "",
+    ".config/Kvantum/Dr460nized/": "",
+    ".config/Kvantum/Dr460nized/.rexon-owner": "look:garuda-dr460nized\n",
+    ".config/Kvantum/Dr460nized/Dr460nized.kvconfig": "[%General]\n",
+    ".config/Kvantum/kvantum.kvconfig": "[General]\ntheme=Dr460nized\n",
+    ".config/environment.d/": "",
+    ".config/environment.d/rexon-cursor.conf": "XCURSOR_THEME=Sweet-cursors\n",
+    ".config/environment.d/rexon-qt-style.conf": "QT_QPA_PLATFORMTHEME=qt6ct\n",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Sweet-Dark\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Sweet-Dark\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\n",
+    ".config/kdeglobals": "[WM]\nactiveBackground=239,240,241\nactiveForeground=35,38,41\ninactiveBackground=239,240,241\ninactiveForeground=35,38,41\nactiveBlend=239,240,241\ninactiveBlend=239,240,241\n\n[KDE]\nframeContrast=0.2\ncontrast=7\n\n[General]\nColorScheme=Sweet\nColorSchemeHash=ea141224264211974831a8a52bf7d952a897a9fb\n\n[UiSettings]\nColorScheme=Sweet\n\n[Icons]\nTheme=BeautyLine\n",
+    ".config/qt6ct/": "",
+    ".config/qt6ct/colors/": "",
+    ".config/qt6ct/colors/Sweet.conf": "[ColorScheme]\nactive_colors=#ff232629, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ff232629, #ffffffff, #ff232629, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ff232629, #ff2980b9, #ff7f8c8d, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ff707d8a, #ffeff0f1\ndisabled_colors=#ffa8a9ab, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ffa8a9ab, #ffffffff, #ffa8a9ab, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ffa8a9ab, #ffaac9dd, #ffc8cdce, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ffc3c8cd, #ffeff0f1\ninactive_colors=#ff232629, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ff232629, #ffffffff, #ff232629, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ff232629, #ff2980b9, #ff7f8c8d, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ff707d8a, #ffeff0f1\n",
+    ".config/qt6ct/qt6ct.conf": "[Appearance]\ncustom_palette=true\ncolor_scheme_path=$HOME/.config/qt6ct/colors/Sweet.conf\nicon_theme=BeautyLine\nstyle=kvantum\n",
+    ".config/sway/": "",
+    ".config/sway/config": "set $mod Mod4\n\n# >>> Rexon: cursor (managed by Rexon, do not edit inside) >>>\ninclude $HOME/.config/sway/rexon-cursor.conf\n# <<< Rexon: cursor <<<\n",
+    ".config/sway/config.rexon-bak": "set $mod Mod4\n",
+    ".config/sway/rexon-cursor.conf": "# Rexon: cursor theme. This file is rewritten by Rexon; set the cursor in Rexon instead.\nseat * xcursor_theme Sweet-cursors\n",
+    ".gsstore/": "",
+    ".gsstore/org.gnome.desktop.interface/": "",
+    ".gsstore/org.gnome.desktop.interface/color-scheme": "prefer-dark",
+    ".gsstore/org.gnome.desktop.interface/cursor-theme": "Sweet-cursors",
+    ".gsstore/org.gnome.desktop.interface/font-name": "Fira Sans 10",
+    ".gsstore/org.gnome.desktop.interface/gtk-theme": "Sweet-Dark",
+    ".gsstore/org.gnome.desktop.interface/icon-theme": "BeautyLine",
+    ".icons/": "",
+    ".icons/default/": "",
+    ".icons/default/index.theme": "[Icon Theme]\nInherits=Sweet-cursors\n",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/color-schemes/": "",
+    ".local/share/color-schemes/Sweet.colors": "[General]\n",
+    ".local/share/icons/": "",
+    ".local/share/icons/Sweet-cursors/": "",
+    ".local/share/icons/Sweet-cursors/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/icons/Sweet-cursors/cursors/": "",
+    ".local/share/icons/Sweet-cursors/cursors/default": "left_ptr",
+    ".local/share/icons/Sweet-cursors/cursors/left_ptr": "cur",
+    ".local/share/icons/Sweet-cursors/index.theme": "[Icon Theme]\nName=Sweet-cursors\n",
+    ".local/share/themes/": "",
+    ".local/share/themes/Sweet-Dark/": "",
+    ".local/share/themes/Sweet-Dark/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/": "",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Sweet-Dark/index.theme": "[Desktop Entry]\nName=Sweet-Dark\n",
+    ".local/share/themes/Sweet-Dark/xfwm4/": "",
+    ".local/share/themes/Sweet-Dark/xfwm4/themerc": "x=1\n",
+    ".local/share/wallpapers/": "",
+    ".local/share/wallpapers/Maldrakor/": "",
+    ".local/share/wallpapers/Maldrakor/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/wallpapers/Maldrakor/contents/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg": "jpg",
+    ".local/share/wallpapers/Maldrakor/metadata.json": "{}"
+  }
+}

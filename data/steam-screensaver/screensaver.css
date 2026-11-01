@@ -1,0 +1,101 @@
+/* Заставка Rexon: всё рисуется слоями на видеокарте — смена кадра только
+   прозрачностью, медленный наезд только transform. Ни размытия на лету,
+   ни теней: фон для вертикальных обложек Rexon готовит заранее. */
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  cursor: none;
+  user-select: none;
+  font-family: "Noto Sans", "DejaVu Sans", "Liberation Sans", sans-serif;
+  color: #fff;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.6s ease-in-out;
+  will-change: opacity;
+}
+.slide.shown { opacity: 1; }
+
+.pan {
+  position: absolute;
+  inset: 0;
+  background-color: #000;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.0);
+  will-change: transform;
+}
+/* Медленный наезд («Ken Burns»): длительность ставит скрипт по длине кадра. */
+.slide.moving .pan { transform: scale(1.07) translate3d(-1%, -0.6%, 0); }
+.slide.moving.reverse .pan { transform: scale(1.07) translate3d(1%, 0.6%, 0); }
+/* Под вертикальной обложкой фон — заранее размытая копия, притушенная. */
+.slide.framed .pan { opacity: 0.55; }
+
+.front {
+  position: absolute;
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  display: none;
+}
+/* Логотип игры поверх hero — внизу слева, как подпись к кадру. */
+.slide.with-logo .front {
+  display: block;
+  left: 6vw;
+  bottom: 9vh;
+  width: 34vw;
+  height: 22vh;
+  background-position: left bottom;
+}
+/* Вертикальная обложка или шапка — по центру поверх размытого фона. */
+.slide.framed .front {
+  display: block;
+  left: 10vw;
+  right: 10vw;
+  top: 10vh;
+  bottom: 14vh;
+}
+
+.caption {
+  position: absolute;
+  left: 6vw;
+  bottom: 4vh;
+  font-size: max(16px, 1.7vw);
+  opacity: 0.85;
+  text-shadow: 0 0 6px #000, 0 0 2px #000;
+  white-space: nowrap;
+}
+.caption .when { opacity: 0.7; margin-left: 0.8em; }
+
+#bouncer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  will-change: transform;
+}
+
+#clock {
+  position: fixed;
+  right: 4vw;
+  top: 4vh;
+  text-align: right;
+  text-shadow: 0 0 8px #000, 0 0 2px #000;
+  opacity: 0.9;
+  display: none;
+}
+#clock .time { font-size: max(28px, 4.2vw); font-weight: 300; letter-spacing: 0.02em; }
+#clock .date { font-size: max(14px, 1.4vw); opacity: 0.75; }
+body.bounce #clock { opacity: 0.45; }

@@ -1,0 +1,2400 @@
+{
+ "card_text_w": 244,
+ "card_w": 260,
+ "cards": {
+  "icons-pack": [
+   {
+    "kind": "label",
+    "text": "📁"
+   },
+   {
+    "kind": "label",
+    "text": "📁 Иконки  ·  v3.3.3"
+   },
+   {
+    "kind": "label",
+    "text": "Очень длинное название набора значков, которое точно не поместится в пл…"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "kde-global": [
+   {
+    "kind": "label",
+    "text": "💎"
+   },
+   {
+    "kind": "label",
+    "text": "💎 KDE Global Theme  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Глобальная тема KDE"
+   },
+   {
+    "kind": "label",
+    "text": "👤 KDE"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "kvantum-theme": [
+   {
+    "kind": "label",
+    "text": "🔲"
+   },
+   {
+    "kind": "label",
+    "text": "🔲 Kvantum  ·  v0.5.0"
+   },
+   {
+    "kind": "label",
+    "text": "Kvantum «Стекло»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Стекольщик"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "my-plugin": [
+   {
+    "kind": "label",
+    "text": "🧩"
+   },
+   {
+    "kind": "label",
+    "text": "🧩 Плагин  ·  v0.9"
+   },
+   {
+    "kind": "label",
+    "text": "Плагин с <разметкой> & «кавычками»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Аноним"
+   },
+   {
+    "kind": "label",
+    "text": "⏸️ Выключено"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "▶️ Включить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "theme-dark": [
+   {
+    "kind": "label",
+    "text": "🎨"
+   },
+   {
+    "kind": "label",
+    "text": "🎨 Тема GTK  ·  v1.2.0"
+   },
+   {
+    "kind": "label",
+    "text": "Тёмная тема «Ночь»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Wehrwolfmann"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "tool-x": [
+   {
+    "kind": "label",
+    "text": "🔧"
+   },
+   {
+    "kind": "label",
+    "text": "🔧 Утилита  ·  v2.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Утилита X"
+   },
+   {
+    "kind": "label",
+    "text": "✅ Активно"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "⏸️ Выключить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ],
+  "wallpapers": [
+   {
+    "kind": "label",
+    "text": "🖼️"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️ Обои  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Пак обоев"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Студия"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   }
+  ]
+ },
+ "create_dialog": {
+  "body_plain": "Расширение Rexon — это обычный ZIP-архив с расширением .rxn. Структура одинакова для всех типов: \nрасширение.rxn (ZIP):\n├── manifest.json     ← ОБЯЗАТЕЛЬНО (format_version: 3)\n├── preview.png       ← 620×348 (для каталога/карточек)\n├── icon.png          ← 128×128 (списки в Rexon)\n├── install.sh        ← для desktop-tool / plugin\n├── uninstall.sh      ← для desktop-tool / plugin\n├── app.desktop       ← для desktop-tool\n├── README.md         ← опционально, описание\n└── data/             ← файлы расширения \n📋 Минимальный manifest.json\n{\n  \"format_version\": 3,\n  \"id\": \"my-cool-theme\",\n  \"name\": \"Моя крутая тема\",\n  \"version\": \"1.0.0\",\n  \"author\": \"Я\",\n  \"description\": \"Что делает расширение\",\n  \"type\": \"theme-gtk\",\n  \"tags\": [\"dark\", \"modern\"],\n  \"license\": \"MIT\",\n  \"homepage\": \"https://github.com/me/my-theme\",\n  \"de_support\": [\"any\"]\n} \n🎨 Категории (поле type)\nОформление — Rexon ставит файлы автоматически:\ntheme-gtk, theme-icons, theme-cursors, theme-sounds, theme-kde-global, theme-kde-colors, theme-kde-plasma, theme-kvantum, theme-window-decoration, theme-login-screen, theme-plymouth, theme-conky, theme-bundle, theme-plasmoid, wallpaper-pack, font-pack \nКастомизация окружений — Rexon кладёт в каталог этого рабочего стола и включает его же средствами:\nkde-kwin-script, kde-kwin-effect, kde-window-switcher, kde-wallpaper-plugin, theme-kde-splash, theme-kde-lockscreen, gnome-shell-extension, theme-gnome-shell, cinnamon-applet, cinnamon-desklet, cinnamon-extension, theme-cinnamon, nemo-action, theme-xfwm4, theme-marco, theme-lxqt \nРасширения (предупреждение при установке — выполняется код):\ndesktop-tool, plugin \n📦 Сборка\ncd my-extension/\nzip -r ../my-extension.rxn . \nГотовый .rxn можно перетащить в окно Rexon или нажать 「📦 Из файла」. \n🔗 Полная документация\nВ исходниках Rexon: extensions/constants.py — полный список типов и путей установки. ",
+  "min_size": [
+   720,
+   580
+  ],
+  "title": "Создать своё .rxn-расширение",
+  "tree": [
+   {
+    "kind": "label",
+    "text": "<b>📦 Структура .rxn v3</b>"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "Закрыть",
+    "tooltip": ""
+   }
+  ]
+ },
+ "details": {
+  "icons-pack": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-style:italic;\">Нет описания</span></p></body></html>",
+   "body_plain": "Нет описания",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Очень длинное название набора значков, которое точно не поместится в плитку",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>📁 Очень длинное название набора значков, которое точно не поместится в плитку</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Иконки  ·  v3.3.3"
+    },
+    {
+     "kind": "label",
+     "text": "<b>Лицензия:</b> GPL-3.0"
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/icons-pack</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "kde-global": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-style:italic;\">Нет описания</span></p></body></html>",
+   "body_plain": "Нет описания",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Глобальная тема KDE",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>💎 Глобальная тема KDE</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 KDE Global Theme  ·  v1.0.0  ·  👤 KDE"
+    },
+    {
+     "kind": "label",
+     "text": ""
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/kde-global</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "kvantum-theme": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-style:italic;\">Нет описания</span></p></body></html>",
+   "body_plain": "Нет описания",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Kvantum «Стекло»",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>🔲 Kvantum «Стекло»</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Kvantum  ·  v0.5.0  ·  👤 Стекольщик"
+    },
+    {
+     "kind": "label",
+     "text": ""
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/kvantum-theme</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "my-plugin": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Описание с <span style=\" font-weight:700;\">тегом</span> и &amp; амперсандом</p></body></html>",
+   "body_plain": "Описание с тегом и & амперсандом",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Плагин с <разметкой> & «кавычками»",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>🧩 Плагин с <разметкой> & «кавычками»</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Плагин  ·  v0.9  ·  👤 Аноним"
+    },
+    {
+     "kind": "label",
+     "text": "#a  #b  #c  #d  #e  #f  #g  #h  #i  #j  #k  #l  #m  #n  #o  #p  #q  #r  #s  #t"
+    },
+    {
+     "kind": "label",
+     "text": ""
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/my-plugin</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "theme-dark": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<pre style=\" margin-top:12px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:'monospace';\"># Ночь</span></pre>\n<pre style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'monospace';\"><br /></pre>\n<pre style=\" margin-top:0px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:'monospace';\">Список  &amp; прочее</span></pre></body></html>",
+   "body_plain": "# Ночь\n\nСписок  & прочее",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Тёмная тема «Ночь»",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>🎨 Тёмная тема «Ночь»</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Тема GTK  ·  v1.2.0  ·  👤 Wehrwolfmann  ·  🖥️ gnome, xfce"
+    },
+    {
+     "kind": "label",
+     "text": "#dark  #gtk  #модерн"
+    },
+    {
+     "kind": "label",
+     "text": "<b>Rexon мин.:</b> 0.0.1  ·  <b>Сайт:</b> <a href='https://example.org/night'>https://example.org/night</a>  ·  <b>Лицензия:</b> MIT"
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/theme-dark</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "tool-x": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-style:italic;\">Нет описания</span></p></body></html>",
+   "body_plain": "Нет описания",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Утилита X",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>🔧 Утилита X</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Утилита  ·  v2.0.0"
+    },
+    {
+     "kind": "label",
+     "text": ""
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/tool-x</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  },
+  "wallpapers": {
+   "body_html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;\">\n<pre style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:'monospace';\">Обои под лицензией CC0</span></pre></body></html>",
+   "body_plain": "Обои под лицензией CC0",
+   "min_size": [
+    680,
+    540
+   ],
+   "title": "Пак обоев",
+   "tree": [
+    {
+     "kind": "label",
+     "text": "<b>🖼️ Пак обоев</b>"
+    },
+    {
+     "kind": "label",
+     "text": "📦 Обои  ·  v1.0.0  ·  👤 Студия  ·  🖥️ kde, gnome, xfce"
+    },
+    {
+     "kind": "label",
+     "text": ""
+    },
+    {
+     "kind": "label",
+     "text": "📁 <tt>~/.config/rexon/extensions/wallpapers</tt>"
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "📁 Открыть папку",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "🗑️ Удалить",
+     "tooltip": ""
+    },
+    {
+     "enabled": true,
+     "kind": "button",
+     "text": "Закрыть",
+     "tooltip": ""
+    }
+   ]
+  }
+ },
+ "discovered": [
+  {
+   "author": "Стекольщик",
+   "de_support": [],
+   "description": "",
+   "dir": "{ROOT}/.config/rexon/extensions/kvantum-theme",
+   "enabled": true,
+   "icon_path": "",
+   "id": "kvantum-theme",
+   "name": "Kvantum «Стекло»",
+   "preview_path": "",
+   "readme": "",
+   "tags": [],
+   "type": "theme-kvantum",
+   "type_icon": "🔲",
+   "type_label": "Kvantum",
+   "version": "0.5.0"
+  },
+  {
+   "author": "KDE",
+   "de_support": [],
+   "description": "",
+   "dir": "{ROOT}/.config/rexon/extensions/kde-global",
+   "enabled": true,
+   "icon_path": "",
+   "id": "kde-global",
+   "name": "Глобальная тема KDE",
+   "preview_path": "",
+   "readme": "",
+   "tags": [],
+   "type": "theme-kde-global",
+   "type_icon": "💎",
+   "type_label": "KDE Global Theme",
+   "version": "1.0.0"
+  },
+  {
+   "author": "Студия",
+   "de_support": [
+    "kde",
+    "gnome",
+    "xfce"
+   ],
+   "description": "Двенадцать обоев",
+   "dir": "{ROOT}/.config/rexon/extensions/wallpapers",
+   "enabled": true,
+   "icon_path": "",
+   "id": "wallpapers",
+   "name": "Пак обоев",
+   "preview_path": "",
+   "readme": "Обои под лицензией CC0\n",
+   "tags": [],
+   "type": "wallpaper-pack",
+   "type_icon": "🖼️",
+   "type_label": "Обои",
+   "version": "1.0.0"
+  },
+  {
+   "author": "",
+   "de_support": [],
+   "description": "",
+   "dir": "{ROOT}/.config/rexon/extensions/icons-pack",
+   "enabled": true,
+   "icon_path": "",
+   "id": "icons-pack",
+   "name": "Очень длинное название набора значков, которое точно не поместится в плитку",
+   "preview_path": "{ROOT}/.config/rexon/extensions/icons-pack/preview.png",
+   "readme": "",
+   "tags": [],
+   "type": "theme-icons",
+   "type_icon": "📁",
+   "type_label": "Иконки",
+   "version": "3.3.3"
+  },
+  {
+   "author": "Неизвестно",
+   "de_support": [],
+   "description": "",
+   "dir": "{ROOT}/.config/rexon/extensions/tool-x",
+   "enabled": true,
+   "icon_path": "",
+   "id": "tool-x",
+   "name": "Утилита X",
+   "preview_path": "",
+   "readme": "",
+   "tags": [],
+   "type": "desktop-tool",
+   "type_icon": "🔧",
+   "type_label": "Утилита",
+   "version": "2.0.0"
+  },
+  {
+   "author": "Аноним",
+   "de_support": [],
+   "description": "Описание с <b>тегом</b> и & амперсандом",
+   "dir": "{ROOT}/.config/rexon/extensions/my-plugin",
+   "enabled": false,
+   "icon_path": "{ROOT}/.config/rexon/extensions/my-plugin/icon.png",
+   "id": "my-plugin",
+   "name": "Плагин с <разметкой> & «кавычками»",
+   "preview_path": "",
+   "readme": "",
+   "tags": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v"
+   ],
+   "type": "plugin",
+   "type_icon": "🧩",
+   "type_label": "Плагин",
+   "version": "0.9"
+  },
+  {
+   "author": "Wehrwolfmann",
+   "de_support": [
+    "gnome",
+    "xfce"
+   ],
+   "description": "Тёмное оформление GTK",
+   "dir": "{ROOT}/.config/rexon/extensions/theme-dark",
+   "enabled": true,
+   "icon_path": "{ROOT}/.config/rexon/extensions/theme-dark/icon.png",
+   "id": "theme-dark",
+   "name": "Тёмная тема «Ночь»",
+   "preview_path": "{ROOT}/.config/rexon/extensions/theme-dark/preview.png",
+   "readme": "# Ночь\n\nСписок <изменений> & прочее\n",
+   "tags": [
+    "dark",
+    "gtk",
+    "модерн"
+   ],
+   "type": "theme-gtk",
+   "type_icon": "🎨",
+   "type_label": "Тема GTK",
+   "version": "1.2.0"
+  }
+ ],
+ "drop_extensions": [
+  ".7tsp",
+  ".ani",
+  ".cur",
+  ".curxptheme",
+  ".deskthemepack",
+  ".inf",
+  ".msstyles",
+  ".rxn",
+  ".theme",
+  ".themepack"
+ ],
+ "empty": {
+  "empty_label": "📭 Расширений ещё нет. Перетащите .rxn-файл в окно или нажмите <b>«+ Установить из файла»</b>. Поддерживаются также .themepack / .deskthemepack / .msstyles (Windows).",
+  "filters": [
+   {
+    "id": "all",
+    "text": "Все"
+   }
+  ],
+  "my_label": "",
+  "my_visible": false,
+  "stats_text": "Установлено: <b>0</b>  •  Активных: <b>0</b>",
+  "tree": [
+   {
+    "kind": "label",
+    "text": "🧩 Расширения"
+   },
+   {
+    "checked": true,
+    "kind": "tool",
+    "text": "⊞",
+    "tooltip": "Сетка"
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "☰",
+    "tooltip": "Список"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "＋ Установить из файла",
+    "tooltip": ""
+   },
+   {
+    "kind": "edit",
+    "placeholder": "Поиск по названию, автору, тегам…"
+   },
+   {
+    "checked": true,
+    "kind": "tool",
+    "text": "Все",
+    "tooltip": ""
+   },
+   {
+    "kind": "label",
+    "text": "Установлено: <b>0</b>  •  Активных: <b>0</b>"
+   },
+   {
+    "kind": "label",
+    "text": "📭 Расширений ещё нет. Перетащите .rxn-файл в окно или нажмите <b>«+ Установить из файла»</b>. Поддерживаются также .themepack / .deskthemepack / .msstyles (Windows)."
+   },
+   {
+    "kind": "label",
+    "text": "⬇️ Установить"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "📦\nИз файла",
+    "tooltip": "Открыть .rxn / .themepack / Windows-темы"
+   },
+   {
+    "enabled": false,
+    "kind": "button",
+    "text": "🎮\nМастерская Steam — скоро",
+    "tooltip": "Скоро — интеграция со Steam Workshop"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "✏️\nСоздать своё",
+    "tooltip": "Инструкция по созданию своего .rxn-расширения"
+   },
+   {
+    "kind": "label",
+    "text": "🚧 Скоро здесь: Steam Workshop для .rxn-оформлений и расширений."
+   }
+  ]
+ },
+ "empty_label": "",
+ "empty_visible": false,
+ "filter_plugin": {
+  "my_label": "Мои расширения (1/7)",
+  "tree": [
+   {
+    "kind": "label",
+    "text": "🧩 Расширения"
+   },
+   {
+    "checked": true,
+    "kind": "tool",
+    "text": "⊞",
+    "tooltip": "Сетка"
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "☰",
+    "tooltip": "Список"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "＋ Установить из файла",
+    "tooltip": ""
+   },
+   {
+    "kind": "edit",
+    "placeholder": "Поиск по названию, автору, тегам…"
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "Все",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "🎨 Тема GTK",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "📁 Иконки",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "💎 KDE Global Theme",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "🔲 Kvantum",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "🖼️ Обои",
+    "tooltip": ""
+   },
+   {
+    "checked": false,
+    "kind": "tool",
+    "text": "🔧 Утилита",
+    "tooltip": ""
+   },
+   {
+    "checked": true,
+    "kind": "tool",
+    "text": "🧩 Плагин",
+    "tooltip": ""
+   },
+   {
+    "kind": "label",
+    "text": "Установлено: <b>7</b>  •  Активных: <b>6</b>  •  🎨 Тема GTK: <b>1</b>  •  📁 Иконки: <b>1</b>  •  💎 KDE Global Theme: <b>1</b>  •  🔲 Kvantum: <b>1</b>  •  🖼️ Обои: <b>1</b>  •  🔧 Утилита: <b>1</b>  •  🧩 Плагин: <b>1</b>"
+   },
+   {
+    "kind": "label",
+    "text": "Мои расширения (1/7)"
+   },
+   {
+    "kind": "label",
+    "text": "🔲"
+   },
+   {
+    "kind": "label",
+    "text": "🔲 Kvantum  ·  v0.5.0"
+   },
+   {
+    "kind": "label",
+    "text": "Kvantum «Стекло»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Стекольщик"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "💎"
+   },
+   {
+    "kind": "label",
+    "text": "💎 KDE Global Theme  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Глобальная тема KDE"
+   },
+   {
+    "kind": "label",
+    "text": "👤 KDE"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️ Обои  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Пак обоев"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Студия"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "📁"
+   },
+   {
+    "kind": "label",
+    "text": "📁 Иконки  ·  v3.3.3"
+   },
+   {
+    "kind": "label",
+    "text": "Очень длинное название набора значков, которое точно не поместится в пл…"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🔧"
+   },
+   {
+    "kind": "label",
+    "text": "🔧 Утилита  ·  v2.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Утилита X"
+   },
+   {
+    "kind": "label",
+    "text": "✅ Активно"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "⏸️ Выключить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🧩"
+   },
+   {
+    "kind": "label",
+    "text": "🧩 Плагин  ·  v0.9"
+   },
+   {
+    "kind": "label",
+    "text": "Плагин с <разметкой> & «кавычками»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Аноним"
+   },
+   {
+    "kind": "label",
+    "text": "⏸️ Выключено"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "▶️ Включить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🎨"
+   },
+   {
+    "kind": "label",
+    "text": "🎨 Тема GTK  ·  v1.2.0"
+   },
+   {
+    "kind": "label",
+    "text": "Тёмная тема «Ночь»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Wehrwolfmann"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>🎨 Тема GTK (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "🎨"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Тёмная тема «Ночь»</b>  <small>v1.2.0</small>"
+   },
+   {
+    "kind": "label",
+    "text": "Тема GTK  ·  👤 Wehrwolfmann"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>📁 Иконки (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "📁"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Очень длинное название набора значков, которое точно не поместится в плитку</b>  <small>v3.3.3</small>"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>💎 KDE Global Theme (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "💎"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Глобальная тема KDE</b>  <small>v1.0.0</small>"
+   },
+   {
+    "kind": "label",
+    "text": "KDE Global Theme  ·  👤 KDE"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>🔲 Kvantum (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "🔲"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Kvantum «Стекло»</b>  <small>v0.5.0</small>"
+   },
+   {
+    "kind": "label",
+    "text": "Kvantum  ·  👤 Стекольщик"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>🖼️ Обои (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Пак обоев</b>  <small>v1.0.0</small>"
+   },
+   {
+    "kind": "label",
+    "text": "Обои  ·  👤 Студия"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>🔧 Утилита (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "🔧"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Утилита X</b>  <small>v2.0.0</small>"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "⏸️",
+    "tooltip": "Выключить"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "<b>🧩 Плагин (1)</b>"
+   },
+   {
+    "kind": "label",
+    "text": "🧩"
+   },
+   {
+    "kind": "label",
+    "text": "<b>Плагин с <разметкой> & «кавычками»</b>  <small>v0.9</small>"
+   },
+   {
+    "kind": "label",
+    "text": "Плагин  ·  👤 Аноним"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "▶️",
+    "tooltip": "Включить"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🔲"
+   },
+   {
+    "kind": "label",
+    "text": "🔲 Kvantum  ·  v0.5.0"
+   },
+   {
+    "kind": "label",
+    "text": "Kvantum «Стекло»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Стекольщик"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "💎"
+   },
+   {
+    "kind": "label",
+    "text": "💎 KDE Global Theme  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Глобальная тема KDE"
+   },
+   {
+    "kind": "label",
+    "text": "👤 KDE"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️"
+   },
+   {
+    "kind": "label",
+    "text": "🖼️ Обои  ·  v1.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Пак обоев"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Студия"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "📁"
+   },
+   {
+    "kind": "label",
+    "text": "📁 Иконки  ·  v3.3.3"
+   },
+   {
+    "kind": "label",
+    "text": "Очень длинное название набора значков, которое точно не поместится в пл…"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🔧"
+   },
+   {
+    "kind": "label",
+    "text": "🔧 Утилита  ·  v2.0.0"
+   },
+   {
+    "kind": "label",
+    "text": "Утилита X"
+   },
+   {
+    "kind": "label",
+    "text": "✅ Активно"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "⏸️ Выключить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🧩"
+   },
+   {
+    "kind": "label",
+    "text": "🧩 Плагин  ·  v0.9"
+   },
+   {
+    "kind": "label",
+    "text": "Плагин с <разметкой> & «кавычками»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Аноним"
+   },
+   {
+    "kind": "label",
+    "text": "⏸️ Выключено"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "▶️ Включить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🎨"
+   },
+   {
+    "kind": "label",
+    "text": "🎨 Тема GTK  ·  v1.2.0"
+   },
+   {
+    "kind": "label",
+    "text": "Тёмная тема «Ночь»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Wehrwolfmann"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "🧩"
+   },
+   {
+    "kind": "label",
+    "text": "🧩 Плагин  ·  v0.9"
+   },
+   {
+    "kind": "label",
+    "text": "Плагин с <разметкой> & «кавычками»"
+   },
+   {
+    "kind": "label",
+    "text": "👤 Аноним"
+   },
+   {
+    "kind": "label",
+    "text": "⏸️ Выключено"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "▶️ Включить",
+    "tooltip": ""
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "🗑️",
+    "tooltip": "Удалить"
+   },
+   {
+    "kind": "label",
+    "text": "⬇️ Установить"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "📦\nИз файла",
+    "tooltip": "Открыть .rxn / .themepack / Windows-темы"
+   },
+   {
+    "enabled": false,
+    "kind": "button",
+    "text": "🎮\nМастерская Steam — скоро",
+    "tooltip": "Скоро — интеграция со Steam Workshop"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "✏️\nСоздать своё",
+    "tooltip": "Инструкция по созданию своего .rxn-расширения"
+   },
+   {
+    "kind": "label",
+    "text": "🚧 Скоро здесь: Steam Workshop для .rxn-оформлений и расширений."
+   },
+   {
+    "kind": "label",
+    "text": "<b>📦 Структура .rxn v3</b>"
+   },
+   {
+    "enabled": true,
+    "kind": "button",
+    "text": "Закрыть",
+    "tooltip": ""
+   }
+  ]
+ },
+ "filters": [
+  {
+   "checked": true,
+   "id": "all",
+   "text": "Все"
+  },
+  {
+   "checked": false,
+   "id": "theme-gtk",
+   "text": "🎨 Тема GTK"
+  },
+  {
+   "checked": false,
+   "id": "theme-icons",
+   "text": "📁 Иконки"
+  },
+  {
+   "checked": false,
+   "id": "theme-kde-global",
+   "text": "💎 KDE Global Theme"
+  },
+  {
+   "checked": false,
+   "id": "theme-kvantum",
+   "text": "🔲 Kvantum"
+  },
+  {
+   "checked": false,
+   "id": "wallpaper-pack",
+   "text": "🖼️ Обои"
+  },
+  {
+   "checked": false,
+   "id": "desktop-tool",
+   "text": "🔧 Утилита"
+  },
+  {
+   "checked": false,
+   "id": "plugin",
+   "text": "🧩 Плагин"
+  }
+ ],
+ "fixture": {
+  "bad-json": {
+   "files": {},
+   "raw_manifest": "{это не json"
+  },
+  "icons-pack": {
+   "files": {
+    "preview.png": "PNG"
+   },
+   "manifest": {
+    "author": "",
+    "format_version": 2,
+    "id": "icons-pack",
+    "license": "GPL-3.0",
+    "name": "Очень длинное название набора значков, которое точно не поместится в плитку",
+    "type": "theme-icons",
+    "version": "3.3.3"
+   }
+  },
+  "kde-global": {
+   "files": {},
+   "manifest": {
+    "author": "KDE",
+    "format_version": 3,
+    "id": "kde-global",
+    "name": "Глобальная тема KDE",
+    "type": "theme-kde-global",
+    "version": "1.0.0"
+   }
+  },
+  "kvantum-theme": {
+   "files": {},
+   "manifest": {
+    "author": "Стекольщик",
+    "format_version": 3,
+    "id": "kvantum-theme",
+    "name": "Kvantum «Стекло»",
+    "type": "theme-kvantum",
+    "version": "0.5.0"
+   }
+  },
+  "my-plugin": {
+   "files": {
+    "icon.png": "PNG"
+   },
+   "manifest": {
+    "author": "Аноним",
+    "description": "Описание с <b>тегом</b> и & амперсандом",
+    "format_version": 3,
+    "id": "my-plugin",
+    "name": "Плагин с <разметкой> & «кавычками»",
+    "tags": [
+     "a",
+     "b",
+     "c",
+     "d",
+     "e",
+     "f",
+     "g",
+     "h",
+     "i",
+     "j",
+     "k",
+     "l",
+     "m",
+     "n",
+     "o",
+     "p",
+     "q",
+     "r",
+     "s",
+     "t",
+     "u",
+     "v"
+    ],
+    "type": "plugin",
+    "version": "0.9"
+   }
+  },
+  "no-manifest": {
+   "files": {
+    "readme.txt": "мусор"
+   }
+  },
+  "theme-dark": {
+   "files": {
+    "README.md": "# Ночь\n\nСписок <изменений> & прочее\n",
+    "icon.png": "PNG",
+    "preview.png": "PNG"
+   },
+   "manifest": {
+    "author": "Wehrwolfmann",
+    "de_support": [
+     "gnome",
+     "xfce"
+    ],
+    "description": "Тёмное оформление GTK",
+    "format_version": 3,
+    "homepage": "https://example.org/night",
+    "id": "theme-dark",
+    "license": "MIT",
+    "name": "Тёмная тема «Ночь»",
+    "rexon_min_version": "0.0.1",
+    "tags": [
+     "dark",
+     "gtk",
+     "модерн"
+    ],
+    "type": "theme-gtk",
+    "version": "1.2.0"
+   }
+  },
+  "tool-x": {
+   "files": {},
+   "manifest": {
+    "format_version": 3,
+    "id": "tool-x",
+    "name": "Утилита X",
+    "type": "desktop-tool",
+    "version": "2.0.0"
+   }
+  },
+  "wallpapers": {
+   "files": {
+    "README.txt": "Обои под лицензией CC0\n"
+   },
+   "manifest": {
+    "author": "Студия",
+    "de_support": [
+     "kde",
+     "gnome",
+     "xfce"
+    ],
+    "description": "Двенадцать обоев",
+    "id": "wallpapers",
+    "name": "Пак обоев",
+    "type": "wallpaper-pack",
+    "version": "1.0.0"
+   }
+  }
+ },
+ "my_label": "Мои расширения",
+ "preview_h": 120,
+ "search": {
+  "  ГТК  ": {
+   "empty": "🔍 По текущим фильтрам ничего не найдено.",
+   "empty_visible": false,
+   "ids": [],
+   "my_label": "Мои расширения (0/7)"
+  },
+  "gtk": {
+   "empty": "",
+   "empty_visible": false,
+   "ids": [
+    "theme-dark"
+   ],
+   "my_label": "Мои расширения (1/7)"
+  },
+  "аноним": {
+   "empty": "",
+   "empty_visible": false,
+   "ids": [
+    "my-plugin"
+   ],
+   "my_label": "Мои расширения (1/7)"
+  },
+  "двенадцать": {
+   "empty": "",
+   "empty_visible": false,
+   "ids": [
+    "wallpapers"
+   ],
+   "my_label": "Мои расширения (1/7)"
+  },
+  "нетакого": {
+   "empty": "🔍 По текущим фильтрам ничего не найдено.",
+   "empty_visible": false,
+   "ids": [],
+   "my_label": "Мои расширения (0/7)"
+  },
+  "ночь": {
+   "empty": "",
+   "empty_visible": false,
+   "ids": [
+    "theme-dark"
+   ],
+   "my_label": "Мои расширения (1/7)"
+  }
+ },
+ "state": {
+  "my-plugin": false
+ },
+ "stats_text": "Установлено: <b>7</b>  •  Активных: <b>6</b>  •  🎨 Тема GTK: <b>1</b>  •  📁 Иконки: <b>1</b>  •  💎 KDE Global Theme: <b>1</b>  •  🔲 Kvantum: <b>1</b>  •  🖼️ Обои: <b>1</b>  •  🔧 Утилита: <b>1</b>  •  🧩 Плагин: <b>1</b>",
+ "status": {
+  "install_busy": "⚠️ Установка уже идёт",
+  "install_error": "⚠️ Ошибка: нет такого файла",
+  "install_error_long": "⚠️ Ошибка: яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+  "installed": "✅ Установлено: Тёмная тема «Ночь»",
+  "installing": "⏳ Устанавливаю «пример.rxn»…",
+  "toggle_missing": "⏸️ Выключено: нет-такого",
+  "toggle_off": "⏸️ Выключено: my-plugin",
+  "toggle_on": "▶️ Включено: my-plugin",
+  "uninstall_busy": "⚠️ Удаление уже идёт",
+  "uninstall_error": "⚠️ Ошибка удаления: нет прав",
+  "uninstall_error_long": "⚠️ Ошибка удаления: яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+  "uninstalled": "🗑️ Удалено: tool-x",
+  "uninstalling": "⏳ Удаляю «Утилита X»…"
+ },
+ "tree_grid": [
+  {
+   "kind": "label",
+   "text": "🧩 Расширения"
+  },
+  {
+   "checked": true,
+   "kind": "tool",
+   "text": "⊞",
+   "tooltip": "Сетка"
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "☰",
+   "tooltip": "Список"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "＋ Установить из файла",
+   "tooltip": ""
+  },
+  {
+   "kind": "edit",
+   "placeholder": "Поиск по названию, автору, тегам…"
+  },
+  {
+   "checked": true,
+   "kind": "tool",
+   "text": "Все",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🎨 Тема GTK",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "📁 Иконки",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "💎 KDE Global Theme",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🔲 Kvantum",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🖼️ Обои",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🔧 Утилита",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🧩 Плагин",
+   "tooltip": ""
+  },
+  {
+   "kind": "label",
+   "text": "Установлено: <b>7</b>  •  Активных: <b>6</b>  •  🎨 Тема GTK: <b>1</b>  •  📁 Иконки: <b>1</b>  •  💎 KDE Global Theme: <b>1</b>  •  🔲 Kvantum: <b>1</b>  •  🖼️ Обои: <b>1</b>  •  🔧 Утилита: <b>1</b>  •  🧩 Плагин: <b>1</b>"
+  },
+  {
+   "kind": "label",
+   "text": "Мои расширения"
+  },
+  {
+   "kind": "label",
+   "text": "🔲"
+  },
+  {
+   "kind": "label",
+   "text": "🔲 Kvantum  ·  v0.5.0"
+  },
+  {
+   "kind": "label",
+   "text": "Kvantum «Стекло»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Стекольщик"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "💎"
+  },
+  {
+   "kind": "label",
+   "text": "💎 KDE Global Theme  ·  v1.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Глобальная тема KDE"
+  },
+  {
+   "kind": "label",
+   "text": "👤 KDE"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🖼️"
+  },
+  {
+   "kind": "label",
+   "text": "🖼️ Обои  ·  v1.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Пак обоев"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Студия"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "📁"
+  },
+  {
+   "kind": "label",
+   "text": "📁 Иконки  ·  v3.3.3"
+  },
+  {
+   "kind": "label",
+   "text": "Очень длинное название набора значков, которое точно не поместится в пл…"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🔧"
+  },
+  {
+   "kind": "label",
+   "text": "🔧 Утилита  ·  v2.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Утилита X"
+  },
+  {
+   "kind": "label",
+   "text": "✅ Активно"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "⏸️ Выключить",
+   "tooltip": ""
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🧩"
+  },
+  {
+   "kind": "label",
+   "text": "🧩 Плагин  ·  v0.9"
+  },
+  {
+   "kind": "label",
+   "text": "Плагин с <разметкой> & «кавычками»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Аноним"
+  },
+  {
+   "kind": "label",
+   "text": "⏸️ Выключено"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "▶️ Включить",
+   "tooltip": ""
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🎨"
+  },
+  {
+   "kind": "label",
+   "text": "🎨 Тема GTK  ·  v1.2.0"
+  },
+  {
+   "kind": "label",
+   "text": "Тёмная тема «Ночь»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Wehrwolfmann"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "⬇️ Установить"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "📦\nИз файла",
+   "tooltip": "Открыть .rxn / .themepack / Windows-темы"
+  },
+  {
+   "enabled": false,
+   "kind": "button",
+   "text": "🎮\nМастерская Steam — скоро",
+   "tooltip": "Скоро — интеграция со Steam Workshop"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "✏️\nСоздать своё",
+   "tooltip": "Инструкция по созданию своего .rxn-расширения"
+  },
+  {
+   "kind": "label",
+   "text": "🚧 Скоро здесь: Steam Workshop для .rxn-оформлений и расширений."
+  }
+ ],
+ "tree_list": [
+  {
+   "kind": "label",
+   "text": "🧩 Расширения"
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "⊞",
+   "tooltip": "Сетка"
+  },
+  {
+   "checked": true,
+   "kind": "tool",
+   "text": "☰",
+   "tooltip": "Список"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "＋ Установить из файла",
+   "tooltip": ""
+  },
+  {
+   "kind": "edit",
+   "placeholder": "Поиск по названию, автору, тегам…"
+  },
+  {
+   "checked": true,
+   "kind": "tool",
+   "text": "Все",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🎨 Тема GTK",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "📁 Иконки",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "💎 KDE Global Theme",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🔲 Kvantum",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🖼️ Обои",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🔧 Утилита",
+   "tooltip": ""
+  },
+  {
+   "checked": false,
+   "kind": "tool",
+   "text": "🧩 Плагин",
+   "tooltip": ""
+  },
+  {
+   "kind": "label",
+   "text": "Установлено: <b>7</b>  •  Активных: <b>6</b>  •  🎨 Тема GTK: <b>1</b>  •  📁 Иконки: <b>1</b>  •  💎 KDE Global Theme: <b>1</b>  •  🔲 Kvantum: <b>1</b>  •  🖼️ Обои: <b>1</b>  •  🔧 Утилита: <b>1</b>  •  🧩 Плагин: <b>1</b>"
+  },
+  {
+   "kind": "label",
+   "text": "Мои расширения"
+  },
+  {
+   "kind": "label",
+   "text": "🔲"
+  },
+  {
+   "kind": "label",
+   "text": "🔲 Kvantum  ·  v0.5.0"
+  },
+  {
+   "kind": "label",
+   "text": "Kvantum «Стекло»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Стекольщик"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "💎"
+  },
+  {
+   "kind": "label",
+   "text": "💎 KDE Global Theme  ·  v1.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Глобальная тема KDE"
+  },
+  {
+   "kind": "label",
+   "text": "👤 KDE"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🖼️"
+  },
+  {
+   "kind": "label",
+   "text": "🖼️ Обои  ·  v1.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Пак обоев"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Студия"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "📁"
+  },
+  {
+   "kind": "label",
+   "text": "📁 Иконки  ·  v3.3.3"
+  },
+  {
+   "kind": "label",
+   "text": "Очень длинное название набора значков, которое точно не поместится в пл…"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🔧"
+  },
+  {
+   "kind": "label",
+   "text": "🔧 Утилита  ·  v2.0.0"
+  },
+  {
+   "kind": "label",
+   "text": "Утилита X"
+  },
+  {
+   "kind": "label",
+   "text": "✅ Активно"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "⏸️ Выключить",
+   "tooltip": ""
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🧩"
+  },
+  {
+   "kind": "label",
+   "text": "🧩 Плагин  ·  v0.9"
+  },
+  {
+   "kind": "label",
+   "text": "Плагин с <разметкой> & «кавычками»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Аноним"
+  },
+  {
+   "kind": "label",
+   "text": "⏸️ Выключено"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "▶️ Включить",
+   "tooltip": ""
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "🎨"
+  },
+  {
+   "kind": "label",
+   "text": "🎨 Тема GTK  ·  v1.2.0"
+  },
+  {
+   "kind": "label",
+   "text": "Тёмная тема «Ночь»"
+  },
+  {
+   "kind": "label",
+   "text": "👤 Wehrwolfmann"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>🎨 Тема GTK (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "🎨"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Тёмная тема «Ночь»</b>  <small>v1.2.0</small>"
+  },
+  {
+   "kind": "label",
+   "text": "Тема GTK  ·  👤 Wehrwolfmann"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>📁 Иконки (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "📁"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Очень длинное название набора значков, которое точно не поместится в плитку</b>  <small>v3.3.3</small>"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>💎 KDE Global Theme (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "💎"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Глобальная тема KDE</b>  <small>v1.0.0</small>"
+  },
+  {
+   "kind": "label",
+   "text": "KDE Global Theme  ·  👤 KDE"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>🔲 Kvantum (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "🔲"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Kvantum «Стекло»</b>  <small>v0.5.0</small>"
+  },
+  {
+   "kind": "label",
+   "text": "Kvantum  ·  👤 Стекольщик"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>🖼️ Обои (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "🖼️"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Пак обоев</b>  <small>v1.0.0</small>"
+  },
+  {
+   "kind": "label",
+   "text": "Обои  ·  👤 Студия"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>🔧 Утилита (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "🔧"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Утилита X</b>  <small>v2.0.0</small>"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "⏸️",
+   "tooltip": "Выключить"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "<b>🧩 Плагин (1)</b>"
+  },
+  {
+   "kind": "label",
+   "text": "🧩"
+  },
+  {
+   "kind": "label",
+   "text": "<b>Плагин с <разметкой> & «кавычками»</b>  <small>v0.9</small>"
+  },
+  {
+   "kind": "label",
+   "text": "Плагин  ·  👤 Аноним"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "▶️",
+   "tooltip": "Включить"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "🗑️",
+   "tooltip": "Удалить"
+  },
+  {
+   "kind": "label",
+   "text": "⬇️ Установить"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "📦\nИз файла",
+   "tooltip": "Открыть .rxn / .themepack / Windows-темы"
+  },
+  {
+   "enabled": false,
+   "kind": "button",
+   "text": "🎮\nМастерская Steam — скоро",
+   "tooltip": "Скоро — интеграция со Steam Workshop"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "✏️\nСоздать своё",
+   "tooltip": "Инструкция по созданию своего .rxn-расширения"
+  },
+  {
+   "kind": "label",
+   "text": "🚧 Скоро здесь: Steam Workshop для .rxn-оформлений и расширений."
+  },
+  {
+   "kind": "label",
+   "text": "<b>📦 Структура .rxn v3</b>"
+  },
+  {
+   "enabled": true,
+   "kind": "button",
+   "text": "Закрыть",
+   "tooltip": ""
+  }
+ ],
+ "window_min_size": [
+  900,
+  700
+ ],
+ "window_title": "Rexon — Расширения"
+}

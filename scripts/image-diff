@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Perceptual image diff (phash). Usage:
+#   image-diff actual.png reference.png [threshold]
+# Exit 0 = match within threshold (default 5)
+# Exit 1 = significant diff (regression)
+# Exit 2 = error
+#
+# Uses imagehash + Pillow installed in ~/.local/share/rexon-tools-venv/.
+# Both system Pillow и venv imagehash доступны через --system-site-packages.
+
+set -u
+
+VENV_PY="${HOME}/.local/share/rexon-tools-venv/bin/python3"
+
+if [ ! -x "$VENV_PY" ]; then
+    echo "ERROR: venv missing at $VENV_PY" >&2
+    echo "       Re-create:  python3 -m venv --system-site-packages ~/.local/share/rexon-tools-venv" >&2
+    echo "       Then:       ~/.local/share/rexon-tools-venv/bin/pip install imagehash" >&2
+    exit 2
+fi
+
+if [ "$#" -lt 2 ]; then
+    echo "Usage: image-diff actual.png reference.png [threshold]" >&2
+    exit 2
+fi
+
+ACTUAL="$1"
+REFERENCE="$2"
+THRESHOLD="${3:-5}"
+
+"$VENV_PY" - "$ACTUAL" "$REFERENCE" "$THRESHOLD" <<'PYEOF'
+import sys
+import imagehash
+import PIL.Image
+
+actual, reference, threshold = sys.argv[1], sys.argv[2], int(sys.argv[3])
+try:
+    a = PIL.Image.open(actual)
+    r = PIL.Image.open(reference)
+    diff = imagehash.phash(a) - imagehash.phash(r)
+    print(f"phash diff: {diff} (threshold={threshold})")
+    sys.exit(0 if diff <= threshold else 1)
+except FileNotFoundError as e:
+    print(f"ERROR: {e}", file=sys.stderr)
+    sys.exit(2)
+except Exception as e:
+    print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
+    sys.exit(2)
+PYEOF

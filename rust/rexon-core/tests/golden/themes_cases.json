@@ -1,0 +1,1556 @@
+{
+  "catalog": [
+    {
+      "builtin": "{\n  \"_comment\": \"Каталог тем Rexon. Пользователь может добавить свои темы по образцу.\",\n  \"_format\": {\n    \"kind\": \"gtk | icons | cursor\",\n    \"pkg_*\": \"имя пакета для дистрибутива (пусто если нет)\",\n    \"aur\": \"имя AUR-пакета (Arch)\",\n    \"desc\": \"описание на русском\",\n    \"tags\": [\"массив тегов\"],\n    \"color\": \"HEX-цвет акцента для превью\"\n  },\n  \"themes\": {\n    \"Dracula\": {\n      \"pkg_arch\": \"dracula-gtk-theme\",\n      \"pkg_debian\": \"dracula-theme\",\n      \"pkg_fedora\": \"dracula-theme\",\n      \"pkg_suse\": \"\",\n      \"pkg_gentoo\": \"x11-themes/dracula-theme\",\n      \"aur\": \"dracula-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёмная вампирская тема с фиолетово-розовыми акцентами\",\n      \"tags\": [\"тёмная\", \"популярная\"],\n      \"color\": \"#bd93f9\"\n    },\n    \"Nordic\": {\n      \"pkg_arch\": \"nordic-theme\",\n      \"pkg_debian\": \"\",\n      \"pkg_fedora\": \"\",\n      \"pkg_suse\": \"\",\n      \"aur\": \"nordic-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Минималистичная Nord-палитра (синий, полярный)\",\n      \"tags\": [\"тёмная\", \"минимализм\"],\n      \"color\": \"#88c0d0\"\n    },\n    \"Arc-Dark\": {\n      \"pkg_arch\": \"arc-gtk-theme\",\n      \"pkg_debian\": \"arc-theme\",\n      \"pkg_fedora\": \"arc-theme\",\n      \"pkg_suse\": \"arc-gtk-theme\",\n      \"pkg_gentoo\": \"x11-themes/arc-theme\",\n      \"aur\": \"\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Плоская классика с прозрачными элементами\",\n      \"tags\": [\"тёмная\", \"плоский\"],\n      \"color\": \"#5294e2\"\n    },\n    \"Catppuccin-Mocha\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-mocha\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёплая пастельная тёмная тема (Mocha)\",\n      \"tags\": [\"тёмная\", \"пастельная\"],\n      \"color\": \"#cba6f7\"\n    },\n    \"Catppuccin-Latte\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-latte\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Светлый вариант Catppuccin — тёплый и уютный\",\n      \"tags\": [\"светлая\", \"пастельная\"],\n      \"color\": \"#8839ef\"\n    },\n    \"Orchis-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"orchis-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Material-тема в стиле GNOME с мягкими углами\",\n      \"tags\": [\"тёмная\", \"material\"],\n      \"color\": \"#4db6ac\"\n    },\n    \"Everforest-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"everforest-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Зелёная лесная тема с низким контрастом\",\n      \"tags\": [\"тёмная\", \"зелёная\"],\n      \"color\": \"#a7c080\"\n    },\n    \"Papirus-Dark\": {\n      \"pkg_arch\": \"papirus-icon-theme\",\n      \"pkg_debian\": \"papirus-icon-theme\",\n      \"pkg_fedora\": \"papirus-icon-theme\",\n      \"pkg_suse\": \"papirus-icon-theme\",\n      \"pkg_gentoo\": \"x11-themes/papirus-icon-theme\",\n      \"pkg_void\": \"papirus-icon-theme\",\n      \"aur\": \"\",\n      \"kind\": \"icons\",\n      \"desc\": \"Плоские иконки, тысячи вариантов для GTK/KDE\",\n      \"tags\": [\"иконки\", \"flat\"],\n      \"color\": \"#5e81ac\"\n    },\n    \"Tela-Circle-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"tela-circle-icon-theme-dark\",\n      \"kind\": \"icons\",\n      \"desc\": \"Круглые монохромные иконки — стильный минимализм\",\n      \"tags\": [\"иконки\", \"minimal\"],\n      \"color\": \"#888888\"\n    },\n    \"Colloid\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"colloid-icon-theme\",\n      \"kind\": \"icons\",\n      \"desc\": \"Современные иконки в стиле macOS\",\n      \"tags\": [\"иконки\", \"macos-like\"],\n      \"color\": \"#6c9dd0\"\n    }\n  }\n}\n",
+      "user": null,
+      "result": "{\n  \"Dracula\": {\n    \"pkg_arch\": \"dracula-gtk-theme\",\n    \"pkg_debian\": \"dracula-theme\",\n    \"pkg_fedora\": \"dracula-theme\",\n    \"pkg_suse\": \"\",\n    \"pkg_gentoo\": \"x11-themes/dracula-theme\",\n    \"aur\": \"dracula-gtk-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Тёмная вампирская тема с фиолетово-розовыми акцентами\",\n    \"tags\": [\n      \"тёмная\",\n      \"популярная\"\n    ],\n    \"color\": \"#bd93f9\"\n  },\n  \"Nordic\": {\n    \"pkg_arch\": \"nordic-theme\",\n    \"pkg_debian\": \"\",\n    \"pkg_fedora\": \"\",\n    \"pkg_suse\": \"\",\n    \"aur\": \"nordic-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Минималистичная Nord-палитра (синий, полярный)\",\n    \"tags\": [\n      \"тёмная\",\n      \"минимализм\"\n    ],\n    \"color\": \"#88c0d0\"\n  },\n  \"Arc-Dark\": {\n    \"pkg_arch\": \"arc-gtk-theme\",\n    \"pkg_debian\": \"arc-theme\",\n    \"pkg_fedora\": \"arc-theme\",\n    \"pkg_suse\": \"arc-gtk-theme\",\n    \"pkg_gentoo\": \"x11-themes/arc-theme\",\n    \"aur\": \"\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Плоская классика с прозрачными элементами\",\n    \"tags\": [\n      \"тёмная\",\n      \"плоский\"\n    ],\n    \"color\": \"#5294e2\"\n  },\n  \"Catppuccin-Mocha\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"catppuccin-gtk-theme-mocha\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Тёплая пастельная тёмная тема (Mocha)\",\n    \"tags\": [\n      \"тёмная\",\n      \"пастельная\"\n    ],\n    \"color\": \"#cba6f7\"\n  },\n  \"Catppuccin-Latte\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"catppuccin-gtk-theme-latte\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Светлый вариант Catppuccin — тёплый и уютный\",\n    \"tags\": [\n      \"светлая\",\n      \"пастельная\"\n    ],\n    \"color\": \"#8839ef\"\n  },\n  \"Orchis-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"orchis-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Material-тема в стиле GNOME с мягкими углами\",\n    \"tags\": [\n      \"тёмная\",\n      \"material\"\n    ],\n    \"color\": \"#4db6ac\"\n  },\n  \"Everforest-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"everforest-gtk-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Зелёная лесная тема с низким контрастом\",\n    \"tags\": [\n      \"тёмная\",\n      \"зелёная\"\n    ],\n    \"color\": \"#a7c080\"\n  },\n  \"Papirus-Dark\": {\n    \"pkg_arch\": \"papirus-icon-theme\",\n    \"pkg_debian\": \"papirus-icon-theme\",\n    \"pkg_fedora\": \"papirus-icon-theme\",\n    \"pkg_suse\": \"papirus-icon-theme\",\n    \"pkg_gentoo\": \"x11-themes/papirus-icon-theme\",\n    \"pkg_void\": \"papirus-icon-theme\",\n    \"aur\": \"\",\n    \"kind\": \"icons\",\n    \"desc\": \"Плоские иконки, тысячи вариантов для GTK/KDE\",\n    \"tags\": [\n      \"иконки\",\n      \"flat\"\n    ],\n    \"color\": \"#5e81ac\"\n  },\n  \"Tela-Circle-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"tela-circle-icon-theme-dark\",\n    \"kind\": \"icons\",\n    \"desc\": \"Круглые монохромные иконки — стильный минимализм\",\n    \"tags\": [\n      \"иконки\",\n      \"minimal\"\n    ],\n    \"color\": \"#888888\"\n  },\n  \"Colloid\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"colloid-icon-theme\",\n    \"kind\": \"icons\",\n    \"desc\": \"Современные иконки в стиле macOS\",\n    \"tags\": [\n      \"иконки\",\n      \"macos-like\"\n    ],\n    \"color\": \"#6c9dd0\"\n  }\n}"
+    },
+    {
+      "builtin": "{\n  \"_comment\": \"Каталог тем Rexon. Пользователь может добавить свои темы по образцу.\",\n  \"_format\": {\n    \"kind\": \"gtk | icons | cursor\",\n    \"pkg_*\": \"имя пакета для дистрибутива (пусто если нет)\",\n    \"aur\": \"имя AUR-пакета (Arch)\",\n    \"desc\": \"описание на русском\",\n    \"tags\": [\"массив тегов\"],\n    \"color\": \"HEX-цвет акцента для превью\"\n  },\n  \"themes\": {\n    \"Dracula\": {\n      \"pkg_arch\": \"dracula-gtk-theme\",\n      \"pkg_debian\": \"dracula-theme\",\n      \"pkg_fedora\": \"dracula-theme\",\n      \"pkg_suse\": \"\",\n      \"pkg_gentoo\": \"x11-themes/dracula-theme\",\n      \"aur\": \"dracula-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёмная вампирская тема с фиолетово-розовыми акцентами\",\n      \"tags\": [\"тёмная\", \"популярная\"],\n      \"color\": \"#bd93f9\"\n    },\n    \"Nordic\": {\n      \"pkg_arch\": \"nordic-theme\",\n      \"pkg_debian\": \"\",\n      \"pkg_fedora\": \"\",\n      \"pkg_suse\": \"\",\n      \"aur\": \"nordic-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Минималистичная Nord-палитра (синий, полярный)\",\n      \"tags\": [\"тёмная\", \"минимализм\"],\n      \"color\": \"#88c0d0\"\n    },\n    \"Arc-Dark\": {\n      \"pkg_arch\": \"arc-gtk-theme\",\n      \"pkg_debian\": \"arc-theme\",\n      \"pkg_fedora\": \"arc-theme\",\n      \"pkg_suse\": \"arc-gtk-theme\",\n      \"pkg_gentoo\": \"x11-themes/arc-theme\",\n      \"aur\": \"\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Плоская классика с прозрачными элементами\",\n      \"tags\": [\"тёмная\", \"плоский\"],\n      \"color\": \"#5294e2\"\n    },\n    \"Catppuccin-Mocha\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-mocha\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёплая пастельная тёмная тема (Mocha)\",\n      \"tags\": [\"тёмная\", \"пастельная\"],\n      \"color\": \"#cba6f7\"\n    },\n    \"Catppuccin-Latte\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-latte\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Светлый вариант Catppuccin — тёплый и уютный\",\n      \"tags\": [\"светлая\", \"пастельная\"],\n      \"color\": \"#8839ef\"\n    },\n    \"Orchis-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"orchis-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Material-тема в стиле GNOME с мягкими углами\",\n      \"tags\": [\"тёмная\", \"material\"],\n      \"color\": \"#4db6ac\"\n    },\n    \"Everforest-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"everforest-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Зелёная лесная тема с низким контрастом\",\n      \"tags\": [\"тёмная\", \"зелёная\"],\n      \"color\": \"#a7c080\"\n    },\n    \"Papirus-Dark\": {\n      \"pkg_arch\": \"papirus-icon-theme\",\n      \"pkg_debian\": \"papirus-icon-theme\",\n      \"pkg_fedora\": \"papirus-icon-theme\",\n      \"pkg_suse\": \"papirus-icon-theme\",\n      \"pkg_gentoo\": \"x11-themes/papirus-icon-theme\",\n      \"pkg_void\": \"papirus-icon-theme\",\n      \"aur\": \"\",\n      \"kind\": \"icons\",\n      \"desc\": \"Плоские иконки, тысячи вариантов для GTK/KDE\",\n      \"tags\": [\"иконки\", \"flat\"],\n      \"color\": \"#5e81ac\"\n    },\n    \"Tela-Circle-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"tela-circle-icon-theme-dark\",\n      \"kind\": \"icons\",\n      \"desc\": \"Круглые монохромные иконки — стильный минимализм\",\n      \"tags\": [\"иконки\", \"minimal\"],\n      \"color\": \"#888888\"\n    },\n    \"Colloid\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"colloid-icon-theme\",\n      \"kind\": \"icons\",\n      \"desc\": \"Современные иконки в стиле macOS\",\n      \"tags\": [\"иконки\", \"macos-like\"],\n      \"color\": \"#6c9dd0\"\n    }\n  }\n}\n",
+      "user": "{\"themes\": {\"Dracula\": {\"pkg_arch\": \"my-dracula\", \"kind\": \"gtk\", \"desc\": \"переопределено\"}, \"MyTheme\": {\"pkg_arch\": \"mytheme\", \"aur\": \"mytheme-git\", \"kind\": \"icons\"}}}",
+      "result": "{\n  \"Dracula\": {\n    \"pkg_arch\": \"my-dracula\",\n    \"kind\": \"gtk\",\n    \"desc\": \"переопределено\"\n  },\n  \"Nordic\": {\n    \"pkg_arch\": \"nordic-theme\",\n    \"pkg_debian\": \"\",\n    \"pkg_fedora\": \"\",\n    \"pkg_suse\": \"\",\n    \"aur\": \"nordic-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Минималистичная Nord-палитра (синий, полярный)\",\n    \"tags\": [\n      \"тёмная\",\n      \"минимализм\"\n    ],\n    \"color\": \"#88c0d0\"\n  },\n  \"Arc-Dark\": {\n    \"pkg_arch\": \"arc-gtk-theme\",\n    \"pkg_debian\": \"arc-theme\",\n    \"pkg_fedora\": \"arc-theme\",\n    \"pkg_suse\": \"arc-gtk-theme\",\n    \"pkg_gentoo\": \"x11-themes/arc-theme\",\n    \"aur\": \"\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Плоская классика с прозрачными элементами\",\n    \"tags\": [\n      \"тёмная\",\n      \"плоский\"\n    ],\n    \"color\": \"#5294e2\"\n  },\n  \"Catppuccin-Mocha\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"catppuccin-gtk-theme-mocha\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Тёплая пастельная тёмная тема (Mocha)\",\n    \"tags\": [\n      \"тёмная\",\n      \"пастельная\"\n    ],\n    \"color\": \"#cba6f7\"\n  },\n  \"Catppuccin-Latte\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"catppuccin-gtk-theme-latte\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Светлый вариант Catppuccin — тёплый и уютный\",\n    \"tags\": [\n      \"светлая\",\n      \"пастельная\"\n    ],\n    \"color\": \"#8839ef\"\n  },\n  \"Orchis-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"orchis-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Material-тема в стиле GNOME с мягкими углами\",\n    \"tags\": [\n      \"тёмная\",\n      \"material\"\n    ],\n    \"color\": \"#4db6ac\"\n  },\n  \"Everforest-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"everforest-gtk-theme\",\n    \"kind\": \"gtk\",\n    \"desc\": \"Зелёная лесная тема с низким контрастом\",\n    \"tags\": [\n      \"тёмная\",\n      \"зелёная\"\n    ],\n    \"color\": \"#a7c080\"\n  },\n  \"Papirus-Dark\": {\n    \"pkg_arch\": \"papirus-icon-theme\",\n    \"pkg_debian\": \"papirus-icon-theme\",\n    \"pkg_fedora\": \"papirus-icon-theme\",\n    \"pkg_suse\": \"papirus-icon-theme\",\n    \"pkg_gentoo\": \"x11-themes/papirus-icon-theme\",\n    \"pkg_void\": \"papirus-icon-theme\",\n    \"aur\": \"\",\n    \"kind\": \"icons\",\n    \"desc\": \"Плоские иконки, тысячи вариантов для GTK/KDE\",\n    \"tags\": [\n      \"иконки\",\n      \"flat\"\n    ],\n    \"color\": \"#5e81ac\"\n  },\n  \"Tela-Circle-Dark\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"tela-circle-icon-theme-dark\",\n    \"kind\": \"icons\",\n    \"desc\": \"Круглые монохромные иконки — стильный минимализм\",\n    \"tags\": [\n      \"иконки\",\n      \"minimal\"\n    ],\n    \"color\": \"#888888\"\n  },\n  \"Colloid\": {\n    \"pkg_arch\": \"\",\n    \"pkg_debian\": \"\",\n    \"aur\": \"colloid-icon-theme\",\n    \"kind\": \"icons\",\n    \"desc\": \"Современные иконки в стиле macOS\",\n    \"tags\": [\n      \"иконки\",\n      \"macos-like\"\n    ],\n    \"color\": \"#6c9dd0\"\n  },\n  \"MyTheme\": {\n    \"pkg_arch\": \"mytheme\",\n    \"aur\": \"mytheme-git\",\n    \"kind\": \"icons\"\n  }\n}"
+    },
+    {
+      "builtin": null,
+      "user": "{\"themes\": {\"Dracula\": {\"pkg_arch\": \"my-dracula\", \"kind\": \"gtk\", \"desc\": \"переопределено\"}, \"MyTheme\": {\"pkg_arch\": \"mytheme\", \"aur\": \"mytheme-git\", \"kind\": \"icons\"}}}",
+      "result": "{\n  \"Dracula\": {\n    \"pkg_arch\": \"my-dracula\",\n    \"kind\": \"gtk\",\n    \"desc\": \"переопределено\"\n  },\n  \"MyTheme\": {\n    \"pkg_arch\": \"mytheme\",\n    \"aur\": \"mytheme-git\",\n    \"kind\": \"icons\"\n  }\n}"
+    },
+    {
+      "builtin": "{ broken json",
+      "user": "{\"themes\": {\"Dracula\": {\"pkg_arch\": \"my-dracula\", \"kind\": \"gtk\", \"desc\": \"переопределено\"}, \"MyTheme\": {\"pkg_arch\": \"mytheme\", \"aur\": \"mytheme-git\", \"kind\": \"icons\"}}}",
+      "result": "{\n  \"Dracula\": {\n    \"pkg_arch\": \"my-dracula\",\n    \"kind\": \"gtk\",\n    \"desc\": \"переопределено\"\n  },\n  \"MyTheme\": {\n    \"pkg_arch\": \"mytheme\",\n    \"aur\": \"mytheme-git\",\n    \"kind\": \"icons\"\n  }\n}"
+    },
+    {
+      "builtin": "{\"no_themes_key\": 1}",
+      "user": null,
+      "result": "{}"
+    }
+  ],
+  "catalog_user_override": "{\"themes\": {\"Dracula\": {\"pkg_arch\": \"my-dracula\", \"kind\": \"gtk\", \"desc\": \"переопределено\"}, \"MyTheme\": {\"pkg_arch\": \"mytheme\", \"aur\": \"mytheme-git\", \"kind\": \"icons\"}}}",
+  "builtin_json": "{\n  \"_comment\": \"Каталог тем Rexon. Пользователь может добавить свои темы по образцу.\",\n  \"_format\": {\n    \"kind\": \"gtk | icons | cursor\",\n    \"pkg_*\": \"имя пакета для дистрибутива (пусто если нет)\",\n    \"aur\": \"имя AUR-пакета (Arch)\",\n    \"desc\": \"описание на русском\",\n    \"tags\": [\"массив тегов\"],\n    \"color\": \"HEX-цвет акцента для превью\"\n  },\n  \"themes\": {\n    \"Dracula\": {\n      \"pkg_arch\": \"dracula-gtk-theme\",\n      \"pkg_debian\": \"dracula-theme\",\n      \"pkg_fedora\": \"dracula-theme\",\n      \"pkg_suse\": \"\",\n      \"pkg_gentoo\": \"x11-themes/dracula-theme\",\n      \"aur\": \"dracula-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёмная вампирская тема с фиолетово-розовыми акцентами\",\n      \"tags\": [\"тёмная\", \"популярная\"],\n      \"color\": \"#bd93f9\"\n    },\n    \"Nordic\": {\n      \"pkg_arch\": \"nordic-theme\",\n      \"pkg_debian\": \"\",\n      \"pkg_fedora\": \"\",\n      \"pkg_suse\": \"\",\n      \"aur\": \"nordic-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Минималистичная Nord-палитра (синий, полярный)\",\n      \"tags\": [\"тёмная\", \"минимализм\"],\n      \"color\": \"#88c0d0\"\n    },\n    \"Arc-Dark\": {\n      \"pkg_arch\": \"arc-gtk-theme\",\n      \"pkg_debian\": \"arc-theme\",\n      \"pkg_fedora\": \"arc-theme\",\n      \"pkg_suse\": \"arc-gtk-theme\",\n      \"pkg_gentoo\": \"x11-themes/arc-theme\",\n      \"aur\": \"\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Плоская классика с прозрачными элементами\",\n      \"tags\": [\"тёмная\", \"плоский\"],\n      \"color\": \"#5294e2\"\n    },\n    \"Catppuccin-Mocha\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-mocha\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Тёплая пастельная тёмная тема (Mocha)\",\n      \"tags\": [\"тёмная\", \"пастельная\"],\n      \"color\": \"#cba6f7\"\n    },\n    \"Catppuccin-Latte\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"catppuccin-gtk-theme-latte\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Светлый вариант Catppuccin — тёплый и уютный\",\n      \"tags\": [\"светлая\", \"пастельная\"],\n      \"color\": \"#8839ef\"\n    },\n    \"Orchis-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"orchis-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Material-тема в стиле GNOME с мягкими углами\",\n      \"tags\": [\"тёмная\", \"material\"],\n      \"color\": \"#4db6ac\"\n    },\n    \"Everforest-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"everforest-gtk-theme\",\n      \"kind\": \"gtk\",\n      \"desc\": \"Зелёная лесная тема с низким контрастом\",\n      \"tags\": [\"тёмная\", \"зелёная\"],\n      \"color\": \"#a7c080\"\n    },\n    \"Papirus-Dark\": {\n      \"pkg_arch\": \"papirus-icon-theme\",\n      \"pkg_debian\": \"papirus-icon-theme\",\n      \"pkg_fedora\": \"papirus-icon-theme\",\n      \"pkg_suse\": \"papirus-icon-theme\",\n      \"pkg_gentoo\": \"x11-themes/papirus-icon-theme\",\n      \"pkg_void\": \"papirus-icon-theme\",\n      \"aur\": \"\",\n      \"kind\": \"icons\",\n      \"desc\": \"Плоские иконки, тысячи вариантов для GTK/KDE\",\n      \"tags\": [\"иконки\", \"flat\"],\n      \"color\": \"#5e81ac\"\n    },\n    \"Tela-Circle-Dark\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"tela-circle-icon-theme-dark\",\n      \"kind\": \"icons\",\n      \"desc\": \"Круглые монохромные иконки — стильный минимализм\",\n      \"tags\": [\"иконки\", \"minimal\"],\n      \"color\": \"#888888\"\n    },\n    \"Colloid\": {\n      \"pkg_arch\": \"\",\n      \"pkg_debian\": \"\",\n      \"aur\": \"colloid-icon-theme\",\n      \"kind\": \"icons\",\n      \"desc\": \"Современные иконки в стиле macOS\",\n      \"tags\": [\"иконки\", \"macos-like\"],\n      \"color\": \"#6c9dd0\"\n    }\n  }\n}\n",
+  "resolve": [
+    {
+      "de": "gnome",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "cinnamon",
+      "schemas": {
+        "gtk": [
+          "org.cinnamon.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.cinnamon.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.cinnamon.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.cinnamon.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "cinnamon-mint",
+      "schemas": {
+        "gtk": [
+          "org.cinnamon.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.cinnamon.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.cinnamon.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.cinnamon.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "mate",
+      "schemas": {
+        "gtk": [
+          "org.mate.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.mate.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.mate.peripherals-mouse",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.mate.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "budgie",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "cosmic",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "hyprland",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": true
+    },
+    {
+      "de": "kde",
+      "schemas": null,
+      "generic": false
+    },
+    {
+      "de": "xfce",
+      "schemas": null,
+      "generic": false
+    },
+    {
+      "de": "lxqt",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "niri",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": true
+    },
+    {
+      "de": "sway",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": true
+    },
+    {
+      "de": "unknown",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": true
+    },
+    {
+      "de": "",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": true
+    },
+    {
+      "de": "KDE",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    },
+    {
+      "de": "Gnome",
+      "schemas": {
+        "gtk": [
+          "org.gnome.desktop.interface",
+          "gtk-theme"
+        ],
+        "icons": [
+          "org.gnome.desktop.interface",
+          "icon-theme"
+        ],
+        "cursor": [
+          "org.gnome.desktop.interface",
+          "cursor-theme"
+        ],
+        "font": [
+          "org.gnome.desktop.interface",
+          "font-name"
+        ]
+      },
+      "generic": false
+    }
+  ],
+  "update_ini": [
+    {
+      "initial": null,
+      "key": "gtk-theme-name",
+      "value": "Dracula",
+      "result": "[Settings]\ngtk-theme-name=Dracula\n"
+    },
+    {
+      "initial": "",
+      "key": "gtk-theme-name",
+      "value": "Dracula",
+      "result": "[Settings]\ngtk-theme-name=Dracula\n"
+    },
+    {
+      "initial": "[Settings]\n",
+      "key": "gtk-theme-name",
+      "value": "Dracula",
+      "result": "[Settings]\ngtk-theme-name=Dracula\n"
+    },
+    {
+      "initial": "[Settings]\ngtk-theme-name=Old\n",
+      "key": "gtk-theme-name",
+      "value": "New",
+      "result": "[Settings]\ngtk-theme-name=New\n"
+    },
+    {
+      "initial": "[Settings]\ngtk-icon-theme-name=Papirus\ngtk-theme-name=Old\n",
+      "key": "gtk-theme-name",
+      "value": "New",
+      "result": "[Settings]\ngtk-icon-theme-name=Papirus\ngtk-theme-name=New\n"
+    },
+    {
+      "initial": "gtk-theme-name=NoHeader\n",
+      "key": "gtk-theme-name",
+      "value": "New",
+      "result": "[Settings]\ngtk-theme-name=New\n"
+    },
+    {
+      "initial": "[Other]\nfoo=bar\n",
+      "key": "gtk-theme-name",
+      "value": "Dracula",
+      "result": "[Settings]\n[Other]\nfoo=bar\ngtk-theme-name=Dracula\n"
+    },
+    {
+      "initial": "[Settings]\ngtk-theme-name=Old",
+      "key": "gtk-theme-name",
+      "value": "New",
+      "result": "[Settings]\ngtk-theme-name=New\n"
+    }
+  ],
+  "apply": [
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "gtk-theme",
+          "Dracula"
+        ]
+      ],
+      "files": {},
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "gnome",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "gtk-theme",
+          "Dracula"
+        ],
+        [
+          "dbus-send",
+          "--session",
+          "--print-reply",
+          "--dest=org.kde.GtkConfig",
+          "/GtkConfig",
+          "org.kde.GtkConfig.setGtkTheme",
+          "string:Dracula"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n"
+      },
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "kde",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "xfconf-query",
+          "-c",
+          "xsettings",
+          "-p",
+          "/Net/ThemeName",
+          "-s",
+          "Dracula"
+        ]
+      ],
+      "files": {},
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "xfce",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "gtk-theme",
+          "Dracula"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n"
+      },
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "hyprland",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "gtk-theme",
+          "Dracula"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Dracula\n"
+      },
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "niri",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "gtk-theme",
+          "Dracula"
+        ]
+      ],
+      "files": {},
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "lxqt",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.mate.interface",
+          "gtk-theme",
+          "Dracula"
+        ]
+      ],
+      "files": {},
+      "kind": "gtk",
+      "theme": "Dracula",
+      "de": "mate",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "icon-theme",
+          "Papirus-Dark"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n"
+      },
+      "kind": "icons",
+      "theme": "Papirus-Dark",
+      "de": "gnome",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "kwriteconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "Icons",
+          "--key",
+          "Theme",
+          "--notify",
+          "Papirus-Dark"
+        ],
+        [
+          "dbus-send",
+          "--type=signal",
+          "/KIconLoader",
+          "org.kde.KIconLoader.iconChanged",
+          "int32:0"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n"
+      },
+      "kind": "icons",
+      "theme": "Papirus-Dark",
+      "de": "kde",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "xfconf-query",
+          "-c",
+          "xsettings",
+          "-p",
+          "/Net/IconThemeName",
+          "-s",
+          "Papirus-Dark"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n"
+      },
+      "kind": "icons",
+      "theme": "Papirus-Dark",
+      "de": "xfce",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "icon-theme",
+          "Papirus-Dark"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Papirus-Dark\n"
+      },
+      "kind": "icons",
+      "theme": "Papirus-Dark",
+      "de": "niri",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "cursor-theme",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "gnome",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.mate.peripherals-mouse",
+          "cursor-theme",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "mate",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "xfconf-query",
+          "-c",
+          "xsettings",
+          "-p",
+          "/Gtk/CursorThemeName",
+          "-s",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "xfce",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "plasma-apply-cursortheme",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "kde",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "cursor-theme",
+          "Bibata"
+        ],
+        [
+          "gsettings",
+          "get",
+          "org.gnome.desktop.interface",
+          "cursor-size"
+        ],
+        [
+          "hyprctl",
+          "setcursor",
+          "Bibata",
+          "24"
+        ],
+        [
+          "hyprctl",
+          "keyword",
+          "env",
+          "XCURSOR_THEME,Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "hyprland",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.interface",
+          "cursor-theme",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "niri",
+      "fail": false
+    },
+    {
+      "calls": [
+        [
+          "plasma-apply-cursortheme",
+          "Bibata"
+        ],
+        [
+          "kwriteconfig6",
+          "--file",
+          "kcminputrc",
+          "--group",
+          "Mouse",
+          "--key",
+          "cursorTheme",
+          "Bibata"
+        ],
+        [
+          "kwriteconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "Mouse",
+          "--key",
+          "cursorTheme",
+          "Bibata"
+        ]
+      ],
+      "files": {
+        ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-cursor-theme-name=Bibata\n",
+        ".icons/default/index.theme": "[Icon Theme]\nInherits=Bibata\n"
+      },
+      "kind": "cursor",
+      "theme": "Bibata",
+      "de": "kde",
+      "fail": true
+    }
+  ],
+  "is_valid_icon": [
+    {
+      "label": "with_dirs",
+      "index": "[Icon Theme]\nName=Test\nDirectories=16x16/apps,32x32/apps\n",
+      "result": true
+    },
+    {
+      "label": "empty_dirs",
+      "index": "[Icon Theme]\nName=Test\nDirectories=\n",
+      "result": false
+    },
+    {
+      "label": "no_dirs",
+      "index": "[Icon Theme]\nName=Cursor\nComment=cursor only\n",
+      "result": false
+    },
+    {
+      "label": "no_index",
+      "index": null,
+      "result": false
+    },
+    {
+      "label": "dirs_spaces",
+      "index": "[Icon Theme]\n Directories=16x16 \n",
+      "result": true
+    }
+  ],
+  "is_valid_icon_emptyname": false,
+  "kcminput": [
+    {
+      "label": "normal",
+      "content": "[Mouse]\ncursorTheme=breeze_cursors\n",
+      "result": "breeze_cursors"
+    },
+    {
+      "label": "other_section_first",
+      "content": "[Keyboard]\nfoo=bar\n[Mouse]\ncursorTheme=Bibata\n",
+      "result": "Bibata"
+    },
+    {
+      "label": "no_mouse",
+      "content": "[Keyboard]\ncursorTheme=nope\n",
+      "result": ""
+    },
+    {
+      "label": "no_file",
+      "content": null,
+      "result": ""
+    },
+    {
+      "label": "mouse_no_cursor",
+      "content": "[Mouse]\nfoo=bar\n",
+      "result": ""
+    }
+  ],
+  "kde_font": [
+    {
+      "raw": "",
+      "result": ""
+    },
+    {
+      "raw": "Noto Sans",
+      "result": "Noto Sans"
+    },
+    {
+      "raw": "Noto Sans,10,-1,5,50,0,0,0,0,0",
+      "result": "Noto Sans 10"
+    },
+    {
+      "raw": "Noto Sans,11.5,-1",
+      "result": "Noto Sans 11"
+    },
+    {
+      "raw": "Bad,notanumber,-1",
+      "result": "Bad 10"
+    },
+    {
+      "raw": "Family,",
+      "result": "Family 10"
+    },
+    {
+      "raw": "Only,",
+      "result": "Only 10"
+    }
+  ],
+  "font_fallback": [
+    {
+      "label": "gtk4",
+      "gtk4": "[Settings]\ngtk-font-name=Cantarell 11\n",
+      "gtk3": null,
+      "fc": null,
+      "result": "Cantarell 11"
+    },
+    {
+      "label": "gtk3_only",
+      "gtk4": null,
+      "gtk3": "[Settings]\ngtk-font-name=Noto 10\n",
+      "fc": null,
+      "result": "Noto 10"
+    },
+    {
+      "label": "gtk4_wins",
+      "gtk4": "[Settings]\ngtk-font-name=FourFont 9\n",
+      "gtk3": "[Settings]\ngtk-font-name=ThreeFont 8\n",
+      "fc": null,
+      "result": "FourFont 9"
+    },
+    {
+      "label": "fc_match",
+      "gtk4": null,
+      "gtk3": null,
+      "fc": "DejaVu Sans 10",
+      "result": "DejaVu Sans 10"
+    },
+    {
+      "label": "default",
+      "gtk4": null,
+      "gtk3": null,
+      "fc": null,
+      "result": "Sans 10"
+    },
+    {
+      "label": "empty_val_then_fc",
+      "gtk4": "[Settings]\ngtk-font-name=\n",
+      "gtk3": null,
+      "fc": "Fallback 12",
+      "result": "Fallback 12"
+    }
+  ],
+  "resolve_install": [
+    {
+      "theme": "Dracula",
+      "family": "arch",
+      "meta": {
+        "pkg_arch": "dracula-gtk-theme",
+        "pkg_debian": "dracula-theme",
+        "pkg_fedora": "dracula-theme",
+        "pkg_suse": "",
+        "pkg_gentoo": "x11-themes/dracula-theme",
+        "aur": "dracula-gtk-theme",
+        "kind": "gtk",
+        "desc": "Тёмная вампирская тема с фиолетово-розовыми акцентами",
+        "tags": [
+          "тёмная",
+          "популярная"
+        ],
+        "color": "#bd93f9"
+      },
+      "result": [
+        "dracula-gtk-theme",
+        "dracula-gtk-theme"
+      ]
+    },
+    {
+      "theme": "Dracula",
+      "family": "debian",
+      "meta": {
+        "pkg_arch": "dracula-gtk-theme",
+        "pkg_debian": "dracula-theme",
+        "pkg_fedora": "dracula-theme",
+        "pkg_suse": "",
+        "pkg_gentoo": "x11-themes/dracula-theme",
+        "aur": "dracula-gtk-theme",
+        "kind": "gtk",
+        "desc": "Тёмная вампирская тема с фиолетово-розовыми акцентами",
+        "tags": [
+          "тёмная",
+          "популярная"
+        ],
+        "color": "#bd93f9"
+      },
+      "result": [
+        "dracula-theme",
+        "dracula-gtk-theme"
+      ]
+    },
+    {
+      "theme": "Arc-Dark",
+      "family": "suse",
+      "meta": {
+        "pkg_arch": "arc-gtk-theme",
+        "pkg_debian": "arc-theme",
+        "pkg_fedora": "arc-theme",
+        "pkg_suse": "arc-gtk-theme",
+        "pkg_gentoo": "x11-themes/arc-theme",
+        "aur": "",
+        "kind": "gtk",
+        "desc": "Плоская классика с прозрачными элементами",
+        "tags": [
+          "тёмная",
+          "плоский"
+        ],
+        "color": "#5294e2"
+      },
+      "result": [
+        "arc-gtk-theme",
+        ""
+      ]
+    },
+    {
+      "theme": "Catppuccin-Mocha",
+      "family": "arch",
+      "meta": {
+        "pkg_arch": "",
+        "pkg_debian": "",
+        "aur": "catppuccin-gtk-theme-mocha",
+        "kind": "gtk",
+        "desc": "Тёплая пастельная тёмная тема (Mocha)",
+        "tags": [
+          "тёмная",
+          "пастельная"
+        ],
+        "color": "#cba6f7"
+      },
+      "result": [
+        "",
+        "catppuccin-gtk-theme-mocha"
+      ]
+    },
+    {
+      "theme": "Catppuccin-Mocha",
+      "family": "fedora",
+      "meta": {
+        "pkg_arch": "",
+        "pkg_debian": "",
+        "aur": "catppuccin-gtk-theme-mocha",
+        "kind": "gtk",
+        "desc": "Тёплая пастельная тёмная тема (Mocha)",
+        "tags": [
+          "тёмная",
+          "пастельная"
+        ],
+        "color": "#cba6f7"
+      },
+      "result": [
+        "",
+        "catppuccin-gtk-theme-mocha"
+      ]
+    },
+    {
+      "theme": "Nordic",
+      "family": "fedora",
+      "meta": {
+        "pkg_arch": "nordic-theme",
+        "pkg_debian": "",
+        "pkg_fedora": "",
+        "pkg_suse": "",
+        "aur": "nordic-theme",
+        "kind": "gtk",
+        "desc": "Минималистичная Nord-палитра (синий, полярный)",
+        "tags": [
+          "тёмная",
+          "минимализм"
+        ],
+        "color": "#88c0d0"
+      },
+      "result": [
+        "",
+        "nordic-theme"
+      ]
+    },
+    {
+      "theme": "Papirus-Dark",
+      "family": "void",
+      "meta": {
+        "pkg_arch": "papirus-icon-theme",
+        "pkg_debian": "papirus-icon-theme",
+        "pkg_fedora": "papirus-icon-theme",
+        "pkg_suse": "papirus-icon-theme",
+        "pkg_gentoo": "x11-themes/papirus-icon-theme",
+        "pkg_void": "papirus-icon-theme",
+        "aur": "",
+        "kind": "icons",
+        "desc": "Плоские иконки, тысячи вариантов для GTK/KDE",
+        "tags": [
+          "иконки",
+          "flat"
+        ],
+        "color": "#5e81ac"
+      },
+      "result": [
+        "papirus-icon-theme",
+        ""
+      ]
+    },
+    {
+      "theme": "Dracula",
+      "family": "clear",
+      "meta": {
+        "pkg_arch": "dracula-gtk-theme",
+        "pkg_debian": "dracula-theme",
+        "pkg_fedora": "dracula-theme",
+        "pkg_suse": "",
+        "pkg_gentoo": "x11-themes/dracula-theme",
+        "aur": "dracula-gtk-theme",
+        "kind": "gtk",
+        "desc": "Тёмная вампирская тема с фиолетово-розовыми акцентами",
+        "tags": [
+          "тёмная",
+          "популярная"
+        ],
+        "color": "#bd93f9"
+      },
+      "result": [
+        "dracula-theme",
+        "dracula-gtk-theme"
+      ]
+    }
+  ],
+  "current_themes": [
+    {
+      "de": "gnome",
+      "gs": {
+        "org.gnome.desktop.interface|gtk-theme": "Adwaita",
+        "org.gnome.desktop.interface|icon-theme": "Papirus",
+        "org.gnome.desktop.interface|cursor-theme": "Bibata",
+        "org.gnome.desktop.interface|font-name": "Cantarell 11"
+      },
+      "xf": {},
+      "kde": {},
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "Sans 10",
+      "result": {
+        "gtk": "Adwaita",
+        "icons": "Papirus",
+        "cursor": "Bibata",
+        "font": "Cantarell 11"
+      }
+    },
+    {
+      "de": "gnome",
+      "gs": {
+        "org.gnome.desktop.interface|gtk-theme": "Adwaita",
+        "org.gnome.desktop.interface|icon-theme": "Papirus",
+        "org.gnome.desktop.interface|cursor-theme": "Bibata",
+        "org.gnome.desktop.interface|font-name": null
+      },
+      "xf": {},
+      "kde": {},
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "FallbackFont 12",
+      "result": {
+        "gtk": "Adwaita",
+        "icons": "Papirus",
+        "cursor": "Bibata",
+        "font": "FallbackFont 12"
+      }
+    },
+    {
+      "de": "xfce",
+      "gs": {},
+      "xf": {
+        "/Net/ThemeName": "Greybird",
+        "/Net/IconThemeName": "elementary",
+        "/Gtk/CursorThemeName": "DMZ",
+        "/Gtk/FontName": "Sans 10"
+      },
+      "kde": {},
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "Sans 10",
+      "result": {
+        "gtk": "Greybird",
+        "icons": "elementary",
+        "cursor": "DMZ",
+        "font": "Sans 10"
+      }
+    },
+    {
+      "de": "xfce",
+      "gs": {},
+      "xf": {
+        "/Net/ThemeName": "Greybird",
+        "/Net/IconThemeName": "elementary",
+        "/Gtk/CursorThemeName": "DMZ",
+        "/Gtk/FontName": null
+      },
+      "kde": {},
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "XfFallback 9",
+      "result": {
+        "gtk": "Greybird",
+        "icons": "elementary",
+        "cursor": "DMZ",
+        "font": "XfFallback 9"
+      }
+    },
+    {
+      "de": "kde",
+      "gs": {},
+      "xf": {},
+      "kde": {
+        "General|widgetStyle": "Breeze",
+        "Icons|Theme": "breeze",
+        "Mouse|cursorTheme": "breeze_cursors",
+        "General|font": "Noto Sans,10,-1,5,50,0,0,0,0,0"
+      },
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "Sans 10",
+      "result": {
+        "gtk": "Breeze",
+        "icons": "breeze",
+        "cursor": "breeze_cursors",
+        "font": "Noto Sans 10"
+      }
+    },
+    {
+      "de": "kde",
+      "gs": {},
+      "xf": {},
+      "kde": {
+        "General|widgetStyle": "Breeze",
+        "Icons|Theme": "breeze",
+        "Mouse|cursorTheme": null,
+        "General|font": null
+      },
+      "kcmin": "Bibata",
+      "xenv": null,
+      "font_fb": "KdeFb 10",
+      "result": {
+        "gtk": "Breeze",
+        "icons": "breeze",
+        "cursor": "Bibata",
+        "font": "KdeFb 10"
+      }
+    },
+    {
+      "de": "kde",
+      "gs": {},
+      "xf": {},
+      "kde": {
+        "General|widgetStyle": null,
+        "Icons|Theme": null,
+        "Mouse|cursorTheme": null,
+        "General|font": null
+      },
+      "kcmin": "",
+      "xenv": null,
+      "font_fb": "KdeFb 10",
+      "result": {
+        "gtk": "—",
+        "icons": "—",
+        "cursor": "breeze_cursors",
+        "font": "KdeFb 10"
+      }
+    }
+  ],
+  "kde_apply": {
+    "global": [
+      {
+        "argv": [
+          "plasma-apply-lookandfeel",
+          "-a",
+          "Breeze"
+        ],
+        "timeout": 15
+      }
+    ],
+    "plasma": [
+      {
+        "argv": [
+          "plasma-apply-desktoptheme",
+          "default"
+        ],
+        "timeout": 10
+      }
+    ],
+    "colors": [
+      {
+        "argv": [
+          "plasma-apply-colorscheme",
+          "BreezeDark"
+        ],
+        "timeout": 10
+      }
+    ],
+    "kvantum": [
+      {
+        "argv": [
+          "kvantummanager",
+          "--set",
+          "KvArc"
+        ],
+        "timeout": 10
+      },
+      {
+        "argv": [
+          "kwriteconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "KDE",
+          "--key",
+          "widgetStyle",
+          "kvantum"
+        ],
+        "timeout": null
+      },
+      {
+        "argv": [
+          "dbus-send",
+          "--type=signal",
+          "/KGlobalSettings",
+          "org.kde.KGlobalSettings.notifyChange",
+          "int32:2",
+          "int32:0"
+        ],
+        "timeout": null
+      }
+    ],
+    "current": [
+      [
+        "kreadconfig6",
+        "--file",
+        "kdeglobals",
+        "--group",
+        "KDE",
+        "--key",
+        "LookAndFeelPackage"
+      ],
+      [
+        "kreadconfig6",
+        "--file",
+        "plasmarc",
+        "--group",
+        "Theme",
+        "--key",
+        "name"
+      ],
+      [
+        "kreadconfig6",
+        "--file",
+        "kdeglobals",
+        "--group",
+        "General",
+        "--key",
+        "ColorScheme"
+      ]
+    ]
+  },
+  "history_ts": "2026-07-21T03:10:00",
+  "pure_v2": {
+    "home": "/home/user",
+    "texts": {
+      "ARCHIVE_NO_DIRS": "Архив не содержит папок",
+      "EXTRACT_FAILED_PREFIX": "Ошибка распаковки: ",
+      "THEME_NOT_IN_CATALOG_PREFIX": "Тема не найдена в каталоге: ",
+      "INSTALLED_FROM_REPO_PREFIX": "Тема установлена из репозитория: ",
+      "INSTALLED_FROM_AUR_PREFIX": "Тема установлена из AUR: ",
+      "NO_PACKAGE_PREFIX": "Нет пакета для этого дистрибутива: ",
+      "INSTALL_FAILED_PREFIX": "Не удалось установить. Попробуйте вручную: "
+    },
+    "kde_read_cmd": [
+      {
+        "section": "General",
+        "key": "TerminalApplication",
+        "argv": [
+          "kreadconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "General",
+          "--key",
+          "TerminalApplication",
+          "--default",
+          ""
+        ]
+      },
+      {
+        "section": "Icons",
+        "key": "Theme",
+        "argv": [
+          "kreadconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "Icons",
+          "--key",
+          "Theme",
+          "--default",
+          ""
+        ]
+      },
+      {
+        "section": "Mouse",
+        "key": "cursorTheme",
+        "argv": [
+          "kreadconfig6",
+          "--file",
+          "kdeglobals",
+          "--group",
+          "Mouse",
+          "--key",
+          "cursorTheme",
+          "--default",
+          ""
+        ]
+      }
+    ],
+    "kdeglobals": {
+      "content": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n",
+      "cases": [
+        {
+          "section": "General",
+          "key": "TerminalApplication",
+          "want": "konsole"
+        },
+        {
+          "section": "Icons",
+          "key": "Theme",
+          "want": null
+        },
+        {
+          "section": "Mouse",
+          "key": "cursorTheme",
+          "want": "breeze_cursors"
+        },
+        {
+          "section": "KDE",
+          "key": "LookAndFeelPackage",
+          "want": "org.kde.breezedark.desktop"
+        },
+        {
+          "section": "WM",
+          "key": "activeFont",
+          "want": "Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0"
+        },
+        {
+          "section": "General",
+          "key": "ColorSchemeHash",
+          "want": "9d38eb71ded8ff549da26d57d7cbab9164da243a"
+        },
+        {
+          "section": "Colors:Header][Inactive",
+          "key": "BackgroundNormal",
+          "want": "32,35,38"
+        },
+        {
+          "section": "General",
+          "key": "accentColorFromWallpaper",
+          "want": "true"
+        },
+        {
+          "section": "ColorEffects:Disabled",
+          "key": "ChangeSelectionColor",
+          "want": ""
+        },
+        {
+          "section": "Nope",
+          "key": "Key",
+          "want": null
+        },
+        {
+          "section": "KDE",
+          "key": "contrast",
+          "want": "4"
+        }
+      ]
+    },
+    "archive_dest": [
+      {
+        "kind": "gtk",
+        "name": "Windows XP Embedded",
+        "want": [
+          "/home/user/.themes",
+          "/home/user/.themes/Windows XP Embedded"
+        ]
+      },
+      {
+        "kind": "gtk",
+        "name": "Bibata-Modern-Ice",
+        "want": [
+          "/home/user/.themes",
+          "/home/user/.themes/Bibata-Modern-Ice"
+        ]
+      },
+      {
+        "kind": "icons",
+        "name": "Windows XP Embedded",
+        "want": [
+          "/home/user/.local/share/icons",
+          "/home/user/.local/share/icons/Windows XP Embedded"
+        ]
+      },
+      {
+        "kind": "icons",
+        "name": "Bibata-Modern-Ice",
+        "want": [
+          "/home/user/.local/share/icons",
+          "/home/user/.local/share/icons/Bibata-Modern-Ice"
+        ]
+      },
+      {
+        "kind": "cursors",
+        "name": "Windows XP Embedded",
+        "want": [
+          "/home/user/.local/share/icons",
+          "/home/user/.local/share/icons/Windows XP Embedded"
+        ]
+      },
+      {
+        "kind": "cursors",
+        "name": "Bibata-Modern-Ice",
+        "want": [
+          "/home/user/.local/share/icons",
+          "/home/user/.local/share/icons/Bibata-Modern-Ice"
+        ]
+      }
+    ],
+    "pick_archive_dir": [
+      {
+        "names": [],
+        "want": null
+      },
+      {
+        "names": [
+          "Windows XP Embedded"
+        ],
+        "want": "Windows XP Embedded"
+      },
+      {
+        "names": [
+          "Windows XP Embedded",
+          "Windows XP Homestead",
+          "Windows XP Luna",
+          "Windows XP Metallic",
+          "Windows XP Royale",
+          "Windows XP Royale Dark",
+          "Windows XP Zune"
+        ],
+        "want": "Windows XP Embedded"
+      },
+      {
+        "names": [
+          "Atlanta",
+          "BlackMATE",
+          "BlackMATE-border",
+          "Blue-Submarine",
+          "Blue-Submarine-border"
+        ],
+        "want": "Atlanta"
+      },
+      {
+        "names": [
+          "Blue-Submarine-border",
+          "Blue-Submarine",
+          "BlackMATE-border",
+          "BlackMATE",
+          "Atlanta"
+        ],
+        "want": "Atlanta"
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+ "response": {
+  "profile_backgrounds": [
+   {
+    "communityitemid": "1001",
+    "name": "Amber Waves",
+    "image_large": "images/items/300/abc_large.jpg",
+    "movie_webm": "images/items/300/abc.webm",
+    "movie_mp4": "images/items/300/abc.mp4"
+   },
+   {
+    "communityitemid": "1002",
+    "item_title": "Coral Wave",
+    "image_large": "/images/items/300/coral.jpg"
+   },
+   {
+    "communityitemid": 1003,
+    "image_small": "images/items/300/small.jpg"
+   },
+   {
+    "name": "No ID BG",
+    "image_large": "images/x.jpg"
+   },
+   {
+    "movie_mp4": "images/y.mp4"
+   },
+   {
+    "communityitemid": "1006",
+    "name": "Empty webm falls to mp4",
+    "movie_webm": "",
+    "movie_mp4": "images/z.mp4",
+    "image_large": "images/z.jpg"
+   },
+   {
+    "communityitemid": "1099"
+   }
+  ]
+ }
+}

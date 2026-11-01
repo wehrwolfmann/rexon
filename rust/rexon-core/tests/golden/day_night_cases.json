@@ -1,0 +1,1319 @@
+{
+  "plans": {
+    "kde": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "global",
+          "name": "org.kde.breezedark.desktop"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": false
+    },
+    "gnome": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "cinnamon": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-light"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "mate": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "xfce": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-light"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.x.apps.portal",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "budgie": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "pantheon": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "io.elementary.settings-daemon.prefers-color-scheme",
+            "color-scheme",
+            "no-preference"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "io.elementary.settings-daemon.prefers-color-scheme",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "io.elementary.settings-daemon.prefers-color-scheme",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "lxqt": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "cosmic": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "cosmic_dark",
+          "dark": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": false
+    },
+    "hyprland": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "sway": {
+      "light_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeLight"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Light"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/day.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "default"
+          ]
+        }
+      ],
+      "dark_scheduled": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "dark_fixed": [
+        {
+          "op": "theme",
+          "kind": "colors",
+          "name": "BreezeDark"
+        },
+        {
+          "op": "theme",
+          "kind": "icons",
+          "name": "Papirus-Dark"
+        },
+        {
+          "op": "theme",
+          "kind": "gtk",
+          "name": "Adwaita-dark"
+        },
+        {
+          "op": "wallpaper",
+          "path": "/home/u/night.png"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            "prefer-dark"
+          ]
+        }
+      ],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    },
+    "deepin": {
+      "light_scheduled": [],
+      "dark_scheduled": [],
+      "dark_fixed": [],
+      "needs_timer": true,
+      "needs_timer_global_only": true
+    }
+  },
+  "timer_times": "[Unit]\nDescription=Rexon: switch between light and dark appearance\n\n[Timer]\nOnCalendar=*-*-* 07:00:00\nOnCalendar=*-*-* 19:30:00\nAccuracySec=30s\n# A switch missed while the machine was off happens at the next start.\nPersistent=true\nUnit=rexon-day-night.service\n\n[Install]\nWantedBy=timers.target\n",
+  "timer_sun": "[Unit]\nDescription=Rexon: switch between light and dark appearance\n\n[Timer]\nOnCalendar=2026-11-01 15:39:08 UTC\nOnCalendar=2026-11-02 06:05:08 UTC\nOnCalendar=*-*-* 00:10:00\nAccuracySec=30s\n# A switch missed while the machine was off happens at the next start.\nPersistent=true\nUnit=rexon-day-night.service\n\n[Install]\nWantedBy=timers.target\n",
+  "service": "[Unit]\nDescription=Rexon: apply the light or dark appearance\nConditionPathExists=/usr/lib/rexon/rexon-main-window\n\n[Service]\nType=oneshot\nExecStart=/usr/lib/rexon/rexon-main-window --apply-day-night\nTimeoutStartSec=120\nNice=5\n",
+  "autostart": "[Desktop Entry]\nType=Application\nName=Rexon Light and Dark\nExec=/usr/lib/rexon/rexon-main-window --apply-day-night --login\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-Delay=3\n",
+  "kde_times": [
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultLightLookAndFeel",
+      "--notify",
+      "org.kde.breeze.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultDarkLookAndFeel",
+      "--notify",
+      "org.kde.breezedark.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "General",
+      "--key",
+      "Source",
+      "--notify",
+      "Times"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Times",
+      "--key",
+      "SunriseStart",
+      "--notify",
+      "07:00:00"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Times",
+      "--key",
+      "SunsetStart",
+      "--notify",
+      "19:30:00"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "AutomaticLookAndFeel",
+      "--notify",
+      "true"
+    ]
+  ],
+  "kde_sun_manual": [
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultLightLookAndFeel",
+      "--notify",
+      "org.kde.breeze.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultDarkLookAndFeel",
+      "--notify",
+      "org.kde.breezedark.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "General",
+      "--key",
+      "Source",
+      "--notify",
+      "Location"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Location",
+      "--key",
+      "Automatic",
+      "--notify",
+      "false"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Location",
+      "--key",
+      "Latitude",
+      "--notify",
+      "52.52"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Location",
+      "--key",
+      "Longitude",
+      "--notify",
+      "13.405"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "AutomaticLookAndFeel",
+      "--notify",
+      "true"
+    ]
+  ],
+  "kde_sun_auto_location": [
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultLightLookAndFeel",
+      "--notify",
+      "org.kde.breeze.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "DefaultDarkLookAndFeel",
+      "--notify",
+      "org.kde.breezedark.desktop"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "General",
+      "--key",
+      "Source",
+      "--notify",
+      "Location"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "knighttimerc",
+      "--group",
+      "Location",
+      "--key",
+      "Automatic",
+      "--notify",
+      "true"
+    ],
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "AutomaticLookAndFeel",
+      "--notify",
+      "true"
+    ]
+  ],
+  "kde_dark_fixed_was_auto": [
+    [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "KDE",
+      "--key",
+      "AutomaticLookAndFeel",
+      "--notify",
+      "false"
+    ]
+  ],
+  "kde_off_was_auto": []
+}

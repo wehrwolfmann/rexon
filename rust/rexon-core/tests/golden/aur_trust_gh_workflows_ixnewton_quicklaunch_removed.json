@@ -1,0 +1,36 @@
+[
+ {
+  "sha": "4eb5620b007322749b7a50c42514a710a109f03c",
+  "commit": {
+   "author": {
+    "name": "Ian Newton",
+    "date": "2026-10-09T11:16:17Z"
+   },
+   "committer": {
+    "name": "Ian Newton",
+    "date": "2026-10-09T11:16:17Z"
+   },
+   "message": "fix: remove malicious credential-harvesting workflow"
+  },
+  "author": {
+   "login": "ixnewton"
+  }
+ },
+ {
+  "sha": "847cb698aecd8ec90cc84534e6aad3f1cec5aee5",
+  "commit": {
+   "author": {
+    "name": "Ian Newton",
+    "date": "2026-10-08T20:08:55Z"
+   },
+   "committer": {
+    "name": "Ian Newton",
+    "date": "2026-10-08T20:08:55Z"
+   },
+   "message": "Add security audit workflow"
+  },
+  "author": {
+   "login": "ixnewton"
+  }
+ }
+]

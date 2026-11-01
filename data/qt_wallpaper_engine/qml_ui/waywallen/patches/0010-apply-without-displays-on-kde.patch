@@ -1,0 +1,93 @@
+Тема: «Применить» на KDE работает и до первого дисплея
+
+Починка дефекта, не доработка. На KDE обои показывает Plasma-плагин
+waywallen, и дисплей у демона появляется, только когда плагин назначен
+обоями стола. Rexon назначает его сам, по нажатию «Применить» (раньше —
+при открытии вкладки, и с пустой библиотекой стол становился чёрным).
+Вендорная кнопка «Применить» включается по `hasSelection`, а для этого
+нужен хоть один дисплей: на свежей системе круг замыкался, кнопка
+оставалась серой навсегда (ВМ Arch + Plasma 6.8.2, 30.10.2026).
+
+* `WallpaperDetailPanel.qml`: при нуле целей кнопка доступна, если
+  `W.App.applyWithoutDisplays` — цель «все рабочие столы» (пустой
+  `wireTargets`). Кадр придерживает транспорт Rexon, пока plasmashell не
+  зарегистрирует дисплей; решение — ядро
+  (`waywallen_kde_plugin::apply_without_displays`, тот же `apply_gate`,
+  что у транспорта).
+* `KdeDisplaysHelp.qml`: при нуле дисплеев вместо «поставьте расширение
+  из GitHub/KDE Store и выберите его в настройках стола» — подсказка
+  Rexon `W.App.noDisplaysHint` («выберите обои и нажмите „Применить“»).
+  Пустая строка — вид апстрима. На X11 вне KDE (MATE, XFCE, Cinnamon X11)
+  вывод поднимает хост Rexon, и подсказка видна при любом бэкенде демона
+  (до этого под «Мониторы не зарегистрированы» было пусто, 30.10.2026).
+
+Плейлисты (`PlaylistListSheetState`) — отдельно, патч 0011: там цели
+выбираются по одной, и при пустом списке `every()` по выбранным дисплеям
+дал бы «уже играет».
+---
+diff --git a/ui/qml/component/KdeDisplaysHelp.qml b/ui/qml/component/KdeDisplaysHelp.qml
+index 8f336a89..796dcb06 100644
+--- a/ui/qml/component/KdeDisplaysHelp.qml
++++ b/ui/qml/component/KdeDisplaysHelp.qml
+@@ -10,12 +10,23 @@ ColumnLayout {
+     readonly property string githubUrl: "https://github.com/waywallen/waywallen-display"
+     readonly property string kdeStoreUrl: "https://store.kde.org/p/2356221"
+ 
++    // ПРАВКА REXON (починка дефекта, не доработка): Rexon сам ставит
++    // плагин обоев Plasma и назначает его по «Применить», поэтому вместо
++    // «поставьте расширение из GitHub/KDE Store и выберите его в настройках
++    // стола» показываем, что делать на самом деле. На X11 вне KDE (MATE,
++    // XFCE, Cinnamon X11) вывод поднимает хост Rexon — там подсказка
++    // показывается при любом бэкенде демона, иначе под «Мониторы не
++    // зарегистрированы» было пусто. Текст — ядро Rexon
++    // (`W.App.noDisplaysHint`); пусто — вид апстрима. Правка живёт в
++    // patches/0010-apply-without-displays-on-kde.patch.
++    readonly property string rexonHint: W.App.noDisplaysHint
++
+     spacing: 12
+-    visible: W.Notify.displayBackend.name === "kde-plasma"
++    visible: W.Notify.displayBackend.name === "kde-plasma" || root.rexonHint.length > 0
+ 
+     MD.Text {
+         Layout.fillWidth: true
+-        text: qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
++        text: root.rexonHint.length > 0 ? root.rexonHint : qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
+         textFormat: Text.StyledText
+         wrapMode: Text.WordWrap
+         horizontalAlignment: Text.AlignHCenter
+@@ -26,6 +34,7 @@ ColumnLayout {
+     RowLayout {
+         Layout.alignment: Qt.AlignHCenter
+         spacing: 8
++        visible: root.rexonHint.length === 0
+ 
+         MD.Button {
+             text: qsTr("GitHub")
+@@ -45,6 +54,7 @@ ColumnLayout {
+ 
+     MD.Text {
+         Layout.fillWidth: true
++        visible: root.rexonHint.length === 0
+         text: qsTr("Then right-click the desktop → <b>Configure Desktop and Wallpaper…</b> and pick the <b>Waywallen</b> wallpaper plugin.")
+         textFormat: Text.StyledText
+         wrapMode: Text.WordWrap
+diff --git a/ui/qml/page/WallpaperDetailPanel.qml b/ui/qml/page/WallpaperDetailPanel.qml
+index ed28b537..1cc662ce 100644
+--- a/ui/qml/page/WallpaperDetailPanel.qml
++++ b/ui/qml/page/WallpaperDetailPanel.qml
+@@ -326,7 +326,14 @@ Item {
+         id: applyAction
+         text: qsTr("Apply")
+         busy: applyQuery.querying
+-        enabled: applyTargetState.hasSelection
++        // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
++        // появляется, только когда плагин обоев уже назначен, а назначает
++        // его Rexon по нажатию «Применить» — без этой ветки кнопка была
++        // серой на свежей системе навсегда. Пока дисплеев нет, цель — «все
++        // рабочие столы» (пустой `wireTargets`); кадр придерживает
++        // транспорт Rexon до регистрации дисплея. Правка живёт в
++        // patches/0010-apply-without-displays-on-kde.patch.
++        enabled: applyTargetState.hasSelection || (!applyTargetState.hasTargets && W.App.applyWithoutDisplays)
+         onTriggered: {
+             if (busy)
+                 return;

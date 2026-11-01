@@ -1,0 +1,742 @@
+{
+ "maps": {
+  "kind_to_rexon_type": {
+   "global": "theme-kde-global",
+   "plasma": "theme-kde-plasma",
+   "colors": "theme-kde-colors",
+   "aurorae": "theme-kde-aurorae",
+   "icons": "theme-icons",
+   "cursor": "theme-cursors",
+   "kvantum": "theme-kvantum",
+   "wallpapers": "wallpaper-pack",
+   "lockwallpaper": "wallpaper-pack",
+   "wallpaper_plugins": "kde-wallpaper-plugin",
+   "sounds": "theme-sounds",
+   "fonts": "font-pack",
+   "plasmoids": "theme-plasmoid",
+   "gtk": "theme-gtk",
+   "widgetstyle": "theme-widget-style",
+   "splash": "theme-kde-splash",
+   "lockscreen": "theme-kde-lockscreen",
+   "sddm": "theme-sddm",
+   "plymouth": "theme-plymouth"
+  },
+  "actual_to_kind": {
+   "look-and-feel": "global",
+   "plasma-theme": "plasma",
+   "color-scheme": "colors",
+   "aurorae": "aurorae",
+   "kvantum": "kvantum",
+   "icons": "icons",
+   "bundle": "none",
+   "unknown": "none"
+  },
+  "actual_type_dir": {
+   "look-and-feel": "/sb/home/.local/share/plasma/look-and-feel",
+   "plasma-theme": "/sb/home/.local/share/plasma/desktoptheme",
+   "color-scheme": "/sb/home/.local/share/color-schemes",
+   "aurorae": "/sb/home/.local/share/aurorae/themes",
+   "kvantum": "/sb/home/.config/Kvantum",
+   "icons": "/sb/home/.local/share/icons"
+  },
+  "image_exts": [
+   ".apng",
+   ".avif",
+   ".bmp",
+   ".gif",
+   ".jpeg",
+   ".jpg",
+   ".jxl",
+   ".png",
+   ".svg",
+   ".tif",
+   ".tiff",
+   ".webp"
+  ],
+  "image_magic_hex": [
+   "89504e470d0a1a0a",
+   "ffd8ff",
+   "474946383761",
+   "474946383961",
+   "424d",
+   "49492a00",
+   "4d4d002a"
+  ],
+  "home": "/sb/home"
+ },
+ "detect": [
+  {
+   "name": "bundle",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_bundle": [
+      "misc",
+      "color-schemes",
+      "aurorae"
+     ],
+     "/sb/cases/detect_bundle/misc": [],
+     "/sb/cases/detect_bundle/color-schemes": [],
+     "/sb/cases/detect_bundle/aurorae": []
+    },
+    "files": {}
+   },
+   "content_root": "/sb/cases/detect_bundle",
+   "expected": "bundle"
+  },
+  {
+   "name": "colors",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_colors": [
+      "MyScheme.colors"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_colors/MyScheme.colors": "[General]\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_colors",
+   "expected": "color-scheme"
+  },
+  {
+   "name": "aurorae",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_aurorae": [
+      "metadata.desktop",
+      "decoration.svg"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_aurorae/metadata.desktop": "x",
+     "/sb/cases/detect_aurorae/decoration.svg": "<svg/>"
+    }
+   },
+   "content_root": "/sb/cases/detect_aurorae",
+   "expected": "aurorae"
+  },
+  {
+   "name": "kvantum",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_kvantum": [
+      "Theme.svg",
+      "Theme.kvconfig"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_kvantum/Theme.svg": "",
+     "/sb/cases/detect_kvantum/Theme.kvconfig": "[General]\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_kvantum",
+   "expected": "kvantum"
+  },
+  {
+   "name": "icons",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_icons": [
+      "places",
+      "apps",
+      "index.theme"
+     ],
+     "/sb/cases/detect_icons/places": [],
+     "/sb/cases/detect_icons/apps": []
+    },
+    "files": {
+     "/sb/cases/detect_icons/index.theme": "[Icon Theme]\nName=Ic\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_icons",
+   "expected": "icons"
+  },
+  {
+   "name": "lnf",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_lnf": [
+      "contents"
+     ],
+     "/sb/cases/detect_lnf/contents": [
+      "defaults"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_lnf/contents/defaults": "[kdeglobals]\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_lnf",
+   "expected": "look-and-feel"
+  },
+  {
+   "name": "plasma_style",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_plasma_style": [
+      "contents"
+     ],
+     "/sb/cases/detect_plasma_style/contents": [
+      "frames",
+      "widgets"
+     ],
+     "/sb/cases/detect_plasma_style/contents/frames": [],
+     "/sb/cases/detect_plasma_style/contents/widgets": []
+    },
+    "files": {}
+   },
+   "content_root": "/sb/cases/detect_plasma_style",
+   "expected": "plasma-theme"
+  },
+  {
+   "name": "md_lnf",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_md_lnf": [
+      "metadata.desktop"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_md_lnf/metadata.desktop": "[Desktop Entry]\nX-KDE-ServiceTypes=Plasma/LookAndFeel\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_md_lnf",
+   "expected": "look-and-feel"
+  },
+  {
+   "name": "md_theme",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_md_theme": [
+      "metadata.desktop"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_md_theme/metadata.desktop": "[Desktop Entry]\nX-KDE-ServiceTypes=Plasma/Theme\n"
+    }
+   },
+   "content_root": "/sb/cases/detect_md_theme",
+   "expected": "plasma-theme"
+  },
+  {
+   "name": "none",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_none": [
+      "extra",
+      "readme.txt"
+     ],
+     "/sb/cases/detect_none/extra": []
+    },
+    "files": {
+     "/sb/cases/detect_none/readme.txt": "hi"
+    }
+   },
+   "content_root": "/sb/cases/detect_none",
+   "expected": null
+  },
+  {
+   "name": "notadir",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/detect_notadir": [
+      "x"
+     ]
+    },
+    "files": {
+     "/sb/cases/detect_notadir/x": ""
+    }
+   },
+   "content_root": "/sb/cases/detect_notadir/x",
+   "expected": null
+  }
+ ],
+ "find_content_root": [
+  {
+   "name": "single",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/find_single": [
+      "TheTheme"
+     ],
+     "/sb/cases/find_single/TheTheme": [
+      "x"
+     ]
+    },
+    "files": {
+     "/sb/cases/find_single/TheTheme/x": ""
+    }
+   },
+   "extract_dir": "/sb/cases/find_single",
+   "expected": "/sb/cases/find_single/TheTheme"
+  },
+  {
+   "name": "single_dotfile",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/find_single_dotfile": [
+      ".hidden",
+      "TheTheme"
+     ],
+     "/sb/cases/find_single_dotfile/TheTheme": []
+    },
+    "files": {
+     "/sb/cases/find_single_dotfile/.hidden": ""
+    }
+   },
+   "extract_dir": "/sb/cases/find_single_dotfile",
+   "expected": "/sb/cases/find_single_dotfile/TheTheme"
+  },
+  {
+   "name": "multi",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/find_multi": [
+      "B",
+      "A"
+     ],
+     "/sb/cases/find_multi/B": [],
+     "/sb/cases/find_multi/A": []
+    },
+    "files": {}
+   },
+   "extract_dir": "/sb/cases/find_multi",
+   "expected": "/sb/cases/find_multi"
+  },
+  {
+   "name": "single_file",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/find_single_file": [
+      "onlyfile.png"
+     ]
+    },
+    "files": {
+     "/sb/cases/find_single_file/onlyfile.png": ""
+    }
+   },
+   "extract_dir": "/sb/cases/find_single_file",
+   "expected": "/sb/cases/find_single_file"
+  }
+ ],
+ "theme_id": [
+  {
+   "name": "desktop",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_desktop": [
+      "metadata.desktop"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_desktop/metadata.desktop": "[Desktop Entry]\nName=X\nX-KDE-PluginInfo-Name=com.foo.bar\nComment=y\n"
+    }
+   },
+   "content_root": "/sb/cases/themeid_desktop",
+   "expected": "com.foo.bar"
+  },
+  {
+   "name": "desktop_noname",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_desktop_noname": [
+      "metadata.desktop"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_desktop_noname/metadata.desktop": "[Desktop Entry]\nName=X\n"
+    }
+   },
+   "content_root": "/sb/cases/themeid_desktop_noname",
+   "expected": "themeid_desktop_noname"
+  },
+  {
+   "name": "json",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_json": [
+      "metadata.json"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_json/metadata.json": "{\"KPlugin\": {\"Id\": \"org.kde.zzz\"}}"
+    }
+   },
+   "content_root": "/sb/cases/themeid_json",
+   "expected": "org.kde.zzz"
+  },
+  {
+   "name": "json_noid",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_json_noid": [
+      "metadata.json"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_json_noid/metadata.json": "{\"KPlugin\": {\"Name\": \"n\"}}"
+    }
+   },
+   "content_root": "/sb/cases/themeid_json_noid",
+   "expected": "themeid_json_noid"
+  },
+  {
+   "name": "json_broken",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_json_broken": [
+      "metadata.json"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_json_broken/metadata.json": "{not json"
+    }
+   },
+   "content_root": "/sb/cases/themeid_json_broken",
+   "expected": "themeid_json_broken"
+  },
+  {
+   "name": "folder",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/themeid_folder": [
+      "somefile"
+     ]
+    },
+    "files": {
+     "/sb/cases/themeid_folder/somefile": ""
+    }
+   },
+   "content_root": "/sb/cases/themeid_folder",
+   "expected": "themeid_folder"
+  }
+ ],
+ "plymouth": [
+  {
+   "name": "yes",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/ply_yes": [
+      "cool.script",
+      "cool.plymouth"
+     ]
+    },
+    "files": {
+     "/sb/cases/ply_yes/cool.script": "",
+     "/sb/cases/ply_yes/cool.plymouth": "[Plymouth Theme]\n"
+    }
+   },
+   "content_root": "/sb/cases/ply_yes",
+   "expected": "cool"
+  },
+  {
+   "name": "no",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/ply_no": [
+      "x.png"
+     ]
+    },
+    "files": {
+     "/sb/cases/ply_no/x.png": ""
+    }
+   },
+   "content_root": "/sb/cases/ply_no",
+   "expected": ""
+  }
+ ],
+ "file_ext": [
+  {
+   "name": "",
+   "expected": ""
+  },
+  {
+   "name": "a.PNG",
+   "expected": ".png"
+  },
+  {
+   "name": "photo.jpeg",
+   "expected": ".jpeg"
+  },
+  {
+   "name": "noext",
+   "expected": ""
+  },
+  {
+   "name": "x.tar.gz",
+   "expected": ".gz"
+  },
+  {
+   "name": "http://h/p/name.webp?a=1#frag",
+   "expected": ".webp"
+  },
+  {
+   "name": ".bashrc",
+   "expected": ""
+  },
+  {
+   "name": "dir/.hidden.svg",
+   "expected": ".svg"
+  },
+  {
+   "name": "weird.name.AVIF",
+   "expected": ".avif"
+  }
+ ],
+ "looks_like_image": [
+  {
+   "name": "png.bin",
+   "is_archive": false,
+   "head_hex": "89504e470d0a1a0a0000000000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "jpeg.bin",
+   "is_archive": false,
+   "head_hex": "ffd8ffe00000000000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "gif87.bin",
+   "is_archive": false,
+   "head_hex": "4749463837610000000000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "bmp.bin",
+   "is_archive": false,
+   "head_hex": "424d0000000000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "tiffle.bin",
+   "is_archive": false,
+   "head_hex": "49492a000000000000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "webp.bin",
+   "is_archive": false,
+   "head_hex": "52494646000000005745425000000000",
+   "hints": [],
+   "expected": true
+  },
+  {
+   "name": "byext.bin",
+   "is_archive": false,
+   "head_hex": "72616e646f6d2d62797465732d686572",
+   "hints": [
+    "cool NO LOGO.png"
+   ],
+   "expected": true
+  },
+  {
+   "name": "byurl.bin",
+   "is_archive": false,
+   "head_hex": "72616e646f6d2d62797465732d686572",
+   "hints": [
+    "",
+    "http://h/x.JPG?t=1"
+   ],
+   "expected": true
+  },
+  {
+   "name": "plain.bin",
+   "is_archive": false,
+   "head_hex": "6a7573742074657874206e6f206d6167",
+   "hints": [
+    "file.txt"
+   ],
+   "expected": false
+  },
+  {
+   "name": "zip",
+   "is_archive": true,
+   "head_hex": "504b03041400000000000eadf55cac2a",
+   "hints": [
+    "pretty.png"
+   ],
+   "expected": false
+  },
+  {
+   "name": "tar",
+   "is_archive": true,
+   "head_hex": "612e7478740000000000000000000000",
+   "hints": [
+    "pretty.png"
+   ],
+   "expected": false
+  }
+ ],
+ "single_image_fname": [
+  {
+   "id": "42",
+   "download_name": "Sunset NO LOGO.png",
+   "download_url": "",
+   "expected": "Sunset NO LOGO.png"
+  },
+  {
+   "id": "42",
+   "download_name": "",
+   "download_url": "http://h/path/pic.webp?x=1",
+   "expected": "pic.webp"
+  },
+  {
+   "id": "42",
+   "download_name": "noext_name",
+   "download_url": "",
+   "expected": "noext_name.png"
+  },
+  {
+   "id": "",
+   "download_name": "",
+   "download_url": "",
+   "expected": "wallpaper-kde.png"
+  },
+  {
+   "id": "7",
+   "download_name": "../../evil.png",
+   "download_url": "",
+   "expected": "evil.png"
+  },
+  {
+   "id": "7",
+   "download_name": "archive.tar.gz",
+   "download_url": "",
+   "expected": "archive.tar.png"
+  },
+  {
+   "id": "9",
+   "download_name": "  spaced.JPG  ",
+   "download_url": "",
+   "expected": "spaced.JPG"
+  }
+ ],
+ "reclassify": [
+  {
+   "name": "global_is_aurorae",
+   "category_id": 722,
+   "content_root": "/sb/cases/rc_global_is_aurorae",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/rc_global_is_aurorae": [
+      "metadata.desktop",
+      "decoration.svg"
+     ]
+    },
+    "files": {
+     "/sb/cases/rc_global_is_aurorae/metadata.desktop": "x",
+     "/sb/cases/rc_global_is_aurorae/decoration.svg": "<svg/>"
+    }
+   },
+   "home": "/sb/home",
+   "expected_dest_base": "/sb/home/.local/share/aurorae/themes",
+   "expected_apply_kind": "aurorae",
+   "expected_reclassified": "aurorae",
+   "cat_install_dir": "/sb/home/.local/share/plasma/look-and-feel",
+   "cat_apply_kind": "global"
+  },
+  {
+   "name": "global_is_lnf",
+   "category_id": 722,
+   "content_root": "/sb/cases/rc_global_is_lnf",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/rc_global_is_lnf": [
+      "contents"
+     ],
+     "/sb/cases/rc_global_is_lnf/contents": [
+      "defaults"
+     ]
+    },
+    "files": {
+     "/sb/cases/rc_global_is_lnf/contents/defaults": "[kdeglobals]\n"
+    }
+   },
+   "home": "/sb/home",
+   "expected_dest_base": "/sb/home/.local/share/plasma/look-and-feel",
+   "expected_apply_kind": "global",
+   "expected_reclassified": null,
+   "cat_install_dir": "/sb/home/.local/share/plasma/look-and-feel",
+   "cat_apply_kind": "global"
+  },
+  {
+   "name": "icons_is_icons",
+   "category_id": 132,
+   "content_root": "/sb/cases/rc_icons_is_icons",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/rc_icons_is_icons": [
+      "places",
+      "apps",
+      "index.theme"
+     ],
+     "/sb/cases/rc_icons_is_icons/places": [],
+     "/sb/cases/rc_icons_is_icons/apps": []
+    },
+    "files": {
+     "/sb/cases/rc_icons_is_icons/index.theme": "[Icon Theme]\nName=Ic\n"
+    }
+   },
+   "home": "/sb/home",
+   "expected_dest_base": "/sb/home/.local/share/icons",
+   "expected_apply_kind": "icons",
+   "expected_reclassified": null,
+   "cat_install_dir": "/sb/home/.local/share/icons",
+   "cat_apply_kind": "icons"
+  },
+  {
+   "name": "colors_noreclass",
+   "category_id": 112,
+   "content_root": "/sb/cases/rc_colors_noreclass",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/rc_colors_noreclass": [
+      "Scheme.colors",
+      "color-schemes",
+      "aurorae"
+     ],
+     "/sb/cases/rc_colors_noreclass/color-schemes": [],
+     "/sb/cases/rc_colors_noreclass/aurorae": []
+    },
+    "files": {
+     "/sb/cases/rc_colors_noreclass/Scheme.colors": "[General]\n"
+    }
+   },
+   "home": "/sb/home",
+   "expected_dest_base": "/sb/home/.local/share/color-schemes",
+   "expected_apply_kind": "colors",
+   "expected_reclassified": null,
+   "cat_install_dir": "/sb/home/.local/share/color-schemes",
+   "cat_apply_kind": "colors"
+  },
+  {
+   "name": "global_is_kvantum",
+   "category_id": 722,
+   "content_root": "/sb/cases/rc_global_is_kvantum",
+   "snapshot": {
+    "dirs": {
+     "/sb/cases/rc_global_is_kvantum": [
+      "Theme.svg",
+      "Theme.kvconfig"
+     ]
+    },
+    "files": {
+     "/sb/cases/rc_global_is_kvantum/Theme.svg": "",
+     "/sb/cases/rc_global_is_kvantum/Theme.kvconfig": "[General]\n"
+    }
+   },
+   "home": "/sb/home",
+   "expected_dest_base": "/sb/home/.config/Kvantum",
+   "expected_apply_kind": "kvantum",
+   "expected_reclassified": "kvantum",
+   "cat_install_dir": "/sb/home/.local/share/plasma/look-and-feel",
+   "cat_apply_kind": "global"
+  }
+ ]
+}

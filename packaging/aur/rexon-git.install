@@ -1,0 +1,22 @@
+# Сценарии pacman для rexon-git.
+#
+# post_remove снимает страховку экрана входа, которую разложил помощник
+# switch-dm («Сделать основным» в разделе экрана входа): /etc/rexon, службу
+# rexon-dm-fallback и её drop-in у выбранного экрана входа. Эти файлы ничьи
+# по учёту пакетов, и `pacman -R` сам их не снимет. Текст — тот же, что у
+# удаления Rexon из программы (`installer::dm_fallback_cleanup_script`;
+# сверка `package_post_remove_matches_core_cleanup` в installer.rs).
+# Выбранное приветствие LightDM (50-rexon-greeter.conf) остаётся: это
+# настройка работающего экрана входа. Служб не запускает и не
+# останавливает.
+
+post_remove() {
+  for f in /etc/systemd/system/*.service.d/50-rexon-fallback.conf; do
+    [ -e "$f" ] || continue
+    rm -f "$f"
+    rmdir "$(dirname "$f")" 2>/dev/null || true
+  done
+  rm -f /etc/systemd/system/rexon-dm-fallback.service
+  rm -rf /etc/rexon
+  if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload 2>/dev/null || true; fi
+}

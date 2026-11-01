@@ -1,0 +1,414 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Like Garuda Linux (Dr460nized)”?",
+      "text": "The look <b>Like Garuda Linux (Dr460nized)</b> will be applied to your desktop.<br><br>What will change: colours, window frames, Qt application style, GTK theme, icons, cursors, fonts, wallpaper, panel layout, desktop behaviour.<br><br>Rexon builds these parts itself from what your desktop has, close to the original: panel layout, desktop behaviour.<br><br>Window effects of this look (wobbly windows, magic lamp, cover switch): Rexon will replace the Marco window manager with Compiz. If Compiz does not start, Marco comes back by itself.<br><br>Compiz is built from the AUR: this takes several minutes, and your system will ask for your password.<br><br>Covered by the other parts: global theme — in Plasma it is one package of the parts listed here; on this desktop Rexon applies them one by one<br><br>Covered by the other parts: desktop shell theme — the MATE panel is drawn by the GTK theme, and the GTK theme of this look is applied<br><br>Partly: colours — Qt programs pick it up after you log in again<br><br>Partly: Qt application style — Qt programs pick it up after you log in again<br><br>Partly: panel layout — the clock sits at the right edge: the MATE panel can&#39;t put applets in the middle<br><br>Partly: panel layout — the dock does not move out of the way of windows: the MATE panel can only hide automatically<br><br>Partly: desktop behaviour — not carried over: maximised windows without title bars — Compiz has no such setting<br><br>Partly: desktop behaviour — instead of the desktop name pop-up, Compiz briefly shows its map of desktops when you switch<br><br>Rexon will install the programs it needs: qt6ct, kvantum, beautyline, ttf-fira-sans, ttf-firacode-nerd. Your system will ask for your password.<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "garuda-dr460nized",
+    "name": "Like Garuda Linux (Dr460nized)",
+    "items": [
+      {
+        "index": 1,
+        "kind": "palette",
+        "consumer": "qt6ct",
+        "path": "sources/sweet/kde/colorschemes/Sweet.colors",
+        "choice": {
+          "choice": "compatible",
+          "consumer": "qt6ct",
+          "from": "kde-colors",
+          "path": "sources/sweet/kde/colorschemes/Sweet.colors"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "window-decoration",
+        "consumer": "metacity-1",
+        "path": "sources/sweet-gtk/Sweet-Dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "metacity-1",
+          "path": "sources/sweet-gtk/Sweet-Dark"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "qt-style",
+        "consumer": "qt6ct",
+        "path": "sources/garuda/usr/share/Kvantum/Dr460nized",
+        "choice": {
+          "choice": "compatible",
+          "consumer": "qt6ct",
+          "from": "kvantum",
+          "path": "sources/garuda/usr/share/Kvantum/Dr460nized"
+        }
+      },
+      {
+        "index": 5,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/sweet-gtk/Sweet-Dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/sweet-gtk/Sweet-Dark"
+        }
+      },
+      {
+        "index": 6,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/beautyline/usr/share/icons/BeautyLine",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/beautyline/usr/share/icons/BeautyLine"
+        }
+      },
+      {
+        "index": 7,
+        "kind": "cursors",
+        "consumer": "freedesktop",
+        "path": "sources/sweet/kde/cursors/Sweet-cursors",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/sweet/kde/cursors/Sweet-cursors"
+        }
+      },
+      {
+        "index": 8,
+        "kind": "fonts",
+        "consumer": "freedesktop",
+        "path": "sources/fira/usr/share/fonts",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/fira/usr/share/fonts"
+        }
+      },
+      {
+        "index": 9,
+        "kind": "wallpaper",
+        "consumer": "any",
+        "path": "sources/garuda/usr/share/wallpapers/Maldrakor",
+        "choice": {
+          "choice": "native",
+          "consumer": "any",
+          "path": "sources/garuda/usr/share/wallpapers/Maldrakor"
+        }
+      },
+      {
+        "index": 10,
+        "kind": "panel-layout",
+        "consumer": "mate-panel",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "mate-panel",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      },
+      {
+        "index": 11,
+        "kind": "behaviour",
+        "consumer": "marco",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "marco",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      }
+    ],
+    "skipped": [],
+    "install": [
+      {
+        "role": "qt6ct",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "qt6ct"
+          ]
+        }
+      },
+      {
+        "role": "kvantum",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "kvantum"
+          ]
+        }
+      },
+      {
+        "role": "icons-beautyline",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "beautyline"
+          ]
+        }
+      },
+      {
+        "role": "fonts-fira",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "ttf-fira-sans",
+            "ttf-firacode-nerd"
+          ]
+        }
+      }
+    ],
+    "aur": [],
+    "roles": [
+      "compiz",
+      "fonts-fira",
+      "icons-beautyline",
+      "kvantum",
+      "qt6ct"
+    ],
+    "fetch": [
+      {
+        "id": "sweet",
+        "url": "https://github.com/EliverLara/Sweet.git",
+        "pin": {
+          "pin": "git",
+          "value": "46e3802d3f4d9e992f94264f1d834f5f9621c03b"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-46e3802d3f4d"
+      },
+      {
+        "id": "sweet-gtk",
+        "url": "https://github.com/EliverLara/Sweet/releases/download/v6.0/Sweet-Dark.tar.xz",
+        "pin": {
+          "pin": "sha256",
+          "value": "123f69effb71acc846502c834c01101c84bfa62f76a5f2eb095d4be07c567599"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-gtk-123f69effb71"
+      },
+      {
+        "id": "garuda",
+        "url": "https://gitlab.com/garuda-linux/themes-and-settings/settings/garuda-dr460nized.git",
+        "pin": {
+          "pin": "git",
+          "value": "1280f411dc307847332ecab2f578ed984d33498c"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/garuda-1280f411dc30"
+      }
+    ],
+    "uses_settings": false,
+    "values": {},
+    "covered": [
+      {
+        "kind": "global-look",
+        "reason": "in Plasma it is one package of the parts listed here; on this desktop Rexon applies them one by one"
+      },
+      {
+        "kind": "shell-theme",
+        "reason": "the MATE panel is drawn by the GTK theme, and the GTK theme of this look is applied"
+      }
+    ],
+    "limits": [
+      {
+        "kind": "palette",
+        "reason": "Qt programs pick it up after you log in again"
+      },
+      {
+        "kind": "qt-style",
+        "reason": "Qt programs pick it up after you log in again"
+      },
+      {
+        "kind": "panel-layout",
+        "reason": "the clock sits at the right edge: the MATE panel can't put applets in the middle"
+      },
+      {
+        "kind": "panel-layout",
+        "reason": "the dock does not move out of the way of windows: the MATE panel can only hide automatically"
+      },
+      {
+        "kind": "behaviour",
+        "reason": "not carried over: maximised windows without title bars — Compiz has no such setting"
+      },
+      {
+        "kind": "behaviour",
+        "reason": "instead of the desktop name pop-up, Compiz briefly shows its map of desktops when you switch"
+      }
+    ],
+    "aur_build": [
+      {
+        "role": "compiz",
+        "packages": [
+          "compiz"
+        ],
+        "kinds": [
+          "behaviour"
+        ],
+        "needed": false
+      }
+    ]
+  },
+  "calls": [
+    "gsettings get org.mate.Marco.general theme",
+    "gsettings get org.mate.interface gtk-theme",
+    "gsettings get org.mate.interface icon-theme",
+    "gsettings get org.mate.peripherals-mouse cursor-theme",
+    "gsettings get org.mate.interface font-name",
+    "glxinfo -B",
+    "gsettings get org.mate.Marco.general theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.Marco.general theme",
+    "gsettings get org.mate.Marco.general theme",
+    "gsettings set org.mate.Marco.general theme Sweet-Dark",
+    "kvantummanager --set Dr460nized",
+    "gsettings get org.mate.interface gtk-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.interface gtk-theme",
+    "gsettings get org.mate.interface gtk-theme",
+    "gsettings set org.mate.interface gtk-theme Sweet-Dark",
+    "gsettings get org.mate.interface icon-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.interface icon-theme",
+    "gsettings get org.mate.interface icon-theme",
+    "gsettings set org.mate.interface icon-theme BeautyLine",
+    "gsettings get org.mate.peripherals-mouse cursor-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.peripherals-mouse cursor-theme",
+    "gsettings get org.mate.peripherals-mouse cursor-theme",
+    "gsettings set org.mate.peripherals-mouse cursor-theme Sweet-cursors",
+    "gsettings get org.mate.interface font-name",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.interface font-name",
+    "gsettings get org.mate.interface font-name",
+    "gsettings set org.mate.interface font-name Fira Sans 10",
+    "sh -c mkdir -p \"$(dirname \"$2\")\" && dconf dump /org/mate/panel/ > \"$2\" && mate-panel --layout \"$1\" --reset sh $HOME/.local/share/mate-panel/layouts/rexon-garuda-dr460nized.layout $HOME/.config/rexon/looks/garuda-dr460nized/mate-panel.dconf",
+    "dconf dump /org/mate/panel/",
+    "mate-panel --layout $HOME/.local/share/mate-panel/layouts/rexon-garuda-dr460nized.layout --reset",
+    "gsettings get org.mate.Marco.general compositing-manager",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.Marco.general compositing-manager",
+    "gsettings get org.mate.Marco.general compositing-manager",
+    "gsettings set org.mate.Marco.general compositing-manager true",
+    "gsettings get org.mate.Marco.general button-layout",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.Marco.general button-layout",
+    "gsettings get org.mate.Marco.general button-layout",
+    "gsettings set org.mate.Marco.general button-layout close,maximize,minimize:",
+    "sh -c u=$(id -u); setsid -f compiz --replace ccp >/dev/null 2>&1 </dev/null; i=0; while [ $i -lt 12 ]; do sleep 1; i=$((i+1)); pgrep -u \"$u\" -x compiz >/dev/null || break; done; if pgrep -u \"$u\" -x compiz >/dev/null && pgrep -u \"$u\" -x gtk-window-deco >/dev/null; then exit 0; fi; setsid -f marco --replace >/dev/null 2>&1 </dev/null; exit 1",
+    "setsid -f compiz --replace ccp",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "sleep 1",
+    "pgrep -u $UID -x compiz",
+    "pgrep -u $UID -x compiz",
+    "pgrep -u $UID -x gtk-window-deco",
+    "gsettings get org.mate.session.required-components windowmanager",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.session.required-components windowmanager",
+    "gsettings get org.mate.session.required-components windowmanager",
+    "gsettings set org.mate.session.required-components windowmanager rexon-compiz"
+  ],
+  "missing": [],
+  "message": "“Like Garuda Linux (Dr460nized)” applied.",
+  "installed": [
+    "qt6ct",
+    "kvantum",
+    "beautyline",
+    "ttf-fira-sans",
+    "ttf-firacode-nerd",
+    "aur/compiz"
+  ],
+  "profile": {
+    ".config/": "",
+    ".config/Kvantum/": "",
+    ".config/Kvantum/Dr460nized/": "",
+    ".config/Kvantum/Dr460nized/.rexon-owner": "look:garuda-dr460nized\n",
+    ".config/Kvantum/Dr460nized/Dr460nized.kvconfig": "[%General]\n",
+    ".config/Kvantum/kvantum.kvconfig": "[General]\ntheme=Dr460nized\n",
+    ".config/compiz-1/": "",
+    ".config/compiz-1/compizconfig/": "",
+    ".config/compiz-1/compizconfig/Rexon.ini": "[core]\ns0_active_plugins = core;composite;opengl;decor;resize;place;move;mousepoll;compiztoolbox;regex;text;session;workarounds;wobbly;animation;fade;shift;wall;\n\n[decor]\ns0_command = gtk-window-decorator\n\n[animation]\ns0_minimize_effects = animation:Magic Lamp;\ns0_unminimize_effects = animation:Magic Lamp;\n\n[shift]\ns0_mode = 0\ns0_next_key = <Alt>Tab\ns0_prev_key = <Shift><Alt>Tab\n\n[wall]\ns0_show_switcher = true\n",
+    ".config/compiz-1/compizconfig/config": "[general]\nbackend = ini\nprofile = Rexon\nplugin_list_autosort = true\n",
+    ".config/environment.d/": "",
+    ".config/environment.d/rexon-cursor.conf": "XCURSOR_THEME=Sweet-cursors\n",
+    ".config/environment.d/rexon-qt-style.conf": "QT_QPA_PLATFORMTHEME=qt6ct\n",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Menta\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\n",
+    ".config/kdeglobals": "[WM]\nactiveBackground=239,240,241\nactiveForeground=35,38,41\ninactiveBackground=239,240,241\ninactiveForeground=35,38,41\nactiveBlend=239,240,241\ninactiveBlend=239,240,241\n\n[KDE]\nframeContrast=0.2\ncontrast=7\n\n[General]\nColorScheme=Sweet\nColorSchemeHash=ea141224264211974831a8a52bf7d952a897a9fb\n\n[UiSettings]\nColorScheme=Sweet\n\n[Icons]\nTheme=BeautyLine\n",
+    ".config/qt6ct/": "",
+    ".config/qt6ct/colors/": "",
+    ".config/qt6ct/colors/Sweet.conf": "[ColorScheme]\nactive_colors=#ff232629, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ff232629, #ffffffff, #ff232629, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ff232629, #ff2980b9, #ff7f8c8d, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ff707d8a, #ffeff0f1\ndisabled_colors=#ffa8a9ab, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ffa8a9ab, #ffffffff, #ffa8a9ab, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ffa8a9ab, #ffaac9dd, #ffc8cdce, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ffc3c8cd, #ffeff0f1\ninactive_colors=#ff232629, #ffeff0f1, #fff5f5f6, #fff1f2f3, #ff838485, #ffb3b4b5, #ff232629, #ffffffff, #ff232629, #ffeff0f1, #ffeff0f1, #ff3c3c3c, #ffeff0f1, #ff232629, #ff2980b9, #ff7f8c8d, #ffe3e5e7, #ff000000, #ffeff0f1, #ff232629, #ff707d8a, #ffeff0f1\n",
+    ".config/qt6ct/qt6ct.conf": "[Appearance]\nstyle=kvantum\ncustom_palette=true\ncolor_scheme_path=$HOME/.config/qt6ct/colors/Sweet.conf\nicon_theme=BeautyLine\n",
+    ".dconfstore/": "",
+    ".dconfstore/mate-panel.txt": "layout=$HOME/.local/share/mate-panel/layouts/rexon-garuda-dr460nized.layout\n",
+    ".gsstore/": "",
+    ".gsstore/org.mate.Marco.general/": "",
+    ".gsstore/org.mate.Marco.general/button-layout": "close,maximize,minimize:",
+    ".gsstore/org.mate.Marco.general/compositing-manager": "true",
+    ".gsstore/org.mate.Marco.general/theme": "Sweet-Dark",
+    ".gsstore/org.mate.interface/": "",
+    ".gsstore/org.mate.interface/font-name": "Fira Sans 10",
+    ".gsstore/org.mate.interface/gtk-theme": "Sweet-Dark",
+    ".gsstore/org.mate.interface/icon-theme": "BeautyLine",
+    ".gsstore/org.mate.peripherals-mouse/": "",
+    ".gsstore/org.mate.peripherals-mouse/cursor-theme": "Sweet-cursors",
+    ".gsstore/org.mate.session.required-components/": "",
+    ".gsstore/org.mate.session.required-components/windowmanager": "rexon-compiz",
+    ".icons/": "",
+    ".icons/default/": "",
+    ".icons/default/index.theme": "[Icon Theme]\nInherits=Sweet-cursors\n",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/applications/": "",
+    ".local/share/applications/rexon-compiz.desktop": "[Desktop Entry]\nType=Application\nName=Compiz (Rexon)\nExec=sh -c \"compiz --replace ccp || exec marco --replace\"\nNoDisplay=true\nX-MATE-WMName=Compiz\nX-MATE-Autostart-Phase=WindowManager\nX-MATE-Provides=windowmanager\nX-MATE-Autostart-Notify=false\n",
+    ".local/share/color-schemes/": "",
+    ".local/share/color-schemes/Sweet.colors": "[General]\n",
+    ".local/share/icons/": "",
+    ".local/share/icons/Sweet-cursors/": "",
+    ".local/share/icons/Sweet-cursors/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/icons/Sweet-cursors/cursors/": "",
+    ".local/share/icons/Sweet-cursors/cursors/default": "left_ptr",
+    ".local/share/icons/Sweet-cursors/cursors/left_ptr": "cur",
+    ".local/share/icons/Sweet-cursors/index.theme": "[Icon Theme]\nName=Sweet-cursors\n",
+    ".local/share/mate-panel/": "",
+    ".local/share/mate-panel/layouts/": "",
+    ".local/share/mate-panel/layouts/rexon-garuda-dr460nized.layout": "[Toplevel top]\nexpand=true\norientation=top\nsize=30\n\n[Toplevel dock]\nexpand=false\norientation=bottom\nsize=56\nx-centered=true\ny-bottom=0\n\n[Object top-menu]\nobject-type=menu\ntoplevel-id=top\nposition=0\nlocked=true\n\n[Object top-window-list]\nobject-type=applet\napplet-iid=WnckletFactory::WindowListApplet\ntoplevel-id=top\nposition=10\nlocked=true\n\n[Object top-notification-area]\nobject-type=applet\napplet-iid=NotificationAreaAppletFactory::NotificationArea\ntoplevel-id=top\nposition=0\npanel-right-stick=true\nlocked=true\n\n[Object top-clock]\nobject-type=applet\napplet-iid=ClockAppletFactory::ClockApplet\ntoplevel-id=top\nposition=10\npanel-right-stick=true\nlocked=true\n\n[Object dock-launcher-mate-terminal]\nobject-type=launcher\nlauncher-location=/usr/share/applications/mate-terminal.desktop\ntoplevel-id=dock\nposition=0\nlocked=true\n\n[Object dock-launcher-firefox]\nobject-type=launcher\nlauncher-location=/usr/share/applications/firefox.desktop\ntoplevel-id=dock\nposition=10\nlocked=true\n\n[Object dock-launcher-caja-browser]\nobject-type=launcher\nlauncher-location=/usr/share/applications/caja-browser.desktop\ntoplevel-id=dock\nposition=20\nlocked=true\n\n[Object dock-launcher-matecc]\nobject-type=launcher\nlauncher-location=/usr/share/applications/matecc.desktop\ntoplevel-id=dock\nposition=30\nlocked=true\n",
+    ".local/share/themes/": "",
+    ".local/share/themes/Sweet-Dark/": "",
+    ".local/share/themes/Sweet-Dark/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/": "",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Sweet-Dark/index.theme": "[Desktop Entry]\nName=Sweet-Dark\n",
+    ".local/share/themes/Sweet-Dark/xfwm4/": "",
+    ".local/share/themes/Sweet-Dark/xfwm4/themerc": "x=1\n",
+    ".local/share/wallpapers/": "",
+    ".local/share/wallpapers/Maldrakor/": "",
+    ".local/share/wallpapers/Maldrakor/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/wallpapers/Maldrakor/contents/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg": "jpg",
+    ".local/share/wallpapers/Maldrakor/metadata.json": "{}"
+  }
+}

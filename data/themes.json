@@ -1,0 +1,115 @@
+{
+  "_comment": "Каталог тем Rexon. Пользователь может добавить свои темы по образцу.",
+  "_format": {
+    "kind": "gtk | icons | cursor",
+    "pkg_*": "имя пакета для дистрибутива (пусто если нет)",
+    "aur": "имя AUR-пакета (Arch)",
+    "desc": "описание на русском",
+    "tags": ["массив тегов"],
+    "color": "HEX-цвет акцента для превью"
+  },
+  "themes": {
+    "Dracula": {
+      "pkg_arch": "dracula-gtk-theme",
+      "pkg_debian": "dracula-theme",
+      "pkg_fedora": "dracula-theme",
+      "pkg_suse": "",
+      "pkg_gentoo": "x11-themes/dracula-theme",
+      "aur": "dracula-gtk-theme",
+      "kind": "gtk",
+      "desc": "Тёмная вампирская тема с фиолетово-розовыми акцентами",
+      "tags": ["тёмная", "популярная"],
+      "color": "#bd93f9"
+    },
+    "Nordic": {
+      "pkg_arch": "nordic-theme",
+      "pkg_debian": "",
+      "pkg_fedora": "",
+      "pkg_suse": "",
+      "aur": "nordic-theme",
+      "kind": "gtk",
+      "desc": "Минималистичная Nord-палитра (синий, полярный)",
+      "tags": ["тёмная", "минимализм"],
+      "color": "#88c0d0"
+    },
+    "Arc-Dark": {
+      "pkg_arch": "arc-gtk-theme",
+      "pkg_debian": "arc-theme",
+      "pkg_fedora": "arc-theme",
+      "pkg_suse": "arc-gtk-theme",
+      "pkg_gentoo": "x11-themes/arc-theme",
+      "aur": "",
+      "kind": "gtk",
+      "desc": "Плоская классика с прозрачными элементами",
+      "tags": ["тёмная", "плоский"],
+      "color": "#5294e2"
+    },
+    "Catppuccin-Mocha": {
+      "pkg_arch": "",
+      "pkg_debian": "",
+      "aur": "catppuccin-gtk-theme-mocha",
+      "kind": "gtk",
+      "desc": "Тёплая пастельная тёмная тема (Mocha)",
+      "tags": ["тёмная", "пастельная"],
+      "color": "#cba6f7"
+    },
+    "Catppuccin-Latte": {
+      "pkg_arch": "",
+      "pkg_debian": "",
+      "aur": "catppuccin-gtk-theme-latte",
+      "kind": "gtk",
+      "desc": "Светлый вариант Catppuccin — тёплый и уютный",
+      "tags": ["светлая", "пастельная"],
+      "color": "#8839ef"
+    },
+    "Orchis-Dark": {
+      "pkg_arch": "orchis-theme",
+      "pkg_debian": "",
+      "aur": "",
+      "kind": "gtk",
+      "desc": "Material-тема в стиле GNOME с мягкими углами",
+      "tags": ["тёмная", "material"],
+      "color": "#4db6ac"
+    },
+    "Everforest-Dark": {
+      "pkg_arch": "",
+      "pkg_debian": "",
+      "aur": "everforest-gtk-theme",
+      "kind": "gtk",
+      "desc": "Зелёная лесная тема с низким контрастом",
+      "tags": ["тёмная", "зелёная"],
+      "color": "#a7c080"
+    },
+    "Papirus-Dark": {
+      "pkg_arch": "papirus-icon-theme",
+      "pkg_debian": "papirus-icon-theme",
+      "pkg_fedora": "papirus-icon-theme",
+      "pkg_suse": "papirus-icon-theme",
+      "pkg_gentoo": "x11-themes/papirus-icon-theme",
+      "pkg_void": "papirus-icon-theme",
+      "aur": "",
+      "kind": "icons",
+      "desc": "Плоские иконки, тысячи вариантов для GTK/KDE",
+      "tags": ["иконки", "flat"],
+      "color": "#5e81ac"
+    },
+    "Tela-Circle-Dark": {
+      "pkg_arch": "",
+      "pkg_debian": "",
+      "aur": "tela-circle-icon-theme-dark",
+      "kind": "icons",
+      "desc": "Круглые монохромные иконки — стильный минимализм",
+      "tags": ["иконки", "minimal"],
+      "color": "#888888"
+    },
+    "Colloid": {
+      "pkg_arch": "",
+      "pkg_debian": "",
+      "aur": "colloid-icon-theme",
+      "kind": "icons",
+      "desc": "Современные иконки в стиле macOS",
+      "tags": ["иконки", "macos-like"],
+      "color": "#6c9dd0"
+    }
+  }
+}

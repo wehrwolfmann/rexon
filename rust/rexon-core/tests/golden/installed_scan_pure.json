@@ -1,0 +1,406 @@
+{
+ "normalize": {
+  "WhiteSur-Dark-nord": "whitesurdarknord",
+  "WhiteSur Gtk Theme": "whitesur",
+  "Sweet KDE": "sweet",
+  "Nord": "nord",
+  "Utterly-Round-Plasma-Style": "utterlyroundstyle",
+  "Breeze Dark": "breezedark",
+  "Тёмная тема GTK": "тёмнаятема",
+  "kvantum-dark": "dark",
+  "a.b_c-d e": "abcde",
+  "": "",
+  "ICONS": "",
+  "cursor-theme-x11": "x11"
+ },
+ "sidecar_key": {
+  "colors|My Scheme": "colors__My_Scheme.png",
+  "colors|a/b:c*d": "colors__a_b_c_d.png",
+  "gtk|WhiteSur-Dark": "gtk__WhiteSur-Dark.png",
+  "icons|Тема_с юникодом": "icons__Тема_с_юникодом.png",
+  "global|..": "global__...png"
+ },
+ "foreign_pkgs": {
+  "ok": {
+   "attempts": [
+    [
+     "ok",
+     "aur-fancy-icons 1.0-1\naerothemeplasma-desktop-git 6.6-2\n\n"
+    ]
+   ],
+   "result": [
+    "aerothemeplasma-desktop-git",
+    "aur-fancy-icons"
+   ],
+   "used": 1,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ]
+  },
+  "lock-retry-ok": {
+   "attempts": [
+    [
+     "fail",
+     "error: failed to init: db.lck held"
+    ],
+    [
+     "ok",
+     "aur-fancy-icons 1.0-1\naerothemeplasma-desktop-git 6.6-2\n\n"
+    ]
+   ],
+   "result": [
+    "aerothemeplasma-desktop-git",
+    "aur-fancy-icons"
+   ],
+   "used": 2,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ],
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ]
+  },
+  "lock-retry-fail": {
+   "attempts": [
+    [
+     "fail",
+     "db.lck"
+    ],
+    [
+     "fail",
+     "db.lck"
+    ]
+   ],
+   "result": null,
+   "used": 2,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ],
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ]
+  },
+  "hard-error": {
+   "attempts": [
+    [
+     "fail",
+     "some other error"
+    ]
+   ],
+   "result": null,
+   "used": 1,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ]
+  },
+  "oserror": {
+   "attempts": [
+    [
+     "error"
+    ],
+    [
+     "error"
+    ]
+   ],
+   "result": null,
+   "used": 2,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ],
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ]
+  },
+  "live-cachyos": {
+   "attempts": [
+    [
+     "ok",
+     "aeroshell-libplasma-git 6.7.4_18049.rda45ff724-1\ndecky-loader 3.2.6-1\ndotool 1.6-1\ndracula-gtk-theme v4.0.0-1\ngeocode-glib-2 3.26.4-5.3\ngeocode-glib-common 3.26.4-5.3\nheroic-games-launcher 2.22.1-1\njack 0.126.0-6\nkdotool-bin 0.2.3-1\nlinux-wallpaperengine-git r627.b016d7d1-1\nlinux-wallpaperengine-gui-git r326.8855fad-1\nmate-layouts 0.1.1-1\nmate-menu 22.04.2-4\nmegatools 1:1.11.5-2\nnerd-dictation-git 0.0.r161.41f3727-1\npolychromatic 0.9.8-1\npython-aiohttp-cors 0.8.1-1\npython-aiohttp-jinja2 1.6-2\npython-sounddevice 0.5.5-1\nrr 5.9.0-2\nsplix 2.0.2-3\nvala-panel-appmenu-registrar-git 25.04.r10.g63e63e7-1\nvala-panel-git 24.05.r7.g8200570-1\nwallpaper-engine-kde-plugin-git 0.6.0.r697.g5f7588f-1\nxdg-terminal-exec 0.14.3-1\n"
+    ]
+   ],
+   "result": [
+    "aeroshell-libplasma-git",
+    "decky-loader",
+    "dotool",
+    "dracula-gtk-theme",
+    "geocode-glib-2",
+    "geocode-glib-common",
+    "heroic-games-launcher",
+    "jack",
+    "kdotool-bin",
+    "linux-wallpaperengine-git",
+    "linux-wallpaperengine-gui-git",
+    "mate-layouts",
+    "mate-menu",
+    "megatools",
+    "nerd-dictation-git",
+    "polychromatic",
+    "python-aiohttp-cors",
+    "python-aiohttp-jinja2",
+    "python-sounddevice",
+    "rr",
+    "splix",
+    "vala-panel-appmenu-registrar-git",
+    "vala-panel-git",
+    "wallpaper-engine-kde-plugin-git",
+    "xdg-terminal-exec"
+   ],
+   "used": 1,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ],
+   "note": "Живой ответ этой машины: пакеты, собранные на месте."
+  },
+  "empty-ok": {
+   "attempts": [
+    [
+     "ok",
+     ""
+    ]
+   ],
+   "result": [],
+   "used": 1,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ],
+   "note": "Нулевой код и пустой ответ — это ОТВЕТ «таких пакетов нет», а не отказ: пустой набор, не None."
+  },
+  "garbage-ok": {
+   "attempts": [
+    [
+     "ok",
+     "\n   \nимя-пакета 1.0-1 лишняя колонка\n\tтабом 2.0\n"
+    ]
+   ],
+   "result": [
+    "имя-пакета",
+    "табом"
+   ],
+   "used": 1,
+   "calls": [
+    [
+     "pacman",
+     "-Qm"
+    ]
+   ],
+   "note": "Пустые и пробельные строки выбрасываются, лишние колонки игнорируются — берётся первое слово строки."
+  }
+ },
+ "owner_pkgs": {
+  "paths": [
+   "/usr/share/themes/Breeze",
+   "/usr/share/icons/Adwaita",
+   "/usr/share/themes/Manual",
+   "/usr/share/color-schemes/Nordic.colors"
+  ],
+  "stdout": "/usr/share/themes/Breeze is owned by breeze-gtk 6.3.5-1\n/usr/share/icons/Adwaita/ is owned by adwaita-icon-theme 48.0-1\nerror: No package owns /usr/share/themes/Manual\n/usr/share/color-schemes/Nordic.colors is owned by nordic-theme-git 2.2.0-1\nмусорная строка без формата\n",
+  "result": {
+   "/usr/share/themes/Breeze": "breeze-gtk",
+   "/usr/share/icons/Adwaita": "adwaita-icon-theme",
+   "/usr/share/color-schemes/Nordic.colors": "nordic-theme-git"
+  },
+  "calls": [
+   [
+    "pacman",
+    "-Qo",
+    "/usr/share/themes/Breeze",
+    "/usr/share/icons/Adwaita",
+    "/usr/share/themes/Manual",
+    "/usr/share/color-schemes/Nordic.colors"
+   ]
+  ]
+ },
+ "active_map": [
+  {
+   "label": "full",
+   "inputs": {
+    "kde_global": "rexon-splashy",
+    "kde_plasma_style": "default",
+    "kde_colors": "RexonNord",
+    "icons": "SyntheticIcons",
+    "mouse_cursor": "SyntheticCursors",
+    "kcminput_cursor": "",
+    "xcursor_env": "",
+    "gtk_settings_ini": "[Settings]\ngtk-application-prefer-dark-theme=1\ngtk-theme-name=WhiteSur-Dark\ngtk-icon-theme-name=Tela\n",
+    "widget_style": "kvantum",
+    "splash": "rexon-splashy\n",
+    "lockscreen": "rexon-splashy\n",
+    "kwin_decoration_theme": "__aurorae__svg__CatppuccinMocha\n",
+    "kvantum_kvconfig": "[General]\ncomment=x\ntheme=KvRexon\n",
+    "sddm_confs": [
+     "[Theme]\nCurrent=elarun\n",
+     "# drop-in\n[Theme]\nCurrent=breeze\n",
+     "[Theme]\nCurrent=plasmalogin-theme\n"
+    ],
+    "plymouth_confs": [
+     "[Daemon]\nTheme=cachyos-bootanimation\nShowDelay=0\n"
+    ]
+   },
+   "result": {
+    "global": "rexon-splashy",
+    "plasma": "default",
+    "colors": "RexonNord",
+    "icons": "SyntheticIcons",
+    "cursor": "SyntheticCursors",
+    "gtk": "WhiteSur-Dark",
+    "widgetstyle": "kvantum",
+    "splash": "rexon-splashy",
+    "lockscreen": "rexon-splashy",
+    "aurorae": "CatppuccinMocha",
+    "kvantum": "KvRexon",
+    "sddm": "plasmalogin-theme",
+    "plymouth": "cachyos-bootanimation"
+   }
+  },
+  {
+   "label": "empty",
+   "inputs": {
+    "kde_global": "",
+    "kde_plasma_style": "",
+    "kde_colors": "",
+    "icons": "",
+    "mouse_cursor": "",
+    "kcminput_cursor": "",
+    "xcursor_env": "",
+    "gtk_settings_ini": null,
+    "widget_style": "",
+    "splash": null,
+    "lockscreen": null,
+    "kwin_decoration_theme": null,
+    "kvantum_kvconfig": null,
+    "sddm_confs": [],
+    "plymouth_confs": []
+   },
+   "result": {}
+  },
+  {
+   "label": "dashes-and-fallbacks",
+   "inputs": {
+    "kde_global": "—",
+    "kde_plasma_style": "",
+    "kde_colors": "  Breeze  ",
+    "icons": "",
+    "mouse_cursor": "—",
+    "kcminput_cursor": "",
+    "xcursor_env": "Adwaita",
+    "gtk_settings_ini": null,
+    "widget_style": "",
+    "splash": null,
+    "lockscreen": null,
+    "kwin_decoration_theme": "kwin4_decoration_qml_plastik\n",
+    "kvantum_kvconfig": null,
+    "sddm_confs": [],
+    "plymouth_confs": []
+   },
+   "result": {
+    "colors": "Breeze",
+    "cursor": "Adwaita"
+   }
+  },
+  {
+   "label": "aurorae-empty-suffix",
+   "inputs": {
+    "kde_global": "",
+    "kde_plasma_style": "",
+    "kde_colors": "",
+    "icons": "",
+    "mouse_cursor": "",
+    "kcminput_cursor": "",
+    "xcursor_env": "",
+    "gtk_settings_ini": null,
+    "widget_style": "",
+    "splash": null,
+    "lockscreen": null,
+    "kwin_decoration_theme": "__aurorae__svg__",
+    "kvantum_kvconfig": null,
+    "sddm_confs": [],
+    "plymouth_confs": []
+   },
+   "result": {
+    "aurorae": ""
+   }
+  },
+  {
+   "label": "sddm-priority-no-dropin",
+   "inputs": {
+    "kde_global": "",
+    "kde_plasma_style": "",
+    "kde_colors": "",
+    "icons": "",
+    "mouse_cursor": "",
+    "kcminput_cursor": "",
+    "xcursor_env": "",
+    "gtk_settings_ini": null,
+    "widget_style": "",
+    "splash": null,
+    "lockscreen": null,
+    "kwin_decoration_theme": null,
+    "kvantum_kvconfig": null,
+    "sddm_confs": [
+     "[Theme]\nCurrent=elarun\n"
+    ],
+    "plymouth_confs": []
+   },
+   "result": {
+    "sddm": "elarun"
+   }
+  }
+ ],
+ "owner_pkgs_cases": [
+  {
+   "label": "live-breeze",
+   "stdout": "/usr/share/themes/Breeze/ is owned by breeze-gtk 6.7.4-1\n/usr/share/themes/Breeze/ is owned by kde-gtk-config 6.7.4-1.1\n/usr/share/icons/breeze/ is owned by breeze-icons 6.29.0-1.1\n/usr/share/color-schemes/BreezeDark.colors is owned by breeze 6.7.4-2.1\n/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop/ is owned by plasma-workspace 6.7.4-3.1\n",
+   "expected": {
+    "/usr/share/themes/Breeze": "kde-gtk-config",
+    "/usr/share/icons/breeze": "breeze-icons",
+    "/usr/share/color-schemes/BreezeDark.colors": "breeze",
+    "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop": "plasma-workspace"
+   },
+   "note": "Живой ответ этой машины. ⚠️Один путь бывает у ДВУХ пакетов (/usr/share/themes/Breeze/ — breeze-gtk и kde-gtk-config): в карту попадает последний, как и в питоновском оригинале (dict[path] = pkg). Для классификации это безразлично — оба из репозиториев. Хвостовой «/» срезается; ничей путь в stdout не приходит вовсе, он в stderr."
+  },
+  {
+   "label": "empty",
+   "stdout": "",
+   "expected": {},
+   "note": "Пустой ответ — пустая карта владельцев."
+  },
+  {
+   "label": "failed-run",
+   "stdout": "",
+   "expected": {},
+   "note": "Команда не выполнилась вовсе: исполнитель отдаёт разбору пустой stdout, и карта пуста. Ненулевой код сам по себе разбор НЕ отменяет — см. live-breeze, там код 1."
+  },
+  {
+   "label": "garbage",
+   "stdout": "мусорная строка без формата\nis owned by без пути\n/путь is owned by пакет\n/путь2 is owned by пакет версия лишнее\n   \n/годный/путь is owned by пакет 1.0-1\n",
+   "expected": {
+    "/годный/путь": "пакет"
+   },
+   "note": "Мимо формата «<путь> is owned by <пакет> <версия>» ничто не проходит: ни строка без пути, ни без версии, ни с лишней колонкой."
+  }
+ ]
+}

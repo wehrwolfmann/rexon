@@ -1,0 +1,3543 @@
+{
+ "id_map": {
+  "arch": "arch",
+  "cachyos": "arch",
+  "manjaro": "arch",
+  "endeavouros": "arch",
+  "garuda": "arch",
+  "artix": "arch",
+  "steamos": "arch",
+  "archcraft": "arch",
+  "blendos": "arch",
+  "archbang": "arch",
+  "crystal": "arch",
+  "debian": "debian",
+  "ubuntu": "debian",
+  "linuxmint": "debian",
+  "pop": "debian",
+  "elementary": "debian",
+  "zorin": "debian",
+  "kali": "debian",
+  "parrot": "debian",
+  "mx": "debian",
+  "mxlinux": "debian",
+  "lmde": "debian",
+  "raspbian": "debian",
+  "peppermint": "debian",
+  "tuxedo": "debian",
+  "fedora": "fedora",
+  "rhel": "fedora",
+  "centos": "fedora",
+  "almalinux": "fedora",
+  "rocky": "fedora",
+  "ol": "fedora",
+  "nobara": "fedora",
+  "ultramarine": "fedora",
+  "bazzite": "fedora",
+  "opensuse": "suse",
+  "opensuse-leap": "suse",
+  "opensuse-tumbleweed": "suse",
+  "sle": "suse",
+  "sles": "suse",
+  "gentoo": "gentoo",
+  "alpine": "alpine",
+  "void": "void",
+  "nixos": "nix",
+  "solus": "solus",
+  "clear-linux-os": "clear",
+  "alt": "alt",
+  "altlinux": "alt",
+  "simply": "alt",
+  "astra": "debian",
+  "osnova": "debian",
+  "boss": "debian",
+  "redos": "fedora",
+  "rosa": "fedora",
+  "calculate": "gentoo"
+ },
+ "id_map_order": [
+  "arch",
+  "cachyos",
+  "manjaro",
+  "endeavouros",
+  "garuda",
+  "artix",
+  "steamos",
+  "archcraft",
+  "blendos",
+  "archbang",
+  "crystal",
+  "debian",
+  "ubuntu",
+  "linuxmint",
+  "pop",
+  "elementary",
+  "zorin",
+  "kali",
+  "parrot",
+  "mx",
+  "mxlinux",
+  "lmde",
+  "raspbian",
+  "peppermint",
+  "tuxedo",
+  "fedora",
+  "rhel",
+  "centos",
+  "almalinux",
+  "rocky",
+  "ol",
+  "nobara",
+  "ultramarine",
+  "bazzite",
+  "opensuse",
+  "opensuse-leap",
+  "opensuse-tumbleweed",
+  "sle",
+  "sles",
+  "gentoo",
+  "alpine",
+  "void",
+  "nixos",
+  "solus",
+  "clear-linux-os",
+  "alt",
+  "altlinux",
+  "simply",
+  "astra",
+  "osnova",
+  "boss",
+  "redos",
+  "rosa",
+  "calculate"
+ ],
+ "de_ids": [
+  "cinnamon-mint",
+  "xfce",
+  "mate",
+  "gnome",
+  "kde",
+  "budgie",
+  "pantheon",
+  "deepin",
+  "cosmic",
+  "hyprland",
+  "lxqt",
+  "niri",
+  "sway",
+  "river",
+  "wayfire"
+ ],
+ "db": {
+  "cinnamon-mint": {
+   "packages": {
+    "arch": [
+     "cinnamon",
+     "cinnamon-translations",
+     "nemo",
+     "nemo-fileroller",
+     "gnome-terminal",
+     "lightdm",
+     "lightdm-slick-greeter"
+    ],
+    "debian": [
+     "cinnamon-desktop-environment",
+     "lightdm",
+     "lightdm-gtk-greeter",
+     "nemo"
+    ],
+    "fedora": [
+     "@cinnamon-desktop-environment",
+     "cinnamon-themes",
+     "mint-y-theme",
+     "mint-y-icons",
+     "mint-x-icons",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "suse": [
+     "patterns-cinnamon-cinnamon",
+     "lightdm",
+     "lightdm-gtk-greeter",
+     "nemo"
+    ],
+    "gentoo": [
+     "gnome-extra/cinnamon",
+     "x11-misc/lightdm",
+     "gnome-extra/nemo"
+    ],
+    "alpine": [
+     "cinnamon",
+     "nemo",
+     "gnome-terminal",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "solus": [
+     "cinnamon",
+     "nemo",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "void": [
+     "cinnamon-all",
+     "lightdm",
+     "lightdm-gtk3-greeter"
+    ],
+    "alt": [
+     "cinnamon",
+     "nemo",
+     "gnome-terminal",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "solus",
+    "void",
+    "alt"
+   ],
+   "aur": [
+    "mint-themes",
+    "mint-x-icons",
+    "mint-y-icons",
+    "mint-backgrounds",
+    "lightdm-settings"
+   ],
+   "check_package": "cinnamon",
+   "config_paths": [
+    "~/.config/cinnamon",
+    "~/.cinnamon",
+    "~/.cinnamon/configs",
+    "~/.local/share/cinnamon",
+    "~/.config/cinnamon-session",
+    "~/.config/dconf/user"
+   ]
+  },
+  "xfce": {
+   "packages": {
+    "arch": [
+     "xfce4",
+     "xfce4-goodies",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "debian": [
+     "xfce4",
+     "xfce4-goodies",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "fedora": [
+     "@xfce-desktop-environment",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "suse": [
+     "patterns-xfce-xfce",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "gentoo": [
+     "xfce-base/xfce4-meta",
+     "x11-terms/xfce4-terminal",
+     "app-editors/mousepad",
+     "x11-misc/lightdm"
+    ],
+    "alpine": [
+     "xfce4",
+     "xfce4-terminal",
+     "xfce4-screensaver",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "void": [
+     "xfce4",
+     "lightdm",
+     "lightdm-gtk3-greeter"
+    ],
+    "solus": [
+     "xfce4-desktop",
+     "lightdm"
+    ],
+    "clear": [
+     "desktop-xfce4"
+    ],
+    "alt": [
+     "xfce4",
+     "xfce4-goodies",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void",
+    "solus",
+    "clear",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "xfce4-session",
+   "config_paths": [
+    "~/.config/xfce4",
+    "~/.config/Thunar"
+   ]
+  },
+  "mate": {
+   "packages": {
+    "arch": [
+     "mate",
+     "mate-extra",
+     "plank",
+     "lightdm",
+     "lightdm-gtk-greeter",
+     "appmenu-gtk-module"
+    ],
+    "debian": [
+     "mate-desktop-environment",
+     "mate-desktop-environment-extras",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "fedora": [
+     "@mate-desktop-environment",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "suse": [
+     "patterns-mate-mate",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "gentoo": [
+     "mate-base/mate",
+     "x11-misc/lightdm"
+    ],
+    "alpine": [
+     "mate-desktop",
+     "mate-session-manager",
+     "mate-panel",
+     "caja",
+     "marco",
+     "mate-terminal",
+     "mate-utils",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "void": [
+     "mate",
+     "lightdm",
+     "lightdm-gtk3-greeter"
+    ],
+    "alt": [
+     "mate",
+     "mate-terminal",
+     "plank",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void",
+    "alt"
+   ],
+   "aur": [
+    "mate-tweak",
+    "brisk-menu",
+    "mate-indicator-applet",
+    "ayatana-indicator-application",
+    "ayatana-indicator-session",
+    "ayatana-indicator-datetime",
+    "ayatana-indicator-sound",
+    "ayatana-indicator-notifications",
+    "vala-panel-appmenu-mate",
+    "vala-panel-appmenu-registrar"
+   ],
+   "check_package": "mate-session-manager",
+   "config_paths": [
+    "~/.config/mate",
+    "~/.config/caja",
+    "~/.config/mate-session",
+    "~/.config/dconf/user"
+   ]
+  },
+  "gnome": {
+   "packages": {
+    "arch": [
+     "gnome",
+     "gnome-tweaks",
+     "gdm"
+    ],
+    "debian": [
+     "gnome",
+     "gnome-tweaks",
+     "gdm3"
+    ],
+    "fedora": [
+     "@gnome-desktop",
+     "gnome-tweaks",
+     "gdm"
+    ],
+    "suse": [
+     "patterns-gnome-gnome",
+     "gdm"
+    ],
+    "gentoo": [
+     "gnome-base/gnome",
+     "gnome-base/gdm"
+    ],
+    "alpine": [
+     "gnome-desktop",
+     "gnome-shell",
+     "gnome-control-center",
+     "nautilus",
+     "gdm"
+    ],
+    "void": [
+     "gnome",
+     "gdm"
+    ],
+    "solus": [
+     "gnome-shell",
+     "gnome-desktop-branding",
+     "gnome-control-center",
+     "gdm"
+    ],
+    "clear": [
+     "desktop-gnome-apps"
+    ],
+    "alt": [
+     "gnome-shell",
+     "gnome-control-center",
+     "gnome-tweaks",
+     "nautilus",
+     "gdm"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void",
+    "solus",
+    "clear",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "gnome-shell",
+   "config_paths": [
+    "~/.config/gnome-session",
+    "~/.config/dconf/user",
+    "~/.local/share/gnome-shell/extensions",
+    "~/.local/share/backgrounds"
+   ]
+  },
+  "kde": {
+   "packages": {
+    "arch": [
+     "plasma-meta",
+     "konsole",
+     "dolphin",
+     "kate",
+     "gwenview",
+     "ark",
+     "spectacle",
+     "plasma-login-manager"
+    ],
+    "debian": [
+     "kde-plasma-desktop",
+     "konsole",
+     "dolphin",
+     "sddm"
+    ],
+    "fedora": [
+     "@kde-desktop-environment",
+     "sddm"
+    ],
+    "suse": [
+     "patterns-kde-kde",
+     "sddm"
+    ],
+    "gentoo": [
+     "kde-plasma/plasma-meta",
+     "x11-misc/sddm"
+    ],
+    "alpine": [
+     "plasma-desktop-meta",
+     "konsole",
+     "dolphin",
+     "sddm"
+    ],
+    "void": [
+     "kde-plasma",
+     "konsole",
+     "dolphin",
+     "sddm"
+    ],
+    "solus": [
+     "plasma-desktop",
+     "sddm"
+    ],
+    "clear": [
+     "desktop-kde-apps"
+    ],
+    "alt": [
+     "kde5",
+     "plasma5-workspace",
+     "konsole",
+     "dolphin",
+     "sddm"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void",
+    "solus",
+    "clear",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "plasma-desktop",
+   "config_paths": [
+    "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+    "~/.config/plasmashellrc",
+    "~/.config/kdeglobals",
+    "~/.config/kwinrc",
+    "~/.config/kglobalshortcutsrc",
+    "~/.config/kcminputrc",
+    "~/.config/plasmarc",
+    "~/.config/plasmanotifyrc",
+    "~/.local/share/plasma",
+    "~/.local/share/color-schemes"
+   ]
+  },
+  "budgie": {
+   "packages": {
+    "arch": [
+     "budgie-desktop",
+     "budgie-desktop-view",
+     "budgie-extras",
+     "network-manager-applet",
+     "nautilus",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "debian": [
+     "budgie-desktop",
+     "budgie-extras",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "fedora": [
+     "@budgie-desktop-environment",
+     "lightdm"
+    ],
+    "suse": [
+     "patterns-budgie-budgie",
+     "lightdm"
+    ],
+    "gentoo": [
+     "budgie-base/budgie-desktop",
+     "budgie-base/budgie-desktop-view",
+     "x11-misc/lightdm"
+    ],
+    "void": [
+     "budgie-desktop",
+     "lightdm",
+     "lightdm-gtk3-greeter"
+    ],
+    "solus": [
+     "budgie-desktop",
+     "lightdm"
+    ],
+    "alt": [
+     "budgie-desktop",
+     "nautilus",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "void",
+    "solus",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "budgie-desktop",
+   "config_paths": [
+    "~/.config/budgie-desktop",
+    "~/.config/budgie-extras",
+    "~/.config/dconf/user"
+   ]
+  },
+  "pantheon": {
+   "packages": {
+    "arch": [
+     "pantheon",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ]
+   },
+   "packages_order": [
+    "arch"
+   ],
+   "aur": [],
+   "check_package": "pantheon-session",
+   "config_paths": [
+    "~/.config/dconf/user",
+    "~/.config/plank",
+    "~/.local/share/plank"
+   ]
+  },
+  "deepin": {
+   "packages": {
+    "arch": [
+     "deepin",
+     "lightdm"
+    ]
+   },
+   "packages_order": [
+    "arch"
+   ],
+   "aur": [],
+   "check_package": "deepin-session",
+   "config_paths": [
+    "~/.config/deepin",
+    "~/.config/dsg",
+    "~/.config/dconf/user"
+   ]
+  },
+  "cosmic": {
+   "packages": {
+    "arch": [
+     "cosmic-session",
+     "cosmic-comp",
+     "cosmic-panel",
+     "cosmic-applets",
+     "cosmic-app-library",
+     "cosmic-bg",
+     "cosmic-greeter",
+     "cosmic-idle",
+     "cosmic-launcher",
+     "cosmic-notifications",
+     "cosmic-osd",
+     "cosmic-randr",
+     "cosmic-screenshot",
+     "cosmic-settings",
+     "cosmic-settings-daemon",
+     "cosmic-workspaces",
+     "cosmic-initial-setup",
+     "xdg-desktop-portal-cosmic",
+     "cosmic-files",
+     "cosmic-terminal",
+     "cosmic-text-editor",
+     "cosmic-store",
+     "cosmic-player",
+     "cosmic-wallpapers",
+     "cosmic-icon-theme",
+     "gnome-keyring",
+     "power-profiles-daemon",
+     "packagekit",
+     "flatpak"
+    ],
+    "fedora": [
+     "cosmic-desktop"
+    ],
+    "suse": [
+     "patterns-cosmic-cosmic"
+    ],
+    "gentoo": [
+     "cosmic-base/cosmic-session"
+    ],
+    "alpine": [
+     "cosmic-session",
+     "cosmic-comp",
+     "cosmic-panel",
+     "cosmic-applets",
+     "cosmic-app-library",
+     "cosmic-bg",
+     "cosmic-greeter",
+     "cosmic-idle",
+     "cosmic-launcher",
+     "cosmic-notifications",
+     "cosmic-osd",
+     "cosmic-randr",
+     "cosmic-screenshot",
+     "cosmic-settings",
+     "cosmic-settings-daemon",
+     "cosmic-workspaces",
+     "xdg-desktop-portal-cosmic",
+     "cosmic-files",
+     "cosmic-terminal",
+     "cosmic-text-editor",
+     "cosmic-store",
+     "cosmic-wallpapers",
+     "cosmic-icons"
+    ],
+    "void": [
+     "cosmic-desktop"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void"
+   ],
+   "aur": [],
+   "check_package": "cosmic-session",
+   "config_paths": [
+    "~/.config/cosmic",
+    "~/.local/state/cosmic"
+   ]
+  },
+  "hyprland": {
+   "packages": {
+    "arch": [
+     "hyprland",
+     "hyprpaper",
+     "hyprlock",
+     "hypridle",
+     "xdg-desktop-portal-hyprland",
+     "xdg-desktop-portal-gtk",
+     "waybar",
+     "wofi",
+     "kitty",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "polkit-gnome",
+     "otf-font-awesome"
+    ],
+    "debian": [
+     "hyprland",
+     "xdg-desktop-portal-hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "fedora": [
+     "hyprland",
+     "xdg-desktop-portal-hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "suse": [
+     "hyprland",
+     "xdg-desktop-portal-hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "gentoo": [
+     "gui-wm/hyprland",
+     "gui-apps/waybar",
+     "gui-apps/wofi",
+     "x11-terms/kitty",
+     "gui-apps/grim",
+     "gui-apps/slurp"
+    ],
+    "void": [
+     "hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "alpine": [
+     "hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "alt": [
+     "hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "void",
+    "alpine",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "hyprland",
+   "config_paths": [
+    "~/.config/hypr",
+    "~/.config/waybar",
+    "~/.config/wofi",
+    "~/.config/kitty"
+   ]
+  },
+  "lxqt": {
+   "packages": {
+    "arch": [
+     "lxqt",
+     "openbox",
+     "breeze-icons",
+     "sddm"
+    ],
+    "debian": [
+     "lxqt",
+     "sddm"
+    ],
+    "fedora": [
+     "@lxqt-desktop-environment",
+     "sddm"
+    ],
+    "suse": [
+     "patterns-lxqt-lxqt",
+     "sddm"
+    ],
+    "gentoo": [
+     "lxqt-base/lxqt-meta",
+     "x11-misc/sddm"
+    ],
+    "alpine": [
+     "lxqt-desktop",
+     "lximage-qt",
+     "pavucontrol-qt",
+     "font-dejavu",
+     "sddm"
+    ],
+    "void": [
+     "lxqt",
+     "sddm"
+    ],
+    "alt": [
+     "lxqt-session",
+     "lxqt-panel",
+     "lxqt-config",
+     "lxqt-policykit",
+     "lxqt-runner",
+     "lxqt-notificationd",
+     "pcmanfm-qt",
+     "qterminal",
+     "openbox",
+     "sddm"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "alpine",
+    "void",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "lxqt-session",
+   "config_paths": [
+    "~/.config/lxqt",
+    "~/.config/pcmanfm-qt",
+    "~/.config/qterminal.org",
+    "~/.config/openbox"
+   ]
+  },
+  "niri": {
+   "packages": {
+    "arch": [
+     "niri",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "fuzzel",
+     "alacritty",
+     "mako",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "polkit-gnome",
+     "xdg-desktop-portal-gnome",
+     "xwayland-satellite",
+     "otf-font-awesome",
+     "ttf-nerd-fonts-symbols"
+    ],
+    "fedora": [
+     "niri",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "fuzzel",
+     "alacritty",
+     "mako",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-gnome",
+     "fontawesome-fonts"
+    ],
+    "suse": [
+     "niri",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "fuzzel",
+     "alacritty",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-gnome",
+     "fontawesome-fonts",
+     "symbols-only-nerd-fonts"
+    ],
+    "alpine": [
+     "niri",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "fuzzel",
+     "alacritty",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-gnome",
+     "font-awesome",
+     "font-nerd-fonts-symbols"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "fedora",
+    "suse",
+    "alpine"
+   ],
+   "aur": [],
+   "check_package": "niri",
+   "config_paths": [
+    "~/.config/niri",
+    "~/.config/waybar",
+    "~/.config/fuzzel"
+   ]
+  },
+  "sway": {
+   "packages": {
+    "arch": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "wmenu",
+     "foot",
+     "mako",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "polkit-gnome",
+     "xdg-desktop-portal-wlr",
+     "xdg-desktop-portal-gtk",
+     "xorg-xwayland",
+     "otf-font-awesome",
+     "ttf-nerd-fonts-symbols"
+    ],
+    "debian": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako-notifier",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "fonts-font-awesome"
+    ],
+    "fedora": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "fontawesome-fonts"
+    ],
+    "suse": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "fontawesome-fonts",
+     "symbols-only-nerd-fonts"
+    ],
+    "gentoo": [
+     "gui-wm/sway",
+     "gui-apps/swaybg",
+     "gui-apps/waybar",
+     "gui-apps/wofi",
+     "gui-apps/foot",
+     "gui-apps/grim",
+     "gui-apps/slurp",
+     "media-fonts/fontawesome",
+     "media-fonts/symbols-nerd-font"
+    ],
+    "void": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "font-awesome",
+     "nerd-fonts-symbols-ttf"
+    ],
+    "alpine": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "font-awesome",
+     "font-nerd-fonts-symbols"
+    ],
+    "alt": [
+     "sway",
+     "swaybg",
+     "swayidle",
+     "swaylock",
+     "waybar",
+     "wofi",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "fonts-font-awesome"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "void",
+    "alpine",
+    "alt"
+   ],
+   "aur": [],
+   "check_package": "sway",
+   "config_paths": [
+    "~/.config/sway",
+    "~/.config/waybar",
+    "~/.config/wofi",
+    "~/.config/foot"
+   ]
+  },
+  "river": {
+   "packages": {
+    "arch": [
+     "river-classic",
+     "waybar",
+     "fuzzel",
+     "foot",
+     "mako",
+     "swaybg",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "polkit-gnome",
+     "xdg-desktop-portal-wlr",
+     "xdg-desktop-portal-gtk",
+     "otf-font-awesome",
+     "ttf-nerd-fonts-symbols"
+    ],
+    "fedora": [
+     "river-classic",
+     "waybar",
+     "fuzzel",
+     "foot",
+     "mako",
+     "swaybg",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "fontawesome-fonts"
+    ],
+    "void": [
+     "river",
+     "waybar",
+     "fuzzel",
+     "foot",
+     "mako",
+     "swaybg",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "font-awesome",
+     "nerd-fonts-symbols-ttf"
+    ],
+    "alpine": [
+     "river-classic",
+     "waybar",
+     "fuzzel",
+     "foot",
+     "mako",
+     "swaybg",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr",
+     "font-awesome",
+     "font-nerd-fonts-symbols"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "fedora",
+    "void",
+    "alpine"
+   ],
+   "aur": [],
+   "check_package": "river-classic",
+   "config_paths": [
+    "~/.config/river",
+    "~/.config/waybar",
+    "~/.config/fuzzel"
+   ]
+  },
+  "wayfire": {
+   "packages": {
+    "arch": [
+     "wayfire",
+     "wf-shell",
+     "wcm",
+     "foot",
+     "mako",
+     "thunar",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "polkit-gnome",
+     "xdg-desktop-portal-wlr",
+     "xdg-desktop-portal-gtk",
+     "xorg-xwayland"
+    ],
+    "debian": [
+     "wayfire",
+     "wf-shell",
+     "wcm",
+     "foot",
+     "mako-notifier",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr"
+    ],
+    "fedora": [
+     "wayfire",
+     "wf-shell",
+     "wayfire-config-manager",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr"
+    ],
+    "suse": [
+     "wayfire",
+     "wf-shell",
+     "wcm",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr"
+    ],
+    "gentoo": [
+     "gui-wm/wayfire",
+     "gui-apps/wf-shell",
+     "gui-apps/wcm",
+     "gui-apps/foot",
+     "gui-apps/grim",
+     "gui-apps/slurp"
+    ],
+    "void": [
+     "wayfire",
+     "wf-shell",
+     "wcm",
+     "foot",
+     "mako",
+     "grim",
+     "slurp",
+     "wl-clipboard",
+     "xdg-desktop-portal-wlr"
+    ]
+   },
+   "packages_order": [
+    "arch",
+    "debian",
+    "fedora",
+    "suse",
+    "gentoo",
+    "void"
+   ],
+   "aur": [],
+   "check_package": "wayfire",
+   "config_paths": [
+    "~/.config/wayfire.ini",
+    "~/.config/wayfire",
+    "~/.config/wf-shell.ini"
+   ]
+  }
+ },
+ "de_meta": [
+  {
+   "id": "cinnamon-mint",
+   "display_name": "Cinnamon",
+   "description": "🍃 Рабочий стол Cinnamon с полным набором компонентов Linux Mint",
+   "session_name": "cinnamon",
+   "ram_mb": 650,
+   "cpu_usage": "Среднее",
+   "customizable": 5,
+   "gaming_friendly": 4,
+   "toolkit": "GTK3",
+   "session_type": "X11",
+   "compositor": "Muffin",
+   "panel_type": "Cinnamon Panel",
+   "file_manager": "Nemo",
+   "terminal": "gnome-terminal"
+  },
+  {
+   "id": "xfce",
+   "display_name": "XFCE",
+   "description": "Лёгкий и быстрый рабочий стол с низким потреблением ресурсов",
+   "session_name": "xfce",
+   "ram_mb": 300,
+   "cpu_usage": "Низкое",
+   "customizable": 4,
+   "gaming_friendly": 5,
+   "toolkit": "GTK3",
+   "session_type": "X11",
+   "compositor": "Xfwm4",
+   "panel_type": "Xfce Panel",
+   "file_manager": "Thunar",
+   "terminal": "xfce4-terminal"
+  },
+  {
+   "id": "mate",
+   "display_name": "MATE",
+   "description": "Традиционный рабочий стол, продолжение GNOME 2",
+   "session_name": "mate",
+   "ram_mb": 400,
+   "cpu_usage": "Низкое",
+   "customizable": 3,
+   "gaming_friendly": 4,
+   "toolkit": "GTK3",
+   "session_type": "X11",
+   "compositor": "Marco",
+   "panel_type": "MATE Panel",
+   "file_manager": "Caja",
+   "terminal": "mate-terminal"
+  },
+  {
+   "id": "gnome",
+   "display_name": "GNOME",
+   "description": "Современный рабочий стол с минималистичным дизайном",
+   "session_name": "gnome",
+   "ram_mb": 800,
+   "cpu_usage": "Высокое",
+   "customizable": 3,
+   "gaming_friendly": 3,
+   "toolkit": "GTK4",
+   "session_type": "Wayland + X11",
+   "compositor": "Mutter",
+   "panel_type": "GNOME Shell",
+   "file_manager": "Nautilus",
+   "terminal": "GNOME Console"
+  },
+  {
+   "id": "kde",
+   "display_name": "KDE Plasma",
+   "description": "Мощный и настраиваемый рабочий стол с красивыми эффектами",
+   "session_name": "plasma",
+   "ram_mb": 700,
+   "cpu_usage": "Среднее",
+   "customizable": 5,
+   "gaming_friendly": 5,
+   "toolkit": "Qt6",
+   "session_type": "Wayland + X11",
+   "compositor": "KWin",
+   "panel_type": "Plasma Panel",
+   "file_manager": "Dolphin",
+   "terminal": "Konsole"
+  },
+  {
+   "id": "budgie",
+   "display_name": "Budgie",
+   "description": "Элегантный рабочий стол от Buddies of Budgie",
+   "session_name": "budgie-desktop",
+   "ram_mb": 550,
+   "cpu_usage": "Среднее",
+   "customizable": 3,
+   "gaming_friendly": 3,
+   "toolkit": "GTK3 → GTK4",
+   "session_type": "X11 (Wayland WIP)",
+   "compositor": "Budgie WM / Magpie",
+   "panel_type": "Budgie Panel",
+   "file_manager": "Nautilus",
+   "terminal": "GNOME Terminal"
+  },
+  {
+   "id": "pantheon",
+   "display_name": "Pantheon",
+   "description": "Спокойный рабочий стол elementary OS в духе macOS",
+   "session_name": "pantheon",
+   "ram_mb": 600,
+   "cpu_usage": "Среднее",
+   "customizable": 2,
+   "gaming_friendly": 3,
+   "toolkit": "GTK3 + GTK4 (Granite)",
+   "session_type": "X11 + Wayland",
+   "compositor": "Gala (Mutter)",
+   "panel_type": "Wingpanel + Plank",
+   "file_manager": "Pantheon Files",
+   "terminal": "Pantheon Terminal"
+  },
+  {
+   "id": "deepin",
+   "display_name": "Deepin",
+   "description": "Нарядный рабочий стол deepin со скруглёнными полупрозрачными окнами, на своём Wayland-композиторе Treeland (экспериментально)",
+   "session_name": "treeland",
+   "ram_mb": 900,
+   "cpu_usage": "Высокое",
+   "customizable": 3,
+   "gaming_friendly": 3,
+   "toolkit": "Qt6 (DTK)",
+   "session_type": "Wayland",
+   "compositor": "Treeland",
+   "panel_type": "dde-shell",
+   "file_manager": "Deepin File Manager",
+   "terminal": "Deepin Terminal"
+  },
+  {
+   "id": "cosmic",
+   "display_name": "COSMIC",
+   "description": "Новый Wayland-native рабочий стол от System76 на Rust",
+   "session_name": "cosmic",
+   "ram_mb": 500,
+   "cpu_usage": "Среднее",
+   "customizable": 4,
+   "gaming_friendly": 4,
+   "toolkit": "iced (Rust)",
+   "session_type": "Wayland",
+   "compositor": "cosmic-comp",
+   "panel_type": "COSMIC Panel",
+   "file_manager": "COSMIC Files",
+   "terminal": "COSMIC Term"
+  },
+  {
+   "id": "lxqt",
+   "display_name": "LXQt",
+   "description": "🪶 Лёгкий Qt-десктоп, преемник LXDE — Qt-аналог XFCE",
+   "session_name": "lxqt",
+   "ram_mb": 350,
+   "cpu_usage": "Низкое",
+   "customizable": 4,
+   "gaming_friendly": 4,
+   "toolkit": "Qt6",
+   "session_type": "X11 (Wayland WIP)",
+   "compositor": "нет (Openbox WM; labwc опц.)",
+   "panel_type": "LXQt Panel",
+   "file_manager": "PCManFM-Qt",
+   "terminal": "QTerminal"
+  },
+  {
+   "id": "wayfire",
+   "display_name": "Wayfire",
+   "description": "🔥 Оконный менеджер Wayland с эффектами в духе Compiz (куб рабочих столов, «желейные» окна) и простой панелью wf-shell. Это не полный рабочий стол: своих программ и общих настроек системы у него нет — только настройки самого Wayfire.",
+   "session_name": "wayfire",
+   "ram_mb": 250,
+   "cpu_usage": "Низкое",
+   "customizable": 4,
+   "gaming_friendly": 3,
+   "toolkit": "GTK4 (wf-shell)",
+   "session_type": "Wayland",
+   "compositor": "Wayfire (wlroots)",
+   "panel_type": "wf-panel",
+   "file_manager": "Thunar",
+   "terminal": "foot"
+  },
+  {
+   "id": "hyprland",
+   "display_name": "Hyprland",
+   "description": "🪟 Тайловый Wayland-композитор с анимациями и высокой производительностью",
+   "session_name": "hyprland",
+   "ram_mb": 250,
+   "cpu_usage": "Низкое",
+   "customizable": 5,
+   "gaming_friendly": 5,
+   "toolkit": "—",
+   "session_type": "Wayland",
+   "compositor": "Hyprland",
+   "panel_type": "Waybar / Eww",
+   "file_manager": "Thunar / Dolphin",
+   "terminal": "kitty / foot"
+  },
+  {
+   "id": "sway",
+   "display_name": "Sway",
+   "description": "🧩 Тайловый Wayland-композитор — drop-in замена i3, читает его конфиг",
+   "session_name": "sway",
+   "ram_mb": 150,
+   "cpu_usage": "Низкое",
+   "customizable": 5,
+   "gaming_friendly": 4,
+   "toolkit": "—",
+   "session_type": "Wayland",
+   "compositor": "Sway (wlroots)",
+   "panel_type": "Waybar",
+   "file_manager": "Thunar",
+   "terminal": "foot"
+  },
+  {
+   "id": "niri",
+   "display_name": "niri",
+   "description": "🎞️ Скроллируемый тайловый Wayland-композитор — окна в бесконечной горизонтальной ленте",
+   "session_name": "niri",
+   "ram_mb": 200,
+   "cpu_usage": "Низкое",
+   "customizable": 4,
+   "gaming_friendly": 4,
+   "toolkit": "—",
+   "session_type": "Wayland",
+   "compositor": "niri (Smithay)",
+   "panel_type": "Waybar",
+   "file_manager": "Thunar",
+   "terminal": "Alacritty / foot"
+  },
+  {
+   "id": "river",
+   "display_name": "River",
+   "description": "🏞️ Динамический тайловый Wayland-композитор: окна раскладываются по меткам, а не по рабочим столам",
+   "session_name": "river",
+   "ram_mb": 120,
+   "cpu_usage": "Низкое",
+   "customizable": 4,
+   "gaming_friendly": 4,
+   "toolkit": "—",
+   "session_type": "Wayland",
+   "compositor": "River (wlroots)",
+   "panel_type": "Waybar",
+   "file_manager": "Thunar",
+   "terminal": "foot"
+  }
+ ],
+ "check_binary": {
+  "cinnamon-mint": "cinnamon",
+  "xfce": "xfce4-session",
+  "mate": "mate-session-manager",
+  "gnome": "gnome-shell",
+  "kde": "plasma-desktop",
+  "budgie": "budgie-desktop",
+  "cosmic": "cosmic-session",
+  "hyprland": "hyprland",
+  "lxqt": "lxqt-session",
+  "niri": "niri",
+  "sway": "sway",
+  "river": "river-classic",
+  "wayfire": "wayfire",
+  "nonexistent-de": null
+ },
+ "config_paths": {
+  "cinnamon-mint": [
+   "~/.config/cinnamon",
+   "~/.cinnamon",
+   "~/.cinnamon/configs",
+   "~/.local/share/cinnamon",
+   "~/.config/cinnamon-session",
+   "~/.config/dconf/user"
+  ],
+  "xfce": [
+   "~/.config/xfce4",
+   "~/.config/Thunar"
+  ],
+  "mate": [
+   "~/.config/mate",
+   "~/.config/caja",
+   "~/.config/mate-session",
+   "~/.config/dconf/user"
+  ],
+  "gnome": [
+   "~/.config/gnome-session",
+   "~/.config/dconf/user",
+   "~/.local/share/gnome-shell/extensions",
+   "~/.local/share/backgrounds"
+  ],
+  "kde": [
+   "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+   "~/.config/plasmashellrc",
+   "~/.config/kdeglobals",
+   "~/.config/kwinrc",
+   "~/.config/kglobalshortcutsrc",
+   "~/.config/kcminputrc",
+   "~/.config/plasmarc",
+   "~/.config/plasmanotifyrc",
+   "~/.local/share/plasma",
+   "~/.local/share/color-schemes"
+  ],
+  "budgie": [
+   "~/.config/budgie-desktop",
+   "~/.config/budgie-extras",
+   "~/.config/dconf/user"
+  ],
+  "cosmic": [
+   "~/.config/cosmic",
+   "~/.local/state/cosmic"
+  ],
+  "hyprland": [
+   "~/.config/hypr",
+   "~/.config/waybar",
+   "~/.config/wofi",
+   "~/.config/kitty"
+  ],
+  "lxqt": [
+   "~/.config/lxqt",
+   "~/.config/pcmanfm-qt",
+   "~/.config/qterminal.org",
+   "~/.config/openbox"
+  ],
+  "niri": [
+   "~/.config/niri",
+   "~/.config/waybar",
+   "~/.config/fuzzel"
+  ],
+  "sway": [
+   "~/.config/sway",
+   "~/.config/waybar",
+   "~/.config/wofi",
+   "~/.config/foot"
+  ],
+  "river": [
+   "~/.config/river",
+   "~/.config/waybar",
+   "~/.config/fuzzel"
+  ],
+  "wayfire": [
+   "~/.config/wayfire.ini",
+   "~/.config/wayfire",
+   "~/.config/wf-shell.ini"
+  ],
+  "nonexistent-de": []
+ },
+ "queries": [
+  {
+   "de": "cinnamon-mint",
+   "family": "arch",
+   "get_packages": [
+    "cinnamon",
+    "cinnamon-translations",
+    "nemo",
+    "nemo-fileroller",
+    "gnome-terminal",
+    "lightdm",
+    "lightdm-slick-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": [
+    "mint-themes",
+    "mint-x-icons",
+    "mint-y-icons",
+    "mint-backgrounds",
+    "lightdm-settings"
+   ]
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "debian",
+   "get_packages": [
+    "cinnamon-desktop-environment",
+    "lightdm",
+    "lightdm-gtk-greeter",
+    "nemo"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "fedora",
+   "get_packages": [
+    "@cinnamon-desktop-environment",
+    "cinnamon-themes",
+    "mint-y-theme",
+    "mint-y-icons",
+    "mint-x-icons",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "suse",
+   "get_packages": [
+    "patterns-cinnamon-cinnamon",
+    "lightdm",
+    "lightdm-gtk-greeter",
+    "nemo"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "gentoo",
+   "get_packages": [
+    "gnome-extra/cinnamon",
+    "x11-misc/lightdm",
+    "gnome-extra/nemo"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "alpine",
+   "get_packages": [
+    "cinnamon",
+    "nemo",
+    "gnome-terminal",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "void",
+   "get_packages": [
+    "cinnamon-all",
+    "lightdm",
+    "lightdm-gtk3-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "solus",
+   "get_packages": [
+    "cinnamon",
+    "nemo",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "alt",
+   "get_packages": [
+    "cinnamon",
+    "nemo",
+    "gnome-terminal",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cinnamon-mint",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "arch",
+   "get_packages": [
+    "xfce4",
+    "xfce4-goodies",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "debian",
+   "get_packages": [
+    "xfce4",
+    "xfce4-goodies",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "fedora",
+   "get_packages": [
+    "@xfce-desktop-environment",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "suse",
+   "get_packages": [
+    "patterns-xfce-xfce",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "gentoo",
+   "get_packages": [
+    "xfce-base/xfce4-meta",
+    "x11-terms/xfce4-terminal",
+    "app-editors/mousepad",
+    "x11-misc/lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "alpine",
+   "get_packages": [
+    "xfce4",
+    "xfce4-terminal",
+    "xfce4-screensaver",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "void",
+   "get_packages": [
+    "xfce4",
+    "lightdm",
+    "lightdm-gtk3-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "solus",
+   "get_packages": [
+    "xfce4-desktop",
+    "lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "clear",
+   "get_packages": [
+    "desktop-xfce4"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "alt",
+   "get_packages": [
+    "xfce4",
+    "xfce4-goodies",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "xfce",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "arch",
+   "get_packages": [
+    "mate",
+    "mate-extra",
+    "plank",
+    "lightdm",
+    "lightdm-gtk-greeter",
+    "appmenu-gtk-module"
+   ],
+   "is_available": true,
+   "get_aur_packages": [
+    "mate-tweak",
+    "brisk-menu",
+    "mate-indicator-applet",
+    "ayatana-indicator-application",
+    "ayatana-indicator-session",
+    "ayatana-indicator-datetime",
+    "ayatana-indicator-sound",
+    "ayatana-indicator-notifications",
+    "vala-panel-appmenu-mate",
+    "vala-panel-appmenu-registrar"
+   ]
+  },
+  {
+   "de": "mate",
+   "family": "debian",
+   "get_packages": [
+    "mate-desktop-environment",
+    "mate-desktop-environment-extras",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "fedora",
+   "get_packages": [
+    "@mate-desktop-environment",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "suse",
+   "get_packages": [
+    "patterns-mate-mate",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "gentoo",
+   "get_packages": [
+    "mate-base/mate",
+    "x11-misc/lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "alpine",
+   "get_packages": [
+    "mate-desktop",
+    "mate-session-manager",
+    "mate-panel",
+    "caja",
+    "marco",
+    "mate-terminal",
+    "mate-utils",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "void",
+   "get_packages": [
+    "mate",
+    "lightdm",
+    "lightdm-gtk3-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "alt",
+   "get_packages": [
+    "mate",
+    "mate-terminal",
+    "plank",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "mate",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "arch",
+   "get_packages": [
+    "gnome",
+    "gnome-tweaks",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "debian",
+   "get_packages": [
+    "gnome",
+    "gnome-tweaks",
+    "gdm3"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "fedora",
+   "get_packages": [
+    "@gnome-desktop",
+    "gnome-tweaks",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "suse",
+   "get_packages": [
+    "patterns-gnome-gnome",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "gentoo",
+   "get_packages": [
+    "gnome-base/gnome",
+    "gnome-base/gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "alpine",
+   "get_packages": [
+    "gnome-desktop",
+    "gnome-shell",
+    "gnome-control-center",
+    "nautilus",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "void",
+   "get_packages": [
+    "gnome",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "solus",
+   "get_packages": [
+    "gnome-shell",
+    "gnome-desktop-branding",
+    "gnome-control-center",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "clear",
+   "get_packages": [
+    "desktop-gnome-apps"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "alt",
+   "get_packages": [
+    "gnome-shell",
+    "gnome-control-center",
+    "gnome-tweaks",
+    "nautilus",
+    "gdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "gnome",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "arch",
+   "get_packages": [
+    "plasma-meta",
+    "konsole",
+    "dolphin",
+    "kate",
+    "gwenview",
+    "ark",
+    "spectacle",
+    "plasma-login-manager"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "debian",
+   "get_packages": [
+    "kde-plasma-desktop",
+    "konsole",
+    "dolphin",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "fedora",
+   "get_packages": [
+    "@kde-desktop-environment",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "suse",
+   "get_packages": [
+    "patterns-kde-kde",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "gentoo",
+   "get_packages": [
+    "kde-plasma/plasma-meta",
+    "x11-misc/sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "alpine",
+   "get_packages": [
+    "plasma-desktop-meta",
+    "konsole",
+    "dolphin",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "void",
+   "get_packages": [
+    "kde-plasma",
+    "konsole",
+    "dolphin",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "solus",
+   "get_packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "clear",
+   "get_packages": [
+    "desktop-kde-apps"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "alt",
+   "get_packages": [
+    "kde5",
+    "plasma5-workspace",
+    "konsole",
+    "dolphin",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "kde",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "arch",
+   "get_packages": [
+    "budgie-desktop",
+    "budgie-desktop-view",
+    "budgie-extras",
+    "network-manager-applet",
+    "nautilus",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "debian",
+   "get_packages": [
+    "budgie-desktop",
+    "budgie-extras",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "fedora",
+   "get_packages": [
+    "@budgie-desktop-environment",
+    "lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "suse",
+   "get_packages": [
+    "patterns-budgie-budgie",
+    "lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "gentoo",
+   "get_packages": [
+    "budgie-base/budgie-desktop",
+    "budgie-base/budgie-desktop-view",
+    "x11-misc/lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "alpine",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "void",
+   "get_packages": [
+    "budgie-desktop",
+    "lightdm",
+    "lightdm-gtk3-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "solus",
+   "get_packages": [
+    "budgie-desktop",
+    "lightdm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "alt",
+   "get_packages": [
+    "budgie-desktop",
+    "nautilus",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "budgie",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "arch",
+   "get_packages": [
+    "cosmic-session",
+    "cosmic-comp",
+    "cosmic-panel",
+    "cosmic-applets",
+    "cosmic-app-library",
+    "cosmic-bg",
+    "cosmic-greeter",
+    "cosmic-idle",
+    "cosmic-launcher",
+    "cosmic-notifications",
+    "cosmic-osd",
+    "cosmic-randr",
+    "cosmic-screenshot",
+    "cosmic-settings",
+    "cosmic-settings-daemon",
+    "cosmic-workspaces",
+    "cosmic-initial-setup",
+    "xdg-desktop-portal-cosmic",
+    "cosmic-files",
+    "cosmic-terminal",
+    "cosmic-text-editor",
+    "cosmic-store",
+    "cosmic-player",
+    "cosmic-wallpapers",
+    "cosmic-icon-theme",
+    "gnome-keyring",
+    "power-profiles-daemon",
+    "packagekit",
+    "flatpak"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "debian",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "fedora",
+   "get_packages": [
+    "cosmic-desktop"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "suse",
+   "get_packages": [
+    "patterns-cosmic-cosmic"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "gentoo",
+   "get_packages": [
+    "cosmic-base/cosmic-session"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "alpine",
+   "get_packages": [
+    "cosmic-session",
+    "cosmic-comp",
+    "cosmic-panel",
+    "cosmic-applets",
+    "cosmic-app-library",
+    "cosmic-bg",
+    "cosmic-greeter",
+    "cosmic-idle",
+    "cosmic-launcher",
+    "cosmic-notifications",
+    "cosmic-osd",
+    "cosmic-randr",
+    "cosmic-screenshot",
+    "cosmic-settings",
+    "cosmic-settings-daemon",
+    "cosmic-workspaces",
+    "xdg-desktop-portal-cosmic",
+    "cosmic-files",
+    "cosmic-terminal",
+    "cosmic-text-editor",
+    "cosmic-store",
+    "cosmic-wallpapers",
+    "cosmic-icons"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "void",
+   "get_packages": [
+    "cosmic-desktop"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "alt",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "cosmic",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "arch",
+   "get_packages": [
+    "hyprland",
+    "hyprpaper",
+    "hyprlock",
+    "hypridle",
+    "xdg-desktop-portal-hyprland",
+    "xdg-desktop-portal-gtk",
+    "waybar",
+    "wofi",
+    "kitty",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "polkit-gnome",
+    "otf-font-awesome"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "debian",
+   "get_packages": [
+    "hyprland",
+    "xdg-desktop-portal-hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "fedora",
+   "get_packages": [
+    "hyprland",
+    "xdg-desktop-portal-hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "suse",
+   "get_packages": [
+    "hyprland",
+    "xdg-desktop-portal-hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "gentoo",
+   "get_packages": [
+    "gui-wm/hyprland",
+    "gui-apps/waybar",
+    "gui-apps/wofi",
+    "x11-terms/kitty",
+    "gui-apps/grim",
+    "gui-apps/slurp"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "alpine",
+   "get_packages": [
+    "hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "void",
+   "get_packages": [
+    "hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "alt",
+   "get_packages": [
+    "hyprland",
+    "waybar",
+    "wofi",
+    "kitty",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "hyprland",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "arch",
+   "get_packages": [
+    "lxqt",
+    "openbox",
+    "breeze-icons",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "debian",
+   "get_packages": [
+    "lxqt",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "fedora",
+   "get_packages": [
+    "@lxqt-desktop-environment",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "suse",
+   "get_packages": [
+    "patterns-lxqt-lxqt",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "gentoo",
+   "get_packages": [
+    "lxqt-base/lxqt-meta",
+    "x11-misc/sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "alpine",
+   "get_packages": [
+    "lxqt-desktop",
+    "lximage-qt",
+    "pavucontrol-qt",
+    "font-dejavu",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "void",
+   "get_packages": [
+    "lxqt",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "alt",
+   "get_packages": [
+    "lxqt-session",
+    "lxqt-panel",
+    "lxqt-config",
+    "lxqt-policykit",
+    "lxqt-runner",
+    "lxqt-notificationd",
+    "pcmanfm-qt",
+    "qterminal",
+    "openbox",
+    "sddm"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "lxqt",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "arch",
+   "get_packages": [
+    "niri",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "fuzzel",
+    "alacritty",
+    "mako",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "polkit-gnome",
+    "xdg-desktop-portal-gnome",
+    "xwayland-satellite",
+    "otf-font-awesome",
+    "ttf-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "debian",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "fedora",
+   "get_packages": [
+    "niri",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "fuzzel",
+    "alacritty",
+    "mako",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-gnome",
+    "fontawesome-fonts"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "suse",
+   "get_packages": [
+    "niri",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "fuzzel",
+    "alacritty",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-gnome",
+    "fontawesome-fonts",
+    "symbols-only-nerd-fonts"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "gentoo",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "alpine",
+   "get_packages": [
+    "niri",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "fuzzel",
+    "alacritty",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-gnome",
+    "font-awesome",
+    "font-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "void",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "alt",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "niri",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "arch",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "wmenu",
+    "foot",
+    "mako",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "polkit-gnome",
+    "xdg-desktop-portal-wlr",
+    "xdg-desktop-portal-gtk",
+    "xorg-xwayland",
+    "otf-font-awesome",
+    "ttf-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "debian",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako-notifier",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "fonts-font-awesome"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "fedora",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "fontawesome-fonts"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "suse",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "fontawesome-fonts",
+    "symbols-only-nerd-fonts"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "gentoo",
+   "get_packages": [
+    "gui-wm/sway",
+    "gui-apps/swaybg",
+    "gui-apps/waybar",
+    "gui-apps/wofi",
+    "gui-apps/foot",
+    "gui-apps/grim",
+    "gui-apps/slurp",
+    "media-fonts/fontawesome",
+    "media-fonts/symbols-nerd-font"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "alpine",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "font-awesome",
+    "font-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "void",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "font-awesome",
+    "nerd-fonts-symbols-ttf"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "alt",
+   "get_packages": [
+    "sway",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "waybar",
+    "wofi",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "fonts-font-awesome"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "sway",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "arch",
+   "get_packages": [
+    "river-classic",
+    "waybar",
+    "fuzzel",
+    "foot",
+    "mako",
+    "swaybg",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "polkit-gnome",
+    "xdg-desktop-portal-wlr",
+    "xdg-desktop-portal-gtk",
+    "otf-font-awesome",
+    "ttf-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "debian",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "fedora",
+   "get_packages": [
+    "river-classic",
+    "waybar",
+    "fuzzel",
+    "foot",
+    "mako",
+    "swaybg",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "fontawesome-fonts"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "suse",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "gentoo",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "alpine",
+   "get_packages": [
+    "river-classic",
+    "waybar",
+    "fuzzel",
+    "foot",
+    "mako",
+    "swaybg",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "font-awesome",
+    "font-nerd-fonts-symbols"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "void",
+   "get_packages": [
+    "river",
+    "waybar",
+    "fuzzel",
+    "foot",
+    "mako",
+    "swaybg",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr",
+    "font-awesome",
+    "nerd-fonts-symbols-ttf"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "alt",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "river",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "arch",
+   "get_packages": [
+    "wayfire",
+    "wf-shell",
+    "wcm",
+    "foot",
+    "mako",
+    "thunar",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "polkit-gnome",
+    "xdg-desktop-portal-wlr",
+    "xdg-desktop-portal-gtk",
+    "xorg-xwayland"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "debian",
+   "get_packages": [
+    "wayfire",
+    "wf-shell",
+    "wcm",
+    "foot",
+    "mako-notifier",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "fedora",
+   "get_packages": [
+    "wayfire",
+    "wf-shell",
+    "wayfire-config-manager",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "suse",
+   "get_packages": [
+    "wayfire",
+    "wf-shell",
+    "wcm",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "gentoo",
+   "get_packages": [
+    "gui-wm/wayfire",
+    "gui-apps/wf-shell",
+    "gui-apps/wcm",
+    "gui-apps/foot",
+    "gui-apps/grim",
+    "gui-apps/slurp"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "alpine",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "void",
+   "get_packages": [
+    "wayfire",
+    "wf-shell",
+    "wcm",
+    "foot",
+    "mako",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "xdg-desktop-portal-wlr"
+   ],
+   "is_available": true,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "alt",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "wayfire",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "arch",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "debian",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "fedora",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "suse",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "gentoo",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "alpine",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "void",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "nix",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "solus",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "clear",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "alt",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  },
+  {
+   "de": "nonexistent-de",
+   "family": "unknown",
+   "get_packages": [],
+   "is_available": false,
+   "get_aur_packages": []
+  }
+ ]
+}

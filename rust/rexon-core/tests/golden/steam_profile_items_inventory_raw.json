@@ -1,0 +1,62 @@
+{
+  "descriptions": [
+    {
+      "classid": "111",
+      "name": "Синий фон",
+      "type": "Фон профиля из Team Fortress 2",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_3"}
+      ],
+      "actions": [
+        {"name": "Показать в полном размере", "link": "https://cdn.example/A_full.png"}
+      ]
+    },
+    {
+      "classid": "222",
+      "name": "Красный фон",
+      "type": "Фон профиля из Dota 2",
+      "icon_url_large": "b/iconhashB",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_3"}
+      ],
+      "actions": []
+    },
+    {
+      "classid": "444",
+      "name": "Не фон (эмоция)",
+      "type": "Смайлик",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_2"}
+      ]
+    },
+    {
+      "classid": "333",
+      "name": "Фон без картинки",
+      "type": "Фон профиля из Nowhere",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_3"}
+      ]
+    },
+    {
+      "classid": "111",
+      "name": "Синий фон v2",
+      "type": "Фон профиля из Team Fortress 2",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_3"}
+      ],
+      "actions": [
+        {"name": "Показать в полном размере", "link": "https://cdn.example/A_v2.png"}
+      ]
+    },
+    {
+      "market_hash_name": "Blue Abyss",
+      "type": "",
+      "tags": [
+        {"category": "item_class", "internal_name": "item_class_3"}
+      ],
+      "actions": [
+        {"name": "Показать в полном размере", "link": "https://cdn.example/E.png"}
+      ]
+    }
+  ]
+}

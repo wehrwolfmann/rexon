@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xml:lang="en" lang="en" >
+    <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/archweb.css">
+    <link rel="stylesheet" href="/static/css/aurweb.css">
+
+    <!-- Resources -->
+    <link rel="shortcut icon" href="/static/images/favicon.ico">
+
+    <!-- Alternate resources -->
+    <link rel="alternate" type="application/rss+xml"
+          title="Newest Packages RSS" href="/rss">
+    <link rel="search" type="application/opensearchdescription+xml"
+          href="/static/opensearch.xml"
+          title="Arch Linux User Repository (AUR) Package Search">
+
+    <!-- Include local typeahead -->
+    <script type="text/javascript" src="/static/js/typeahead.js"></script>
+
+    <title>AUR (en) - yay-bin</title>
+</head>
+
+    <body>
+        <div id="archnavbar" class="anb-aur">
+    <div id="archnavbarlogo">
+        <h1>
+            <a href="/" title="Return to the main page">Arch Linux User Repository</a>
+        </h1>
+    </div>
+    <div id="archnavbarmenu">
+        <ul id="archnavbarlist">
+            <li id="anb-home"><a href="https://www.archlinux.org/" title="Arch news, packages, projects and more">Home</a></li>
+            <li id="anb-packages"><a href="https://www.archlinux.org/packages/" title="Arch Package Database">Packages</a></li>
+            <li id="anb-forums"><a href="https://bbs.archlinux.org/" title="Community forums">Forums</a></li>
+            <li id="anb-wiki"><a href="https://wiki.archlinux.org/" title="Community documentation">Wiki</a></li>
+            <li id="anb-gitlab"><a href="https://gitlab.archlinux.org/archlinux" title="GitLab">GitLab</a></li>
+            <li id="anb-security"><a href="https://security.archlinux.org/" title="Arch Linux Security Tracker">Security</a></li>
+            <li id="anb-aur"><a href="/" title="Arch Linux User Repository">AUR</a></li>
+            <li id="anb-download"><a href="https://www.archlinux.org/download/" title="Get Arch Linux">Download</a></li>
+        </ul>
+    </div>
+</div>
+        <div id="content">
+    <div id="lang_sub">
+    <form method="post" action="/language">
+        <fieldset>
+            <div>
+                <select id="id_setlang" name="set_lang">
+                    
+                    <option
+                        value="ar"
+                        
+                    >
+                        العربية
+                    </option>
+                    
+                    <option
+                        value="ast"
+                        
+                    >
+                        Asturianu
+                    </option>
+                    
+                    <option
+                        value="ca"
+                        
+                    >
+                        Català
+                    </option>
+                    
+                    <option
+                        value="cs"
+                        
+                    >
+                        Český
+                    </option>
+                    
+                    <option
+                        value="da"
+                        
+                    >
+                        Dansk
+                    </option>
+                    
+                    <option
+                        value="de"
+                        
+                    >
+                        Deutsch
+                    </option>
+                    
+                    <option
+                        value="el"
+                        
+                    >
+                        Ελληνικά
+                    </option>
+                    
+                    <option
+                        value="en"
+                        
+                        selected="selected"
+                        
+                    >
+                        English
+                    </option>
+                    
+                    <option
+                        value="es"
+                        
+                    >
+                        Español
+                    </option>
+                    
+                    <option
+                        value="es_419"
+                        
+                    >
+                        Español (Latinoamérica)
+                    </option>
+                    
+                    <option
+                        value="fi"
+                        
+                    >
+                        Suomi
+                    </option>
+                    
+                    <option
+                        value="fr"
+                        
+                    >
+                        Français
+                    </option>
+                    
+                    <option
+                        value="he"
+                        
+                    >
+                        עברית
+                    </option>
+                    
+                    <option
+                        value="hr"
+                        
+                    >
+                        Hrvatski
+                    </option>
+                    
+                    <option
+                        value="hu"
+                        
+                    >
+                        Magyar
+                    </option>
+                    
+                    <option
+                        value="it"
+                        
+                    >
+                        Italiano
+                    </option>
+                    
+                    <option
+                        value="ja"
+                        
+                    >
+                        日本語
+                    </option>
+                    
+                    <option
+                        value="nb"
+                        
+                    >
+                        Norsk
+                    </option>
+                    
+                    <option
+                        value="nl"
+                        
+                    >
+                        Nederlands
+                    </option>
+                    
+                    <option
+                        value="pl"
+                        
+                    >
+                        Polski
+                    </option>
+                    
+                    <option
+                        value="pt_BR"
+                        
+                    >
+                        Português (Brasil)
+                    </option>
+                    
+                    <option
+                        value="pt_PT"
+                        
+                    >
+                        Português (Portugal)
+                    </option>
+                    
+                    <option
+                        value="ro"
+                        
+                    >
+                        Română
+                    </option>
+                    
+                    <option
+                        value="ru"
+                        
+                    >
+                        Русский
+                    </option>
+                    
+                    <option
+                        value="sk"
+                        
+                    >
+                        Slovenčina
+                    </option>
+                    
+                    <option
+                        value="sr"
+                        
+                    >
+                        Srpski
+                    </option>
+                    
+                    <option
+                        value="tr"
+                        
+                    >
+                        Türkçe
+                    </option>
+                    
+                    <option
+                        value="uk"
+                        
+                    >
+                        Українська
+                    </option>
+                    
+                    <option
+                        value="zh_CN"
+                        
+                    >
+                        简体中文
+                    </option>
+                    
+                    <option
+                        value="zh_TW"
+                        
+                    >
+                        正體中文
+                    </option>
+                    
+                </select>
+
+                <!-- Pass our current url path as next. -->
+                <input type="hidden" name="next" value="/packages/yay-bin">
+
+                <!-- Pass query_params over to /language via POST. -->
+                <input type="hidden" name="q" value="">
+
+                <input type="submit" value="Go">
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="archdev-navbar">
+    <ul>
+        
+            
+            <li><a href="/">AUR Home</a></li>
+        
+
+        
+        <li><a href="/packages">Packages</a></li>
+
+        
+            
+            <li><a href="/register">Register</a></li>
+
+            
+            <li><a href="/login?next=/packages/yay-bin">Login</a></li>
+        
+    </ul>
+</div>
+
+    
+    <div id="pkglist-search" class="box filter-criteria">
+    <h2>Search Criteria</h2>
+    <form action='/packages' method='get'>
+        <p><input type='hidden' name='O' value='0'/></p>
+
+        <fieldset>
+            <legend>Enter search criteria</legend>
+            <div>
+                <label for="id_method">Search by</label>
+                <select name='SeB'>
+                    <option value="nd" >Name, Description</option>
+                    <option value="n" >Name Only</option>
+                    <option value="b" >Package Base</option>
+                    <option value="N" >Exact Name</option>
+                    <option value="B" >Exact Package Base</option>
+                    <option value="k" >Keywords</option>
+                    <option value="m" >Maintainer</option>
+                    <option value="c" >Co-maintainer</option>
+                    <option value="M" >Maintainer, Co-maintainer</option>
+                    <option value="s" >Submitter</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_q">Keywords</label>
+                <input type='text' name='K' size='30' value="" maxlength='35'/>
+            </div>
+            <div>
+                <label for="id_out_of_date">Out of Date</label>
+                <select name='outdated'>
+                    <option value=''>All</option>
+                    <option value='on' >Flagged</option>
+                    <option value='off' >Not Flagged</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_sort_by">Sort by</label>
+                
+                    
+                
+                <select name='SB'>
+                    <option value='n' >Name</option>
+                    <option value='v' >Votes</option>
+                    <option value='p' selected>Popularity</option>
+                    <option value='w' >Voted</option>
+                    <option value='o' >Notify</option>
+                    <option value='m' >Maintainer</option>
+                    <option value='l' >Last modified</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_order_by">Sort order</label>
+                
+                    
+                
+                <select name='SO'>
+                    <option value='a' >Ascending</option>
+                    <option value='d' selected>Descending</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_per_page">Per page</label>
+                <select name='PP'>
+                    <option value="50" >50</option>
+                    <option value="100" >100</option>
+                    <option value="250" >250</option>
+                </select>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type='submit' class='button' name='submit' value='Go'>
+                    Go
+                </button>
+                <button type='submit' class='button' name='submit' value='Orphans'>
+                    Orphans
+                </button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="pkgdetails" class="box">
+        <h2>Package Details: yay-bin 13.0.1-1</h2>
+
+        <!--
+    This partial requires pkgbase.Name to render
+-->
+<div id="detailslinks" class="listing">
+    <div id="actionlist">
+        <h4>Package Actions</h4>
+        <ul class="small">
+            <li>
+                <a href="/cgit/aur.git/tree/PKGBUILD?h=yay-bin">
+                    View PKGBUILD
+                </a>
+                /
+                <a href="/cgit/aur.git/log/?h=yay-bin">
+                    View Changes
+                </a>
+            </li>
+            <li>
+                <a href="/cgit/aur.git/snapshot/yay-bin.tar.gz">
+                    Download snapshot
+                </a>
+            </li>
+            <li>
+                <a href="https://wiki.archlinux.org/title/Special:Search?search=yay-bin">
+                    Search wiki
+                </a>
+            </li>
+			
+			
+            
+            
+            
+            
+            
+            
+        </ul>
+    </div>
+</div>
+
+        
+        <table id="pkginfo">
+    <tr>
+        <th>Git Clone URL:</th>
+        <td>
+            <a class="copy" href="https://aur.archlinux.org/yay-bin.git">https://aur.archlinux.org/yay-bin.git</a> (read-only, click to copy)
+            
+        </td>
+    </tr>
+    
+        <tr>
+            <th>Package Base:</th>
+            <td class="wrap">
+                <a href="/pkgbase/yay-bin">
+                    yay-bin
+                </a>
+            </td>
+        </tr>
+        <tr id="pkg-description">
+            <th>Description:</th>
+            <td class="wrap">Yet another yogurt. Pacman wrapper and AUR helper written in go. Pre-compiled.</td>
+        </tr>
+        <tr>
+            <th>Upstream URL:</th>
+            <td class="wrap">
+                
+                    <a href="https://github.com/Jguer/yay">https://github.com/Jguer/yay</a>
+                
+            </td>
+        </tr>
+    
+    
+        <tr>
+            <th>Keywords:</th>
+            
+            <td>
+                
+                    <a class="keyword"
+                       href="/packages/?K=AUR&amp;SeB=k"
+                    >
+                        AUR
+                    </a>
+                
+                    <a class="keyword"
+                       href="/packages/?K=go&amp;SeB=k"
+                    >
+                        go
+                    </a>
+                
+                    <a class="keyword"
+                       href="/packages/?K=helper&amp;SeB=k"
+                    >
+                        helper
+                    </a>
+                
+                    <a class="keyword"
+                       href="/packages/?K=pacman&amp;SeB=k"
+                    >
+                        pacman
+                    </a>
+                
+                    <a class="keyword"
+                       href="/packages/?K=wrapper&amp;SeB=k"
+                    >
+                        wrapper
+                    </a>
+                
+            </td>
+            
+        </tr>
+    
+    
+      
+        <tr id="licenses">
+            <th>Licenses:</th>
+            <td>GPL-3.0-or-later </td>
+        </tr>
+      
+      
+      
+        <tr id="conflicts">
+            <th>Conflicts:</th>
+            <td class="wrap">
+                yay
+            </td>
+        </tr>
+      
+      
+        <tr id="provides">
+            <th>Provides:</th>
+            <td class="wrap">
+                yay
+            </td>
+        </tr>
+      
+      
+    
+    <tr>
+        <th>Submitter:</th>
+        <td>
+            
+                jguer
+            
+        </td>
+    </tr>
+    <tr class="pkgmaint">
+        <th>Maintainer:</th>
+        <td>
+            
+                jguer
+                
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Last Packager:</th>
+        <td>
+            
+                jguer
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Votes:</th>
+        
+            <td>370</td>
+        
+    </tr>
+    <tr>
+        <th>Popularity:</th>
+        <td>3.51</td>
+    </tr>
+    <tr>
+        <th>First Submitted:</th>
+        <td>2016-12-03 15:06 (UTC)</td>
+    </tr>
+    <tr>
+        <th>Last Updated:</th>
+        <td>2026-06-19 21:29 (UTC)</td>
+    </tr>
+</table>
+
+<script type="text/javascript" src="/static/js/copy.js"></script>
+
+        <div id="metadata">
+            <div id="pkgdeps" class="listing">
+    <h3>Dependencies (4)</h3>
+    <ul id="pkgdepslist">
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=git">
+                
+                    git</a>
+                
+
+                
+                    <em>(<a href="/packages/git-git">git-git</a><sup><small>AUR</small></sup>, <a href="/packages/git-gl">git-gl</a><sup><small>AUR</small></sup>, <a href="/packages/git-wd40">git-wd40</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=pacman">
+                
+                    pacman</a>
+                
+
+                
+                    <em>(<a href="/packages/pacman-git">pacman-git</a><sup><small>AUR</small></sup>, <a href="/packages/pacman-fancy-git">pacman-fancy-git</a><sup><small>AUR</small></sup>, <a href="/packages/pacman-selinux">pacman-selinux</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="/packages/doas">
+                
+                    doas</a><sup><small>AUR</small></sup>
+                    
+                
+
+                
+                    <em>(<a href="/packages/opendoas-retry">opendoas-retry</a><sup><small>AUR</small></sup>, <a href="/packages/voix">voix</a><sup><small>AUR</small></sup>, <a href="/packages/voix-bin">voix-bin</a><sup><small>AUR</small></sup>, <a href="https://archlinux.org/packages/?q=opendoas">opendoas</a>)</em>
+                
+
+                
+                    
+                    <em>(optional) – privilege elevation</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=sudo">
+                
+                    sudo</a>
+                
+
+                
+                    <em>(<a href="/packages/sudo-git">sudo-git</a><sup><small>AUR</small></sup>, <a href="/packages/fudo-git">fudo-git</a><sup><small>AUR</small></sup>, <a href="/packages/run0-sudo-shim-selinux">run0-sudo-shim-selinux</a><sup><small>AUR</small></sup>, <a href="/packages/run0-sudo-shim">run0-sudo-shim</a><sup><small>AUR</small></sup>, <a href="/packages/run0-sudo-shim-git">run0-sudo-shim-git</a><sup><small>AUR</small></sup>, <a href="/packages/doas-sudo-shim">doas-sudo-shim</a><sup><small>AUR</small></sup>, <a href="/packages/doas-sudo-shim-git">doas-sudo-shim-git</a><sup><small>AUR</small></sup>, <a href="/packages/sudo-selinux">sudo-selinux</a><sup><small>AUR</small></sup>, <a href="/packages/run0-sudo">run0-sudo</a><sup><small>AUR</small></sup>, <a href="/packages/voix">voix</a><sup><small>AUR</small></sup>, <a href="/packages/voix-bin">voix-bin</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    
+                    <em>(optional) – privilege elevation</em>
+                
+            </li>
+        
+        
+    </ul>
+</div>
+
+<div id="pkgreqs" class="listing">
+    <h3>Required by (176)</h3>
+    <ul id="pkgreqslist">
+        
+            <li>
+                <a href="/packages/aconfmgr-git">
+                    aconfmgr-git
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/akp">
+                    akp
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/all">
+                    all
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/alps-pm">
+                    alps-pm
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/anneal">
+                    anneal
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/anneal-bin">
+                    anneal-bin
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/anneal-git">
+                    anneal-git
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/anvil-manager">
+                    anvil-manager
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/app-finder">
+                    app-finder
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-app-center">
+                    arch-app-center
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-os-manager">
+                    arch-os-manager
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-scripts">
+                    arch-scripts
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-sdcard-updater">
+                    arch-sdcard-updater
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-smart-update">
+                    arch-smart-update
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-tui">
+                    arch-tui
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-update">
+                    arch-update
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-update-bin">
+                    arch-update-bin
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-update-check">
+                    arch-update-check
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-update-cli">
+                    arch-update-cli
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/arch-update-full">
+                    arch-update-full
+                </a>
+
+                
+                    <span class="virtual-dep">
+                        (requires yay)
+                    </span>
+                
+
+                <em>(optional)</em>
+            </li>
+        
+        
+            <li>
+                <a href="/packages/yay-bin?all_reqs=1#pkgreqs">
+                    Show 156 more...
+                </a>
+            </li>
+        
+    </ul>
+</div>
+
+<div id="pkgfiles" class="listing">
+    <h3>Sources (3)</h3>
+</div>
+
+<div>
+    <ul id="pkgsrcslist">
+        
+            
+            <li>
+                <a href="https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_aarch64.tar.gz">https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_aarch64.tar.gz</a>
+            </li>
+        
+            
+            <li>
+                <a href="https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_armv7h.tar.gz">https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_armv7h.tar.gz</a>
+            </li>
+        
+            
+            <li>
+                <a href="https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_x86_64.tar.gz">https://github.com/Jguer/yay/releases/download/v13.0.1/yay_13.0.1_x86_64.tar.gz</a>
+            </li>
+        
+    </ul>
+</div>
+        </div>
+    </div>
+
+    <!-- On-the-fly comment editing functions -->
+    <script type="text/javascript" src="/static/js/comment-edit.js"></script>
+
+    
+    
+    <!--
+    This partial requires the following  to render properly
+    - pkgname
+    - pkgbase-id
+    - comments (list)
+-->
+
+
+
+
+
+
+</div></body></html>

@@ -1,0 +1,84 @@
+module waywallen.ui
+typeinfo module.qmltypes
+Window 0.3 qml/Window.qml
+singleton Global 0.3 qml/Global.qml
+singleton I18n 0.3 qml/I18n.qml
+StatusDot 0.3 qml/component/StatusDot.qml
+WindowState 0.3 qml/component/WindowState.qml
+PagePopup 0.3 qml/component/PagePopup.qml
+Tag 0.3 qml/component/Tag.qml
+singleton GpuDetails 0.3 qml/component/GpuDetails.qml
+GpuTag 0.3 qml/component/GpuTag.qml
+RendererRuntimeTag 0.3 qml/component/RendererRuntimeTag.qml
+RuntimeConditionTag 0.3 qml/component/RuntimeConditionTag.qml
+KdeDisplaysHelp 0.3 qml/component/KdeDisplaysHelp.qml
+GnomeDisplaysHelp 0.3 qml/component/GnomeDisplaysHelp.qml
+LayerShellDisplaysHelp 0.3 qml/component/LayerShellDisplaysHelp.qml
+ThumbnailImage 0.3 qml/component/ThumbnailImage.qml
+SearchChip 0.3 qml/component/SearchChip.qml
+ValueSlider 0.3 qml/component/ValueSlider.qml
+FlipButtons 0.3 qml/component/FlipButtons.qml
+ApplyTextField 0.3 qml/component/ApplyTextField.qml
+DetailActionBar 0.3 qml/component/DetailActionBar.qml
+PresentationTargetState 0.3 qml/component/PresentationTargetState.qml
+PresentationTargetFlow 0.3 qml/component/PresentationTargetFlow.qml
+SidebarNowPlaying 0.3 qml/component/SidebarNowPlaying.qml
+StringFilter 0.3 qml/component/filter/StringFilter.qml
+IntFilter 0.3 qml/component/filter/IntFilter.qml
+LibraryFilter 0.3 qml/component/filter/LibraryFilter.qml
+WpTypeFilter 0.3 qml/component/filter/WpTypeFilter.qml
+TagFilter 0.3 qml/component/filter/TagFilter.qml
+TagPickerDialog 0.3 qml/component/filter/TagPickerDialog.qml
+ContentRatingFilter 0.3 qml/component/filter/ContentRatingFilter.qml
+EmptyFilter 0.3 qml/component/filter/EmptyFilter.qml
+WallpaperFilter 0.3 qml/component/filter/WallpaperFilter.qml
+WallpaperFilterRules 0.3 qml/component/filter/WallpaperFilterRules.qml
+SettingField 0.3 qml/component/settings/SettingField.qml
+DaemonNotRunDialog 0.3 qml/dialog/DaemonNotRunDialog.qml
+WallpaperFilterDialog 0.3 qml/dialog/WallpaperFilterDialog.qml
+RemoteFilterDialog 0.3 qml/dialog/RemoteFilterDialog.qml
+QrLoginDialog 0.3 qml/dialog/QrLoginDialog.qml
+PluginActionFormDialog 0.3 qml/dialog/PluginActionFormDialog.qml
+DisplayEditDialog 0.3 qml/dialog/DisplayEditDialog.qml
+CanvasDialog 0.3 qml/dialog/CanvasDialog.qml
+DaemonLogDialog 0.3 qml/dialog/DaemonLogDialog.qml
+WallpaperPage 0.3 qml/page/WallpaperPage.qml
+PlaylistEditPage 0.3 qml/page/PlaylistEditPage.qml
+HiddenWallpapersPage 0.3 qml/page/HiddenWallpapersPage.qml
+WallpaperDetailPanel 0.3 qml/page/WallpaperDetailPanel.qml
+DiscoverState 0.3 qml/page/DiscoverState.qml
+RemoteDetailPanel 0.3 qml/page/RemoteDetailPanel.qml
+WallpaperInfoPage 0.3 qml/page/WallpaperInfoPage.qml
+WallpaperCard 0.3 qml/page/WallpaperCard.qml
+SelectSheet 0.3 qml/page/wallpaper/SelectSheet.qml
+TweakSheet 0.3 qml/page/wallpaper/TweakSheet.qml
+TweakState 0.3 qml/page/wallpaper/TweakState.qml
+NewPlaylistSheetContent 0.3 qml/page/wallpaper/NewPlaylistSheetContent.qml
+AddToPlaylistSheetContent 0.3 qml/page/wallpaper/AddToPlaylistSheetContent.qml
+SelectSheetContentState 0.3 qml/page/wallpaper/SelectSheetContentState.qml
+PlaylistListSheet 0.3 qml/page/wallpaper/PlaylistListSheet.qml
+PlaylistListSheetState 0.3 qml/page/wallpaper/PlaylistListSheetState.qml
+DiscoverPage 0.3 qml/page/DiscoverPage.qml
+RemoteInfoPage 0.3 qml/page/RemoteInfoPage.qml
+RemoteManagePage 0.3 qml/page/RemoteManagePage.qml
+RemoteCard 0.3 qml/page/RemoteCard.qml
+StatusPage 0.3 qml/page/StatusPage.qml
+PluginManagePage 0.3 qml/page/PluginManagePage.qml
+SettingsPage 0.3 qml/page/SettingsPage.qml
+WindowExclusionsPage 0.3 qml/page/WindowExclusionsPage.qml
+DisplaysPage 0.3 qml/page/DisplaysPage.qml
+CanvasEditorState 0.3 qml/page/display/CanvasEditorState.qml
+CanvasDisplayList 0.3 qml/page/display/CanvasDisplayList.qml
+DisplayLayoutControls 0.3 qml/page/display/DisplayLayoutControls.qml
+RendererConnectionPanel 0.3 qml/page/display/RendererConnectionPanel.qml
+SourceManagePage 0.3 qml/page/SourceManagePage.qml
+AddLibraryPage 0.3 qml/page/AddLibraryPage.qml
+AboutPage 0.3 qml/page/AboutPage.qml
+PluginSettingsPage 0.3 qml/page/PluginSettingsPage.qml
+depends QtCore
+depends QtQuick
+depends QtQuick.Shapes
+depends QtQml.Models
+depends Qcm.Material
+depends QExtra
+depends waywallen.control

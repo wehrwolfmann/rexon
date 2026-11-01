@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Карточка Rexon для центров приложений (Discover, GNOME Software).
+     Ставится пакетом в /usr/share/metainfo (packaging/aur/PKGBUILD).
+     id совпадает с именем ярлыка rexon.desktop, который печатает
+     генератор ядра (rust/rexon-core/src/installer.rs).
+     Адресов сайта и трекера нет намеренно: их у продукта пока нет. -->
+<component type="desktop-application">
+  <id>rexon</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+
+  <name>Rexon</name>
+  <summary>Universal desktop environment manager for Linux</summary>
+  <summary xml:lang="ru">Универсальный менеджер рабочих столов для Linux</summary>
+
+  <developer id="io.github.wehrwolfmann">
+    <name>Wehrwolfmann</name>
+  </developer>
+
+  <description>
+    <p>
+      Rexon installs, switches and removes desktop environments, and applies
+      themes and live wallpapers in one window.
+    </p>
+    <p xml:lang="ru">
+      Rexon ставит, переключает и удаляет рабочие столы, применяет темы
+      оформления и живые обои — всё в одном окне.
+    </p>
+    <ul>
+      <li>Install and compare desktop environments: KDE Plasma, GNOME, Xfce, Cinnamon, MATE, Hyprland and others</li>
+      <li xml:lang="ru">Установка и сравнение рабочих столов: KDE Plasma, GNOME, Xfce, Cinnamon, MATE, Hyprland и другие</li>
+      <li>Backups of desktop settings and emergency appearance rollback</li>
+      <li xml:lang="ru">Резервные копии настроек рабочего стола и аварийный откат оформления</li>
+      <li>Themes and live wallpapers</li>
+      <li xml:lang="ru">Темы оформления и живые обои</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">rexon.desktop</launchable>
+  <provides>
+    <binary>rexon</binary>
+  </provides>
+
+  <categories>
+    <category>Graphics</category>
+  </categories>
+
+  <content_rating type="oars-1.1"/>
+</component>

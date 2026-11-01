@@ -1,0 +1,1928 @@
+{
+ "resolve_apps": {
+  "kde": [
+   [
+    "file_manager",
+    "org.kde.dolphin.desktop"
+   ],
+   [
+    "terminal",
+    "org.kde.konsole.desktop"
+   ],
+   [
+    "text_editor",
+    "org.kde.kate.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.kde.gwenview.desktop"
+   ],
+   [
+    "video_player",
+    "org.kde.haruna.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.kde.okular.desktop"
+   ],
+   [
+    "archive_manager",
+    "org.kde.ark.desktop"
+   ],
+   [
+    "music_player",
+    "org.kde.elisa.desktop"
+   ],
+   [
+    "screenshot",
+    "org.kde.spectacle.desktop"
+   ]
+  ],
+  "gnome": [
+   [
+    "file_manager",
+    "org.gnome.Nautilus.desktop"
+   ],
+   [
+    "terminal",
+    "org.gnome.Console.desktop"
+   ],
+   [
+    "text_editor",
+    "org.gnome.TextEditor.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "video_player",
+    "org.gnome.Showtime.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "org.gnome.FileRoller.desktop"
+   ]
+  ],
+  "mate": [
+   [
+    "file_manager",
+    "caja.desktop"
+   ],
+   [
+    "terminal",
+    "mate-terminal.desktop"
+   ],
+   [
+    "text_editor",
+    "pluma.desktop"
+   ],
+   [
+    "image_viewer",
+    "eom.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "atril.desktop"
+   ],
+   [
+    "archive_manager",
+    "engrampa.desktop"
+   ]
+  ],
+  "cosmic": [
+   [
+    "file_manager",
+    "com.system76.CosmicFiles.desktop"
+   ],
+   [
+    "terminal",
+    "com.system76.CosmicTerm.desktop"
+   ],
+   [
+    "text_editor",
+    "com.system76.CosmicEdit.desktop"
+   ],
+   [
+    "video_player",
+    "com.system76.CosmicPlayer.desktop"
+   ]
+  ],
+  "cinnamon-mint": [
+   [
+    "file_manager",
+    "nemo.desktop"
+   ],
+   [
+    "terminal",
+    "org.gnome.Terminal.desktop"
+   ],
+   [
+    "text_editor",
+    "xed.desktop"
+   ],
+   [
+    "image_viewer",
+    "xviewer.desktop"
+   ],
+   [
+    "video_player",
+    "xplayer.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "xreader.desktop"
+   ]
+  ],
+  "xfce": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "xfce4-terminal.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "ristretto.desktop"
+   ],
+   [
+    "video_player",
+    "parole.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "budgie": [
+   [
+    "file_manager",
+    "org.gnome.Nautilus.desktop"
+   ],
+   [
+    "terminal",
+    "org.gnome.Console.desktop"
+   ],
+   [
+    "text_editor",
+    "org.gnome.TextEditor.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "video_player",
+    "org.gnome.Showtime.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "org.gnome.FileRoller.desktop"
+   ]
+  ],
+  "lxqt": [
+   [
+    "file_manager",
+    "pcmanfm-qt.desktop"
+   ],
+   [
+    "terminal",
+    "qterminal.desktop"
+   ],
+   [
+    "text_editor",
+    "featherpad.desktop"
+   ],
+   [
+    "image_viewer",
+    "lximage-qt.desktop"
+   ],
+   [
+    "archive_manager",
+    "lxqt-archiver.desktop"
+   ]
+  ],
+  "hyprland": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "kitty.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "niri": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "alacritty.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "sway": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "foot.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "river": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "foot.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "weston": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "xterm.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ],
+  "": [
+   [
+    "file_manager",
+    "thunar.desktop"
+   ],
+   [
+    "terminal",
+    "xterm.desktop"
+   ],
+   [
+    "text_editor",
+    "mousepad.desktop"
+   ],
+   [
+    "image_viewer",
+    "org.gnome.Loupe.desktop"
+   ],
+   [
+    "pdf_viewer",
+    "org.gnome.Papers.desktop"
+   ],
+   [
+    "archive_manager",
+    "xarchiver.desktop"
+   ]
+  ]
+ },
+ "mimeapps_filename": {
+  "kde": "kde-mimeapps.list",
+  "gnome": "gnome-mimeapps.list",
+  "mate": "mate-mimeapps.list",
+  "cosmic": "cosmic-mimeapps.list",
+  "cinnamon-mint": "x-cinnamon-mimeapps.list",
+  "xfce": "xfce-mimeapps.list",
+  "budgie": "budgie-mimeapps.list",
+  "lxqt": "lxqt-mimeapps.list",
+  "hyprland": "hyprland-mimeapps.list",
+  "niri": "niri-mimeapps.list",
+  "sway": "sway-mimeapps.list",
+  "river": "river-mimeapps.list",
+  "weston": "weston-mimeapps.list",
+  "": "-mimeapps.list"
+ },
+ "is_tiling": {
+  "kde": false,
+  "gnome": false,
+  "mate": false,
+  "cosmic": false,
+  "cinnamon-mint": false,
+  "xfce": false,
+  "budgie": false,
+  "lxqt": false,
+  "hyprland": true,
+  "niri": true,
+  "sway": true,
+  "river": true,
+  "weston": true,
+  "": true
+ },
+ "detect": [
+  {
+   "xdg": "KDE",
+   "session": "",
+   "wayland": false,
+   "result": "kde"
+  },
+  {
+   "xdg": "GNOME",
+   "session": "",
+   "wayland": false,
+   "result": "gnome"
+  },
+  {
+   "xdg": "MATE",
+   "session": "",
+   "wayland": false,
+   "result": "mate"
+  },
+  {
+   "xdg": "COSMIC",
+   "session": "",
+   "wayland": false,
+   "result": "cosmic"
+  },
+  {
+   "xdg": "X-Cinnamon",
+   "session": "",
+   "wayland": false,
+   "result": "cinnamon-mint"
+  },
+  {
+   "xdg": "XFCE",
+   "session": "",
+   "wayland": false,
+   "result": "xfce"
+  },
+  {
+   "xdg": "Budgie",
+   "session": "",
+   "wayland": false,
+   "result": "budgie"
+  },
+  {
+   "xdg": "Hyprland",
+   "session": "",
+   "wayland": false,
+   "result": "hyprland"
+  },
+  {
+   "xdg": "niri",
+   "session": "",
+   "wayland": false,
+   "result": "niri"
+  },
+  {
+   "xdg": "sway",
+   "session": "",
+   "wayland": false,
+   "result": "sway"
+  },
+  {
+   "xdg": "LXQt",
+   "session": "",
+   "wayland": false,
+   "result": "lxqt"
+  },
+  {
+   "xdg": "ubuntu:GNOME",
+   "session": "",
+   "wayland": false,
+   "result": "gnome"
+  },
+  {
+   "xdg": "KDE:plasma",
+   "session": "",
+   "wayland": false,
+   "result": "kde"
+  },
+  {
+   "xdg": "",
+   "session": "plasma",
+   "wayland": false,
+   "result": "kde"
+  },
+  {
+   "xdg": "",
+   "session": "gnome-xorg",
+   "wayland": false,
+   "result": "gnome"
+  },
+  {
+   "xdg": "",
+   "session": "xfce",
+   "wayland": false,
+   "result": "xfce"
+  },
+  {
+   "xdg": "",
+   "session": "cinnamon",
+   "wayland": false,
+   "result": "cinnamon-mint"
+  },
+  {
+   "xdg": "",
+   "session": "unknownsession",
+   "wayland": false,
+   "result": null
+  },
+  {
+   "xdg": "river",
+   "session": "",
+   "wayland": true,
+   "result": "river"
+  },
+  {
+   "xdg": "labwc",
+   "session": "",
+   "wayland": true,
+   "result": "labwc"
+  },
+  {
+   "xdg": "river",
+   "session": "",
+   "wayland": false,
+   "result": "river"
+  },
+  {
+   "xdg": "",
+   "session": "",
+   "wayland": true,
+   "result": null
+  },
+  {
+   "xdg": "",
+   "session": "",
+   "wayland": false,
+   "result": null
+  },
+  {
+   "xdg": "SomeWM",
+   "session": "somesession",
+   "wayland": true,
+   "result": "somewm"
+  },
+  {
+   "xdg": "Weston:",
+   "session": "",
+   "wayland": true,
+   "result": "weston"
+  }
+ ],
+ "fm_short": [
+  {
+   "fm_id": "dolphin",
+   "desktop": "org.kde.dolphin.desktop",
+   "result": "dolphin"
+  },
+  {
+   "fm_id": "org.kde.dolphin.desktop",
+   "desktop": "org.kde.dolphin.desktop",
+   "result": "dolphin"
+  },
+  {
+   "fm_id": "thunar.desktop",
+   "desktop": "thunar.desktop",
+   "result": "thunar"
+  },
+  {
+   "fm_id": "Thunar.desktop",
+   "desktop": "Thunar.desktop",
+   "result": "thunar"
+  },
+  {
+   "fm_id": "com.system76.CosmicFiles.desktop",
+   "desktop": "com.system76.CosmicFiles.desktop",
+   "result": "cosmic-files"
+  },
+  {
+   "fm_id": "pcmanfm-qt.desktop",
+   "desktop": "pcmanfm-qt.desktop",
+   "result": "pcmanfm-qt"
+  },
+  {
+   "fm_id": "nemo.desktop",
+   "desktop": "nemo.desktop",
+   "result": "nemo"
+  },
+  {
+   "fm_id": "caja.desktop",
+   "desktop": "caja.desktop",
+   "result": "caja"
+  },
+  {
+   "fm_id": "SomeThing.Weird.desktop",
+   "desktop": "SomeThing.Weird.desktop",
+   "result": "weird"
+  },
+  {
+   "fm_id": "MixedCase",
+   "desktop": "org.kde.dolphin.desktop",
+   "result": "mixedcase"
+  }
+ ],
+ "default_fm": [
+  {
+   "de": "kde",
+   "which": [],
+   "result": "dolphin"
+  },
+  {
+   "de": "gnome",
+   "which": [],
+   "result": "nautilus"
+  },
+  {
+   "de": "cosmic",
+   "which": [],
+   "result": "cosmic-files"
+  },
+  {
+   "de": "lxqt",
+   "which": [],
+   "result": "pcmanfm-qt"
+  },
+  {
+   "de": "hyprland",
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "niri",
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "sway",
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "xfce",
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "cinnamon-mint",
+   "which": [],
+   "result": "nemo"
+  },
+  {
+   "de": "mate",
+   "which": [],
+   "result": "caja"
+  },
+  {
+   "de": "budgie",
+   "which": [],
+   "result": "nautilus"
+  },
+  {
+   "de": null,
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "",
+   "which": [],
+   "result": "thunar"
+  },
+  {
+   "de": "river",
+   "which": [],
+   "result": "thunar"
+  }
+ ],
+ "generate": [
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "kde-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=org.kde.ark.desktop\napplication/javascript=org.kde.kate.desktop\napplication/json=org.kde.kate.desktop\napplication/pdf=org.kde.okular.desktop\napplication/toml=org.kde.kate.desktop\napplication/vnd.rar=org.kde.ark.desktop\napplication/x-7z-compressed=org.kde.ark.desktop\napplication/x-bzip-compressed-tar=org.kde.ark.desktop\napplication/x-compressed-tar=org.kde.ark.desktop\napplication/x-pdf=org.kde.okular.desktop\napplication/x-tar=org.kde.ark.desktop\napplication/x-xz-compressed-tar=org.kde.ark.desktop\napplication/x-yaml=org.kde.kate.desktop\napplication/x-zstd-compressed-tar=org.kde.ark.desktop\napplication/xml=org.kde.kate.desktop\napplication/zip=org.kde.ark.desktop\naudio/aac=org.kde.elisa.desktop\naudio/flac=org.kde.elisa.desktop\naudio/mp4=org.kde.elisa.desktop\naudio/mpeg=org.kde.elisa.desktop\naudio/ogg=org.kde.elisa.desktop\naudio/opus=org.kde.elisa.desktop\naudio/x-vorbis+ogg=org.kde.elisa.desktop\naudio/x-wav=org.kde.elisa.desktop\nimage/avif=org.kde.gwenview.desktop\nimage/bmp=org.kde.gwenview.desktop\nimage/gif=org.kde.gwenview.desktop\nimage/heif=org.kde.gwenview.desktop\nimage/jpeg=org.kde.gwenview.desktop\nimage/jxl=org.kde.gwenview.desktop\nimage/png=org.kde.gwenview.desktop\nimage/svg+xml=org.kde.gwenview.desktop\nimage/tiff=org.kde.gwenview.desktop\nimage/vnd.microsoft.icon=org.kde.gwenview.desktop\nimage/webp=org.kde.gwenview.desktop\nimage/x-icon=org.kde.gwenview.desktop\ninode/directory=org.kde.dolphin.desktop\ntext/css=org.kde.kate.desktop\ntext/csv=org.kde.kate.desktop\ntext/markdown=org.kde.kate.desktop\ntext/plain=org.kde.kate.desktop\ntext/x-csrc=org.kde.kate.desktop\ntext/x-python=org.kde.kate.desktop\ntext/x-shellscript=org.kde.kate.desktop\ntext/xml=org.kde.kate.desktop\nvideo/3gpp=org.kde.haruna.desktop\nvideo/mp2t=org.kde.haruna.desktop\nvideo/mp4=org.kde.haruna.desktop\nvideo/mpeg=org.kde.haruna.desktop\nvideo/ogg=org.kde.haruna.desktop\nvideo/quicktime=org.kde.haruna.desktop\nvideo/webm=org.kde.haruna.desktop\nvideo/x-flv=org.kde.haruna.desktop\nvideo/x-matroska=org.kde.haruna.desktop\nvideo/x-ms-wmv=org.kde.haruna.desktop\nvideo/x-msvideo=org.kde.haruna.desktop\n",
+    "count": 56
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "gnome-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=org.gnome.FileRoller.desktop\napplication/javascript=org.gnome.TextEditor.desktop\napplication/json=org.gnome.TextEditor.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=org.gnome.TextEditor.desktop\napplication/vnd.rar=org.gnome.FileRoller.desktop\napplication/x-7z-compressed=org.gnome.FileRoller.desktop\napplication/x-bzip-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=org.gnome.FileRoller.desktop\napplication/x-xz-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-yaml=org.gnome.TextEditor.desktop\napplication/x-zstd-compressed-tar=org.gnome.FileRoller.desktop\napplication/xml=org.gnome.TextEditor.desktop\napplication/zip=org.gnome.FileRoller.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=org.gnome.Nautilus.desktop\ntext/css=org.gnome.TextEditor.desktop\ntext/csv=org.gnome.TextEditor.desktop\ntext/markdown=org.gnome.TextEditor.desktop\ntext/plain=org.gnome.TextEditor.desktop\ntext/x-csrc=org.gnome.TextEditor.desktop\ntext/x-python=org.gnome.TextEditor.desktop\ntext/x-shellscript=org.gnome.TextEditor.desktop\ntext/xml=org.gnome.TextEditor.desktop\nvideo/3gpp=org.gnome.Showtime.desktop\nvideo/mp2t=org.gnome.Showtime.desktop\nvideo/mp4=org.gnome.Showtime.desktop\nvideo/mpeg=org.gnome.Showtime.desktop\nvideo/ogg=org.gnome.Showtime.desktop\nvideo/quicktime=org.gnome.Showtime.desktop\nvideo/webm=org.gnome.Showtime.desktop\nvideo/x-flv=org.gnome.Showtime.desktop\nvideo/x-matroska=org.gnome.Showtime.desktop\nvideo/x-ms-wmv=org.gnome.Showtime.desktop\nvideo/x-msvideo=org.gnome.Showtime.desktop\n",
+    "count": 48
+   }
+  },
+  {
+   "de_id": "mate",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "mate-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=engrampa.desktop\napplication/javascript=pluma.desktop\napplication/json=pluma.desktop\napplication/pdf=atril.desktop\napplication/toml=pluma.desktop\napplication/vnd.rar=engrampa.desktop\napplication/x-7z-compressed=engrampa.desktop\napplication/x-bzip-compressed-tar=engrampa.desktop\napplication/x-compressed-tar=engrampa.desktop\napplication/x-pdf=atril.desktop\napplication/x-tar=engrampa.desktop\napplication/x-xz-compressed-tar=engrampa.desktop\napplication/x-yaml=pluma.desktop\napplication/x-zstd-compressed-tar=engrampa.desktop\napplication/xml=pluma.desktop\napplication/zip=engrampa.desktop\nimage/avif=eom.desktop\nimage/bmp=eom.desktop\nimage/gif=eom.desktop\nimage/heif=eom.desktop\nimage/jpeg=eom.desktop\nimage/jxl=eom.desktop\nimage/png=eom.desktop\nimage/svg+xml=eom.desktop\nimage/tiff=eom.desktop\nimage/vnd.microsoft.icon=eom.desktop\nimage/webp=eom.desktop\nimage/x-icon=eom.desktop\ninode/directory=caja.desktop\ntext/css=pluma.desktop\ntext/csv=pluma.desktop\ntext/markdown=pluma.desktop\ntext/plain=pluma.desktop\ntext/x-csrc=pluma.desktop\ntext/x-python=pluma.desktop\ntext/x-shellscript=pluma.desktop\ntext/xml=pluma.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "cosmic",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "cosmic-mimeapps.list",
+    "content": "[Default Applications]\napplication/javascript=com.system76.CosmicEdit.desktop\napplication/json=com.system76.CosmicEdit.desktop\napplication/toml=com.system76.CosmicEdit.desktop\napplication/x-yaml=com.system76.CosmicEdit.desktop\napplication/xml=com.system76.CosmicEdit.desktop\ninode/directory=com.system76.CosmicFiles.desktop\ntext/css=com.system76.CosmicEdit.desktop\ntext/csv=com.system76.CosmicEdit.desktop\ntext/markdown=com.system76.CosmicEdit.desktop\ntext/plain=com.system76.CosmicEdit.desktop\ntext/x-csrc=com.system76.CosmicEdit.desktop\ntext/x-python=com.system76.CosmicEdit.desktop\ntext/x-shellscript=com.system76.CosmicEdit.desktop\ntext/xml=com.system76.CosmicEdit.desktop\nvideo/3gpp=com.system76.CosmicPlayer.desktop\nvideo/mp2t=com.system76.CosmicPlayer.desktop\nvideo/mp4=com.system76.CosmicPlayer.desktop\nvideo/mpeg=com.system76.CosmicPlayer.desktop\nvideo/ogg=com.system76.CosmicPlayer.desktop\nvideo/quicktime=com.system76.CosmicPlayer.desktop\nvideo/webm=com.system76.CosmicPlayer.desktop\nvideo/x-flv=com.system76.CosmicPlayer.desktop\nvideo/x-matroska=com.system76.CosmicPlayer.desktop\nvideo/x-ms-wmv=com.system76.CosmicPlayer.desktop\nvideo/x-msvideo=com.system76.CosmicPlayer.desktop\n",
+    "count": 25
+   }
+  },
+  {
+   "de_id": "cinnamon-mint",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "x-cinnamon-mimeapps.list",
+    "content": "[Default Applications]\napplication/javascript=xed.desktop\napplication/json=xed.desktop\napplication/pdf=xreader.desktop\napplication/toml=xed.desktop\napplication/x-pdf=xreader.desktop\napplication/x-yaml=xed.desktop\napplication/xml=xed.desktop\nimage/avif=xviewer.desktop\nimage/bmp=xviewer.desktop\nimage/gif=xviewer.desktop\nimage/heif=xviewer.desktop\nimage/jpeg=xviewer.desktop\nimage/jxl=xviewer.desktop\nimage/png=xviewer.desktop\nimage/svg+xml=xviewer.desktop\nimage/tiff=xviewer.desktop\nimage/vnd.microsoft.icon=xviewer.desktop\nimage/webp=xviewer.desktop\nimage/x-icon=xviewer.desktop\ninode/directory=nemo.desktop\ntext/css=xed.desktop\ntext/csv=xed.desktop\ntext/markdown=xed.desktop\ntext/plain=xed.desktop\ntext/x-csrc=xed.desktop\ntext/x-python=xed.desktop\ntext/x-shellscript=xed.desktop\ntext/xml=xed.desktop\nvideo/3gpp=xplayer.desktop\nvideo/mp2t=xplayer.desktop\nvideo/mp4=xplayer.desktop\nvideo/mpeg=xplayer.desktop\nvideo/ogg=xplayer.desktop\nvideo/quicktime=xplayer.desktop\nvideo/webm=xplayer.desktop\nvideo/x-flv=xplayer.desktop\nvideo/x-matroska=xplayer.desktop\nvideo/x-ms-wmv=xplayer.desktop\nvideo/x-msvideo=xplayer.desktop\n",
+    "count": 39
+   }
+  },
+  {
+   "de_id": "xfce",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "xfce-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=ristretto.desktop\nimage/bmp=ristretto.desktop\nimage/gif=ristretto.desktop\nimage/heif=ristretto.desktop\nimage/jpeg=ristretto.desktop\nimage/jxl=ristretto.desktop\nimage/png=ristretto.desktop\nimage/svg+xml=ristretto.desktop\nimage/tiff=ristretto.desktop\nimage/vnd.microsoft.icon=ristretto.desktop\nimage/webp=ristretto.desktop\nimage/x-icon=ristretto.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\nvideo/3gpp=parole.desktop\nvideo/mp2t=parole.desktop\nvideo/mp4=parole.desktop\nvideo/mpeg=parole.desktop\nvideo/ogg=parole.desktop\nvideo/quicktime=parole.desktop\nvideo/webm=parole.desktop\nvideo/x-flv=parole.desktop\nvideo/x-matroska=parole.desktop\nvideo/x-ms-wmv=parole.desktop\nvideo/x-msvideo=parole.desktop\n",
+    "count": 46
+   }
+  },
+  {
+   "de_id": "budgie",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "budgie-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=org.gnome.FileRoller.desktop\napplication/javascript=org.gnome.TextEditor.desktop\napplication/json=org.gnome.TextEditor.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=org.gnome.TextEditor.desktop\napplication/vnd.rar=org.gnome.FileRoller.desktop\napplication/x-7z-compressed=org.gnome.FileRoller.desktop\napplication/x-bzip-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=org.gnome.FileRoller.desktop\napplication/x-xz-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-yaml=org.gnome.TextEditor.desktop\napplication/x-zstd-compressed-tar=org.gnome.FileRoller.desktop\napplication/xml=org.gnome.TextEditor.desktop\napplication/zip=org.gnome.FileRoller.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=org.gnome.Nautilus.desktop\ntext/css=org.gnome.TextEditor.desktop\ntext/csv=org.gnome.TextEditor.desktop\ntext/markdown=org.gnome.TextEditor.desktop\ntext/plain=org.gnome.TextEditor.desktop\ntext/x-csrc=org.gnome.TextEditor.desktop\ntext/x-python=org.gnome.TextEditor.desktop\ntext/x-shellscript=org.gnome.TextEditor.desktop\ntext/xml=org.gnome.TextEditor.desktop\nvideo/3gpp=org.gnome.Showtime.desktop\nvideo/mp2t=org.gnome.Showtime.desktop\nvideo/mp4=org.gnome.Showtime.desktop\nvideo/mpeg=org.gnome.Showtime.desktop\nvideo/ogg=org.gnome.Showtime.desktop\nvideo/quicktime=org.gnome.Showtime.desktop\nvideo/webm=org.gnome.Showtime.desktop\nvideo/x-flv=org.gnome.Showtime.desktop\nvideo/x-matroska=org.gnome.Showtime.desktop\nvideo/x-ms-wmv=org.gnome.Showtime.desktop\nvideo/x-msvideo=org.gnome.Showtime.desktop\n",
+    "count": 48
+   }
+  },
+  {
+   "de_id": "lxqt",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "lxqt-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=lxqt-archiver.desktop\napplication/javascript=featherpad.desktop\napplication/json=featherpad.desktop\napplication/toml=featherpad.desktop\napplication/vnd.rar=lxqt-archiver.desktop\napplication/x-7z-compressed=lxqt-archiver.desktop\napplication/x-bzip-compressed-tar=lxqt-archiver.desktop\napplication/x-compressed-tar=lxqt-archiver.desktop\napplication/x-tar=lxqt-archiver.desktop\napplication/x-xz-compressed-tar=lxqt-archiver.desktop\napplication/x-yaml=featherpad.desktop\napplication/x-zstd-compressed-tar=lxqt-archiver.desktop\napplication/xml=featherpad.desktop\napplication/zip=lxqt-archiver.desktop\nimage/avif=lximage-qt.desktop\nimage/bmp=lximage-qt.desktop\nimage/gif=lximage-qt.desktop\nimage/heif=lximage-qt.desktop\nimage/jpeg=lximage-qt.desktop\nimage/jxl=lximage-qt.desktop\nimage/png=lximage-qt.desktop\nimage/svg+xml=lximage-qt.desktop\nimage/tiff=lximage-qt.desktop\nimage/vnd.microsoft.icon=lximage-qt.desktop\nimage/webp=lximage-qt.desktop\nimage/x-icon=lximage-qt.desktop\ninode/directory=pcmanfm-qt.desktop\ntext/css=featherpad.desktop\ntext/csv=featherpad.desktop\ntext/markdown=featherpad.desktop\ntext/plain=featherpad.desktop\ntext/x-csrc=featherpad.desktop\ntext/x-python=featherpad.desktop\ntext/x-shellscript=featherpad.desktop\ntext/xml=featherpad.desktop\n",
+    "count": 35
+   }
+  },
+  {
+   "de_id": "hyprland",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "hyprland-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "niri",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "niri-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "sway",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "sway-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "river",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "river-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "weston",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "weston-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "",
+   "exists": {
+    "mode": "all"
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=xarchiver.desktop\napplication/javascript=mousepad.desktop\napplication/json=mousepad.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=mousepad.desktop\napplication/vnd.rar=xarchiver.desktop\napplication/x-7z-compressed=xarchiver.desktop\napplication/x-bzip-compressed-tar=xarchiver.desktop\napplication/x-compressed-tar=xarchiver.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=xarchiver.desktop\napplication/x-xz-compressed-tar=xarchiver.desktop\napplication/x-yaml=mousepad.desktop\napplication/x-zstd-compressed-tar=xarchiver.desktop\napplication/xml=mousepad.desktop\napplication/zip=xarchiver.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=thunar.desktop\ntext/css=mousepad.desktop\ntext/csv=mousepad.desktop\ntext/markdown=mousepad.desktop\ntext/plain=mousepad.desktop\ntext/x-csrc=mousepad.desktop\ntext/x-python=mousepad.desktop\ntext/x-shellscript=mousepad.desktop\ntext/xml=mousepad.desktop\n",
+    "count": 37
+   }
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.kde.dolphin.desktop"
+    ]
+   },
+   "outcome": {
+    "kind": "skip",
+    "message": "kde: не установлен, пропуск"
+   }
+  },
+  {
+   "de_id": "xfce",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "thunar.desktop"
+    ]
+   },
+   "outcome": {
+    "kind": "skip",
+    "message": "xfce: не установлен, пропуск"
+   }
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "only",
+    "items": [
+     "org.kde.dolphin.desktop"
+    ]
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "kde-mimeapps.list",
+    "content": "[Default Applications]\ninode/directory=org.kde.dolphin.desktop\n",
+    "count": 1
+   }
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.kde.haruna.desktop"
+    ]
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "kde-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=org.kde.ark.desktop\napplication/javascript=org.kde.kate.desktop\napplication/json=org.kde.kate.desktop\napplication/pdf=org.kde.okular.desktop\napplication/toml=org.kde.kate.desktop\napplication/vnd.rar=org.kde.ark.desktop\napplication/x-7z-compressed=org.kde.ark.desktop\napplication/x-bzip-compressed-tar=org.kde.ark.desktop\napplication/x-compressed-tar=org.kde.ark.desktop\napplication/x-pdf=org.kde.okular.desktop\napplication/x-tar=org.kde.ark.desktop\napplication/x-xz-compressed-tar=org.kde.ark.desktop\napplication/x-yaml=org.kde.kate.desktop\napplication/x-zstd-compressed-tar=org.kde.ark.desktop\napplication/xml=org.kde.kate.desktop\napplication/zip=org.kde.ark.desktop\naudio/aac=org.kde.elisa.desktop\naudio/flac=org.kde.elisa.desktop\naudio/mp4=org.kde.elisa.desktop\naudio/mpeg=org.kde.elisa.desktop\naudio/ogg=org.kde.elisa.desktop\naudio/opus=org.kde.elisa.desktop\naudio/x-vorbis+ogg=org.kde.elisa.desktop\naudio/x-wav=org.kde.elisa.desktop\nimage/avif=org.kde.gwenview.desktop\nimage/bmp=org.kde.gwenview.desktop\nimage/gif=org.kde.gwenview.desktop\nimage/heif=org.kde.gwenview.desktop\nimage/jpeg=org.kde.gwenview.desktop\nimage/jxl=org.kde.gwenview.desktop\nimage/png=org.kde.gwenview.desktop\nimage/svg+xml=org.kde.gwenview.desktop\nimage/tiff=org.kde.gwenview.desktop\nimage/vnd.microsoft.icon=org.kde.gwenview.desktop\nimage/webp=org.kde.gwenview.desktop\nimage/x-icon=org.kde.gwenview.desktop\ninode/directory=org.kde.dolphin.desktop\ntext/css=org.kde.kate.desktop\ntext/csv=org.kde.kate.desktop\ntext/markdown=org.kde.kate.desktop\ntext/plain=org.kde.kate.desktop\ntext/x-csrc=org.kde.kate.desktop\ntext/x-python=org.kde.kate.desktop\ntext/x-shellscript=org.kde.kate.desktop\ntext/xml=org.kde.kate.desktop\nvideo/3gpp=org.kde.dragonplayer.desktop\nvideo/mp2t=org.kde.dragonplayer.desktop\nvideo/mp4=org.kde.dragonplayer.desktop\nvideo/mpeg=org.kde.dragonplayer.desktop\nvideo/ogg=org.kde.dragonplayer.desktop\nvideo/quicktime=org.kde.dragonplayer.desktop\nvideo/webm=org.kde.dragonplayer.desktop\nvideo/x-flv=org.kde.dragonplayer.desktop\nvideo/x-matroska=org.kde.dragonplayer.desktop\nvideo/x-ms-wmv=org.kde.dragonplayer.desktop\nvideo/x-msvideo=org.kde.dragonplayer.desktop\n",
+    "count": 56
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.gnome.Loupe.desktop"
+    ]
+   },
+   "outcome": {
+    "kind": "write",
+    "filename": "gnome-mimeapps.list",
+    "content": "[Default Applications]\napplication/gzip=org.gnome.FileRoller.desktop\napplication/javascript=org.gnome.TextEditor.desktop\napplication/json=org.gnome.TextEditor.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=org.gnome.TextEditor.desktop\napplication/vnd.rar=org.gnome.FileRoller.desktop\napplication/x-7z-compressed=org.gnome.FileRoller.desktop\napplication/x-bzip-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=org.gnome.FileRoller.desktop\napplication/x-xz-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-yaml=org.gnome.TextEditor.desktop\napplication/x-zstd-compressed-tar=org.gnome.FileRoller.desktop\napplication/xml=org.gnome.TextEditor.desktop\napplication/zip=org.gnome.FileRoller.desktop\nimage/avif=org.gnome.eog.desktop\nimage/bmp=org.gnome.eog.desktop\nimage/gif=org.gnome.eog.desktop\nimage/heif=org.gnome.eog.desktop\nimage/jpeg=org.gnome.eog.desktop\nimage/jxl=org.gnome.eog.desktop\nimage/png=org.gnome.eog.desktop\nimage/svg+xml=org.gnome.eog.desktop\nimage/tiff=org.gnome.eog.desktop\nimage/vnd.microsoft.icon=org.gnome.eog.desktop\nimage/webp=org.gnome.eog.desktop\nimage/x-icon=org.gnome.eog.desktop\ninode/directory=org.gnome.Nautilus.desktop\ntext/css=org.gnome.TextEditor.desktop\ntext/csv=org.gnome.TextEditor.desktop\ntext/markdown=org.gnome.TextEditor.desktop\ntext/plain=org.gnome.TextEditor.desktop\ntext/x-csrc=org.gnome.TextEditor.desktop\ntext/x-python=org.gnome.TextEditor.desktop\ntext/x-shellscript=org.gnome.TextEditor.desktop\ntext/xml=org.gnome.TextEditor.desktop\nvideo/3gpp=org.gnome.Showtime.desktop\nvideo/mp2t=org.gnome.Showtime.desktop\nvideo/mp4=org.gnome.Showtime.desktop\nvideo/mpeg=org.gnome.Showtime.desktop\nvideo/ogg=org.gnome.Showtime.desktop\nvideo/quicktime=org.gnome.Showtime.desktop\nvideo/webm=org.gnome.Showtime.desktop\nvideo/x-flv=org.gnome.Showtime.desktop\nvideo/x-matroska=org.gnome.Showtime.desktop\nvideo/x-ms-wmv=org.gnome.Showtime.desktop\nvideo/x-msvideo=org.gnome.Showtime.desktop\n",
+    "count": 48
+   }
+  }
+ ],
+ "apply": [
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "kwriteconfig6",
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "General",
+      "--key",
+      "TerminalApplication",
+      "konsole"
+     ],
+     [
+      "kwriteconfig6",
+      "--file",
+      "kdeglobals",
+      "--group",
+      "General",
+      "--key",
+      "TerminalService",
+      "org.kde.konsole.desktop"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ KDE терминал: konsole"
+    ]
+   }
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "⚠️ kwriteconfig6 не найден"
+    ]
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec",
+      "kgx"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec-arg",
+      "-e"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ GNOME терминал: kgx"
+    ]
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "⚠️ gsettings не найден"
+    ]
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.gnome.Console.desktop"
+    ]
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec",
+      "gnome-terminal"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec-arg",
+      "--"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ GNOME терминал: gnome-terminal"
+    ]
+   }
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.gnome.Console.desktop",
+     "org.gnome.Terminal.desktop"
+    ]
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec",
+      "gnome-terminal"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec-arg",
+      "--"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ GNOME терминал: gnome-terminal"
+    ]
+   }
+  },
+  {
+   "de_id": "mate",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.mate.applications-terminal",
+      "exec",
+      "mate-terminal"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.mate.applications-terminal",
+      "exec-arg",
+      "-x"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ MATE терминал: mate-terminal"
+    ]
+   }
+  },
+  {
+   "de_id": "cinnamon-mint",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.cinnamon.desktop.default-applications.terminal",
+      "exec",
+      "gnome-terminal"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.cinnamon.desktop.default-applications.terminal",
+      "exec-arg",
+      "--"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ Cinnamon терминал: gnome-terminal"
+    ]
+   }
+  },
+  {
+   "de_id": "budgie",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec",
+      "kgx"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.gnome.desktop.default-applications.terminal",
+      "exec-arg",
+      "-e"
+     ]
+    ],
+    "helpers_rc": null,
+    "logs": [
+     "✅ GNOME терминал: kgx"
+    ]
+   }
+  },
+  {
+   "de_id": "cosmic",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "ℹ️ COSMIC: приложения по умолчанию — через XDG MIME (gsettings нет)"
+    ]
+   }
+  },
+  {
+   "de_id": "lxqt",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [
+    "gsettings",
+    "kwriteconfig6"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "✅ LXQt терминал: qterminal"
+    ]
+   }
+  },
+  {
+   "de_id": "hyprland",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "ℹ️ hyprland: терминал по умолчанию — kitty (укажите его в настройках оконного менеджера)",
+     "ℹ️ hyprland: приложения по умолчанию — через XDG MIME"
+    ]
+   }
+  },
+  {
+   "de_id": "niri",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "ℹ️ niri: терминал по умолчанию — alacritty (укажите его в настройках оконного менеджера)",
+     "ℹ️ niri: приложения по умолчанию — через XDG MIME"
+    ]
+   }
+  },
+  {
+   "de_id": "sway",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "ℹ️ sway: терминал по умолчанию — foot (укажите его в настройках оконного менеджера)",
+     "ℹ️ sway: приложения по умолчанию — через XDG MIME"
+    ]
+   }
+  },
+  {
+   "de_id": "river",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": [
+     "ℹ️ river: терминал по умолчанию — foot (укажите его в настройках оконного менеджера)",
+     "ℹ️ river: приложения по умолчанию — через XDG MIME"
+    ]
+   }
+  },
+  {
+   "de_id": "xfce",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": "FileManager=thunar\nTerminalEmulator=xfce4-terminal\n",
+    "logs": [
+     "✅ XFCE helpers.rc обновлён"
+    ]
+   }
+  },
+  {
+   "de_id": "xfce",
+   "exists": {
+    "mode": "all"
+   },
+   "which": [],
+   "xfce_existing": "# comment\nBrowser=firefox\nTerminalEmulator=old\n\nFileManager=oldfm\n",
+   "result": {
+    "commands": [],
+    "helpers_rc": "Browser=firefox\nFileManager=thunar\nTerminalEmulator=xfce4-terminal\n",
+    "logs": [
+     "✅ XFCE helpers.rc обновлён"
+    ]
+   }
+  },
+  {
+   "de_id": "cinnamon-mint",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.gnome.Terminal.desktop"
+    ]
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": []
+   }
+  },
+  {
+   "de_id": "mate",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "mate-terminal.desktop"
+    ]
+   },
+   "which": [
+    "gsettings"
+   ],
+   "xfce_existing": null,
+   "result": {
+    "commands": [],
+    "helpers_rc": null,
+    "logs": []
+   }
+  }
+ ],
+ "installed_des": [
+  {
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    "kde",
+    "gnome",
+    "mate",
+    "cosmic",
+    "cinnamon-mint",
+    "xfce",
+    "budgie",
+    "pantheon",
+    "deepin",
+    "lxqt",
+    "hyprland",
+    "niri",
+    "sway",
+    "river",
+    "wayfire"
+   ]
+  },
+  {
+   "exists": {
+    "mode": "none"
+   },
+   "result": []
+  },
+  {
+   "exists": {
+    "mode": "only",
+    "items": [
+     "org.kde.dolphin.desktop",
+     "thunar.desktop"
+    ]
+   },
+   "result": [
+    "kde",
+    "xfce",
+    "hyprland",
+    "niri",
+    "sway",
+    "river",
+    "wayfire"
+   ]
+  },
+  {
+   "exists": {
+    "mode": "only",
+    "items": [
+     "org.gnome.Nautilus.desktop"
+    ]
+   },
+   "result": [
+    "gnome",
+    "budgie"
+   ]
+  },
+  {
+   "exists": {
+    "mode": "only",
+    "items": [
+     "caja.desktop",
+     "nemo.desktop",
+     "com.system76.CosmicFiles.desktop"
+    ]
+   },
+   "result": [
+    "mate",
+    "cosmic",
+    "cinnamon-mint"
+   ]
+  }
+ ],
+ "de_apps_info": [
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    [
+     "file_manager",
+     "org.kde.dolphin.desktop"
+    ],
+    [
+     "terminal",
+     "org.kde.konsole.desktop"
+    ],
+    [
+     "text_editor",
+     "org.kde.kate.desktop"
+    ],
+    [
+     "image_viewer",
+     "org.kde.gwenview.desktop"
+    ],
+    [
+     "video_player",
+     "org.kde.haruna.desktop"
+    ],
+    [
+     "pdf_viewer",
+     "org.kde.okular.desktop"
+    ],
+    [
+     "archive_manager",
+     "org.kde.ark.desktop"
+    ],
+    [
+     "music_player",
+     "org.kde.elisa.desktop"
+    ],
+    [
+     "screenshot",
+     "org.kde.spectacle.desktop"
+    ]
+   ]
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "all_except",
+    "items": [
+     "org.kde.haruna.desktop"
+    ]
+   },
+   "result": [
+    [
+     "file_manager",
+     "org.kde.dolphin.desktop"
+    ],
+    [
+     "terminal",
+     "org.kde.konsole.desktop"
+    ],
+    [
+     "text_editor",
+     "org.kde.kate.desktop"
+    ],
+    [
+     "image_viewer",
+     "org.kde.gwenview.desktop"
+    ],
+    [
+     "video_player",
+     "org.kde.dragonplayer.desktop"
+    ],
+    [
+     "pdf_viewer",
+     "org.kde.okular.desktop"
+    ],
+    [
+     "archive_manager",
+     "org.kde.ark.desktop"
+    ],
+    [
+     "music_player",
+     "org.kde.elisa.desktop"
+    ],
+    [
+     "screenshot",
+     "org.kde.spectacle.desktop"
+    ]
+   ]
+  },
+  {
+   "de_id": "kde",
+   "exists": {
+    "mode": "none"
+   },
+   "result": [
+    [
+     "file_manager",
+     null
+    ],
+    [
+     "terminal",
+     null
+    ],
+    [
+     "text_editor",
+     null
+    ],
+    [
+     "image_viewer",
+     null
+    ],
+    [
+     "video_player",
+     null
+    ],
+    [
+     "pdf_viewer",
+     null
+    ],
+    [
+     "archive_manager",
+     null
+    ],
+    [
+     "music_player",
+     null
+    ],
+    [
+     "screenshot",
+     null
+    ]
+   ]
+  },
+  {
+   "de_id": "gnome",
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    [
+     "file_manager",
+     "org.gnome.Nautilus.desktop"
+    ],
+    [
+     "terminal",
+     "org.gnome.Console.desktop"
+    ],
+    [
+     "text_editor",
+     "org.gnome.TextEditor.desktop"
+    ],
+    [
+     "image_viewer",
+     "org.gnome.Loupe.desktop"
+    ],
+    [
+     "video_player",
+     "org.gnome.Showtime.desktop"
+    ],
+    [
+     "pdf_viewer",
+     "org.gnome.Papers.desktop"
+    ],
+    [
+     "archive_manager",
+     "org.gnome.FileRoller.desktop"
+    ]
+   ]
+  },
+  {
+   "de_id": "hyprland",
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    [
+     "file_manager",
+     "thunar.desktop"
+    ],
+    [
+     "terminal",
+     "kitty.desktop"
+    ],
+    [
+     "text_editor",
+     "mousepad.desktop"
+    ],
+    [
+     "image_viewer",
+     "org.gnome.Loupe.desktop"
+    ],
+    [
+     "pdf_viewer",
+     "org.gnome.Papers.desktop"
+    ],
+    [
+     "archive_manager",
+     "xarchiver.desktop"
+    ]
+   ]
+  },
+  {
+   "de_id": "hyprland",
+   "exists": {
+    "mode": "none"
+   },
+   "result": [
+    [
+     "file_manager",
+     null
+    ],
+    [
+     "terminal",
+     null
+    ],
+    [
+     "text_editor",
+     null
+    ],
+    [
+     "image_viewer",
+     null
+    ],
+    [
+     "pdf_viewer",
+     null
+    ],
+    [
+     "archive_manager",
+     null
+    ]
+   ]
+  },
+  {
+   "de_id": "lxqt",
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    [
+     "file_manager",
+     "pcmanfm-qt.desktop"
+    ],
+    [
+     "terminal",
+     "qterminal.desktop"
+    ],
+    [
+     "text_editor",
+     "featherpad.desktop"
+    ],
+    [
+     "image_viewer",
+     "lximage-qt.desktop"
+    ],
+    [
+     "archive_manager",
+     "lxqt-archiver.desktop"
+    ]
+   ]
+  },
+  {
+   "de_id": "river",
+   "exists": {
+    "mode": "all"
+   },
+   "result": [
+    [
+     "file_manager",
+     "thunar.desktop"
+    ],
+    [
+     "terminal",
+     "foot.desktop"
+    ],
+    [
+     "text_editor",
+     "mousepad.desktop"
+    ],
+    [
+     "image_viewer",
+     "org.gnome.Loupe.desktop"
+    ],
+    [
+     "pdf_viewer",
+     "org.gnome.Papers.desktop"
+    ],
+    [
+     "archive_manager",
+     "xarchiver.desktop"
+    ]
+   ]
+  }
+ ],
+ "autostart": [
+  {
+   "exec_path": "/usr/bin/rexon",
+   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-Phase=Initialization\n"
+  },
+  {
+   "exec_path": "/usr/local/lib/rexon/rexon_apply_defaults.sh",
+   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/local/lib/rexon/rexon_apply_defaults.sh --apply-defaults\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-Phase=Initialization\n"
+  }
+ ],
+ "fm_default": [
+  {
+   "fm_id": "dolphin",
+   "exists": {
+    "mode": "all"
+   },
+   "target": "org.kde.dolphin.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "org.kde.dolphin.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "dolphin",
+   "exists": {
+    "mode": "only",
+    "items": [
+     "dolphin.desktop"
+    ]
+   },
+   "target": "dolphin.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "dolphin.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "dolphin",
+   "exists": {
+    "mode": "none"
+   },
+   "target": null,
+   "xdg_cmd": null
+  },
+  {
+   "fm_id": "nautilus",
+   "exists": {
+    "mode": "only",
+    "items": [
+     "nautilus.desktop"
+    ]
+   },
+   "target": "nautilus.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "nautilus.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "thunar",
+   "exists": {
+    "mode": "all"
+   },
+   "target": "thunar.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "thunar.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "caja",
+   "exists": {
+    "mode": "only",
+    "items": [
+     "caja-browser.desktop"
+    ]
+   },
+   "target": "caja-browser.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "caja-browser.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "org.kde.dolphin.desktop",
+   "exists": {
+    "mode": "all"
+   },
+   "target": "org.kde.dolphin.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "org.kde.dolphin.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "unknownfm",
+   "exists": {
+    "mode": "all"
+   },
+   "target": "unknownfm.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "unknownfm.desktop",
+    "inode/directory"
+   ]
+  },
+  {
+   "fm_id": "pcmanfm-qt",
+   "exists": {
+    "mode": "all"
+   },
+   "target": "pcmanfm-qt.desktop",
+   "xdg_cmd": [
+    "xdg-mime",
+    "default",
+    "pcmanfm-qt.desktop",
+    "inode/directory"
+   ]
+  }
+ ],
+ "xdg_query_cmd": [
+  "xdg-mime",
+  "query",
+  "default",
+  "inode/directory"
+ ],
+ "fm1": [
+  {
+   "txt": "Name=org.freedesktop.FileManager1\nExec=/usr/bin/nautilus --gapplication-service\n",
+   "binary": "nautilus",
+   "matches": true,
+   "exec_basename": "nautilus"
+  },
+  {
+   "txt": "Name=org.freedesktop.FileManager1\nExec=/usr/bin/dolphin\n",
+   "binary": "nautilus",
+   "matches": false,
+   "exec_basename": "dolphin"
+  },
+  {
+   "txt": "Name=org.other\nExec=/usr/bin/nautilus\n",
+   "binary": "nautilus",
+   "matches": false,
+   "exec_basename": "nautilus"
+  },
+  {
+   "txt": "Exec=/usr/bin/nautilus\nName=org.freedesktop.FileManager1\n",
+   "binary": "nautilus",
+   "matches": true,
+   "exec_basename": "nautilus"
+  },
+  {
+   "txt": "nothing here",
+   "binary": "nautilus",
+   "matches": false,
+   "exec_basename": null
+  },
+  {
+   "txt": "Name=org.freedesktop.FileManager1\n",
+   "binary": "nautilus",
+   "matches": false,
+   "exec_basename": null
+  }
+ ],
+ "busctl_pid": [
+  {
+   "stdout": "PID=1234\nother\n",
+   "pid": 1234
+  },
+  {
+   "stdout": "no pid",
+   "pid": null
+  },
+  {
+   "stdout": "X\nPID=42",
+   "pid": 42
+  },
+  {
+   "stdout": "PID=abc",
+   "pid": null
+  }
+ ],
+ "fm1_name": "org.freedesktop.FileManager1"
+}

@@ -1,0 +1,152 @@
+[
+ {
+  "de": "gnome",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.gnome.desktop.interface",
+   "gtk-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "gnome",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.gnome.desktop.interface",
+   "icon-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "cinnamon",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.cinnamon.desktop.interface",
+   "gtk-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "cinnamon",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.cinnamon.desktop.interface",
+   "icon-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "mate",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.mate.interface",
+   "gtk-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "mate",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": [
+   "gsettings",
+   "set",
+   "org.mate.interface",
+   "icon-theme",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "xfce",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": [
+   "xfconf-query",
+   "-c",
+   "xsettings",
+   "-p",
+   "/Net/ThemeName",
+   "-s",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "xfce",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": [
+   "xfconf-query",
+   "-c",
+   "xsettings",
+   "-p",
+   "/Net/IconThemeName",
+   "-s",
+   "MyTheme"
+  ],
+  "ret": true
+ },
+ {
+  "de": "kde",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ },
+ {
+  "de": "kde",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ },
+ {
+  "de": "budgie",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ },
+ {
+  "de": "budgie",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ },
+ {
+  "de": "",
+  "kind": "gtk",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ },
+ {
+  "de": "",
+  "kind": "icon",
+  "name": "MyTheme",
+  "argv": null,
+  "ret": false
+ }
+]

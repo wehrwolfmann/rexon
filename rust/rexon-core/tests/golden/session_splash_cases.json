@@ -1,0 +1,998 @@
+{
+  "config_path": "/HOME/.config/rexon/session_splash.json",
+  "autostart_path": "/HOME/.config/autostart/rexon-session-splash.desktop",
+  "ksplash_theme_id": "org.rexon.sessionsplash",
+  "lnf_theme_dir": "/HOME/.local/share/plasma/look-and-feel/org.rexon.sessionsplash",
+  "systemd_unit_name": "rexon-session-splash.service",
+  "systemd_unit_path": "/HOME/.config/systemd/user/rexon-session-splash.service",
+  "builtin_names": {
+    "deck_startup": "Steam Deck (стандартная)",
+    "oled_startup": "Steam Deck OLED",
+    "bigpicture_startup": "Big Picture"
+  },
+  "kwin_app_id": "rexon-session-splash",
+  "kwin_rule_desc": "Description=Rexon: заставка входа поверх всего\n",
+  "kwin_rule_fsp": "fsplevel=0\nfsplevelrule=2\n",
+  "kwin_rule_body": "Description=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n",
+  "splash_qml": "import QtQuick\n\nRectangle {\n    id: root\n    color: \"black\"\n\n    property int stage\n\n    Image {\n        anchors.fill: parent\n        fillMode: Image.PreserveAspectFit\n        asynchronous: false\n        cache: false\n        source: \"images/poster.png\"\n    }\n}\n",
+  "runtime_dir": "/HOME/run",
+  "launcher_exec_rexon": "/usr/local/bin/rexon --session-splash",
+  "systemd_unit_content": "[Unit]\nDescription=Rexon Session Splash (startup movie at login, Steam style)\nPartOf=graphical-session.target\nAfter=plasma-kwin_wayland.service plasma-kwin_x11.service\nBefore=plasma-plasmashell.service\n\n[Service]\nType=notify\nExecStart=/usr/local/bin/rexon --session-splash\nSlice=session.slice\n# страховки: сломанный mpv задержит вход максимум на ~15 с\n# (overlay-порог 6 c + фолбэк-mpv 6 c = 12 c до READY, + слак).\nTimeoutStartSec=15\nTimeoutStopSec=5\n\n[Install]\nWantedBy=plasma-workspace.target\n",
+  "launcher_exec_fallback": "/usr/bin/python3 -m rexon.app --session-splash",
+  "python_executable": "/usr/bin/python3",
+  "steam_root": "/HOME/.local/share/Steam",
+  "vdf_text": "\"UserLocalConfigStore\"\n{\n\t\"Software\"\n\t{\n\t\t\"GetStartupMovies\"\t\t\"[{\\\"communityitemid\\\": \\\"34806\\\", \\\"name\\\": \\\"Special Delivery\\\", \\\"item_title\\\": \\\"Special Delivery Movie\\\", \\\"appid\\\": 1234}, {\\\"communityitemid\\\": \\\"777\\\", \\\"name\\\": \\\"\\\", \\\"item_title\\\": \\\"Days Gone\\\", \\\"appid\\\": 5678}, {\\\"communityitemid\\\": \\\"\\\", \\\"name\\\": \\\"ignored\\\"}]\"\n\t}\n}\n",
+  "startup_movie_names": {
+    "34806": {
+      "name": "Special Delivery",
+      "item_title": "Special Delivery Movie",
+      "appid": 1234
+    },
+    "777": {
+      "name": "Days Gone",
+      "item_title": "Days Gone",
+      "appid": 5678
+    }
+  },
+  "scan_movies_python": [
+    {
+      "id": "deck_startup",
+      "name": "Steam Deck (стандартная)",
+      "path": "/HOME/.local/share/Steam/steamui/movies/deck_startup.webm",
+      "builtin": true
+    },
+    {
+      "id": "bigpicture_startup",
+      "name": "Big Picture",
+      "path": "/HOME/.local/share/Steam/steamui/movies/bigpicture_startup.webm",
+      "builtin": true
+    },
+    {
+      "id": "34806",
+      "name": "Special Delivery",
+      "path": "/HOME/.local/share/Steam/config/communityitemscache/startupmovies/34806_abc123.webm",
+      "builtin": false
+    },
+    {
+      "id": "777",
+      "name": "Days Gone",
+      "path": "/HOME/.local/share/Steam/config/communityitemscache/startupmovies/777_x.mp4",
+      "builtin": false
+    },
+    {
+      "id": "99999",
+      "name": "Инвентарь · 99999",
+      "path": "/HOME/.local/share/Steam/config/communityitemscache/startupmovies/99999_zz.webm",
+      "builtin": false
+    },
+    {
+      "id": "weird.webm",
+      "name": "Инвентарь · weird.webm",
+      "path": "/HOME/.local/share/Steam/config/communityitemscache/startupmovies/weird.webm",
+      "builtin": false
+    }
+  ],
+  "vdf_bad_json_text": "\"X\"\n{\n\t\"GetStartupMovies\"\t\t\"not json at all\"\n}\n",
+  "vdf_bad_json_names": {},
+  "vdf_no_key_names": {},
+  "load_config_ok": {
+    "path": "/old.webm",
+    "sound": false,
+    "prev_ksplash_theme": "Breeze"
+  },
+  "load_config_broken": {},
+  "load_config_nondict": {},
+  "load_config_missing": {},
+  "save_config_text": "{\n  \"path\": \"/usr/local/share/movie.webm\",\n  \"sound\": false,\n  \"prev_ksplash_theme\": \"Breeze\"\n}",
+  "save_hybrid_pref_text": "{\n  \"path\": \"/usr/local/share/movie.webm\",\n  \"sound\": false,\n  \"prev_ksplash_theme\": \"Breeze\",\n  \"hybrid\": true\n}",
+  "ksplashrc_text": "[KDE]\nfoo=1\n\n[KSplash]\nEngine=KSplashQML\nTheme = org.kde.breeze.desktop\n\n[Other]\nTheme=nope\n",
+  "ksplashrc_get": {
+    "Theme": "org.kde.breeze.desktop",
+    "Engine": "KSplashQML",
+    "Missing": ""
+  },
+  "ksplashrc_get_nofile": "",
+  "kwriteconfig_set_argv": [
+    "/usr/bin/kwriteconfig6",
+    "--file",
+    "ksplashrc",
+    "--group",
+    "KSplash",
+    "--key",
+    "Theme",
+    "org.rexon.sessionsplash"
+  ],
+  "kwriteconfig_delete_argv": [
+    "/usr/bin/kwriteconfig6",
+    "--file",
+    "ksplashrc",
+    "--group",
+    "KSplash",
+    "--key",
+    "Engine",
+    "--delete"
+  ],
+  "systemctl_is_active_argv": [
+    "/usr/bin/systemctl",
+    "--user",
+    "is-active",
+    "plasma-workspace.target"
+  ],
+  "hybrid_supported": [
+    {
+      "desktop": "KDE",
+      "binaries": true,
+      "target_active": true,
+      "supported": true
+    },
+    {
+      "desktop": "KDE",
+      "binaries": true,
+      "target_active": false,
+      "supported": false
+    },
+    {
+      "desktop": "KDE",
+      "binaries": false,
+      "target_active": true,
+      "supported": false
+    },
+    {
+      "desktop": "GNOME",
+      "binaries": true,
+      "target_active": true,
+      "supported": false
+    },
+    {
+      "desktop": null,
+      "binaries": true,
+      "target_active": true,
+      "supported": false
+    },
+    {
+      "desktop": "kde",
+      "binaries": true,
+      "target_active": true,
+      "supported": true
+    },
+    {
+      "desktop": "X-Cinnamon:KDE",
+      "binaries": true,
+      "target_active": true,
+      "supported": true
+    }
+  ],
+  "ffmpeg_poster_argv": [
+    "/usr/bin/ffmpeg",
+    "-y",
+    "-v",
+    "error",
+    "-i",
+    "/usr/local/share/movie.webm",
+    "-frames:v",
+    "1",
+    "-update",
+    "1",
+    "/HOME/poster.png"
+  ],
+  "extract_poster_ok_msg": [
+    true,
+    "OK"
+  ],
+  "write_lnf_msg": [
+    true,
+    "Тема KSplash обновлена"
+  ],
+  "lnf_metadata_json": "{\n    \"KPackageStructure\": \"Plasma/LookAndFeel\",\n    \"KPlugin\": {\n        \"Id\": \"org.rexon.sessionsplash\",\n        \"Name\": \"Rexon Session Splash\",\n        \"Description\": \"Rexon startup movie poster (Steam style) — seamless handover from the KDE splash screen to the movie\",\n        \"Description[ru]\": \"Постер видеозаставки Rexon (в стиле Steam) — бесшовный переход от заставки KDE к ролику\",\n        \"Authors\": [\n            {\n                \"Name\": \"Wehrwolfmann\"\n            }\n        ],\n        \"License\": \"LGPL-2.1+\"\n    },\n    \"X-Plasma-APIVersion\": \"2\"\n}",
+  "lnf_splash_qml": "import QtQuick\n\nRectangle {\n    id: root\n    color: \"black\"\n\n    property int stage\n\n    Image {\n        anchors.fill: parent\n        fillMode: Image.PreserveAspectFit\n        asynchronous: false\n        cache: false\n        source: \"images/poster.png\"\n    }\n}\n",
+  "autostart_desktop_content": "[Desktop Entry]\nType=Application\nName=Rexon Session Splash\nComment=Startup movie at login (Steam style)\nComment[ru]=Видеозаставка при входе (в стиле Steam)\nExec=/usr/local/bin/rexon --session-splash\nX-KDE-autostart-phase=1\nTerminal=false\nNoDisplay=true\n",
+  "autostart_install_msg": [
+    true,
+    "Заставка при входе включена"
+  ],
+  "kwin_empty": {
+    "initial": null,
+    "ok": true,
+    "result": "\n[1]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n\n[General]\ncount=1\nrules=1\n",
+    "changed": true
+  },
+  "kwin_append": {
+    "initial": "[1]\nDescription=user rule\nwmclass=firefox\nwmclassmatch=1\n\n[2]\nDescription=other\nwmclass=mpv\nwmclassmatch=1\n\n[General]\ncount=2\nrules=1,2\n",
+    "ok": true,
+    "result": "[1]\nDescription=user rule\nwmclass=firefox\nwmclassmatch=1\n\n[2]\nDescription=other\nwmclass=mpv\nwmclassmatch=1\n\n[General]\ncount=3\nrules=1,2,3\n\n[3]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n",
+    "changed": true
+  },
+  "kwin_uptodate": {
+    "initial": "\n[1]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n\n[General]\ncount=1\nrules=1\n",
+    "ok": true,
+    "result": "\n[1]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n\n[General]\ncount=1\nrules=1\n",
+    "changed": false
+  },
+  "kwin_migrate": {
+    "initial": "[1]\nDescription=Rexon: заставка входа поверх всего\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n\n[General]\ncount=1\nrules=1\n",
+    "ok": true,
+    "result": "[1]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n\n[General]\ncount=1\nrules=1\n",
+    "changed": true
+  },
+  "kwin_gaps": {
+    "initial": "[1]\nwmclass=a\n\n[5]\nwmclass=b\n\n[General]\ncount=2\nrules=1,5\n",
+    "ok": true,
+    "result": "[1]\nwmclass=a\n\n[5]\nwmclass=b\n\n[General]\ncount=3\nrules=1,5,6\n\n[6]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n",
+    "changed": true
+  },
+  "kwin_broken_general_input": "[1]\nwmclass=a\n\n[General]\nsomething=1\n",
+  "kwin_broken_general_python": "[1]\nwmclass=a\n\n[General]\nsomething=1\n\n[2]\nDescription=Rexon: заставка входа поверх всего\nfsplevel=0\nfsplevelrule=2\nabove=true\naboverule=2\nfullscreen=true\nfullscreenrule=2\nnoborder=true\nnoborderrule=2\nskiptaskbar=true\nskiptaskbarrule=2\nskippager=true\nskippagerrule=2\nskipswitcher=true\nskipswitcherrule=2\nwmclass=rexon-session-splash\nwmclassmatch=1\ntypes=1\n",
+  "kwin_reconfigure_argvs": [
+    [
+      "qdbus6",
+      "org.kde.KWin",
+      "/KWin",
+      "reconfigure"
+    ],
+    [
+      "qdbus",
+      "org.kde.KWin",
+      "/KWin",
+      "reconfigure"
+    ],
+    [
+      "gdbus",
+      "call",
+      "--session",
+      "--dest",
+      "org.kde.KWin",
+      "--object-path",
+      "/KWin",
+      "--method",
+      "org.kde.KWin.reconfigure"
+    ]
+  ],
+  "xrandr": [
+    {
+      "label": "primary",
+      "stdout": "HDMI-1 connected primary 2560x1440+1920+0 (normal)\neDP-1 connected 1920x1080+0+360 (normal)\n",
+      "geometry": [
+        1920,
+        0,
+        2560,
+        1440
+      ]
+    },
+    {
+      "label": "no_primary",
+      "stdout": "eDP-1 connected 1920x1080+0+0 (normal)\nHDMI-1 disconnected (normal)\n",
+      "geometry": [
+        0,
+        0,
+        1920,
+        1080
+      ]
+    },
+    {
+      "label": "disconnected_only",
+      "stdout": "HDMI-1 disconnected (normal)\n",
+      "geometry": null
+    },
+    {
+      "label": "empty",
+      "stdout": "",
+      "geometry": null
+    }
+  ],
+  "is_x11_session": [
+    {
+      "display": ":0",
+      "wayland": null,
+      "x11": true
+    },
+    {
+      "display": ":0",
+      "wayland": "wayland-0",
+      "x11": false
+    },
+    {
+      "display": null,
+      "wayland": "wayland-0",
+      "x11": false
+    },
+    {
+      "display": null,
+      "wayland": null,
+      "x11": false
+    },
+    {
+      "display": "",
+      "wayland": "wayland-0",
+      "x11": false
+    },
+    {
+      "display": ":0",
+      "wayland": "",
+      "x11": true
+    }
+  ],
+  "ipc_send_pause_false": "{\"command\": [\"set_property\", \"pause\", false]}\n",
+  "ipc_send_quit": "{\"command\": [\"quit\"]}\n",
+  "ipc_get": [
+    {
+      "label": "events_then_ok",
+      "received": "{\"event\":\"property-change\"}\n{\"request_id\":700,\"error\":\"success\",\"data\":42.5}\n",
+      "sent": "{\"command\": [\"get_property\", \"eof-reached\"], \"request_id\": 700}\n",
+      "result": 42.5
+    },
+    {
+      "label": "error",
+      "received": "{\"request_id\":700,\"error\":\"property unavailable\"}\n",
+      "sent": "{\"command\": [\"get_property\", \"eof-reached\"], \"request_id\": 700}\n",
+      "result": null
+    },
+    {
+      "label": "split_chunks",
+      "received": "{\"request_id\":700,\"error\":\"success\",\"data\":true}\n",
+      "sent": "{\"command\": [\"get_property\", \"eof-reached\"], \"request_id\": 700}\n",
+      "result": true
+    },
+    {
+      "label": "no_match_eof",
+      "received": "{\"event\":\"x\"}\n",
+      "sent": "{\"command\": [\"get_property\", \"eof-reached\"], \"request_id\": 700}\n",
+      "result": null
+    },
+    {
+      "label": "garbage_line",
+      "received": "not json\n{\"request_id\":700,\"error\":\"success\",\"data\":\"eof\"}\n",
+      "sent": "{\"command\": [\"get_property\", \"eof-reached\"], \"request_id\": 700}\n",
+      "result": "eof"
+    }
+  ],
+  "sd_notify_abstract_addr": "\u0000/rexon-notify",
+  "sd_notify_plain_addr": "/run/systemd/notify",
+  "sd_notify_payloads": [
+    "READY=1",
+    "READY=1"
+  ],
+  "sd_notify_connect_count": 2,
+  "overlay_candidates": [
+    "/usr/local/lib/rexon/rust/target/release/rexon-splash-overlay",
+    "/usr/local/lib/rexon/rust/target/debug/rexon-splash-overlay",
+    "/usr/local/lib/rexon/rust/rexon-splash-overlay/target/release/rexon-splash-overlay",
+    "/usr/local/lib/rexon/rust/rexon-splash-overlay/target/debug/rexon-splash-overlay"
+  ],
+  "overlay_not_found": null,
+  "poster_theme_hit": "/HOME/.local/share/plasma/look-and-feel/org.rexon.sessionsplash/contents/splash/images/poster.png",
+  "poster_runtime": "/HOME/run/rexon-splash-poster.png",
+  "poster_fail": null,
+  "play": {
+    "wayland_window_test": {
+      "argv": [
+        "mpv",
+        "--no-config",
+        "--osd-level=0",
+        "--no-osc",
+        "--no-osd-bar",
+        "--no-input-default-bindings",
+        "--input-conf=/dev/null",
+        "--cursor-autohide=always",
+        "--no-input-cursor",
+        "--really-quiet",
+        "--no-terminal",
+        "--loop-file=no",
+        "--hwdec=auto",
+        "--mute=no",
+        "--fullscreen",
+        "--no-border",
+        "--ontop",
+        "--keep-open=no",
+        "--wayland-app-id=rexon-session-splash",
+        "--",
+        "/HOME/movie.webm"
+      ],
+      "result": [
+        true,
+        "Запущено"
+      ]
+    },
+    "wayland_window_hybrid_mute": {
+      "argv": [
+        "mpv",
+        "--no-config",
+        "--osd-level=0",
+        "--no-osc",
+        "--no-osd-bar",
+        "--no-input-default-bindings",
+        "--input-conf=/dev/null",
+        "--cursor-autohide=always",
+        "--no-input-cursor",
+        "--really-quiet",
+        "--no-terminal",
+        "--loop-file=no",
+        "--hwdec=auto",
+        "--mute=yes",
+        "--fullscreen",
+        "--no-border",
+        "--ontop",
+        "--keep-open=no",
+        "--wayland-app-id=rexon-session-splash",
+        "--input-ipc-server=/HOME/run/rexon-splash-mpv.sock",
+        "--pause",
+        "--",
+        "/HOME/movie.webm"
+      ],
+      "result": [
+        true,
+        "Запущено"
+      ]
+    },
+    "x11_window_test": {
+      "argv": [
+        "mpv",
+        "--no-config",
+        "--osd-level=0",
+        "--no-osc",
+        "--no-osd-bar",
+        "--no-input-default-bindings",
+        "--input-conf=/dev/null",
+        "--cursor-autohide=always",
+        "--no-input-cursor",
+        "--really-quiet",
+        "--no-terminal",
+        "--loop-file=no",
+        "--hwdec=auto",
+        "--mute=no",
+        "--fullscreen",
+        "--no-border",
+        "--ontop",
+        "--keep-open=no",
+        "--",
+        "/HOME/movie.webm"
+      ],
+      "result": [
+        true,
+        "Запущено"
+      ]
+    },
+    "x11_overlay_blocking": {
+      "argv": [
+        "mpv",
+        "--no-config",
+        "--osd-level=0",
+        "--no-osc",
+        "--no-osd-bar",
+        "--no-input-default-bindings",
+        "--input-conf=/dev/null",
+        "--cursor-autohide=always",
+        "--no-input-cursor",
+        "--really-quiet",
+        "--no-terminal",
+        "--loop-file=no",
+        "--hwdec=auto",
+        "--mute=no",
+        "--wid=77000001",
+        "--keep-open=yes",
+        "--input-ipc-server=/HOME/run/rexon-splash-mpv.sock",
+        "--",
+        "/HOME/movie.webm"
+      ],
+      "result": [
+        true,
+        "Проиграно"
+      ]
+    },
+    "wayland_helper_then_fallback": {
+      "helper_argv": [
+        "/usr/local/bin/rexon-splash-overlay",
+        "--video",
+        "/HOME/movie.webm",
+        "--ipc",
+        "/HOME/run/rexon-splash-mpv.sock"
+      ],
+      "mpv_argv": [
+        "mpv",
+        "--no-config",
+        "--osd-level=0",
+        "--no-osc",
+        "--no-osd-bar",
+        "--no-input-default-bindings",
+        "--input-conf=/dev/null",
+        "--cursor-autohide=always",
+        "--no-input-cursor",
+        "--really-quiet",
+        "--no-terminal",
+        "--loop-file=no",
+        "--hwdec=auto",
+        "--mute=no",
+        "--fullscreen",
+        "--no-border",
+        "--ontop",
+        "--keep-open=no",
+        "--wayland-app-id=rexon-session-splash",
+        "--",
+        "/HOME/movie.webm"
+      ],
+      "result": [
+        true,
+        "Проиграно"
+      ]
+    },
+    "helper_argv_mute_paused": {
+      "argv": [
+        "/usr/local/bin/rexon-splash-overlay",
+        "--video",
+        "/HOME/movie.webm",
+        "--ipc",
+        "/HOME/run/rexon-splash-mpv.sock",
+        "--mute",
+        "--paused"
+      ],
+      "result": null
+    },
+    "helper_argv_sound": {
+      "argv": [
+        "/usr/local/bin/rexon-splash-overlay",
+        "--video",
+        "/HOME/movie.webm",
+        "--ipc",
+        "/HOME/run/rexon-splash-mpv.sock"
+      ],
+      "result": null
+    },
+    "no_file": {
+      "result": [
+        false,
+        "Файл заставки не задан или не найден"
+      ]
+    },
+    "no_mpv": {
+      "result": [
+        false,
+        "mpv не установлен (нужен для проигрывания)"
+      ]
+    }
+  },
+  "autostart_routes": {
+    "no_path": {
+      "result": [
+        false,
+        "Сначала выберите заставку"
+      ]
+    },
+    "hybrid_ok": {
+      "result": [
+        true,
+        "Включено (гибрид KSplash — без мелькания стола)"
+      ],
+      "calls": [
+        "supported",
+        "install_hybrid",
+        "rm_desktop"
+      ]
+    },
+    "hybrid_fail_fallback": {
+      "result": [
+        true,
+        "Гибрид не удался (нет ffmpeg) — включён обычный автозапуск"
+      ],
+      "calls": [
+        "supported",
+        "install_hybrid",
+        "uninstall_hybrid",
+        "desktop"
+      ]
+    },
+    "hybrid_disabled_leftovers": {
+      "result": [
+        true,
+        "Заставка при входе включена"
+      ],
+      "calls": [
+        "uninstall_hybrid",
+        "desktop"
+      ]
+    },
+    "uninstall_with_hybrid": {
+      "result": [
+        true,
+        "Заставка при входе отключена"
+      ],
+      "calls": [
+        "uninstall_hybrid"
+      ]
+    },
+    "uninstall_plain": {
+      "result": [
+        true,
+        "Заставка при входе отключена"
+      ]
+    }
+  },
+  "showcase": {
+    "vdf_text": "\t\t\t\t\t\"GetStartupMovies\"\t\t\"[{\\\"communityitemid\\\": \\\"34806\\\", \\\"name\\\": \\\"Days Gone\\\", \\\"appid\\\": 1259420, \\\"item_title\\\": \\\"Специальная доставка\\\", \\\"item_class\\\": 12, \\\"image_large\\\": \\\"/items/1259420/big.png\\\", \\\"image_small\\\": \\\"small.png\\\"}, {\\\"communityitemid\\\": 991, \\\"name\\\": \\\"Only Name\\\", \\\"appid\\\": \\\"570\\\"}, {\\\"communityitemid\\\": null, \\\"name\\\": \\\"Мусор\\\"}, {\\\"communityitemid\\\": \\\"none\\\", \\\"name\\\": \\\"Тоже мусор\\\"}, {\\\"communityitemid\\\": \\\"77\\\", \\\"item_title\\\": \\\"Только заголовок\\\", \\\"image_small\\\": \\\"/s.png\\\"}, \\\"не словарь\\\"]\"\n\t\t\t\t\t\"Other\"\t\t\"1\"\n",
+    "items": {
+      "34806": {
+        "communityitemid": "34806",
+        "name": "Days Gone",
+        "appid": 1259420,
+        "item_title": "Специальная доставка",
+        "item_class": 12,
+        "image_large": "/items/1259420/big.png",
+        "image_small": "small.png"
+      },
+      "991": {
+        "communityitemid": 991,
+        "name": "Only Name",
+        "appid": "570"
+      },
+      "77": {
+        "communityitemid": "77",
+        "item_title": "Только заголовок",
+        "image_small": "/s.png"
+      }
+    },
+    "appinfo_v29_bytes": "294456070100000026010000000000009c37130052000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001010000004461797320476f6e650008083a0200004f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000101000000446f74612032000808da0200005900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000101000000436f756e7465722d537472696b6520320008080000000003000000636f6d6d6f6e006e616d6500756e7573656400",
+    "appinfo_v29_names": {
+      "1259420": "Days Gone",
+      "570": "Dota 2"
+    },
+    "appinfo_v28_bytes": "28445607010000009c3713005600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000636f6d6d6f6e00016e616d65004461797320476f6e650008083a0200005300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000636f6d6d6f6e00016e616d6500446f74612032000808da0200005d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000636f6d6d6f6e00016e616d6500436f756e7465722d537472696b65203200080800000000",
+    "appinfo_v28_names": {
+      "1259420": "Days Gone",
+      "570": "Dota 2"
+    },
+    "appinfo_bad_bytes": "111111110000000000000000000000000000000000000000000000000000000000000000",
+    "appinfo_bad_names": {},
+    "enrich_input_movies": [
+      {
+        "id": "deck_startup",
+        "name": "Steam Deck (стандартная)",
+        "path": "/HOME/deck_startup.webm",
+        "builtin": true
+      },
+      {
+        "id": "34806",
+        "name": "Инвентарь · 34806",
+        "path": "/HOME/34806_a.webm",
+        "builtin": false
+      },
+      {
+        "id": "991",
+        "name": "Инвентарь · 991",
+        "path": "/HOME/991_b.webm",
+        "builtin": false
+      },
+      {
+        "id": "77",
+        "name": "Инвентарь · 77",
+        "path": "/HOME/77_c.webm",
+        "builtin": false
+      },
+      {
+        "id": "0000",
+        "name": "Без метаданных",
+        "path": "/HOME/x.webm",
+        "builtin": false
+      }
+    ],
+    "enrich_input_names": {
+      "1259420": "Days Gone",
+      "570": "Dota 2"
+    },
+    "enriched": [
+      {
+        "id": "deck_startup",
+        "name": "Steam Deck (стандартная)",
+        "path": "/HOME/deck_startup.webm",
+        "builtin": true,
+        "origin": "builtin",
+        "origin_label": "Встроенная в Steam",
+        "appid": 0,
+        "game": "",
+        "title": "Steam Deck (стандартная)",
+        "image": "",
+        "item_class": 0
+      },
+      {
+        "id": "34806",
+        "name": "Инвентарь · 34806",
+        "path": "/HOME/34806_a.webm",
+        "builtin": false,
+        "origin": "shop",
+        "origin_label": "Points Shop",
+        "appid": 1259420,
+        "game": "Days Gone",
+        "title": "Специальная доставка",
+        "image": "items/1259420/big.png",
+        "item_class": 12
+      },
+      {
+        "id": "991",
+        "name": "Инвентарь · 991",
+        "path": "/HOME/991_b.webm",
+        "builtin": false,
+        "origin": "shop",
+        "origin_label": "Points Shop",
+        "appid": 570,
+        "game": "Dota 2",
+        "title": "Only Name",
+        "image": "",
+        "item_class": 0
+      },
+      {
+        "id": "77",
+        "name": "Инвентарь · 77",
+        "path": "/HOME/77_c.webm",
+        "builtin": false,
+        "origin": "shop",
+        "origin_label": "Points Shop",
+        "appid": 0,
+        "game": "",
+        "title": "Только заголовок",
+        "image": "s.png",
+        "item_class": 0
+      },
+      {
+        "id": "0000",
+        "name": "Без метаданных",
+        "path": "/HOME/x.webm",
+        "builtin": false,
+        "origin": "shop",
+        "origin_label": "Points Shop",
+        "appid": 0,
+        "game": "",
+        "title": "Без метаданных",
+        "image": "",
+        "item_class": 0
+      }
+    ],
+    "describe_custom": {
+      "/HOME/Видео/моя заставка.webm": {
+        "id": "/HOME/Видео/моя заставка.webm",
+        "name": "моя заставка.webm",
+        "path": "/HOME/Видео/моя заставка.webm",
+        "builtin": false,
+        "origin": "custom",
+        "origin_label": "Свой файл",
+        "title": "моя заставка",
+        "game": "",
+        "appid": 0,
+        "image": "",
+        "item_class": 0
+      },
+      "/HOME/noext": {
+        "id": "/HOME/noext",
+        "name": "noext",
+        "path": "/HOME/noext",
+        "builtin": false,
+        "origin": "custom",
+        "origin_label": "Свой файл",
+        "title": "noext",
+        "game": "",
+        "appid": 0,
+        "image": "",
+        "item_class": 0
+      }
+    },
+    "origin_labels": {
+      "builtin": "Встроенная в Steam",
+      "shop": "Points Shop",
+      "custom": "Свой файл"
+    },
+    "origins": [
+      "builtin",
+      "shop",
+      "custom"
+    ],
+    "favorites": {
+      "add_first": {
+        "input": {},
+        "list": [
+          "/a.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/a.webm"
+          ]
+        }
+      },
+      "add_dup": {
+        "input": {
+          "favorites": [
+            "/a.webm"
+          ]
+        },
+        "list": [
+          "/a.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/a.webm"
+          ]
+        }
+      },
+      "add_second": {
+        "input": {
+          "favorites": [
+            "/a.webm"
+          ]
+        },
+        "list": [
+          "/a.webm",
+          "/b.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/a.webm",
+            "/b.webm"
+          ]
+        }
+      },
+      "remove": {
+        "input": {
+          "favorites": [
+            "/a.webm",
+            "/b.webm"
+          ]
+        },
+        "list": [
+          "/b.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/b.webm"
+          ]
+        }
+      },
+      "remove_absent": {
+        "input": {
+          "favorites": [
+            "/a.webm"
+          ]
+        },
+        "list": [
+          "/a.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/a.webm"
+          ]
+        }
+      },
+      "mixed_types": {
+        "input": {
+          "favorites": [
+            "/a.webm",
+            5,
+            null
+          ]
+        },
+        "list": [
+          "/a.webm",
+          "/b.webm"
+        ],
+        "config": {
+          "favorites": [
+            "/a.webm",
+            "/b.webm"
+          ]
+        }
+      }
+    },
+    "rotation_enabled": {
+      "absent": false,
+      "true": true,
+      "false": false,
+      "truthy_str": true,
+      "zero": false
+    },
+    "set_rotation": {
+      "on": {
+        "path": "/p",
+        "rotate": true
+      },
+      "off": {
+        "rotate": false
+      }
+    },
+    "rotation_pool": {
+      "fav_two": [
+        "/a",
+        "/b"
+      ],
+      "fav_one": [
+        "/a",
+        "/b",
+        "/c"
+      ],
+      "fav_none": [
+        "/a"
+      ],
+      "all_empty": []
+    },
+    "rotation_choices": {
+      "skip_current": [
+        "/a",
+        "/c"
+      ],
+      "current_absent": [
+        "/a",
+        "/b"
+      ],
+      "all_same": [
+        "/a",
+        "/a"
+      ],
+      "too_small": [],
+      "empty": []
+    },
+    "duration": 12.5,
+    "ffprobe_argv": [
+      "/usr/bin/ffprobe",
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      "/HOME/movie.webm"
+    ],
+    "ffprobe_exe": "/usr/bin/ffprobe",
+    "parse_duration": {
+      "plain": 12.5,
+      "int": 7.0,
+      "empty": 0.0,
+      "junk": 0.0,
+      "negative": 0.0,
+      "spaces": 4.25
+    },
+    "preview_argv": {
+      "seek": [
+        "/usr/bin/ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-ss",
+        "9.375",
+        "-i",
+        "/HOME/movie.webm",
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        "/HOME/out.png.part.png"
+      ],
+      "no_seek": [
+        "/usr/bin/ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        "/HOME/movie.webm",
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        "/HOME/out.png.part.png"
+      ],
+      "tiny_seek": [
+        "/usr/bin/ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        "/HOME/movie.webm",
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        "/HOME/out.png.part.png"
+      ]
+    },
+    "preview_keys": {
+      "/HOME/movie.webm": "movie.webm",
+      "/HOME/моё видео (1).webm": "моё_видео__1_.webm",
+      "/HOME/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.webm": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.webm",
+      "/HOME/a b/c;d.mp4": "c_d.mp4"
+    },
+    "preview_cache_dir_rel": "rexon/steam_splash_preview",
+    "preview_at": 0.75
+  }
+}

@@ -1,0 +1,1060 @@
+{
+ "home": "/HOME",
+ "managed_appimage": "/HOME/.local/share/waywallen/waywallen.AppImage",
+ "state_path": "/HOME/.config/rexon/dev_upstream_state.json",
+ "owe_plugin_id": "org.waywallen.open-wallpaper-engine",
+ "owe_min_waywallen": [
+  0,
+  2,
+  3
+ ],
+ "fetch_limit": 30,
+ "unknown_base_limit": 10,
+ "usage_marker": "usage: waywallen",
+ "plugins_dir_default": "/HOME/.local/share/waywallen/plugins",
+ "plugins_dir_xdg": "/xdg/data/waywallen/plugins",
+ "plugins_dir_empty_xdg": "/HOME/.local/share/waywallen/plugins",
+ "targets": [
+  {
+   "key": "waywallen",
+   "title": "waywallen (приложение-интерфейс)",
+   "repo": "waywallen/waywallen",
+   "asset_prefix": "waywallen",
+   "asset_suffix": "-x86_64.AppImage",
+   "managed_path": "/HOME/.local/share/waywallen/waywallen.AppImage",
+   "installable": true,
+   "kind": "appimage",
+   "note": "управляемый AppImage, полный цикл обновления"
+  },
+  {
+   "key": "owe",
+   "title": "open-wallpaper-engine (движок рендеров)",
+   "repo": "waywallen/open-wallpaper-engine",
+   "asset_prefix": "org.waywallen.open-wallpaper-engine",
+   "asset_suffix": "-linux-x86_64.zip",
+   "managed_path": "",
+   "installable": true,
+   "kind": "plugin_zip",
+   "note": "плагин-zip к waywallen (v0.2.3+), установка через демон или в ~/.local/share/waywallen/plugins/"
+  }
+ ],
+ "ver_tuple": {
+  "v0.2.4": [
+   0,
+   2,
+   4
+  ],
+  "0.2.4-x86_64": [
+   0,
+   2,
+   4,
+   86,
+   64
+  ],
+  "": [],
+  "0.2.3": [
+   0,
+   2,
+   3
+  ],
+  "v1": [
+   1
+  ],
+  "1.0": [
+   1,
+   0
+  ],
+  "0.2.3-rc1": [
+   0,
+   2,
+   3,
+   1
+  ],
+  "abc": [],
+  "10.20.30": [
+   10,
+   20,
+   30
+  ],
+  "v0.10.2": [
+   0,
+   10,
+   2
+  ],
+  "0.2": [
+   0,
+   2
+  ],
+  "2026": [
+   2026
+  ],
+  "0": [
+   0
+  ]
+ },
+ "now_iso_samples": {
+  "0": "1970-01-01T00:00:00Z",
+  "1000000000": "2001-09-09T01:46:40Z",
+  "1752969600": "2025-07-20T00:00:00Z",
+  "1785000896": "2026-07-25T17:34:56Z"
+ },
+ "busctl": {
+  "s \"0.2.2\"": "0.2.2",
+  "  s \"0.2.5\"  ": "0.2.5",
+  "s \"\"": "",
+  "no quotes here": "",
+  "": "",
+  "s \"0.2.2\" extra\"tail": "0.2.2"
+ },
+ "api_urls": {
+  "releases": "https://api.github.com/repos/waywallen/waywallen/releases?per_page=30",
+  "commits_plain": "https://api.github.com/repos/waywallen/waywallen/commits?per_page=30",
+  "commits_since": "https://api.github.com/repos/waywallen/waywallen/commits?per_page=30&since=2026-07-01T00:00:00Z"
+ },
+ "raw": {
+  "releases": [
+   {
+    "tag_name": "v0.2.6",
+    "name": null,
+    "published_at": "2026-07-20T10:00:00Z",
+    "body": "  draft-ish body  ",
+    "draft": true,
+    "assets": []
+   },
+   {
+    "tag_name": "v0.2.5",
+    "name": "waywallen 0.2.5",
+    "published_at": "2026-07-15T10:00:00Z",
+    "body": "\n  fixed layer-shell\n  new plugins page\n",
+    "assets": [
+     {
+      "name": "waywallen-0.2.5-x86_64.AppImage",
+      "browser_download_url": "https://example/w-0.2.5.AppImage"
+     },
+     {
+      "name": "waywallen-0.2.5.tar.gz",
+      "browser_download_url": "https://example/w-0.2.5.tar.gz"
+     }
+    ]
+   },
+   {
+    "tag_name": "v0.2.4",
+    "name": "",
+    "published_at": "2026-06-01T10:00:00Z",
+    "body": null,
+    "prerelease": false,
+    "assets": [
+     {
+      "name": "waywallen-0.2.4-x86_64.AppImage",
+      "browser_download_url": "https://example/w-0.2.4.AppImage"
+     }
+    ]
+   },
+   {
+    "tag_name": "v0.2.4-rc1",
+    "name": "rc",
+    "published_at": "2026-05-01T10:00:00Z",
+    "body": "rc body",
+    "prerelease": true,
+    "assets": []
+   },
+   {
+    "tag_name": "v0.2.3",
+    "name": "waywallen 0.2.3",
+    "published_at": "2026-04-01T10:00:00Z",
+    "body": "plugins!",
+    "assets": []
+   }
+  ],
+  "owe_releases": [
+   {
+    "tag_name": "v0.1.12",
+    "name": "OWE 0.1.12",
+    "published_at": "2026-07-10T09:00:00Z",
+    "body": "scene fixes",
+    "assets": [
+     {
+      "name": "org.waywallen.open-wallpaper-engine-0.1.12-linux-x86_64.zip",
+      "browser_download_url": "https://example/owe-0.1.12.zip"
+     }
+    ]
+   },
+   {
+    "tag_name": "v0.1.11",
+    "name": "OWE 0.1.11",
+    "published_at": "2026-06-10T09:00:00Z",
+    "body": "",
+    "assets": [
+     {
+      "name": "org.waywallen.open-wallpaper-engine-0.1.11-linux-x86_64.zip",
+      "browser_download_url": "https://example/owe-0.1.11.zip"
+     }
+    ]
+   },
+   {
+    "tag_name": "v0.1.10",
+    "name": "OWE 0.1.10",
+    "published_at": "2026-05-10T09:00:00Z",
+    "body": "base",
+    "assets": []
+   }
+  ],
+  "noasset_releases": [
+   {
+    "tag_name": "v9.9.9",
+    "name": "no asset",
+    "published_at": "2026-07-01T00:00:00Z",
+    "body": "b",
+    "assets": [
+     {
+      "name": "src.tar.gz",
+      "browser_download_url": "https://example/src.tar.gz"
+     }
+    ]
+   }
+  ],
+  "commits": [
+   {
+    "sha": "abcdef0123456789",
+    "commit": {
+     "message": "fix: layer-shell anchor\n\nlong body\nsecond line\n",
+     "committer": {
+      "date": "2026-07-20T08:00:00Z"
+     }
+    }
+   },
+   {
+    "sha": "0123456789abcdef",
+    "commit": {
+     "message": "chore: bump deps",
+     "committer": {
+      "date": "2026-07-19T08:00:00Z"
+     }
+    }
+   }
+  ]
+ },
+ "fetch_releases": [
+  {
+   "tag": "v0.2.5",
+   "name": "waywallen 0.2.5",
+   "published_at": "2026-07-15T10:00:00Z",
+   "body": "fixed layer-shell\n  new plugins page",
+   "assets": [
+    {
+     "name": "waywallen-0.2.5-x86_64.AppImage",
+     "url": "https://example/w-0.2.5.AppImage"
+    },
+    {
+     "name": "waywallen-0.2.5.tar.gz",
+     "url": "https://example/w-0.2.5.tar.gz"
+    }
+   ]
+  },
+  {
+   "tag": "v0.2.4",
+   "name": "v0.2.4",
+   "published_at": "2026-06-01T10:00:00Z",
+   "body": "",
+   "assets": [
+    {
+     "name": "waywallen-0.2.4-x86_64.AppImage",
+     "url": "https://example/w-0.2.4.AppImage"
+    }
+   ]
+  },
+  {
+   "tag": "v0.2.3",
+   "name": "waywallen 0.2.3",
+   "published_at": "2026-04-01T10:00:00Z",
+   "body": "plugins!",
+   "assets": []
+  }
+ ],
+ "fetch_releases_owe": [
+  {
+   "tag": "v0.1.12",
+   "name": "OWE 0.1.12",
+   "published_at": "2026-07-10T09:00:00Z",
+   "body": "scene fixes",
+   "assets": [
+    {
+     "name": "org.waywallen.open-wallpaper-engine-0.1.12-linux-x86_64.zip",
+     "url": "https://example/owe-0.1.12.zip"
+    }
+   ]
+  },
+  {
+   "tag": "v0.1.11",
+   "name": "OWE 0.1.11",
+   "published_at": "2026-06-10T09:00:00Z",
+   "body": "",
+   "assets": [
+    {
+     "name": "org.waywallen.open-wallpaper-engine-0.1.11-linux-x86_64.zip",
+     "url": "https://example/owe-0.1.11.zip"
+    }
+   ]
+  },
+  {
+   "tag": "v0.1.10",
+   "name": "OWE 0.1.10",
+   "published_at": "2026-05-10T09:00:00Z",
+   "body": "base",
+   "assets": []
+  }
+ ],
+ "fetch_commits": [
+  {
+   "tag": "abcdef012",
+   "name": "fix: layer-shell anchor",
+   "published_at": "2026-07-20T08:00:00Z",
+   "body": "long body\nsecond line",
+   "assets": []
+  },
+  {
+   "tag": "012345678",
+   "name": "chore: bump deps",
+   "published_at": "2026-07-19T08:00:00Z",
+   "body": "",
+   "assets": []
+  }
+ ],
+ "check": {
+  "ww_known_base": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.4",
+    "latest": "v0.2.5",
+    "update_available": true,
+    "asset_url": "https://example/w-0.2.5.AppImage",
+    "installable": true,
+    "note": "доступна v0.2.5 (у нас 0.2.4)",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "v0.2.5",
+      "name": "waywallen 0.2.5",
+      "published_at": "2026-07-15T10:00:00Z",
+      "body": "fixed layer-shell\n  new plugins page",
+      "assets": [
+       {
+        "name": "waywallen-0.2.5-x86_64.AppImage",
+        "url": "https://example/w-0.2.5.AppImage"
+       },
+       {
+        "name": "waywallen-0.2.5.tar.gz",
+        "url": "https://example/w-0.2.5.tar.gz"
+       }
+      ]
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"waywallen\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.2.4\",\n   \"latest\": \"v0.2.5\",\n   \"update_available\": true,\n   \"note\": \"доступна v0.2.5 (у нас 0.2.4)\",\n   \"report\": [\n    {\n     \"tag\": \"v0.2.5\",\n     \"name\": \"waywallen 0.2.5\",\n     \"published_at\": \"2026-07-15T10:00:00Z\",\n     \"body\": \"fixed layer-shell\\n  new plugins page\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "ww_up_to_date": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.5",
+    "latest": "v0.2.5",
+    "update_available": false,
+    "asset_url": "",
+    "installable": true,
+    "note": "актуально (0.2.5)",
+    "ok": true,
+    "changelog": []
+   },
+   "state_after": "{\n \"targets\": {\n  \"waywallen\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.2.5\",\n   \"latest\": \"v0.2.5\",\n   \"update_available\": false,\n   \"note\": \"актуально (0.2.5)\",\n   \"report\": []\n  }\n }\n}"
+  },
+  "ww_unknown_base": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "",
+    "latest": "v0.2.5",
+    "update_available": true,
+    "asset_url": "https://example/w-0.2.5.AppImage",
+    "installable": true,
+    "note": "наша версия неизвестна — показано последних выпусков: 3, самый свежий — v0.2.5",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "v0.2.3",
+      "name": "waywallen 0.2.3",
+      "published_at": "2026-04-01T10:00:00Z",
+      "body": "plugins!",
+      "assets": []
+     },
+     {
+      "tag": "v0.2.4",
+      "name": "v0.2.4",
+      "published_at": "2026-06-01T10:00:00Z",
+      "body": "",
+      "assets": [
+       {
+        "name": "waywallen-0.2.4-x86_64.AppImage",
+        "url": "https://example/w-0.2.4.AppImage"
+       }
+      ]
+     },
+     {
+      "tag": "v0.2.5",
+      "name": "waywallen 0.2.5",
+      "published_at": "2026-07-15T10:00:00Z",
+      "body": "fixed layer-shell\n  new plugins page",
+      "assets": [
+       {
+        "name": "waywallen-0.2.5-x86_64.AppImage",
+        "url": "https://example/w-0.2.5.AppImage"
+       },
+       {
+        "name": "waywallen-0.2.5.tar.gz",
+        "url": "https://example/w-0.2.5.tar.gz"
+       }
+      ]
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"waywallen\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"latest\": \"v0.2.5\",\n   \"update_available\": true,\n   \"note\": \"наша версия неизвестна — показано последних выпусков: 3, самый свежий — v0.2.5\",\n   \"report\": [\n    {\n     \"tag\": \"v0.2.3\",\n     \"name\": \"waywallen 0.2.3\",\n     \"published_at\": \"2026-04-01T10:00:00Z\",\n     \"body\": \"plugins!\"\n    },\n    {\n     \"tag\": \"v0.2.4\",\n     \"name\": \"v0.2.4\",\n     \"published_at\": \"2026-06-01T10:00:00Z\",\n     \"body\": \"\"\n    },\n    {\n     \"tag\": \"v0.2.5\",\n     \"name\": \"waywallen 0.2.5\",\n     \"published_at\": \"2026-07-15T10:00:00Z\",\n     \"body\": \"fixed layer-shell\\n  new plugins page\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "owe_known_base": {
+   "status": {
+    "key": "owe",
+    "title": "open-wallpaper-engine (движок рендеров)",
+    "installed": "0.1.10",
+    "latest": "v0.1.12",
+    "update_available": true,
+    "asset_url": "https://example/owe-0.1.12.zip",
+    "installable": true,
+    "note": "доступна v0.1.12 (у нас 0.1.10)",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "v0.1.11",
+      "name": "OWE 0.1.11",
+      "published_at": "2026-06-10T09:00:00Z",
+      "body": "",
+      "assets": [
+       {
+        "name": "org.waywallen.open-wallpaper-engine-0.1.11-linux-x86_64.zip",
+        "url": "https://example/owe-0.1.11.zip"
+       }
+      ]
+     },
+     {
+      "tag": "v0.1.12",
+      "name": "OWE 0.1.12",
+      "published_at": "2026-07-10T09:00:00Z",
+      "body": "scene fixes",
+      "assets": [
+       {
+        "name": "org.waywallen.open-wallpaper-engine-0.1.12-linux-x86_64.zip",
+        "url": "https://example/owe-0.1.12.zip"
+       }
+      ]
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"owe\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.1.10\",\n   \"latest\": \"v0.1.12\",\n   \"update_available\": true,\n   \"note\": \"доступна v0.1.12 (у нас 0.1.10)\",\n   \"report\": [\n    {\n     \"tag\": \"v0.1.11\",\n     \"name\": \"OWE 0.1.11\",\n     \"published_at\": \"2026-06-10T09:00:00Z\",\n     \"body\": \"\"\n    },\n    {\n     \"tag\": \"v0.1.12\",\n     \"name\": \"OWE 0.1.12\",\n     \"published_at\": \"2026-07-10T09:00:00Z\",\n     \"body\": \"scene fixes\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "noasset": {
+   "status": {
+    "key": "noasset",
+    "title": "Без ассета",
+    "installed": "1.0.0",
+    "latest": "v9.9.9",
+    "update_available": true,
+    "asset_url": "",
+    "installable": true,
+    "note": "доступна v9.9.9 (у нас 1.0.0); в релизе нет подходящего ассета",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "v9.9.9",
+      "name": "no asset",
+      "published_at": "2026-07-01T00:00:00Z",
+      "body": "b",
+      "assets": [
+       {
+        "name": "src.tar.gz",
+        "url": "https://example/src.tar.gz"
+       }
+      ]
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"noasset\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"1.0.0\",\n   \"latest\": \"v9.9.9\",\n   \"update_available\": true,\n   \"note\": \"доступна v9.9.9 (у нас 1.0.0); в релизе нет подходящего ассета\",\n   \"report\": [\n    {\n     \"tag\": \"v9.9.9\",\n     \"name\": \"no asset\",\n     \"published_at\": \"2026-07-01T00:00:00Z\",\n     \"body\": \"b\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "report_only": {
+   "status": {
+    "key": "ro",
+    "title": "Только отчёт",
+    "installed": "0.2.4",
+    "latest": "v0.2.5",
+    "update_available": true,
+    "asset_url": "",
+    "installable": false,
+    "note": "доступна v0.2.5 (у нас 0.2.4)",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "v0.2.5",
+      "name": "waywallen 0.2.5",
+      "published_at": "2026-07-15T10:00:00Z",
+      "body": "fixed layer-shell\n  new plugins page",
+      "assets": [
+       {
+        "name": "waywallen-0.2.5-x86_64.AppImage",
+        "url": "https://example/w-0.2.5.AppImage"
+       },
+       {
+        "name": "waywallen-0.2.5.tar.gz",
+        "url": "https://example/w-0.2.5.tar.gz"
+       }
+      ]
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"ro\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.2.4\",\n   \"latest\": \"v0.2.5\",\n   \"update_available\": true,\n   \"note\": \"доступна v0.2.5 (у нас 0.2.4)\",\n   \"report\": [\n    {\n     \"tag\": \"v0.2.5\",\n     \"name\": \"waywallen 0.2.5\",\n     \"published_at\": \"2026-07-15T10:00:00Z\",\n     \"body\": \"fixed layer-shell\\n  new plugins page\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "releases_error": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.4",
+    "latest": "",
+    "update_available": false,
+    "asset_url": "",
+    "installable": true,
+    "note": "не удалось проверить: HTTP Error 403: rate limit",
+    "ok": false,
+    "changelog": []
+   },
+   "state_after": null
+  },
+  "no_releases_commits": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.4",
+    "latest": "abcdef012",
+    "update_available": true,
+    "asset_url": "",
+    "installable": true,
+    "note": "релизов нет — показаны коммиты default-ветки",
+    "ok": true,
+    "changelog": [
+     {
+      "tag": "012345678",
+      "name": "chore: bump deps",
+      "published_at": "2026-07-19T08:00:00Z",
+      "body": "",
+      "assets": []
+     },
+     {
+      "tag": "abcdef012",
+      "name": "fix: layer-shell anchor",
+      "published_at": "2026-07-20T08:00:00Z",
+      "body": "long body\nsecond line",
+      "assets": []
+     }
+    ]
+   },
+   "state_after": "{\n \"targets\": {\n  \"waywallen\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.2.4\",\n   \"latest\": \"abcdef012\",\n   \"update_available\": true,\n   \"note\": \"релизов нет — показаны коммиты default-ветки\",\n   \"report\": [\n    {\n     \"tag\": \"012345678\",\n     \"name\": \"chore: bump deps\",\n     \"published_at\": \"2026-07-19T08:00:00Z\",\n     \"body\": \"\"\n    },\n    {\n     \"tag\": \"abcdef012\",\n     \"name\": \"fix: layer-shell anchor\",\n     \"published_at\": \"2026-07-20T08:00:00Z\",\n     \"body\": \"long body\\nsecond line\"\n    }\n   ]\n  }\n }\n}"
+  },
+  "no_releases_no_commits": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.4",
+    "latest": "",
+    "update_available": false,
+    "asset_url": "",
+    "installable": true,
+    "note": "релизов нет, новых коммитов нет",
+    "ok": true,
+    "changelog": []
+   },
+   "state_after": "{\n \"targets\": {\n  \"waywallen\": {\n   \"last_check\": \"2026-07-27T12:34:56Z\",\n   \"installed_version\": \"0.2.4\",\n   \"latest\": \"\",\n   \"update_available\": false,\n   \"note\": \"релизов нет, новых коммитов нет\",\n   \"report\": []\n  }\n }\n}"
+  },
+  "commits_error": {
+   "status": {
+    "key": "waywallen",
+    "title": "waywallen (приложение-интерфейс)",
+    "installed": "0.2.4",
+    "latest": "",
+    "update_available": false,
+    "asset_url": "",
+    "installable": true,
+    "note": "релизов нет, коммиты недоступны: connection reset",
+    "ok": false,
+    "changelog": []
+   },
+   "state_after": null
+  }
+ },
+ "render_changelog": "═══ waywallen (приложение-интерфейс) — 0.2.4 → v0.2.5 ═══\nСтатус: доступна v0.2.5 (у нас 0.2.4)\n\n— v0.2.5 (waywallen 0.2.5) 2026-07-15\nfixed layer-shell\n  new plugins page\n\n═══ waywallen (приложение-интерфейс) — 0.2.5 → v0.2.5 ═══\nСтатус: актуально (0.2.5)\n\n═══ waywallen (приложение-интерфейс) — (неизвестна) → v0.2.5 ═══\nСтатус: наша версия неизвестна — показано последних выпусков: 3, самый свежий — v0.2.5\n\n— v0.2.3 (waywallen 0.2.3) 2026-04-01\nplugins!\n\n— v0.2.4 (v0.2.4) 2026-06-01\n(без описания)\n\n— v0.2.5 (waywallen 0.2.5) 2026-07-15\nfixed layer-shell\n  new plugins page\n\n═══ open-wallpaper-engine (движок рендеров) — 0.1.10 → v0.1.12 ═══\nСтатус: доступна v0.1.12 (у нас 0.1.10)\n\n— v0.1.11 (OWE 0.1.11) 2026-06-10\n(без описания)\n\n— v0.1.12 (OWE 0.1.12) 2026-07-10\nscene fixes\n\n═══ Без ассета — 1.0.0 → v9.9.9 ═══\nСтатус: доступна v9.9.9 (у нас 1.0.0); в релизе нет подходящего ассета\n\n— v9.9.9 (no asset) 2026-07-01\nb\n\n═══ Только отчёт — 0.2.4 → v0.2.5 ═══\nСтатус: доступна v0.2.5 (у нас 0.2.4)\n\n— v0.2.5 (waywallen 0.2.5) 2026-07-15\nfixed layer-shell\n  new plugins page\n\n═══ waywallen (приложение-интерфейс) — 0.2.4 → ? ═══\nСтатус: не удалось проверить: HTTP Error 403: rate limit\n\n═══ waywallen (приложение-интерфейс) — 0.2.4 → abcdef012 ═══\nСтатус: релизов нет — показаны коммиты default-ветки\n\n— 012345678 (chore: bump deps) 2026-07-19\n(без описания)\n\n— abcdef012 (fix: layer-shell anchor) 2026-07-20\nlong body\nsecond line\n\n═══ waywallen (приложение-интерфейс) — 0.2.4 → ? ═══\nСтатус: релизов нет, новых коммитов нет",
+ "render_changelog_empty": "",
+ "state_after_marks": "{\n \"targets\": {\n  \"waywallen\": {\n   \"installed_version\": \"0.2.5\",\n   \"installed_at\": \"2026-07-27T12:34:56Z\"\n  },\n  \"owe\": {\n   \"seen_version\": \"v0.1.12\",\n   \"seen_at\": \"2026-07-27T12:34:56Z\"\n  }\n }\n}",
+ "load_state_roundtrip": {
+  "targets": {
+   "waywallen": {
+    "installed_version": "0.2.5",
+    "installed_at": "2026-07-27T12:34:56Z"
+   },
+   "owe": {
+    "seen_version": "v0.1.12",
+    "seen_at": "2026-07-27T12:34:56Z"
+   }
+  }
+ },
+ "broken_state": {
+  "not_json": {
+   "load": {}
+  },
+  "list_top": {
+   "load": {}
+  },
+  "targets_list": {
+   "load": {
+    "targets": [
+     1,
+     2
+    ]
+   }
+  },
+  "entry_str": {
+   "load": {
+    "targets": {
+     "owe": "x"
+    }
+   }
+  }
+ },
+ "installed_version": {
+  "owe|{\"installed_version\": \"0.1.9\", \"seen_version\": \"0.1.11\"}|None": "0.1.9",
+  "owe|{\"seen_version\": \"0.1.11\"}|None": "0.1.11",
+  "owe|{}|0.2.0": "0.2.0",
+  "ro|{\"installed_version\": \"1\", \"seen_version\": \"2\"}|None": "2",
+  "ro|{\"installed_version\": \"1\"}|None": "1"
+ },
+ "owe_version_from_manifest": {
+  "normal": {
+   "text": "[plugin]\nid = \"x\"\nname = \"N\"\nversion = \"0.2.0\"\n",
+   "version": "0.2.0"
+  },
+  "no_plugin": {
+   "text": "[other]\nversion = \"1\"\n",
+   "version": ""
+  },
+  "no_version": {
+   "text": "[plugin]\nid = \"x\"\n",
+   "version": ""
+  },
+  "int_version": {
+   "text": "[plugin]\nversion = 5\n",
+   "version": "5"
+  },
+  "float_version": {
+   "text": "[plugin]\nversion = 0.5\n",
+   "version": "0.5"
+  },
+  "bool_version": {
+   "text": "[plugin]\nversion = true\n",
+   "version": "True"
+  },
+  "broken": {
+   "text": "nonsense = = =\n",
+   "version": ""
+  },
+  "real": {
+   "text": "# Wallpaper Engine — scene (.pkg) renderer + Workshop subscription source,\n# plus the CEF web renderer when built with -DBUILD_WEWEB=ON.\n#\n# GENERATED by CMake (configure_file) — edit plugin.toml.in / the CMake\n# rules, not the installed copy. Every plugin must ship a sibling\n# `files.txt` (one path per line); this one is produced by CMake.\n#\n# The Lua entry advertises scene/video/web source and subscription capabilities;\n# video routes to the image/video plugin's renderer purely by wallpaper type.\n\n[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\nupdate = \"https://github.com/waywallen/open-wallpaper-engine/raw/refs/heads/main/update.json\"\nentry = \"main.lua\"\nentry_version = 3\n\n[renderers.wescene-renderer]\nbin = \"bin/waywallen-wescene-renderer\"\ntypes = [\"scene\"]\npriority = 100\nspawn_version = 8\nextras = [\"assets\", \"workshop_id\"]\n\n[renderers.wescene-renderer.settings]\nenable_audio = { type = \"bool\", default = true, identity = false, label_key = \"settings.wescene.enable_audio\", group = \"audio\", order = 5 }\nvolume = { type = \"u32\", default = 100, min = 0, max = 100, step = 1, identity = false, label_key = \"settings.wescene.volume\", group = \"audio\", order = 10 }\nfps    = { type = \"u32\", default = 30,  min = 1, max = 240, step = 1, identity = false, label_key = \"settings.wescene.fps\", group = \"render\", order = 20 }\nhwdec = { type = \"string\", default = \"auto\", choices = [\"auto\", \"vaapi\", \"vulkan\", \"none\"], identity = true, label_key = \"settings.wescene.hwdec\", group = \"decode\", order = 20 }\nrender_node = { type = \"string\", default = \"\", identity = true, label_key = \"settings.wescene.render_node\", group = \"render\", order = 30 }\nmsaa   = { type = \"u32\", default = 1, min = 1, max = 16, step = 1, identity = true, label_key = \"settings.wescene.msaa\", group = \"render\", order = 25 }\n# -1 = custom, 1 = 720p, 2 = 1080p, 3 = 1440p, 4 = 2160p. Origin is disallowed for scene.\nresolution = { type = \"i32\", default = 2, min = -1, max = 4, step = 1, identity = true, label_key = \"settings.wescene.resolution\", group = \"render\", order = 22 }\ncustom_extent = { type = \"u32\", default = 1080, min = 1, max = 8192, step = 1, identity = true, label_key = \"settings.wescene.custom_extent\", group = \"render\", order = 23 }\n\n# CEF (Wallpaper Engine *web*) renderer. web wp_type entries come from the\n# Lua entry above.\n[renderers.weweb-renderer]\nbin = \"bin/weweb/waywallen-weweb-renderer\"\ntypes = [\"web\"]\npriority = 100\nspawn_version = 8\nextras = [\"workshop_id\"]\n\n[renderers.weweb-renderer.settings]\nenable_audio = { type = \"bool\", default = true, identity = true, label_key = \"settings.weweb.enable_audio\", group = \"audio\", order = 5 }\nvolume = { type = \"u32\", default = 100, min = 0, max = 100, step = 1, identity = false, label_key = \"settings.weweb.volume\", group = \"audio\", order = 10 }\n# Hot-reloadable via SetWindowlessFrameRate on the live browser.\nfps = { type = \"u32\", default = 30, min = 1, max = 240, step = 1, identity = false, label_key = \"settings.weweb.fps\", group = \"render\", order = 20 }\n# 1 = 720p, 2 = 1080p, 3 = 1440p, 4 = 2160p. Origin/custom are disallowed for web.\nresolution = { type = \"i32\", default = 2, min = 1, max = 4, step = 1, identity = true, label_key = \"settings.weweb.resolution\", group = \"render\", order = 25 }\nshared_texture_enabled = { type = \"bool\", default = true, identity = true, label_key = \"settings.weweb.shared_texture_enabled\", group = \"render\", order = 30 }\nrender_node = { type = \"string\", default = \"\", identity = true, label_key = \"settings.weweb.render_node\", group = \"render\", order = 35 }\n# CEF can only honour --remote-debugging-port at CefInitialize time;\n# changing it requires a respawn — identity = true.\nremote_debugging_port = { type = \"u32\", default = 0, min = 0, max = 65535, identity = true, label_key = \"settings.weweb.remote_debugging_port\", group = \"debug\", order = 40 }\n\n",
+   "version": "0.2.0"
+  }
+ },
+ "owe_min": {
+  "0.2.2": [
+   false,
+   "waywallen 0.2.2 слишком старый для OWE-плагина (нужен ≥ 0.2.3: до него OWE вшит в AppImage, user-копия даст дубль) — сначала обновите waywallen"
+  ],
+  "0.2.3": [
+   true,
+   "waywallen 0.2.3 совместим"
+  ],
+  "0.2.5": [
+   true,
+   "waywallen 0.2.5 совместим"
+  ],
+  "0.1.99": [
+   false,
+   "waywallen 0.1.99 слишком старый для OWE-плагина (нужен ≥ 0.2.3: до него OWE вшит в AppImage, user-копия даст дубль) — сначала обновите waywallen"
+  ],
+  "0.2.3-rc1": [
+   true,
+   "waywallen 0.2.3-rc1 совместим"
+  ],
+  "1.0": [
+   true,
+   "waywallen 1.0 совместим"
+  ]
+ },
+ "owe_min_unknown": [
+  false,
+  "версия waywallen неизвестна (демон не запущен) — не могу проверить совместимость плагина"
+ ],
+ "validate_appimage": {
+  "missing": [
+   false,
+   "файл не найден или не исполняемый"
+  ],
+  "not_exec": [
+   false,
+   "файл не найден или не исполняемый"
+  ],
+  "ok_stdout": [
+   true,
+   "AppImage запускается (usage-баннер получен)"
+  ],
+  "ok_stderr": [
+   true,
+   "AppImage запускается (usage-баннер получен)"
+  ],
+  "bad_output": [
+   false,
+   "AppImage не выдал ожидаемый usage-баннер — возможно битый файл"
+  ],
+  "spawn_error": [
+   false,
+   "не запускается: Exec format error"
+  ]
+ },
+ "probe_argv": [
+  "/TMP/good",
+  "--rexon-validate-probe"
+ ],
+ "install_appimage": {
+  "fresh": {
+   "ok": true,
+   "msg": "установлено в /HOME/.local/share/waywallen/waywallen.AppImage; работающий демон доигрывает старую версию — перезапустите движок обоев, чтобы подхватилась новая",
+   "dest_exists": true,
+   "dest_mode": "0o755",
+   "bak_exists": false,
+   "src_removed": true,
+   "state": "{\n \"targets\": {\n  \"waywallen\": {\n   \"installed_version\": \"0.2.5\",\n   \"installed_at\": \"2026-07-27T12:34:56Z\"\n  }\n }\n}"
+  },
+  "over_existing": {
+   "ok": true,
+   "msg": "установлено в /HOME/.local/share/waywallen/waywallen.AppImage; работающий демон доигрывает старую версию — перезапустите движок обоев, чтобы подхватилась новая",
+   "bak_exists": true,
+   "bak_content": "NEW",
+   "dest_content": "NEWER",
+   "state": "{\n \"targets\": {\n  \"waywallen\": {\n   \"installed_version\": \"0.2.6\",\n   \"installed_at\": \"2026-07-27T12:34:56Z\"\n  }\n }\n}"
+  },
+  "missing_source": {
+   "ok": false,
+   "msg": "ошибка установки, откат: [Errno 2] No such file or directory: '/TMP/absent'"
+  }
+ },
+ "validate_plugin_zip": {
+  "ok_full": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\n"
+    ],
+    [
+     "files.txt",
+     "bin/x\n"
+    ],
+    [
+     "bin/x",
+     "#!/bin/sh\n"
+    ]
+   ],
+   "ok": true,
+   "msg": "плагин «Wallpaper Engine» 0.2.0 (id org.waywallen.open-wallpaper-engine), файлов: 3",
+   "info": {
+    "id": "org.waywallen.open-wallpaper-engine",
+    "name": "Wallpaper Engine",
+    "version": "0.2.0"
+   }
+  },
+  "ok_no_files_txt": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\n"
+    ],
+    [
+     "bin/x",
+     "y"
+    ]
+   ],
+   "ok": true,
+   "msg": "плагин «Wallpaper Engine» 0.2.0 (id org.waywallen.open-wallpaper-engine), файлов: 2; ⚠️ нет files.txt (демон выдаст warning)",
+   "info": {
+    "id": "org.waywallen.open-wallpaper-engine",
+    "name": "Wallpaper Engine",
+    "version": "0.2.0"
+   }
+  },
+  "unsafe_path": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\n"
+    ],
+    [
+     "../evil",
+     "x"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный путь в архиве: ../evil",
+   "info": {}
+  },
+  "abs_path": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\n"
+    ]
+   ],
+   "ok": true,
+   "msg": "плагин «Wallpaper Engine» 0.2.0 (id org.waywallen.open-wallpaper-engine), файлов: 1; ⚠️ нет files.txt (демон выдаст warning)",
+   "info": {
+    "id": "org.waywallen.open-wallpaper-engine",
+    "name": "Wallpaper Engine",
+    "version": "0.2.0"
+   }
+  },
+  "no_manifest": {
+   "entries": [
+    [
+     "files.txt",
+     "a\n"
+    ],
+    [
+     "bin/x",
+     "y"
+    ]
+   ],
+   "ok": false,
+   "msg": "в корне архива нет plugin.toml",
+   "info": {}
+  },
+  "manifest_in_subdir": {
+   "entries": [
+    [
+     "sub/plugin.toml",
+     "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\nname = \"Wallpaper Engine\"\nversion = \"0.2.0\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "в корне архива нет plugin.toml",
+   "info": {}
+  },
+  "empty_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: ''",
+   "info": {
+    "id": "",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "slash_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"a/b\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: 'a/b'",
+   "info": {
+    "id": "a/b",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "dot_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \".\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: '.'",
+   "info": {
+    "id": ".",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "no_plugin_section": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[other]\nx = 1\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: ''",
+   "info": {
+    "id": "",
+    "name": "",
+    "version": ""
+   }
+  },
+  "broken_toml": {
+   "entries": [
+    [
+     "plugin.toml",
+     "nonsense = = =\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "архив не читается: Invalid value (at line 1, column 12)",
+   "info": {}
+  },
+  "quote_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"a'b/c\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: \"a'b/c\"",
+   "info": {
+    "id": "a'b/c",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "dquote_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"a\\\"b/c\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: 'a\"b/c'",
+   "info": {
+    "id": "a\"b/c",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "backslash_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"a\\\\b\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: 'a\\\\b'",
+   "info": {
+    "id": "a\\b",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "dotdot_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = \"..\"\nname = \"N\"\nversion = \"1\"\n"
+    ]
+   ],
+   "ok": false,
+   "msg": "небезопасный plugin id: '..'",
+   "info": {
+    "id": "..",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "int_id": {
+   "entries": [
+    [
+     "plugin.toml",
+     "[plugin]\nid = 42\nname = \"N\"\nversion = 1\n"
+    ]
+   ],
+   "ok": true,
+   "msg": "плагин «N» 1 (id 42), файлов: 1; ⚠️ нет files.txt (демон выдаст warning)",
+   "info": {
+    "id": "42",
+    "name": "N",
+    "version": "1"
+   }
+  },
+  "not_a_zip": {
+   "entries": null,
+   "ok": false,
+   "msg": "это не zip-архив",
+   "info": {}
+  },
+  "missing": {
+   "entries": null,
+   "ok": false,
+   "msg": "файл не найден",
+   "info": {}
+  }
+ },
+ "install_plugin_zip_fs": {
+  "fresh": {
+   "ok": true,
+   "msg": "плагин org.waywallen.open-wallpaper-engine установлен в /TMP/plugins/org.waywallen.open-wallpaper-engine (прежняя версия в .bak-update); перезапустите демон waywallen, чтобы рендереры подхватились",
+   "tree": [
+    "bin/renderer",
+    "files.txt",
+    "plugin.toml"
+   ],
+   "renderer_mode": "0o755",
+   "state": "{\n \"targets\": {\n  \"owe\": {\n   \"installed_version\": \"0.2.0\",\n   \"installed_at\": \"2026-07-27T12:34:56Z\"\n  }\n }\n}"
+  },
+  "over_existing": {
+   "ok": true,
+   "msg": "плагин org.waywallen.open-wallpaper-engine установлен в /TMP/plugins/org.waywallen.open-wallpaper-engine (прежняя версия в .bak-update); перезапустите демон waywallen, чтобы рендереры подхватились",
+   "bak_exists": true,
+   "state": "{\n \"targets\": {\n  \"owe\": {\n   \"installed_version\": \"0.2.1\",\n   \"installed_at\": \"2026-07-27T12:34:56Z\"\n  }\n }\n}"
+  },
+  "invalid": {
+   "ok": false,
+   "msg": "валидация не пройдена: в корне архива нет plugin.toml"
+  },
+  "zip_modes": {
+   "0o644": 420,
+   "0o755": 493,
+   "zero": 0
+  }
+ },
+ "download_asset": {
+  "local_copy": {
+   "basename_prefix": "waywallen-new-",
+   "suffix": ".AppImage",
+   "mode": "0o755",
+   "content": "LOCAL"
+  },
+  "plugin_local_copy": {
+   "basename_prefix": "owe-plugin-",
+   "suffix": ".zip",
+   "mode": "0o755"
+  },
+  "empty_url": null
+ }
+}

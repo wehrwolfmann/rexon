@@ -1,0 +1,224 @@
+{
+ "videomp4": {
+  "files": {
+   "v.mp4": "x"
+  },
+  "entry": "v.mp4",
+  "want": "video"
+ },
+ "videowebm": {
+  "files": {
+   "v.webm": "x"
+  },
+  "entry": "v.webm",
+  "want": "video"
+ },
+ "videomkv": {
+  "files": {
+   "v.mkv": "x"
+  },
+  "entry": "v.mkv",
+  "want": "video"
+ },
+ "videoavi": {
+  "files": {
+   "v.avi": "x"
+  },
+  "entry": "v.avi",
+  "want": "video"
+ },
+ "videomov": {
+  "files": {
+   "v.mov": "x"
+  },
+  "entry": "v.mov",
+  "want": "video"
+ },
+ "videom4v": {
+  "files": {
+   "v.m4v": "x"
+  },
+  "entry": "v.m4v",
+  "want": "video"
+ },
+ "videogif": {
+  "files": {
+   "v.gif": "x"
+  },
+  "entry": "v.gif",
+  "want": "video"
+ },
+ "video_upper": {
+  "files": {
+   "V.MP4": "x"
+  },
+  "entry": "V.MP4",
+  "want": "video"
+ },
+ "web_entry_html": {
+  "files": {
+   "main.html": "<html>"
+  },
+  "entry": "main.html",
+  "want": "web"
+ },
+ "web_index_fallback": {
+  "files": {
+   "index.html": "<html>"
+  },
+  "entry": "",
+  "want": "web"
+ },
+ "web_index_beats_scene_pkg": {
+  "files": {
+   "index.html": "<html>",
+   "scene.pkg": "PKGV"
+  },
+  "entry": "",
+  "want": "web"
+ },
+ "web_htm_entry": {
+  "files": {
+   "main.htm": "<html>"
+  },
+  "entry": "main.htm",
+  "want": ""
+ },
+ "web_htm_only": {
+  "files": {
+   "main.htm": "<html>"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "app_exe": {
+  "files": {
+   "run.exe": "MZ"
+  },
+  "entry": "run.exe",
+  "want": "application"
+ },
+ "scene_pkg": {
+  "files": {
+   "scene.pkg": "PKGV"
+  },
+  "entry": "",
+  "want": "scene"
+ },
+ "scene_json_default": {
+  "files": {
+   "scene.json": "{\"objects\": [{\"id\": 1}]}"
+  },
+  "entry": "",
+  "want": "scene"
+ },
+ "scene_json_entry": {
+  "files": {
+   "my.json": "{\"objects\": [{\"id\": 1}]}"
+  },
+  "entry": "my.json",
+  "want": "scene"
+ },
+ "scene_json_entry_bad_default_good": {
+  "files": {
+   "my.json": "{\"general\": {}}",
+   "scene.json": "{\"objects\": [{\"id\": 1}]}"
+  },
+  "entry": "my.json",
+  "want": "scene"
+ },
+ "scene_json_objects_not_list": {
+  "files": {
+   "scene.json": "{\"objects\": {\"a\": 1}}"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "scene_json_no_objects": {
+  "files": {
+   "scene.json": "{\"general\": {}}"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "scene_json_broken": {
+  "files": {
+   "scene.json": "{это не json"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "scene_json_not_dict": {
+  "files": {
+   "scene.json": "[1,2,3]"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "scene_json_bad_utf8": {
+  "files": {
+   "scene.json": null
+  },
+  "entry": "",
+  "want": ""
+ },
+ "scene_json_empty_objects": {
+  "files": {
+   "scene.json": "{\"objects\": []}"
+  },
+  "entry": "",
+  "want": "scene"
+ },
+ "nothing": {
+  "files": {
+   "readme.txt": "hi"
+  },
+  "entry": "",
+  "want": ""
+ },
+ "empty_dir": {
+  "files": {},
+  "entry": "",
+  "want": ""
+ },
+ "unknown_entry_ext": {
+  "files": {
+   "a.zzz": "x"
+  },
+  "entry": "a.zzz",
+  "want": ""
+ },
+ "video_beats_index_html": {
+  "files": {
+   "v.mp4": "x",
+   "index.html": "<html>"
+  },
+  "entry": "v.mp4",
+  "want": "video"
+ },
+ "index_html_beats_exe": {
+  "files": {
+   "run.exe": "MZ",
+   "index.html": "<html>"
+  },
+  "entry": "run.exe",
+  "want": "web"
+ },
+ "pkg_beats_json": {
+  "files": {
+   "scene.pkg": "PKGV",
+   "scene.json": "{\"general\": {}}"
+  },
+  "entry": "",
+  "want": "scene"
+ },
+ "_video_exts": [
+  ".mp4",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".mov",
+  ".m4v",
+  ".gif"
+ ]
+}

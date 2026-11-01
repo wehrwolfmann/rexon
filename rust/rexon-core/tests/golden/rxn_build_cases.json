@@ -1,0 +1,229 @@
+{
+ "audio_exts": [
+  ".aac",
+  ".flac",
+  ".m4a",
+  ".mp3",
+  ".mp4a",
+  ".oga",
+  ".ogg",
+  ".opus",
+  ".wav",
+  ".wma"
+ ],
+ "bad_audio_spec": {
+  "manifest": null,
+  "names": null,
+  "rc": 3,
+  "stderr": "❌ --audio формат: LANG=path.ext (got: простослово)"
+ },
+ "exotic_ext": {
+  "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"de\": \"data/audio/de.exotic\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/de.exotic\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 0.5,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}",
+  "names": [
+   "data/audio/de.exotic",
+   "data/video/1080p.mp4",
+   "manifest.json"
+  ],
+  "rc": 0,
+  "stderr": "⚠️  audio de.exotic: extension .exotic не в списке ['.aac', '.flac', '.m4a', '.mp3', '.mp4a', '.oga', '.ogg', '.opus', '.wav', '.wma'] — упаковываю как есть, проверьте воспроизведение на месте"
+ },
+ "full": {
+  "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"Описание\",\n  \"author\": \"Автор\",\n  \"preview\": \"preview.png\",\n  \"videos\": {\n    \"720p\": \"data/video/720p.mp4\",\n    \"1080p\": \"data/video/1080p.mp4\",\n    \"2160p\": \"data/video/2160p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"en\": \"data/audio/en.mp3\",\n    \"ru\": \"data/audio/ru.ogg\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/en.mp3\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 0.5,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}",
+  "names": [
+   "data/audio/en.mp3",
+   "data/audio/ru.ogg",
+   "data/video/1080p.mp4",
+   "data/video/2160p.mp4",
+   "data/video/720p.mp4",
+   "manifest.json",
+   "preview.png"
+  ],
+  "rc": 0,
+  "stderr": ""
+ },
+ "locale_miss": {
+  "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"ru\": \"data/audio/ru.ogg\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/ru.ogg\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 0.5,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}",
+  "names": [
+   "data/audio/ru.ogg",
+   "data/video/1080p.mp4",
+   "manifest.json"
+  ],
+  "rc": 0,
+  "stderr": ""
+ },
+ "minimal": {
+  "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"2160p\": \"data/video/2160p.mp4\"\n  },\n  \"audio_tracks\": {},\n  \"fallback_video\": \"data/video/2160p.mp4\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 0.5,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}",
+  "names": [
+   "data/video/2160p.mp4",
+   "manifest.json"
+  ],
+  "rc": 0,
+  "stderr": ""
+ },
+ "missing_audio": {
+  "manifest": null,
+  "names": null,
+  "rc": 4,
+  "stderr": "❌ audio file not found: /tmp/rxn-golden-5k2wj56m/нет.mp3"
+ },
+ "missing_video": {
+  "manifest": null,
+  "names": null,
+  "rc": 1,
+  "stderr": "❌ video file not found: /tmp/rxn-golden-5k2wj56m/нет.mp4"
+ },
+ "no_video": {
+  "manifest": null,
+  "names": null,
+  "rc": 2,
+  "stderr": "❌ хотя бы одно --video-XXXX обязательно"
+ },
+ "plan": {
+  "cli_default_volume": {
+   "rc": 0,
+   "stdout": "📦 Сборка a.rxn…\n  + 1080p w_fhd.mp4\n✅ /tmp/rxngold-aoxd3ry3/a.rxn (0.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {},\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "full": {
+   "rc": 0,
+   "stdout": "📦 Сборка b.rxn…\n  + 720p  w_hd.mp4\n  + 1080p w_fhd.mp4\n  + 2160p w_4k.mp4\n  + audio[en] en.mp3\n  + audio[ru] ru.ogg\n✅ /tmp/rxngold-aoxd3ry3/b.rxn (3.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "preview.png",
+    "data/video/720p.mp4",
+    "data/video/1080p.mp4",
+    "data/video/2160p.mp4",
+    "data/audio/en.mp3",
+    "data/audio/ru.ogg"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"Описание\",\n  \"author\": \"Автор\",\n  \"preview\": \"preview.png\",\n  \"videos\": {\n    \"720p\": \"data/video/720p.mp4\",\n    \"1080p\": \"data/video/1080p.mp4\",\n    \"2160p\": \"data/video/2160p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"en\": \"data/audio/en.mp3\",\n    \"ru\": \"data/audio/ru.ogg\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/en.mp3\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 70,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "unknown_ext": {
+   "rc": 0,
+   "stdout": "📦 Сборка c.rxn…\n  + 1080p w_fhd.mp4\n  + audio[de] de.exotic\n✅ /tmp/rxngold-aoxd3ry3/c.rxn (0.0 MB)\n",
+   "stderr": "⚠️  audio de.exotic: extension .exotic не в списке ['.aac', '.flac', '.m4a', '.mp3', '.mp4a', '.oga', '.ogg', '.opus', '.wav', '.wma'] — упаковываю как есть, проверьте воспроизведение на месте\n",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4",
+    "data/audio/de.exotic"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"de\": \"data/audio/de.exotic\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/de.exotic\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "trailing_dot": {
+   "rc": 0,
+   "stdout": "📦 Сборка d.rxn…\n  + 1080p w_fhd.mp4\n  + audio[xx] точка.\n✅ /tmp/rxngold-aoxd3ry3/d.rxn (0.0 MB)\n",
+   "stderr": "⚠️  audio точка.: extension . не в списке ['.aac', '.flac', '.m4a', '.mp3', '.mp4a', '.oga', '.ogg', '.opus', '.wav', '.wma'] — упаковываю как есть, проверьте воспроизведение на месте\n",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4",
+    "data/audio/xx."
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"xx\": \"data/audio/xx.\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/xx.\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "dup_lang": {
+   "rc": 0,
+   "stdout": "📦 Сборка e.rxn…\n  + 1080p w_fhd.mp4\n  + audio[ru] ru.ogg\n  + audio[ru] en.mp3\n✅ /tmp/rxngold-aoxd3ry3/e.rxn (0.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4",
+    "data/audio/ru.ogg",
+    "data/audio/ru.mp3"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"ru\": \"data/audio/ru.mp3\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/ru.mp3\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "dup_lang_order": {
+   "rc": 0,
+   "stdout": "📦 Сборка f.rxn…\n  + 1080p w_fhd.mp4\n  + audio[ru] ru.ogg\n  + audio[en] en.mp3\n  + audio[ru] en.mp3\n✅ /tmp/rxngold-aoxd3ry3/f.rxn (0.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4",
+    "data/audio/ru.ogg",
+    "data/audio/en.mp3",
+    "data/audio/ru.mp3"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"ru\": \"data/audio/ru.mp3\",\n    \"en\": \"data/audio/en.mp3\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/en.mp3\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "locale_miss": {
+   "rc": 0,
+   "stdout": "📦 Сборка g.rxn…\n  + 1080p w_fhd.mp4\n  + audio[ru] ru.ogg\n✅ /tmp/rxngold-aoxd3ry3/g.rxn (0.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4",
+    "data/audio/ru.ogg"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {\n    \"ru\": \"data/audio/ru.ogg\"\n  },\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"fallback_audio\": \"data/audio/ru.ogg\",\n  \"default_locale\": \"de\",\n  \"audio_volume_default\": 50,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "float_volume": {
+   "rc": 0,
+   "stdout": "📦 Сборка h.rxn…\n  + 1080p w_fhd.mp4\n✅ /tmp/rxngold-aoxd3ry3/h.rxn (0.0 MB)\n",
+   "stderr": "",
+   "names": [
+    "manifest.json",
+    "data/video/1080p.mp4"
+   ],
+   "manifest": "{\n  \"format_version\": 4,\n  \"type\": \"wallpaper-video-adaptive\",\n  \"title\": \"Ведьмак 3\",\n  \"description\": \"\",\n  \"author\": \"\",\n  \"videos\": {\n    \"1080p\": \"data/video/1080p.mp4\"\n  },\n  \"audio_tracks\": {},\n  \"fallback_video\": \"data/video/1080p.mp4\",\n  \"default_locale\": \"en\",\n  \"audio_volume_default\": 0.5,\n  \"loop\": true,\n  \"tags\": [\n    \"adaptive\",\n    \"multi-language\",\n    \"multi-resolution\"\n  ]\n}"
+  },
+  "no_video": {
+   "rc": 2,
+   "stdout": "",
+   "stderr": "❌ хотя бы одно --video-XXXX обязательно\n"
+  },
+  "missing_video": {
+   "rc": 1,
+   "stdout": "",
+   "stderr": "❌ video file not found: /tmp/rxngold-aoxd3ry3/нет.mp4\n"
+  },
+  "bad_audio_spec": {
+   "rc": 3,
+   "stdout": "",
+   "stderr": "❌ --audio формат: LANG=path.ext (got: простослово)\n"
+  },
+  "missing_audio": {
+   "rc": 4,
+   "stdout": "",
+   "stderr": "❌ audio file not found: /tmp/rxngold-aoxd3ry3/нет.mp3\n"
+  },
+  "video_beats_audio": {
+   "rc": 1,
+   "stdout": "",
+   "stderr": "❌ video file not found: /tmp/rxngold-aoxd3ry3/нет.mp4\n"
+  },
+  "no_video_beats_audio": {
+   "rc": 2,
+   "stdout": "",
+   "stderr": "❌ хотя бы одно --video-XXXX обязательно\n"
+  },
+  "audio_exts": [
+   ".aac",
+   ".flac",
+   ".m4a",
+   ".mp3",
+   ".mp4a",
+   ".oga",
+   ".ogg",
+   ".opus",
+   ".wav",
+   ".wma"
+  ],
+  "_tmp": "/tmp/rxngold-aoxd3ry3",
+  "_sources": {
+   "v720": "/tmp/rxngold-aoxd3ry3/src/w_hd.mp4",
+   "v1080": "/tmp/rxngold-aoxd3ry3/src/w_fhd.mp4",
+   "v2160": "/tmp/rxngold-aoxd3ry3/src/w_4k.mp4",
+   "a_en": "/tmp/rxngold-aoxd3ry3/src/en.mp3",
+   "a_ru": "/tmp/rxngold-aoxd3ry3/src/ru.ogg",
+   "a_de": "/tmp/rxngold-aoxd3ry3/src/de.exotic",
+   "a_dot": "/tmp/rxngold-aoxd3ry3/src/точка.",
+   "prev": "/tmp/rxngold-aoxd3ry3/src/preview_shot.png"
+  }
+ }
+}

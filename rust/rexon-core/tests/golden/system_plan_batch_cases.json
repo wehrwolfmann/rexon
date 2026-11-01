@@ -1,0 +1,2207 @@
+{
+ "update_db": [
+  {
+   "label": "arch-helper-off",
+   "family": "arch",
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-Sy",
+      "--noconfirm"
+     ],
+     "timeout": 600,
+     "lang_c": false
+    }
+   ],
+   "ok": true
+  },
+  {
+   "label": "arch-helper-on",
+   "family": "arch",
+   "pkg_helper_available": true,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "update"
+     ],
+     "timeout": 600,
+     "lang_c": false
+    }
+   ],
+   "ok": true
+  },
+  {
+   "label": "debian",
+   "family": "debian",
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "update",
+      "-q"
+     ],
+     "timeout": 600,
+     "lang_c": false
+    }
+   ],
+   "ok": true
+  },
+  {
+   "label": "alt",
+   "family": "alt",
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "update",
+      "-q"
+     ],
+     "timeout": 600,
+     "lang_c": false
+    }
+   ],
+   "ok": true
+  },
+  {
+   "label": "nix",
+   "family": "nix",
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "nix-channel",
+      "--update"
+     ],
+     "timeout": 600,
+     "lang_c": false
+    }
+   ],
+   "ok": true
+  },
+  {
+   "label": "unknown",
+   "family": "unknown",
+   "pkg_helper_available": false,
+   "trace": [],
+   "ok": true
+  }
+ ],
+ "install": [
+  {
+   "label": "arch-raw",
+   "family": "arch",
+   "packages": [
+    "xfce4",
+    "xfce4-goodies"
+   ],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "xfce4",
+      "xfce4-goodies"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "arch-named",
+   "family": "arch",
+   "packages": [
+    "xfce4"
+   ],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": true,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "install",
+      "xfce4"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "arch-aur",
+   "family": "arch",
+   "packages": [
+    "mate-tweak",
+    "brisk-menu"
+   ],
+   "aur": true,
+   "aur_helper": "yay",
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "yay",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "--answerclean",
+      "None",
+      "--answerdiff",
+      "None",
+      "--answeredit",
+      "None",
+      "--removemake",
+      "--sudo",
+      "pkexec",
+      "--sudoflags",
+      "",
+      "mate-tweak",
+      "brisk-menu"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "arch-aur-no-helper",
+   "family": "arch",
+   "packages": [
+    "mate-tweak"
+   ],
+   "aur": true,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "mate-tweak"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "nix",
+   "family": "nix",
+   "packages": [
+    "plasma-desktop",
+    "konsole"
+   ],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "nix-env",
+      "-iA",
+      "nixpkgs.plasma-desktop",
+      "nixpkgs.konsole"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "alt",
+   "family": "alt",
+   "packages": [
+    "mate",
+    "sddm"
+   ],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "install",
+      "-y",
+      "mate",
+      "sddm"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "empty",
+   "family": "arch",
+   "packages": [],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [],
+   "ok": true,
+   "message": "Нет пакетов для установки"
+  },
+  {
+   "label": "auth-denied",
+   "family": "arch",
+   "packages": [
+    "xfce4"
+   ],
+   "aur": false,
+   "aur_helper": null,
+   "pkg_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "xfce4"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУстановить можно из терминала: sudo pacman -S --needed --noconfirm xfce4"
+  }
+ ],
+ "remove": [
+  {
+   "label": "mate-partial",
+   "family": "arch",
+   "packages": [
+    "mate",
+    "plank",
+    "lightdm"
+   ],
+   "qg": {
+    "mate": "mate mate-panel\nmate mate-desktop\nmate mate-menus\n"
+   },
+   "qi": {
+    "mate-panel": "Name            : mate-panel\nVersion         : 1.0-1\nDepends On      : gtk3  mate-menus\nRequired By     : mate-menu  mate-desktop\n",
+    "mate-desktop": "Name            : mate-desktop\nVersion         : 1.0-1\nDepends On      : gtk3  mate-panel\nRequired By     : None\n",
+    "mate-menus": "Name            : mate-menus\nVersion         : 1.0-1\nDepends On      : glib2\nRequired By     : mate-panel\n"
+   },
+   "installed": [
+    "lightdm",
+    "mate-desktop",
+    "mate-menus",
+    "mate-panel",
+    "plank"
+   ],
+   "pkg_helper_available": false,
+   "expanded": [
+    "mate-panel",
+    "mate-desktop",
+    "mate-menus",
+    "plank",
+    "lightdm"
+   ],
+   "installed_order": [
+    "mate-panel",
+    "mate-desktop",
+    "mate-menus",
+    "plank",
+    "lightdm"
+   ],
+   "safe": [
+    "mate-desktop",
+    "plank",
+    "lightdm"
+   ],
+   "skipped": [
+    "mate-panel",
+    "mate-menus"
+   ],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "mate"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "lightdm"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "mate-panel"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "mate-desktop"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "mate-menus"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "lightdm"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-panel"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-desktop"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-menus"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "lightdm"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-menus"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "closure"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-panel"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "closure"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-panel"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "closure"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-panel"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "skip-note"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "mate-menus"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "skip-note"
+    },
+    {
+     "kind": "wait_lock",
+     "phase": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-Rns",
+      "--noconfirm",
+      "mate-desktop",
+      "plank",
+      "lightdm"
+     ],
+     "timeout": 1800,
+     "lang_c": false,
+     "phase": "remove"
+    }
+   ],
+   "ok": true,
+   "message": "ok\n\nПропущено (нужно другим рабочим столам):\n  • mate-panel (требуется: mate-menu)\n  • mate-menus (нужен другому пропущенному пакету)"
+  },
+  {
+   "label": "all-forbidden",
+   "family": "arch",
+   "packages": [
+    "pkg-x",
+    "pkg-y"
+   ],
+   "qg": {},
+   "qi": {
+    "pkg-x": "Name            : pkg-x\nVersion         : 1.0-1\nDepends On      : None\nRequired By     : external-a\n",
+    "pkg-y": "Name            : pkg-y\nVersion         : 1.0-1\nDepends On      : None\nRequired By     : external-b  external-c  external-d  external-e\n"
+   },
+   "installed": [
+    "pkg-x",
+    "pkg-y"
+   ],
+   "pkg_helper_available": false,
+   "expanded": [
+    "pkg-x",
+    "pkg-y"
+   ],
+   "installed_order": [
+    "pkg-x",
+    "pkg-y"
+   ],
+   "safe": [],
+   "skipped": [
+    "pkg-x",
+    "pkg-y"
+   ],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "pkg-x"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "pkg-y"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "pkg-x"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "pkg-y"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-x"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-y"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-x"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "closure"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-y"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "closure"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-x"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "skip-note"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "pkg-y"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "skip-note"
+    }
+   ],
+   "ok": false,
+   "message": "Все пакеты этого рабочего стола нужны другим установленным программам:\n  • pkg-x (требуется: external-a)\n  • pkg-y (требуется: external-b, external-c, external-d)"
+  },
+  {
+   "label": "none-installed",
+   "family": "arch",
+   "packages": [
+    "ghost-a",
+    "ghost-b"
+   ],
+   "qg": {},
+   "qi": {},
+   "installed": [],
+   "pkg_helper_available": false,
+   "expanded": [
+    "ghost-a",
+    "ghost-b"
+   ],
+   "installed_order": [],
+   "safe": [],
+   "skipped": [],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "ghost-a"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "ghost-b"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "ghost-a"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "ghost-b"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    }
+   ],
+   "ok": true,
+   "message": "Нет установленных пакетов для удаления"
+  },
+  {
+   "label": "debian-simple",
+   "family": "debian",
+   "packages": [
+    "xfce4",
+    "lightdm"
+   ],
+   "qg": {},
+   "qi": {},
+   "installed": [
+    "lightdm",
+    "xfce4"
+   ],
+   "pkg_helper_available": false,
+   "expanded": [
+    "xfce4",
+    "lightdm"
+   ],
+   "installed_order": [
+    "xfce4",
+    "lightdm"
+   ],
+   "safe": [
+    "xfce4",
+    "lightdm"
+   ],
+   "skipped": [],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "dpkg",
+      "-s",
+      "xfce4"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "dpkg",
+      "-s",
+      "lightdm"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "wait_lock",
+     "phase": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "remove",
+      "-y",
+      "--purge",
+      "xfce4",
+      "lightdm"
+     ],
+     "timeout": 1800,
+     "lang_c": false,
+     "phase": "remove"
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "nix-simple",
+   "family": "nix",
+   "packages": [
+    "plasma-desktop"
+   ],
+   "qg": {},
+   "qi": {},
+   "installed": [
+    "plasma-desktop"
+   ],
+   "pkg_helper_available": false,
+   "expanded": [
+    "plasma-desktop"
+   ],
+   "installed_order": [
+    "plasma-desktop"
+   ],
+   "safe": [
+    "plasma-desktop"
+   ],
+   "skipped": [],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "nix-env",
+      "-q",
+      "plasma-desktop"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "wait_lock",
+     "phase": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "nix-env",
+      "-e",
+      "plasma-desktop"
+     ],
+     "timeout": 1800,
+     "lang_c": false,
+     "phase": "remove"
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "empty",
+   "family": "arch",
+   "packages": [],
+   "qg": {},
+   "qi": {},
+   "installed": [],
+   "pkg_helper_available": false,
+   "expanded": [],
+   "installed_order": [],
+   "safe": [],
+   "skipped": [],
+   "trace": [],
+   "ok": true,
+   "message": ""
+  },
+  {
+   "label": "named-helper",
+   "family": "arch",
+   "packages": [
+    "plank"
+   ],
+   "qg": {},
+   "qi": {
+    "plank": "Name            : plank\nVersion         : 1.0-1\nDepends On      : None\nRequired By     : None\n"
+   },
+   "installed": [
+    "plank"
+   ],
+   "pkg_helper_available": true,
+   "expanded": [
+    "plank"
+   ],
+   "installed_order": [
+    "plank"
+   ],
+   "safe": [
+    "plank"
+   ],
+   "skipped": [],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "wait_lock",
+     "phase": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "remove",
+      "plank"
+     ],
+     "timeout": 1800,
+     "lang_c": false,
+     "phase": "remove"
+    }
+   ],
+   "ok": true,
+   "message": "ok"
+  },
+  {
+   "label": "auth-denied",
+   "family": "arch",
+   "packages": [
+    "plank"
+   ],
+   "qg": {},
+   "qi": {
+    "plank": "Name            : plank\nVersion         : 1.0-1\nDepends On      : None\nRequired By     : None\n"
+   },
+   "installed": [
+    "plank"
+   ],
+   "pkg_helper_available": false,
+   "expanded": [
+    "plank"
+   ],
+   "installed_order": [
+    "plank"
+   ],
+   "safe": [
+    "plank"
+   ],
+   "skipped": [],
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qg",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "qg"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Q",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": false,
+     "phase": "query"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pacman",
+      "-Qi",
+      "plank"
+     ],
+     "timeout": null,
+     "lang_c": true,
+     "phase": "required-by"
+    },
+    {
+     "kind": "wait_lock",
+     "phase": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-Rns",
+      "--noconfirm",
+      "plank"
+     ],
+     "timeout": 1800,
+     "lang_c": false,
+     "phase": "remove"
+    }
+   ],
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУдалить можно из терминала: sudo pacman -Rns --noconfirm plank"
+  }
+ ],
+ "install_batch": [
+  {
+   "label": "arch-legacy-kde",
+   "detector": {
+    "ID": "cachyos",
+    "NAME": "CachyOS Linux",
+    "PRETTY_NAME": "CachyOS"
+   },
+   "family": "arch",
+   "packages": [
+    "plasma-meta",
+    "konsole",
+    "dolphin"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_install_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole dolphin\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.sh",
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "update",
+    "install",
+    "done_main"
+   ]
+  },
+  {
+   "label": "arch-de-helper-kde",
+   "detector": {
+    "ID": "cachyos",
+    "NAME": "CachyOS Linux",
+    "PRETTY_NAME": "CachyOS"
+   },
+   "family": "arch",
+   "packages": [
+    "plasma-meta",
+    "konsole"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": true,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-de-helper",
+      "kde",
+      "arch",
+      "/tmp/rexon_install_TEST.log"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": true,
+   "files": {
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "update",
+    "install",
+    "done_main"
+   ]
+  },
+  {
+   "label": "arch-legacy-aur",
+   "detector": {
+    "ID": "cachyos",
+    "NAME": "CachyOS Linux",
+    "PRETTY_NAME": "CachyOS"
+   },
+   "family": "arch",
+   "packages": [
+    "mate",
+    "mate-extra"
+   ],
+   "aur_packages": [
+    "mate-tweak",
+    "brisk-menu"
+   ],
+   "aur_helper": "yay",
+   "update_first": true,
+   "de_id": "mate",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_install_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    },
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "yay",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "--answerclean",
+      "None",
+      "--answerdiff",
+      "None",
+      "--answeredit",
+      "None",
+      "--removemake",
+      "--sudo",
+      "pkexec",
+      "--sudoflags",
+      "",
+      "mate-tweak",
+      "brisk-menu"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never mate mate-extra\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.sh",
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "update",
+    "install",
+    "done_main",
+    "aur",
+    "aur_done"
+   ]
+  },
+  {
+   "label": "arch-no-update",
+   "detector": {
+    "ID": "cachyos",
+    "NAME": "CachyOS Linux",
+    "PRETTY_NAME": "CachyOS"
+   },
+   "family": "arch",
+   "packages": [
+    "xfce4"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": false,
+   "de_id": "xfce",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_install_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -S --needed --noconfirm --noprogressbar --color never xfce4\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.sh",
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "update",
+    "install",
+    "done_main"
+   ]
+  },
+  {
+   "label": "steamos-kde",
+   "detector": {
+    "ID": "steamos",
+    "NAME": "SteamOS",
+    "PRETTY_NAME": "SteamOS",
+    "VARIANT_ID": "steamdeck",
+    "VERSION_ID": "3.7.8"
+   },
+   "family": "arch",
+   "packages": [
+    "plasma-meta",
+    "konsole"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_steamos_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка на SteamOS завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Шаг 1: Отключение read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Шаг 2: Инициализация ключей pacman ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Шаг 3: Обновление БД пакетов ──\npacman -Sy --noconfirm\n\n# ── Шаг 4: Установка пакетов ──\necho '📦 Установка пакетов: 2…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole\n\n# ── Шаг 5: Включение read-only обратно ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Всегда включаем readonly обратно при ошибке\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_steamos_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_steamos_TEST.sh",
+    "/tmp/rexon_steamos_TEST.log"
+   ],
+   "progress_stages": [
+    "steamos",
+    "steamos",
+    "install",
+    "steamos_done",
+    "steamos_warn",
+    "steamos_warn"
+   ]
+  },
+  {
+   "label": "steamos-aur",
+   "detector": {
+    "ID": "steamos",
+    "NAME": "SteamOS",
+    "PRETTY_NAME": "SteamOS",
+    "VARIANT_ID": "steamdeck",
+    "VERSION_ID": "3.7.8"
+   },
+   "family": "arch",
+   "packages": [
+    "plasma-meta"
+   ],
+   "aur_packages": [
+    "mate-tweak"
+   ],
+   "aur_helper": "paru",
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_steamos_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "paru",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "--skipreview",
+      "--nosudoloop",
+      "--removemake",
+      "--sudo",
+      "pkexec",
+      "--sudoflags",
+      "",
+      "mate-tweak"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка на SteamOS завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Шаг 1: Отключение read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Шаг 2: Инициализация ключей pacman ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Шаг 3: Обновление БД пакетов ──\npacman -Sy --noconfirm\n\n# ── Шаг 4: Установка пакетов ──\necho '📦 Установка пакетов: 1…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta\n\n# ── Шаг 5: Включение read-only обратно ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Всегда включаем readonly обратно при ошибке\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_steamos_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_steamos_TEST.sh",
+    "/tmp/rexon_steamos_TEST.log"
+   ],
+   "progress_stages": [
+    "steamos",
+    "steamos",
+    "install",
+    "steamos_done",
+    "steamos_warn",
+    "steamos_warn",
+    "aur",
+    "aur_done"
+   ]
+  },
+  {
+   "label": "debian-legacy",
+   "detector": {
+    "ID": "debian",
+    "NAME": "Debian GNU/Linux",
+    "PRETTY_NAME": "Debian GNU/Linux 12 (bookworm)"
+   },
+   "family": "debian",
+   "packages": [
+    "xfce4",
+    "xfce4-goodies",
+    "lightdm"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "xfce",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_install_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\napt-get update -q\napt-get install -y --no-install-recommends xfce4 xfce4-goodies lightdm\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.sh",
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "update",
+    "install",
+    "done_main"
+   ]
+  },
+  {
+   "label": "bazzite-ostree",
+   "detector": {
+    "ID": "bazzite",
+    "NAME": "Bazzite",
+    "PRETTY_NAME": "Bazzite 41",
+    "VARIANT_ID": "kinoite"
+   },
+   "family": "fedora",
+   "packages": [
+    "@kde-desktop-environment"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [],
+   "ok": false,
+   "message": "Bazzite — иммутабельный (ostree) дистрибутив.\nДля установки пакетов:\n\n  rpm-ostree install @kde-desktop-environment\n  systemctl reboot\n\nИли используйте Distrobox для изолированного окружения.",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": [
+    "immutable"
+   ]
+  },
+  {
+   "label": "bazzite-plain",
+   "detector": {
+    "ID": "bazzite",
+    "NAME": "Bazzite",
+    "PRETTY_NAME": "Bazzite 41",
+    "VARIANT_ID": ""
+   },
+   "family": "fedora",
+   "packages": [
+    "@kde-desktop-environment"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [],
+   "ok": false,
+   "message": "Bazzite — иммутабельный (ostree) дистрибутив.\nДля установки пакетов:\n\n  rpm-ostree install @kde-desktop-environment\n  systemctl reboot\n\nИли используйте Distrobox для изолированного окружения.",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": [
+    "immutable"
+   ]
+  },
+  {
+   "label": "nixos-de",
+   "detector": {
+    "ID": "nixos",
+    "NAME": "NixOS",
+    "PRETTY_NAME": "NixOS 24.11 (Vicuna)"
+   },
+   "family": "nix",
+   "packages": [
+    "plasma-desktop"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "kde",
+   "de_helper_available": false,
+   "trace": [],
+   "ok": false,
+   "message": "NixOS использует декларативную модель.\nДобавьте в /etc/nixos/configuration.nix:\n\nservices.desktopManager.plasma6.enable = true;\nservices.displayManager.sddm.enable = true;\n\nЗатем выполните:\n  sudo nixos-rebuild switch",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": [
+    "nixos"
+   ]
+  },
+  {
+   "label": "nixos-unknown-de",
+   "detector": {
+    "ID": "nixos",
+    "NAME": "NixOS",
+    "PRETTY_NAME": "NixOS 24.11 (Vicuna)"
+   },
+   "family": "nix",
+   "packages": [
+    "whatever"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "enlightenment",
+   "de_helper_available": false,
+   "trace": [],
+   "ok": false,
+   "message": "Рабочий стол 'enlightenment' не поддерживается на NixOS через Rexon.\nНастройте вручную в /etc/nixos/configuration.nix.",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": [
+    "nixos"
+   ]
+  },
+  {
+   "label": "nix-no-de",
+   "detector": {
+    "ID": "nixos",
+    "NAME": "NixOS",
+    "PRETTY_NAME": "NixOS 24.11 (Vicuna)"
+   },
+   "family": "nix",
+   "packages": [
+    "plasma-desktop",
+    "konsole"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": null,
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "run",
+     "argv": [
+      "nix-channel",
+      "--update"
+     ],
+     "timeout": null,
+     "lang_c": false
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "nix-env",
+      "-iA",
+      "nixpkgs.plasma-desktop",
+      "nixpkgs.konsole"
+     ],
+     "timeout": null,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": [
+    "update",
+    "done_main"
+   ]
+  },
+  {
+   "label": "gentoo-cosmic",
+   "detector": {
+    "ID": "gentoo",
+    "NAME": "Gentoo",
+    "PRETTY_NAME": "Gentoo"
+   },
+   "family": "gentoo",
+   "packages": [
+    "cosmic-base/cosmic-session"
+   ],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": "cosmic",
+   "de_helper_available": false,
+   "trace": [
+    {
+     "kind": "ensure_overlay",
+     "overlay": "cosmic-overlay"
+    },
+    {
+     "kind": "wait_lock"
+    },
+    {
+     "kind": "run",
+     "argv": [
+      "pkexec",
+      "bash",
+      "/tmp/rexon_install_TEST.sh"
+     ],
+     "timeout": 1800,
+     "lang_c": false
+    }
+   ],
+   "ok": true,
+   "message": "Установка завершена",
+   "used_de_helper": false,
+   "files": {
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\nemerge --sync\nemerge --ask=n --quiet cosmic-base/cosmic-session\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.log": ""
+   },
+   "removed_files": [
+    "/tmp/rexon_install_TEST.sh",
+    "/tmp/rexon_install_TEST.log"
+   ],
+   "progress_stages": [
+    "overlay",
+    "overlay_done",
+    "update",
+    "install",
+    "done_main"
+   ]
+  },
+  {
+   "label": "empty",
+   "detector": {
+    "ID": "cachyos",
+    "NAME": "CachyOS Linux",
+    "PRETTY_NAME": "CachyOS"
+   },
+   "family": "arch",
+   "packages": [],
+   "aur_packages": [],
+   "aur_helper": null,
+   "update_first": true,
+   "de_id": null,
+   "de_helper_available": false,
+   "trace": [],
+   "ok": true,
+   "message": "Нет пакетов для установки",
+   "used_de_helper": false,
+   "files": {},
+   "removed_files": [],
+   "progress_stages": []
+  }
+ ],
+ "dm_enable": [
+  {
+   "label": "plm-arch-raw",
+   "family": "arch",
+   "installed_pkgs": [
+    "plasma-meta",
+    "konsole",
+    "plasma-login-manager"
+   ],
+   "pkg_helper_available": false,
+   "used_de_helper": false,
+   "dm_calls": [
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "--force",
+      "plasmalogin.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "label": "plm-arch-named",
+   "family": "arch",
+   "installed_pkgs": [
+    "plasma-meta",
+    "plasma-login-manager"
+   ],
+   "pkg_helper_available": true,
+   "used_de_helper": false,
+   "dm_calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "enable-dm",
+      "plasmalogin"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "label": "sddm-arch-raw",
+   "family": "arch",
+   "installed_pkgs": [
+    "plasma-meta",
+    "sddm"
+   ],
+   "pkg_helper_available": false,
+   "used_de_helper": false,
+   "dm_calls": [
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "label": "lightdm-vs-sddm-priority",
+   "family": "arch",
+   "installed_pkgs": [
+    "xfce4",
+    "sddm",
+    "lightdm"
+   ],
+   "pkg_helper_available": false,
+   "used_de_helper": false,
+   "dm_calls": [
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "lightdm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "label": "no-dm",
+   "family": "arch",
+   "installed_pkgs": [
+    "xfce4"
+   ],
+   "pkg_helper_available": false,
+   "used_de_helper": false,
+   "dm_calls": []
+  },
+  {
+   "label": "skip-if-de-helper",
+   "family": "arch",
+   "installed_pkgs": [
+    "plasma-meta",
+    "plasma-login-manager"
+   ],
+   "pkg_helper_available": false,
+   "used_de_helper": true,
+   "dm_calls": []
+  }
+ ],
+ "remove_de": [
+  {
+   "label": "current-no-force",
+   "de": "kde",
+   "display_name": "KDE",
+   "current_de": "kde",
+   "force": false,
+   "packages": [
+    "plasma-meta"
+   ],
+   "aur": [],
+   "ok": false,
+   "message": "Нельзя удалить текущий рабочий стол (KDE): после выхода из сессии войти будет некуда. Сначала переключитесь на другой установленный рабочий стол.",
+   "remove_called_with": []
+  },
+  {
+   "label": "current-force",
+   "de": "kde",
+   "display_name": "KDE",
+   "current_de": "kde",
+   "force": true,
+   "packages": [
+    "plasma-meta"
+   ],
+   "aur": [],
+   "ok": true,
+   "message": "ok",
+   "remove_called_with": [
+    [
+     "plasma-meta"
+    ]
+   ]
+  },
+  {
+   "label": "other-de",
+   "de": "mate",
+   "display_name": "MATE",
+   "current_de": "kde",
+   "force": false,
+   "packages": [
+    "mate",
+    "mate-extra"
+   ],
+   "aur": [
+    "mate-tweak"
+   ],
+   "ok": true,
+   "message": "ok",
+   "remove_called_with": [
+    [
+     "mate",
+     "mate-extra",
+     "mate-tweak"
+    ]
+   ]
+  },
+  {
+   "label": "no-packages",
+   "de": "enlightenment",
+   "display_name": "ENLIGHTENMENT",
+   "current_de": "kde",
+   "force": false,
+   "packages": [],
+   "aur": [],
+   "ok": false,
+   "message": "Нет пакетов для этого дистрибутива",
+   "remove_called_with": []
+  }
+ ],
+ "switch_de_guard": [
+  {
+   "label": "unknown-current",
+   "current": "unknown",
+   "target": "mate",
+   "target_display": "MATE",
+   "ok": false,
+   "message": "Не удалось определить текущий рабочий стол"
+  },
+  {
+   "label": "same-de",
+   "current": "kde",
+   "target": "kde",
+   "target_display": "KDE",
+   "ok": false,
+   "message": "Уже используется: KDE"
+  }
+ ],
+ "logout": [
+  {
+   "label": "kde",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "KDE",
+    "DESKTOP_SESSION": "plasma",
+    "XDG_SESSION_ID": "3"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "dbus-send",
+      "--session",
+      "--type=method_call",
+      "--dest=org.kde.LogoutPrompt",
+      "/LogoutPrompt",
+      "org.kde.LogoutPrompt.promptLogout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "dbus-send",
+      "--session",
+      "--type=method_call",
+      "--dest=org.kde.Shutdown",
+      "/Shutdown",
+      "org.kde.Shutdown.logout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "dbus-send",
+      "--session",
+      "--type=method_call",
+      "--dest=org.kde.ksmserver",
+      "/KSMServer",
+      "org.kde.KSMServerInterface.logout",
+      "int32:0",
+      "int32:3",
+      "int32:0"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "qdbus6",
+      "org.kde.Shutdown",
+      "/Shutdown",
+      "logout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "3"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "xfce",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "XFCE",
+    "DESKTOP_SESSION": "xfce",
+    "XDG_SESSION_ID": "2"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "xfce4-session-logout",
+      "--logout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "2"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "gnome",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "GNOME",
+    "DESKTOP_SESSION": "gnome",
+    "XDG_SESSION_ID": ""
+   },
+   "cmds": [
+    {
+     "argv": [
+      "gnome-session-quit",
+      "--logout",
+      "--no-prompt"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "cinnamon",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "X-Cinnamon",
+    "DESKTOP_SESSION": "cinnamon",
+    "XDG_SESSION_ID": "5"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "cinnamon-session-quit",
+      "--logout",
+      "--no-prompt"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "5"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "mate",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "MATE",
+    "DESKTOP_SESSION": "mate",
+    "XDG_SESSION_ID": ""
+   },
+   "cmds": [
+    {
+     "argv": [
+      "mate-session-save",
+      "--logout"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "cosmic",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "COSMIC",
+    "DESKTOP_SESSION": "",
+    "XDG_SESSION_ID": "7"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "cosmic-session",
+      "--logout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "7"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "hyprland",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "Hyprland",
+    "DESKTOP_SESSION": "",
+    "XDG_SESSION_ID": ""
+   },
+   "cmds": [
+    {
+     "argv": [
+      "hyprctl",
+      "dispatch",
+      "exit"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "lxqt",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "LXQt",
+    "DESKTOP_SESSION": "lxqt",
+    "XDG_SESSION_ID": "9"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "lxqt-leave",
+      "--logout"
+     ],
+     "timeout": 5
+    },
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "9"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "bare-session-id",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "",
+    "DESKTOP_SESSION": "",
+    "XDG_SESSION_ID": "11"
+   },
+   "cmds": [
+    {
+     "argv": [
+      "loginctl",
+      "terminate-session",
+      "11"
+     ],
+     "timeout": 5
+    }
+   ],
+   "ok": false,
+   "message": "'str' object has no attribute 'decode'"
+  },
+  {
+   "label": "nothing",
+   "env": {
+    "XDG_CURRENT_DESKTOP": "",
+    "DESKTOP_SESSION": "",
+    "XDG_SESSION_ID": ""
+   },
+   "cmds": [],
+   "ok": false,
+   "message": "Не удалось выйти из сессии"
+  }
+ ]
+}

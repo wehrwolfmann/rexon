@@ -1,0 +1,163 @@
+# rexon-gui — фундамент GUI-слоя Rexon на Rust: QObject'ы и модели списков
+# для существующего QML через cxx-qt. Заменяет собой Python-мост
+# rexon/qt_wallpaper_engine/qml_ui/bridge.py по частям.
+#
+# Почему отдельный крейт, а не в rexon-core: ядро обязано оставаться без Qt
+# (`cargo test` ядра не должен требовать Qt6). Почему не в rexon-qt-filter:
+# тот крейт — cdylib-плагин, который окно подгружает dlopen, у него другая
+# роль и другой crate-type; здесь нужен обычный rlib + бинари.
+[package]
+name = "rexon-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GUI-слой Rexon: модели и QObject'ы для QML через cxx-qt"
+
+# Только rlib: окно Rexon, хост обоев, стенды и голден-тесты линкуют крейт
+# статически. Отдельная `librexon_gui.so` (cdylib) была нужна хозяину вкладки
+# на Python, который грузил её через ctypes; он в архиве, экспортных C-дверей
+# в крейте нет, и 54 МБ мёртвого груза больше не собираются и не ставятся.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Данные модели берутся из настоящего ядра — Qt-слой логики не содержит.
+rexon-core = { path = "../rexon-core" }
+cxx = "1"
+cxx-qt = "0.9"
+cxx-qt-lib = { version = "0.9", features = ["qt_gui", "qt_qml"] }
+# ⭐QApplication на Rust. Стена «QApplication в cxx-qt-lib не обёрнута вовсе»
+# была измерена не там: в cxx-qt-lib её нет и в 0.10, но соседний крейт того
+# же выпуска (KDAB, тот же репозиторий, версия 0.9) оборачивает её целиком —
+# конструктор, exec, имя приложения и организации. Без неё процесс с окном на
+# QML — QGuiApplication, а QSystemTrayIcon, QMenu и QAction без QApplication
+# не создаются вовсе: значка в лотке у Rust-бинаря быть не могло в принципе.
+# Лицензия MIT OR Apache-2.0 — permissive (правило #10).
+#
+# ⚠️ Ссылка на крейт в `src/lib.rs` (`use cxx_qt_lib_extras as _;`)
+# ОБЯЗАТЕЛЬНА и не декоративна — разбор там же.
+cxx-qt-lib-extras = "0.9"
+# serde_json::Value — тип, которым ядро отдаёт разобранный VDF/JSON.
+serde_json = { version = "1", features = ["preserve_order"] }
+# Голден разбирается в структуры — руками по serde_json::Value это была бы
+# страница шума вместо проверки. Не dev-зависимость: тем же разбором
+# пользуется стенд `--remote-selftest`, а он собирается в обычный бинарь.
+serde = { version = "1", features = ["derive"] }
+# prost — разбор ответов демона и сборка кадров запросов Discover (партия 3).
+# Структуры протокола берутся готовыми из ядра (rexon_core::proto::control),
+# но трейт Message, без которого нет ни decode, ни encode, живёт в prost.
+# Версия обязана совпадать с версией ядра: типы общие.
+prost = "0.13"
+# tokio — рабочий рантайм фоновых задач вкладки «Steam» (порт пяти QThread
+# оригинала). Взят вместо своих потоков по трём причинам, каждая — живой
+# дефект оригинала: (1) ОТМЕНА. QThread в оригинале «останавливался» флажком,
+# который проверялся между запросами, поэтому закрытие вкладки во время сети
+# висело до 30 секунд (`th.wait(30000)` в `closeEvent`). Здесь у вкладки один
+# `CancellationToken`, и он рвёт запрос, который уже ушёл. (2) СЧЁТ ЖИВЫХ
+# задач. Оригинал терял ссылку на прежний воркер миниатюр при листании
+# страниц: осиротевшие потоки никто не ждал, отсюда «QThread: Destroyed while
+# thread is still running». `TaskTracker` знает обо ВСЕХ задачах вкладки.
+# (3) ОГРАНИЧЕННЫЙ параллелизм: 25 миниатюр страницы качались по одной.
+# Фичи взяты поимённо, «full» не включаем: сеть остаётся синхронной (ureq
+# ядра, см. rexon-core/Cargo.toml) и ходит через `spawn_blocking`.
+# Лицензия MIT — permissive, правило #10.
+tokio = { version = "1", default-features = false, features = [
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "process",
+    "fs",
+    "macros",
+] }
+# tokio-util — `CancellationToken` (дерево отмены: вкладка → витрина → задача)
+# и `TaskTracker` (дождаться всех задач при закрытии). Лицензия MIT.
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
+# zip — распаковка плагин-архива OWE в каталог плагинов waywallen
+# (`we_update_workers.rs`, порт `install_plugin_zip_fs`). Проверку архива
+# делает ядро тем же крейтом и той же версией — типы и поведение обязаны
+# совпадать. Только deflate, как и в rexon-core. Лицензия MIT.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Flash-обои: режим `rexon-wallpaper-host --mode swf` — Ruffle как библиотека
+# (крейт rexon-swf, wgpu/Vulkan). Опционален, чтобы сборку без Ruffle можно было
+# получить `--no-default-features`: тогда режим честно отвечает «собран без
+# Flash». `cargo test-core` (только rexon-core) Ruffle не компилирует вовсе.
+rexon-swf = { path = "../rexon-swf", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+# prctl(PR_SET_DUMPABLE, 0) Flash-режима — никаких окон о крахе при сбое
+# драйвера Vulkan. Лицензия MIT OR Apache-2.0.
+libc = "0.2"
+# Запрет простоя протоколом Wayland для моста «не гасить экран»
+# (`screensaver_bridge::wayland_idle`): своё подключение к композитору,
+# слой-поверхность wlr-layer-shell и zwp_idle_inhibitor_v1. Чистый Rust, без
+# libwayland. Те же версии уже стоят в замке у заставки (через
+# smithay-client-toolkit). Лицензия MIT.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+
+[features]
+# Продукт по умолчанию умеет Flash СО ЗВУКОМ: и `cargo build-app`, и PKGBUILD.
+default = ["swf-sound"]
+swf = ["dep:rexon-swf", "dep:raw-window-handle"]
+# Звук Flash-обоев (cpal/ALSA). ⚠️ Включён по умолчанию с 16.09.2026: громкость
+# обоев — ОДНА настройка на видео и Flash, и сборка без этой фичи означала бы,
+# что у половины обоев ползунок молча ничего не делает. Нелинейность шкалы
+# Ruffle снята переводом (`rexon_swf::ruffle_volume`), поэтому прежняя причина
+# держать звук выключенным отпала. Выключать осознанно — `--no-default-features
+# --features swf`: получится прежний немой Flash. Тянет alsa-lib (libasound).
+swf-sound = ["swf", "rexon-swf/sound"]
+
+[build-dependencies]
+cxx-qt-build = "0.9"
+
+# Стенды самопроверки крейта (выдача и запросы Discover, страница «Обои»,
+# 64-битные целые в QML, слой обоев) — сценарий выбирается аргументом.
+# Отдельный бинарь, а не пример, — чтобы cxx-qt линковал статический
+# QML-плагин в тот же артефакт. Разбор — src/bin/selftest.rs.
+[[bin]]
+name = "rexon-gui-selftest"
+path = "src/bin/selftest.rs"
+
+# Хост обоев: продуктовый бинарь, а не стенд. ОДИН на все форматы, которые
+# Rexon показывает своим процессом, — режимы `--mode video|web` (15.09.2026
+# в него влит прежний `rexon-web-host`: хосты решено не плодить; следующим
+# режимом сюда же войдёт Flash). Заменяет собой `python -m
+# rexon.video_wallpaper` и удалённый `python -m rexon.web_wallpaper`. Разбор
+# — src/bin/wallpaper_host/main.rs.
+[[bin]]
+name = "rexon-wallpaper-host"
+path = "src/bin/wallpaper_host/main.rs"
+
+# Контрольный стенд транспорта вкладки Wallpaper Engine (партия 7): живой
+# демон, живой сокет, живой ответ. Умеет падать при подменённом порте
+# (REXON_WS_PROBE_BITE=port) — стенд, который зеленеет и там, ничего не
+# проверяет. Разбор — src/bin/we_socket_probe.rs.
+[[bin]]
+name = "we-socket-probe"
+path = "src/bin/we_socket_probe.rs"
+
+# Главное окно, у которого хозяин — Rust: `QGuiApplication` +
+# `QQmlApplicationEngine` + `ApplicationWindow` целиком на QML, без единого
+# виджета и без Python в процессе. ⚠️ Живой продукт этим бинарём НЕ
+# пользуется: `rexon.py` запускается по-прежнему, а это отдельный вход для
+# разработчика, растущий рядом. Разбор — src/main_window.rs.
+[[bin]]
+name = "rexon-main-window"
+path = "src/bin/main_window.rs"
+
+# Контрольный стенд значка в лотке (временный, до слияния с бинарём главного
+# окна): QApplication + QML-окно продукта + значок + слушатель второго
+# запуска, с проверкой на укус REXON_TRAY_PROBE_BITE=guiapp. Разбор —
+# src/bin/tray_probe.rs.
+# Помощник плиток «Оформления»: снимок формы из настоящих виджетов в стиле
+# Qt или теме GTK 3 — отдельным процессом, чтобы чужой модуль стиля не
+# попадал в Rexon. Решения — rexon_core::widget_shot, разбор —
+# src/bin/theme_shot/main.rs.
+[[bin]]
+name = "rexon-theme-shot"
+path = "src/bin/theme_shot/main.rs"
+
+[[bin]]
+name = "rexon-tray-probe"
+path = "src/bin/tray_probe.rs"

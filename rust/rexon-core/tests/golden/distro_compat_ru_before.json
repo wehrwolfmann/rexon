@@ -1,0 +1,131 @@
+{
+ "known:astra": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "known:osnova": {
+  "get_warnings": [
+   "ОСнова — закрытый дистрибутив с сертификацией ФСТЭК.",
+   "Репозитории недоступны публично.",
+   "Rexon сможет управлять пакетами, но источники рабочих столов ограничены."
+  ],
+  "get_compatibility_badge": "⚠️ ОСнова (НППКТ) (ограниченные репозитории)"
+ },
+ "known:alt": {
+  "get_warnings": [
+   "ALT Linux использует APT-RPM — apt-get с RPM-пакетами.",
+   "Имена пакетов рабочих столов отличаются от Debian и Fedora.",
+   "ℹ️ Используется APT-RPM. Пакеты рабочих столов адаптированы под ALT Linux."
+  ],
+  "get_compatibility_badge": "⚠️ ALT Linux (alt)"
+ },
+ "known:altlinux": {
+  "get_warnings": [
+   "ℹ️ Используется APT-RPM. Пакеты рабочих столов адаптированы под ALT Linux."
+  ],
+  "get_compatibility_badge": "✅ ALT Linux (alt)"
+ },
+ "known:simply": {
+  "get_warnings": [
+   "ℹ️ Используется APT-RPM. Пакеты рабочих столов адаптированы под ALT Linux."
+  ],
+  "get_compatibility_badge": "✅ Simply Linux (alt)"
+ },
+ "known:rosa": {
+  "get_warnings": [
+   "ROSA Linux использует собственные метапакеты task-*.",
+   "Стандартные Fedora comps-группы (@kde-desktop) могут не работать.",
+   "Rexon попробует Fedora-совместимые команды, но возможны расхождения."
+  ],
+  "get_compatibility_badge": "⚠️ ROSA Linux (fedora)"
+ },
+ "known:redos": {
+  "get_warnings": [
+   "РЕД ОС сертифицирована ФСТЭК. Подключение сторонних репозиториев может нарушить сертификацию."
+  ],
+  "get_compatibility_badge": "⚠️ РЕД ОС (fedora)"
+ },
+ "known:calculate": {
+  "get_warnings": [],
+  "get_compatibility_badge": "✅ Calculate Linux (gentoo)"
+ },
+ "known:ubuntukylin": {
+  "get_warnings": [],
+  "get_compatibility_badge": "✅ Ubuntu Kylin (debian)"
+ },
+ "known:boss": {
+  "get_warnings": [],
+  "get_compatibility_badge": "✅ BOSS Linux (Bharat OS) (debian)"
+ },
+ "known:nixos": {
+  "get_warnings": [
+   "NixOS использует декларативную модель: Rexon не устанавливает рабочие столы командами nix-env, а выдаёт готовый фрагмент для /etc/nixos/configuration.nix.",
+   "После вставки фрагмента выполните: sudo nixos-rebuild switch"
+  ],
+  "get_compatibility_badge": "⚠️ NixOS (nix)"
+ },
+ "astra-se-name-zps-on": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях.",
+   "Обнаружена Astra Linux Special Edition. ЗПС может блокировать установку пакетов.",
+   "⚠️ ЗПС (замкнутая программная среда) ВКЛЮЧЕНА. Установка неподписанных пакетов заблокирована."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "astra-se-name-zps-off": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях.",
+   "Обнаружена Astra Linux Special Edition. ЗПС может блокировать установку пакетов."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "astra-se-variant-smolensk": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях.",
+   "Обнаружена Astra Linux Special Edition. ЗПС может блокировать установку пакетов.",
+   "⚠️ ЗПС (замкнутая программная среда) ВКЛЮЧЕНА. Установка неподписанных пакетов заблокирована."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "astra-se-variant-se": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях.",
+   "Обнаружена Astra Linux Special Edition. ЗПС может блокировать установку пакетов."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "astra-ce": {
+  "get_warnings": [
+   "Astra Linux SE использует замкнутую программную среду (ЗПС).",
+   "Установка альтернативных рабочих столов возможна только в CE или при отключённой ЗПС.",
+   "Штатный рабочий стол — Fly. GNOME/KDE/XFCE/MATE недоступны в стандартных репозиториях."
+  ],
+  "get_compatibility_badge": "⚠️ Astra Linux (ограниченные репозитории)"
+ },
+ "unknown:myunknown:arch": {
+  "get_warnings": [],
+  "get_compatibility_badge": "ℹ️ Pretty myunknown"
+ },
+ "unknown:mistery:alt": {
+  "get_warnings": [
+   "ℹ️ Используется APT-RPM. Пакеты рабочих столов адаптированы под ALT Linux."
+  ],
+  "get_compatibility_badge": "ℹ️ Pretty mistery"
+ },
+ "unknown:weird:suse": {
+  "get_warnings": [],
+  "get_compatibility_badge": "ℹ️ Pretty weird"
+ }
+}

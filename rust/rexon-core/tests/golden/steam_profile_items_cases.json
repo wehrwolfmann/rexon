@@ -1,0 +1,79 @@
+{
+  "_comment": "Эталон разбора публичного инвентаря 753/6 и надетого фона — порт rexon/qt_steam/window.py (детерминированные функции). Синтетический ответ (живой требует публичного инвентаря + локального Steam). Rust обязан вернуть те же записи/строки/порядок.",
+  "inventory_parsed": [
+    {
+      "id": "111",
+      "name": "Синий фон v2",
+      "game": "Team Fortress 2",
+      "url": "https://cdn.example/A_v2.png",
+      "preview": "https://cdn.example/A_v2.png",
+      "animated": false,
+      "equipped": false
+    },
+    {
+      "id": "222",
+      "name": "Красный фон",
+      "game": "Dota 2",
+      "url": "https://community.fastly.steamstatic.com/economy/image/b/iconhashB",
+      "preview": "https://community.fastly.steamstatic.com/economy/image/b/iconhashB",
+      "animated": false,
+      "equipped": false
+    },
+    {
+      "id": "Blue Abyss",
+      "name": "?",
+      "game": "",
+      "url": "https://cdn.example/E.png",
+      "preview": "https://cdn.example/E.png",
+      "animated": false,
+      "equipped": false
+    }
+  ],
+  "equipped_parsed": {
+    "id": "999",
+    "name": "Анимированный фон",
+    "game": "",
+    "url": "https://shared.fastly.steamstatic.com/community_assets/images/movies/anim.webm",
+    "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/anim_frame.jpg",
+    "animated": true,
+    "equipped": true
+  },
+  "finalized_with_equipped_absent": [
+    {
+      "id": "999",
+      "name": "Анимированный фон",
+      "game": "",
+      "url": "https://shared.fastly.steamstatic.com/community_assets/images/movies/anim.webm",
+      "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/anim_frame.jpg",
+      "animated": true,
+      "equipped": true
+    },
+    {
+      "id": "Blue Abyss",
+      "name": "?",
+      "game": "",
+      "url": "https://cdn.example/E.png",
+      "preview": "https://cdn.example/E.png",
+      "animated": false,
+      "equipped": false
+    },
+    {
+      "id": "222",
+      "name": "Красный фон",
+      "game": "Dota 2",
+      "url": "https://community.fastly.steamstatic.com/economy/image/b/iconhashB",
+      "preview": "https://community.fastly.steamstatic.com/economy/image/b/iconhashB",
+      "animated": false,
+      "equipped": false
+    },
+    {
+      "id": "111",
+      "name": "Синий фон v2",
+      "game": "Team Fortress 2",
+      "url": "https://cdn.example/A_v2.png",
+      "preview": "https://cdn.example/A_v2.png",
+      "animated": false,
+      "equipped": false
+    }
+  ]
+}

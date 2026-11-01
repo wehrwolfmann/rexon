@@ -1,0 +1,173 @@
+version = 1
+
+[[packages]]
+name = "licrypto"
+version = "0.1.2"
+source = "registry+https://registry.litocpp.org/"
+checksum = "0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad"
+dependencies = [
+  "rstd-std",
+]
+
+[[packages]]
+name = "lihttpto"
+version = "0.1.1"
+source = "registry+https://registry.litocpp.org/"
+checksum = "41caed3f900c29d3aa65dfc4bc21fad72bd09575768ce46af68b372c5eb32bef"
+dependencies = [
+  "rstd-parse",
+  "rstd-std",
+]
+
+[[packages]]
+name = "lito-qt"
+version = "0.1.1"
+source = "registry+https://registry.litocpp.org/"
+checksum = "dbc4671deb79a843fe48430adc463d4ff5132437949d6c86bf325de97a224409"
+
+[[packages]]
+name = "liwebsocketo"
+version = "0.1.0"
+source = "registry+https://registry.litocpp.org/"
+checksum = "4b3b5a8a52ecc129b4bc67ef95754d559caf06dce02f5f7380f53e6dcd7ff87b"
+dependencies = [
+  "licrypto",
+  "lihttpto",
+  "rstd-std",
+]
+
+[[packages]]
+name = "ncrequest"
+version = "0.1.0"
+source = "git+https://github.com/hypengw/ncrequest.git#2ba60ef6321f5e7f5bccc5fe086d2682bcaccf40"
+dependencies = [
+  "lihttpto",
+  "liwebsocketo",
+  "rstd-std",
+]
+
+[[packages]]
+name = "qextra"
+version = "0.1.0"
+source = "git+https://github.com/hypengw/QExtra.git#b3fd790bb4a5c5cf7c0cc0384cc140e78e627609"
+dependencies = [
+  "lito-qt",
+  "ncrequest",
+  "rstd-cppstd",
+  "rstd-std",
+  "wavsen",
+]
+
+[[packages]]
+name = "qextraplugin"
+version = "0.1.0"
+dependencies = [
+  "lito-qt",
+  "qextra",
+]
+
+[[packages]]
+name = "rstd-alloc"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "635337c8b61ea1831c0be6389b7a1b315fd0bf47286a65f327234eee9587cb72"
+dependencies = [
+  "rstd-core",
+  "rstd-runtime",
+]
+
+[[packages]]
+name = "rstd-basic"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "b6b976bcc413983344c1e0e1ef7c2ba97afc98bf908bd8e286257e9471096626"
+
+[[packages]]
+name = "rstd-core"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "6b25690ae436fe5eb3c85381ee6b97fbd387347bd308495495f5f7142d25beb6"
+dependencies = [
+  "rstd-basic",
+  "rstd-runtime",
+]
+
+[[packages]]
+name = "rstd-cppstd"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "2e3fd42d5fb41a82f166b212ac61b31d3b53a63dfe22ddba4814c536c5a77ba5"
+dependencies = [
+  "rstd-std",
+]
+
+[[packages]]
+name = "rstd-dlopn"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "28d8d0db136fc1e6430d5dbb4e7ba3d60114da81d04e419fa36520257a61e84a"
+dependencies = [
+  "rstd-std",
+]
+
+[[packages]]
+name = "rstd-log"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "111d55c706af6f34e4b951ccdd51c493d9afe6668b4cedb30b7ca83fca5ee783"
+dependencies = [
+  "rstd-core",
+  "rstd-std",
+]
+
+[[packages]]
+name = "rstd-parse"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "68fbf350d3dcde887d110bb2e43560d61a8abdfb29bb91ba251aed6da4f3a2c5"
+dependencies = [
+  "rstd-alloc",
+  "rstd-core",
+]
+
+[[packages]]
+name = "rstd-runtime"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d"
+dependencies = [
+  "rstd-basic",
+]
+
+[[packages]]
+name = "rstd-std"
+version = "0.1.9"
+source = "registry+https://registry.litocpp.org/"
+checksum = "6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2"
+dependencies = [
+  "rstd-alloc",
+  "rstd-core",
+]
+
+[[packages]]
+name = "vvk"
+version = "0.1.1"
+source = "registry+https://registry.litocpp.org/"
+checksum = "4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f"
+dependencies = [
+  "rstd-dlopn",
+  "rstd-log",
+  "rstd-std",
+]
+
+[[packages]]
+name = "wavsen"
+version = "0.1.0"
+source = "git+https://github.com/hypengw/wavsen.git#756437443d84905a027f115c75ec6ae6b19692e7"
+dependencies = [
+  "rstd-core",
+  "rstd-dlopn",
+  "rstd-log",
+  "rstd-std",
+  "vvk",
+]

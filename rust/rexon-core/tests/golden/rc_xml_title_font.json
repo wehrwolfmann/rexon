@@ -1,0 +1,65 @@
+{
+  "_note": "Эталон правки шрифта заголовков в rc.xml Openbox и labwc (qt_settings::rc_xml_with_title_font). Составлен руками 31.10.2026 по openbox rc.xml и labwc-config(5); пересъёмки нет — менять только осознанно.",
+  "cases": [
+    {
+      "name": "openbox: элементы есть, у неактивного нет кегля; комментарии и меню не трогаются",
+      "wm": "openbox",
+      "input": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\">\n<!-- <theme><font place=\"ActiveWindow\"> в комментарии не трогается -->\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n    <!-- жирность остаётся -->\n    <weight>bold</weight>\n    <slant>normal</slant>\n  </font>\n  <font place=\"InactiveWindow\">\n    <name>sans</name>\n  </font>\n  <font place=\"MenuItem\">\n    <name>sans</name>\n    <size>9</size>\n  </font>\n</theme>\n</openbox_config>\n",
+      "family": "Noto Sans",
+      "size": 11,
+      "expected": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\">\n<!-- <theme><font place=\"ActiveWindow\"> в комментарии не трогается -->\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <font place=\"ActiveWindow\">\n    <name>Noto Sans</name>\n    <size>11</size>\n    <!-- жирность остаётся -->\n    <weight>bold</weight>\n    <slant>normal</slant>\n  </font>\n  <font place=\"InactiveWindow\">\n    <name>Noto Sans</name>\n    <size>11</size>\n  </font>\n  <font place=\"MenuItem\">\n    <name>sans</name>\n    <size>9</size>\n  </font>\n</theme>\n</openbox_config>\n",
+      "read_before": [
+        "sans",
+        8
+      ]
+    },
+    {
+      "name": "labwc: шрифт атрибутами, неактивного нет — дописывается",
+      "wm": "labwc",
+      "input": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Numix</name>\n    <font place=\"ActiveWindow\" name=\"sans\" size=\"10\" />\n  </theme>\n</labwc_config>\n",
+      "family": "Fira Sans",
+      "size": 12,
+      "expected": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Numix</name>\n    <font place=\"ActiveWindow\" name=\"Fira Sans\" size=\"12\" />\n    <font place=\"InactiveWindow\">\n      <name>Fira Sans</name>\n      <size>12</size>\n    </font>\n  </theme>\n</labwc_config>\n",
+      "read_before": [
+        "sans",
+        10
+      ]
+    },
+    {
+      "name": "labwc: нет <theme> — дописывается в корень; & экранируется",
+      "wm": "labwc",
+      "input": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <core><gap>4</gap></core>\n</labwc_config>\n",
+      "family": "A&B Sans",
+      "size": 9,
+      "expected": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <core><gap>4</gap></core>\n  <theme>\n    <font place=\"ActiveWindow\">\n      <name>A&amp;B Sans</name>\n      <size>9</size>\n    </font>\n    <font place=\"InactiveWindow\">\n      <name>A&amp;B Sans</name>\n      <size>9</size>\n    </font>\n  </theme>\n</labwc_config>\n",
+      "read_before": null
+    },
+    {
+      "name": "labwc: файла нет и образца нет — заводится с одной <theme>",
+      "wm": "labwc",
+      "input": null,
+      "family": "Noto Sans",
+      "size": 10,
+      "expected": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <font place=\"ActiveWindow\">\n      <name>Noto Sans</name>\n      <size>10</size>\n    </font>\n    <font place=\"InactiveWindow\">\n      <name>Noto Sans</name>\n      <size>10</size>\n    </font>\n  </theme>\n</labwc_config>\n",
+      "read_before": null
+    },
+    {
+      "name": "openbox: файла нет и образца нет — не заводим (окна остались бы без привязок)",
+      "wm": "openbox",
+      "input": null,
+      "family": "Noto Sans",
+      "size": 10,
+      "expected": null,
+      "read_before": null
+    },
+    {
+      "name": "openbox: файл без корня — чужое не портим",
+      "wm": "openbox",
+      "input": "<theme>\n</theme>\n",
+      "family": "Noto Sans",
+      "size": 10,
+      "expected": null,
+      "read_before": null
+    }
+  ]
+}

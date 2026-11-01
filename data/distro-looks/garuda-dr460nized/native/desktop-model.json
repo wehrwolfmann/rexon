@@ -1,0 +1,34 @@
+{
+  "schema": "rexon-desktop-model/1",
+  "about": "Rexon's own description of the Garuda Dr460nized panels and window behaviour, for desktops other than Plasma. Written from Garuda's layout templates (org.garuda.desktop.defaultPanel, org.garuda.desktop.defaultDock) and kwinrc keys in plasma-settings.json: roles and values only, no code. Rexon builds each desktop's own panels and settings from it.",
+  "panels": [
+    {
+      "edge": "top",
+      "size": 30,
+      "expand": true,
+      "items": [
+        {"role": "menu"},
+        {"role": "windows"},
+        {"role": "clock", "align": "center"},
+        {"role": "tray", "align": "end"},
+        {"role": "user", "align": "end"}
+      ]
+    },
+    {
+      "edge": "bottom",
+      "size": 56,
+      "expand": false,
+      "center": true,
+      "hide": "dodge-windows",
+      "items": [
+        {"role": "launchers", "apps": ["terminal", "browser", "file-manager", "system-monitor", "settings"]}
+      ]
+    }
+  ],
+  "behaviour": {
+    "window_buttons": "close,maximize,minimize:",
+    "borderless_maximized": true,
+    "compositing": true,
+    "effects": ["wobbly-windows", "magic-lamp", "fade", "cover-switch", "desktop-change-osd"]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "cachyos_sync": {
+    "/etc/sddm.conf.d/kde_settings.conf": "[General]\nGreeterEnvironment=QML_DISABLE_DISTANCEFIELD=1\nNumlock=on\n\n[Theme]\nCurrent=breeze\nCursorSize=24\nCursorTheme=Bibata-Modern-Ice\nFont=Inter,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n\n[X11]\nServerArguments=-nolisten tcp -dpi 120\n"
+  },
+  "cachyos_reset_after_sync": {
+    "/etc/sddm.conf.d/kde_settings.conf": "[General]\nGreeterEnvironment=QML_DISABLE_DISTANCEFIELD=1\n\n[Theme]\nCurrent=breeze\n\n"
+  },
+  "override_in_sddm_conf": {
+    "/etc/sddm.conf": "[Autologin]\nSession=plasma\n\n[Theme]\nCursorTheme=Bibata-Modern-Ice\n",
+    "/etc/sddm.conf.d/kde_settings.conf": "[General]\nGreeterEnvironment=QML_DISABLE_DISTANCEFIELD=1\nNumlock=on\n\n[Theme]\nCurrent=breeze\nCursorSize=24\nCursorTheme=Bibata-Modern-Ice\nFont=Inter,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n\n[X11]\nServerArguments=-nolisten tcp -dpi 120\n"
+  },
+  "bare_machine": {
+    "/etc/sddm.conf.d/kde_settings.conf": "[Theme]\nCursorTheme=Adwaita\n"
+  },
+  "background_user_new": "[General]\nbackground=rexon-background.jpg\ntype=image\n",
+  "background_user_keep_clock": "[General]\nshowClock=false\ntype=image\nbackground=rexon-background.png\n",
+  "background_user_reset": "[General]\nshowClock=false\n",
+  "clock_user_off": "[General]\nbackground=rexon-background.png\ntype=image\nshowClock=false\n",
+  "clock_user_new_on": "[General]\nshowClock=true\n"
+}

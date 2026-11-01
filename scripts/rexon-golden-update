@@ -1,0 +1,536 @@
+#!/usr/bin/env python3
+"""Единый вход пересъёмки эталонов Rexon (Wehrwolfmann).
+
+ЗАЧЕМ. Эталонов в дереве больше двух сотен, и обновлялись они ЧЕТЫРЬМЯ
+разными способами: одни — переменной окружения у сверки моста, другие —
+генератором рядом с голденом, третьи — тестом ядра, четвёртые — пересъёмкой
+с ЖИВОГО демона. Чем обновляется вот этот конкретный файл, приходилось
+выяснять отдельным заходом. Замер обновления waywallen до 0.3.8: ~13 часов,
+и ЧЕТЫРЕ коммита из шести чинили собственные леса, а не принимали чужие
+изменения. Эта команда закрывает дыру: один вход, одна сводка, честный код
+возврата.
+
+ЧТО СЧИТАЕТСЯ ЭТАЛОНОМ. Всё, с чем сверяется код и что при этом приходится
+время от времени переснимать: голдены ядра и слоя интерфейса, собираемый из
+матрицы документ и скомпилированный каталог перевода.
+
+⚠️ С 02.10.2026 Python в проекте — только архив (`_archived/`), не эталон и
+не мост. Генераторы на Python (`*_cases.py`, `frozen_*.py`), сверки моста
+`rexon_py` и съёмка кадров демона питоновским клиентом ушли туда же; их
+эталоны остались в дереве ЗАМОРОЖЕННЫМИ и перечисляются в ведре «руками»
+с этой причиной. Полная таблица — `docs/golden_reference_map.md`;
+`--list` печатает её же из РЕЕСТРА НИЖЕ, так что разойтись им негде.
+
+⚠️ ЧЕСТНОЕ РАЗДЕЛЕНИЕ — ГЛАВНОЕ СВОЙСТВО. Эталоны делятся на три рода:
+
+  * `код`    — снимаются с дерева и воспроизводимы на любой машине;
+  * `живое`  — требуют инструмента системы (`lrelease`). Без них прогон обязан сказать «НЕ ПРОВЕРЕНО»
+               и назвать причину. ⛔Тихий пропуск ХУЖЕ отсутствия проверки:
+               6 сентября сверка краснела вдвойне, и второй дефект не был
+               виден за первым;
+  * `руками` — механизма пересъёмки нет вовсе (генератор на Python ушёл в
+               архив, сырой ответ сети, рукотворный образец входа). Такие перечисляются поимённо с причиной и
+               НИКОГДА не выдаются за проверенные.
+
+Сводка всегда печатает ВСЕ три ведра, даже когда первое уже красное.
+
+Запуск:
+    scripts/rexon-golden-update --check          — ничего не писать, сказать,
+                                                   что разошлось (код ≠ 0)
+    scripts/rexon-golden-update                  — обновить всё и показать дельту
+    scripts/rexon-golden-update --list           — таблица «эталон → чем обновляется»
+    scripts/rexon-golden-update --kind код       — только этот род
+    scripts/rexon-golden-update de_matrix        — только группы с такой подстрокой
+    scripts/rexon-golden-update --check --verbose — строка на каждый файл
+
+Коды возврата:
+    0 — всё сошлось и всё проверено;
+    1 — есть расхождения (перечислены поимённо);
+    2 — прогон не состоялся (нет генератора, сломан инструмент);
+    3 — расхождений нет, но часть эталонов НЕ ПРОВЕРЕНА (нет демона и т.п.).
+    ⚠️ 1 перекрывает 3, поэтому «не проверено» печатается в сводке ОТДЕЛЬНОЙ
+    строкой и при красноте тоже.
+
+⛔ Живую систему не трогает: в систему ничего не ставит, демона не опрашивает.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+
+REPO = Path(__file__).resolve().parent.parent
+CORE_GOLDEN = REPO / "rust/rexon-core/tests/golden"
+GUI_GOLDEN = REPO / "rust/rexon-gui/tests/golden"
+
+KIND_CODE = "код"
+KIND_LIVE = "живое"
+KIND_MANUAL = "руками"
+
+GEN_TIMEOUT = 900
+
+
+class Unavailable(Exception):
+    """Предпосылки пересъёмки нет — это «НЕ ПРОВЕРЕНО», а не «сошлось»."""
+
+
+class Broken(Exception):
+    """Пересъёмка сломалась — прогон не состоялся."""
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Печать
+# ══════════════════════════════════════════════════════════════════════════
+
+_TTY = sys.stdout.isatty()
+
+
+def paint(text: str, code: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if _TTY else text
+
+
+def red(t: str) -> str:
+    return paint(t, "31")
+
+
+def green(t: str) -> str:
+    return paint(t, "32")
+
+
+def yellow(t: str) -> str:
+    return paint(t, "33")
+
+
+def rel(p: Path) -> str:
+    try:
+        return str(p.relative_to(REPO))
+    except ValueError:
+        return str(p)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Дельта
+# ══════════════════════════════════════════════════════════════════════════
+
+def _leaves(node, prefix: str, out: dict) -> None:
+    """Разложить JSON в плоскую карту «путь → значение» для показа дельты."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            _leaves(v, f"{prefix}.{k}" if prefix else str(k), out)
+    elif isinstance(node, list):
+        out[prefix + "[]"] = len(node)
+        for i, v in enumerate(node):
+            _leaves(v, f"{prefix}[{i}]", out)
+    else:
+        out[prefix] = node
+
+
+def describe_delta(path: Path, old: bytes, new: bytes, limit: int = 6) -> list[str]:
+    """Человеческое «что изменилось и на сколько» между двумя редакциями."""
+    lines = [f"{len(old)} → {len(new)} байт ({len(new) - len(old):+d})"]
+    if path.suffix == ".json":
+        try:
+            a, b = json.loads(old), json.loads(new)
+        except Exception:
+            a = b = None
+        if a is not None:
+            la, lb = {}, {}
+            _leaves(a, "", la)
+            _leaves(b, "", lb)
+            added = sorted(set(lb) - set(la))
+            removed = sorted(set(la) - set(lb))
+            changed = sorted(k for k in set(la) & set(lb) if la[k] != lb[k])
+            lines.append(
+                f"полей: +{len(added)} −{len(removed)} изменено {len(changed)}")
+            for tag, keys in (("+", added), ("−", removed), ("~", changed)):
+                for k in keys[:limit]:
+                    lines.append(f"    {tag} {k or '(корень)'}")
+                if len(keys) > limit:
+                    lines.append(f"    {tag} … ещё {len(keys) - limit}")
+            return lines
+    if path.suffix in (".md", ".ts", ".py", ".rs", ".txt"):
+        na = old.decode("utf-8", "replace").splitlines()
+        nb = new.decode("utf-8", "replace").splitlines()
+        lines.append(f"строк: {len(na)} → {len(nb)} ({len(nb) - len(na):+d})")
+    return lines
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Общие исполнители пересъёмки
+# ══════════════════════════════════════════════════════════════════════════
+
+def run(argv: list[str], *, cwd: Path = REPO, env: dict | None = None,
+        capture_stdout: bool = False) -> subprocess.CompletedProcess:
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    return subprocess.run(
+        argv, cwd=str(cwd), env=e, timeout=GEN_TIMEOUT,
+        stdout=subprocess.PIPE if capture_stdout else subprocess.DEVNULL,
+        stderr=subprocess.PIPE)
+
+
+def capture_cargo_doc(test: str, dest: Path) -> dict[Path, bytes]:
+    """Документ, который собирает тест ядра под `REXON_UPDATE_DOC=1`."""
+    saved = dest.read_bytes() if dest.exists() else None
+    try:
+        res = run(["cargo", "test", "-p", "rexon-core", "--test", test],
+                  cwd=REPO / "rust", env={"REXON_UPDATE_DOC": "1"})
+        if res.returncode != 0:
+            raise Broken(f"cargo test --test {test} упал:\n"
+                         + res.stderr.decode("utf-8", "replace")[-1500:])
+        return {dest: dest.read_bytes()}
+    finally:
+        if saved is not None:
+            dest.write_bytes(saved)
+
+
+#: Вендорные каталоги переводов (`waywallen_<язык>.ts`) и куда ложатся
+#: собранные (`waywallen_<язык>.qm` рядом с модулем). Каталогов столько,
+#: сколько вендорено `.ts`: с waywallen 0.5.0 — ru и de. Раньше здесь был
+#: прибит один русский, и немецкий Rexon видел вендорные страницы
+#: по-английски, хотя перевод у апстрима есть.
+VENDOR_I18N = REPO / "data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n"
+VENDOR_QM_DIR = REPO / "data/qt_wallpaper_engine/qml_ui"
+
+
+def _vendor_catalogs() -> list[tuple[Path, Path]]:
+    """Пары (вендорный `.ts`, собранный `.qm`) по всем языкам вендора."""
+    return [(ts, VENDOR_QM_DIR / (ts.stem + ".qm"))
+            for ts in sorted(VENDOR_I18N.glob("waywallen_*.ts"))]
+
+
+def capture_qm() -> dict[Path, bytes]:
+    """Каталоги перевода вендорных подписей: каждый `.ts` → `lrelease` → `.qm`."""
+    catalogs = _vendor_catalogs()
+    if not catalogs:
+        raise Broken(f"нет вендорных каталогов {rel(VENDOR_I18N)}/waywallen_*.ts")
+    tool = _find_lrelease()
+    if tool is None:
+        raise Unavailable(
+            "не найден `lrelease` из Qt — каталог перевода не пересобран. "
+            "Поставить `qt6-tools` (Arch/CachyOS) либо аналог дистрибутива")
+    built: dict[Path, bytes] = {}
+    with tempfile.TemporaryDirectory() as d:
+        for ts, qm in catalogs:
+            out = Path(d) / qm.name
+            res = subprocess.run([tool, str(ts), "-qm", str(out)],
+                                 capture_output=True, timeout=GEN_TIMEOUT)
+            if res.returncode != 0 or not out.exists():
+                raise Broken(f"lrelease не собрал каталог {ts.name}:\n"
+                             + res.stderr.decode("utf-8", "replace")[-1500:])
+            built[qm] = out.read_bytes()
+    return built
+
+
+def _find_lrelease() -> str | None:
+    """Тот же порядок кандидатов, что у ядра: сперва Qt6, потом PATH."""
+    for cand in ("/usr/lib/qt6/bin/lrelease", "/usr/bin/lrelease-qt6",
+                 "/usr/lib/qt/bin/lrelease"):
+        if os.access(cand, os.X_OK):
+            return cand
+    return shutil.which("lrelease-qt6") or shutil.which("lrelease")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Реестр
+# ══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Result:
+    same: list = field(default_factory=list)
+    diff: list = field(default_factory=list)      # (путь, [строки дельты])
+    broken: list = field(default_factory=list)    # (путь, причина)
+
+
+@dataclass
+class Group:
+    name: str
+    kind: str
+    title: str
+    how: str                       # чем обновляется ТЕПЕРЬ (одной строкой)
+    was: str                       # чем обновлялся ДО этого входа
+    paths: list = field(default_factory=list)
+    capture: Callable | None = None    # → {путь: новые байты}
+    custom: Callable | None = None     # сам себе проверка (update, verbose)
+    note: str = ""
+
+
+def registry() -> list[Group]:
+    """Все эталоны с механизмом пересъёмки. Порядок — от дешёвых к дорогим."""
+    g = [
+        Group(
+            name="de_matrix",
+            kind=KIND_CODE,
+            title="матрица кастомизации окружений (документ)",
+            how="`REXON_UPDATE_DOC=1 cargo test -p rexon-core --test de_customization`",
+            was="та же команда, но её знал только текст внутри самого документа",
+            paths=[REPO / "docs/de_customization_matrix.md"],
+            capture=lambda: capture_cargo_doc(
+                "de_customization", REPO / "docs/de_customization_matrix.md"),
+        ),
+        Group(
+            name="waywallen_qm",
+            kind=KIND_LIVE,
+            title="каталог перевода вендорных подписей waywallen",
+            how="`lrelease` вендорного `.ts` → `.qm`",
+            was="строка `lrelease …` из `docs/testing.md`, руками",
+            paths=[qm for _, qm in _vendor_catalogs()],
+            capture=capture_qm,
+            note="нужен `lrelease` из Qt на машине; сам `.ts` вендорится "
+                 "`scripts/sync-waywallen-*.py`, здесь не трогается",
+        ),
+    ]
+    return g
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Эталоны БЕЗ механизма пересъёмки
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Их нельзя молча не показать: «не перечислен» читается как «в порядке».
+# Причины взяты из шапок сверок, которые эти файлы читают.
+
+MANUAL_REASONS = [
+    ("we_client_reference.json",
+     "правится РУКАМИ и только доказанно; спор решает живой дескриптор "
+     "control_pb2 из вендорского .proto"),
+    ("_raw.json", "записанный ответ внешнего сервиса (сеть)"),
+    ("_raw.html", "записанный ответ внешнего сервиса (сеть)"),
+    (".xml", "записанный ответ OCS API"),
+    (".rxn", "рукотворный образец входа, не снимок"),
+    (".vdf", "синтетический вход на углы разбора"),
+    (".ron", "записанный вывод `cosmic-settings appearance export` (1.11.0) "
+     "в отдельном HOME, переснимать той же командой"),
+    ("we_live_frames.json",
+     "снимался с живого демона питоновским клиентом; клиент ушёл в архив "
+     "(_archived/) — снимок заморожен"),
+    ("_reference.json",
+     "записанный эталон живого Python; мост и Python — в архиве, заморожен"),
+    ("_cases.json",
+     "снят генератором на Python; генераторы — в архиве (_archived/golden), "
+     "эталон заморожен"),
+]
+
+#: Файлы, которые НЕ являются эталонами (генераторы, кэш, помощники).
+NOT_A_GOLDEN = ("__pycache__", ".py")
+
+
+def manual_files() -> list[tuple[Path, str]]:
+    """Эталоны без пересъёмки: путь и причина. Новые появляются сами."""
+    covered = {p for g in registry() for p in g.paths}
+    out = []
+    for root in (CORE_GOLDEN, GUI_GOLDEN):
+        if not root.exists():
+            continue
+        for p in sorted(root.rglob("*")):
+            if not p.is_file() or p in covered:
+                continue
+            if any(part in NOT_A_GOLDEN or part.endswith(".py")
+                   for part in (p.name, p.parent.name)):
+                continue
+            reason = "механизма пересъёмки нет"
+            for suffix, why in MANUAL_REASONS:
+                if why and p.name.endswith(suffix):
+                    reason = why
+                    break
+            if root is GUI_GOLDEN:
+                reason = ("ЗАМОРОЖЕН: Python-зеркала вкладки удалены, "
+                          "снимать не с чего")
+            out.append((p, reason))
+    return out
+
+
+def orphan_goldens() -> list[Path]:
+    """Эталоны, которых не читает ни одна сверка, — тоже дефект.
+
+    Файл, который никто не читает, при обновлении вендора создаёт ложное
+    чувство покрытия: он лежит, выглядит эталоном и ничего не сторожит.
+    """
+    haystacks = []
+    for d in (REPO / "rust/rexon-core/tests", REPO / "rust/rexon-gui",
+              REPO / "rust/rexon-core/src", REPO / "scripts"):
+        for f in d.rglob("*"):
+            if f.is_file() and f.suffix in (".rs", ".py") and "golden" not in f.parts[-2:]:
+                try:
+                    haystacks.append(f.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
+    blob = "\n".join(haystacks)
+    out = []
+    for p, _ in manual_files():
+        if p.name not in blob:
+            out.append(p)
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Прогон
+# ══════════════════════════════════════════════════════════════════════════
+
+def run_group(g: Group, update: bool, verbose: bool) -> tuple[Result, str]:
+    """→ (результат, причина «не проверено» или пустая строка)."""
+    print(f"\n[{g.kind}] {g.name} — {g.title}")
+    print(f"    как: {g.how}")
+    try:
+        if g.custom is not None:
+            return g.custom(update, verbose), ""
+        res = Result()
+        fresh = g.capture()
+        for path, new in fresh.items():
+            old = path.read_bytes() if path.exists() else b""
+            if old == new:
+                res.same.append(path)
+                print(f"    {green('сошлось')}  {rel(path)}")
+                continue
+            delta = describe_delta(path, old, new)
+            res.diff.append((path, delta))
+            if update:
+                path.write_bytes(new)
+                print(f"    {yellow('обновлён')} {rel(path)}")
+            else:
+                print(f"    {red('РАЗОШЁЛСЯ')} {rel(path)}")
+            for line in delta:
+                print(f"        {line}")
+        return res, ""
+    except Unavailable as e:
+        print(f"    {yellow('НЕ ПРОВЕРЕНО')}: {e}")
+        return Result(), str(e)
+    except Broken as e:
+        print(f"    {red('ПРОГОН НЕ СОСТОЯЛСЯ')}: {e}")
+        r = Result()
+        r.broken.append((Path(g.name), str(e)))
+        return r, ""
+    except subprocess.TimeoutExpired:
+        msg = f"пересъёмка не уложилась в {GEN_TIMEOUT} с"
+        print(f"    {red('ПРОГОН НЕ СОСТОЯЛСЯ')}: {msg}")
+        r = Result()
+        r.broken.append((Path(g.name), msg))
+        return r, ""
+
+
+def print_table() -> None:
+    print("ЭТАЛОНЫ С МЕХАНИЗМОМ ПЕРЕСЪЁМКИ\n")
+    for g in registry():
+        print(f"  {g.name}  [{g.kind}]  — {g.title}")
+        print(f"      файлов: {len(g.paths)}")
+        print(f"      было:   {g.was}")
+        print(f"      стало:  scripts/rexon-golden-update {g.name}")
+        print(f"              (внутри: {g.how})")
+        if g.note:
+            print(f"      ⚠️ {g.note}")
+        print()
+    manual = manual_files()
+    print(f"ЭТАЛОНЫ БЕЗ ПЕРЕСЪЁМКИ — {len(manual)} шт. "
+          "(правятся руками, каждый с причиной)\n")
+    by_reason: dict[str, list[Path]] = {}
+    for p, why in manual:
+        by_reason.setdefault(why, []).append(p)
+    for why, items in sorted(by_reason.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {len(items):3} × {why}")
+        for p in items[:4]:
+            print(f"        {rel(p)}")
+        if len(items) > 4:
+            print(f"        … ещё {len(items) - 4}")
+        print()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Единый вход пересъёмки эталонов Rexon",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__)
+    ap.add_argument("filters", nargs="*",
+                    help="подстроки имён групп (пусто — все)")
+    ap.add_argument("--check", action="store_true",
+                    help="ничего не писать, только сказать, что разошлось")
+    ap.add_argument("--list", action="store_true",
+                    help="таблица «эталон → чем обновляется»")
+    ap.add_argument("--kind", choices=[KIND_CODE, KIND_LIVE],
+                    help="только эталоны этого рода")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="строка на каждый файл, а не только на расхождения")
+    args = ap.parse_args()
+
+    if args.list:
+        print_table()
+        return 0
+
+    groups = registry()
+    if args.kind:
+        groups = [g for g in groups if g.kind == args.kind]
+    if args.filters:
+        groups = [g for g in groups
+                  if any(f in g.name or f in g.title for f in args.filters)]
+    if not groups:
+        print(red("ни одна группа не подошла под фильтр"), file=sys.stderr)
+        return 2
+
+    update = not args.check
+    print("режим: " + ("ОБНОВЛЕНИЕ (файлы будут переписаны)" if update
+                       else "ПРОВЕРКА (дерево не меняется)"))
+    started = time.time()
+    same, diff, broken, unchecked = [], [], [], []
+    for g in groups:
+        res, why = run_group(g, update, args.verbose)
+        same += res.same
+        diff += [(g, p, d) for p, d in res.diff]
+        broken += [(g, p, r) for p, r in res.broken]
+        if why:
+            unchecked.append((g, why))
+
+    print("\n" + "═" * 72)
+    print(f"СВОДКА (за {time.time() - started:.0f} с)")
+    print(f"  сошлось: {len(same)}")
+
+    # ⚠️ Три ведра печатаются ВСЕГДА и по отдельности. Урок 06.09.2026:
+    # сверка краснела вдвойне, и второй дефект не было видно за первым.
+    verb = "обновлено" if update else "РАЗОШЛОСЬ"
+    print(f"  {verb}: {len(diff)}")
+    for g, p, d in diff:
+        # В сводку — самую содержательную строку: «полей: …» говорит больше,
+        # чем «столько-то байт».
+        head = next((l for l in d if l.startswith(("полей", "строк"))),
+                    d[0] if d else "")
+        print(f"      [{g.name}] {rel(p)} — {head}")
+
+    print(f"  НЕ ПРОВЕРЕНО: {len(unchecked)} "
+          + ("(нет предпосылок — это НЕ «в порядке»)" if unchecked else ""))
+    for g, why in unchecked:
+        print(f"      [{g.name}] {why}")
+
+    print(f"  прогон не состоялся: {len(broken)}")
+    for g, p, r in broken:
+        print(f"      [{g.name}] {p.name}: {r.splitlines()[0]}")
+
+    manual = manual_files()
+    print(f"  без механизма пересъёмки: {len(manual)} "
+          "(см. --list и docs/golden_reference_map.md)")
+    orphans = orphan_goldens()
+    if orphans:
+        print(f"  {yellow('НИЧЕЙ ЭТАЛОН')}: {len(orphans)} "
+              "— файл лежит, но его не читает ни одна сверка")
+        for p in orphans:
+            print(f"      {rel(p)}")
+
+    if broken:
+        return 2
+    if diff and not update:
+        return 1
+    if unchecked:
+        return 3
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

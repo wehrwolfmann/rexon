@@ -1,0 +1,97 @@
+{
+  "tabs": [
+    {
+      "id": "desktops",
+      "label": "🖥️ Рабочие столы",
+      "factory": "make_desktops_window"
+    },
+    {
+      "id": "appearance",
+      "label": "🎨 Оформление",
+      "factory": "make_appearance_window"
+    },
+    {
+      "id": "extensions",
+      "label": "🧩 Расширения",
+      "factory": "make_extensions_window"
+    },
+    {
+      "id": "wallpaper_engine",
+      "label": "🖼️ Wallpaper Engine",
+      "factory": "_wallpaper_engine_factory"
+    },
+    {
+      "id": "steam",
+      "label": "🎮 Steam",
+      "factory": "_steam_factory"
+    },
+    {
+      "id": "settings",
+      "label": "⚙️ Настройки",
+      "factory": "make_settings_window"
+    }
+  ],
+  "window": {
+    "title": "Rexon — менеджер рабочих столов",
+    "min_width": 1100,
+    "min_height": 750
+  },
+  "menu": {
+    "button": "☰",
+    "style": "'QMenuBar { background: transparent; ' + primary_text_qss() + f' }}QMenuBar::item {{ background: transparent; }}QMenuBar::item:selected {{ background: {neutral_rgba(0.2)}; border-radius: 4px; }}'",
+    "actions": [
+      {
+        "label": "🛟 Восстановить тему KDE",
+        "shortcut": null
+      },
+      {
+        "label": "ℹ️ О программе",
+        "shortcut": null
+      },
+      {
+        "label": "🗑️ Удалить Rexon",
+        "shortcut": null
+      },
+      {
+        "label": "🚪 Выход",
+        "shortcut": "Ctrl+Q"
+      }
+    ]
+  },
+  "placeholder": {
+    "text": "Загрузка…",
+    "style": "primary_text_qss('font-size: 14pt; font-weight: 600;')"
+  },
+  "load_failure": {
+    "text": "Эта вкладка не открылась.\nПодробности — в журнале Rexon.",
+    "style": "font-size: 13pt; font-weight: 600;"
+  },
+  "about": {
+    "title": "О программе Rexon",
+    "body": "<h2>Rexon {__version__}</h2><p>Менеджер рабочих столов для Linux</p><p>Установка, удаление и настройка DE, тем, иконок, курсоров, шрифтов, обоев (вкл. Wallpaper&nbsp;Engine), SDDM/Plymouth, виджетов и расширений — через единый интерфейс.</p><p><b>Поддержка:</b> KDE, GNOME, Cinnamon, XFCE, MATE, Budgie, Pantheon, LXQt, COSMIC, Hyprland (обои также на sway, niri, river)</p><p>© 2026 Wehrwolfmann · лицензия Apache 2.0</p><p style='color:#888;font-size:11px'>Использует Qt (LGPL-3.0) и KDE&nbsp;Frameworks (LGPL-2.1+) — динамическая линковка.</p>"
+  },
+  "tab_switch": {
+    "widget_fallback_env": "REXON_WIDGET_TAB",
+    "env_template": "REXON_QML_{tab_id.upper()}",
+    "truthy": [
+      "1",
+      "on",
+      "yes",
+      "true"
+    ],
+    "falsy": [
+      "0",
+      "off",
+      "no",
+      "false"
+    ],
+    "all_words": [
+      "1",
+      "on",
+      "yes",
+      "true",
+      "all",
+      "*"
+    ]
+  }
+}

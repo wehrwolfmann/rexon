@@ -1,0 +1,524 @@
+{
+ "cases": [
+  {
+   "label": "cachyos",
+   "etc_os_release": "NAME=\"CachyOS Linux\"\nPRETTY_NAME=\"CachyOS\"\nID=cachyos\nID_LIKE=\"arch\"\nBUILD_ID=rolling\nANSI_COLOR=\"38;2;23;147;209\"\nHOME_URL=\"https://cachyos.org/\"\nLOGO=cachyos\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "pacman"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "CachyOS Linux",
+     "PRETTY_NAME": "CachyOS",
+     "ID": "cachyos",
+     "ID_LIKE": "arch",
+     "BUILD_ID": "rolling",
+     "ANSI_COLOR": "38;2;23;147;209",
+     "HOME_URL": "https://cachyos.org/",
+     "LOGO": "cachyos"
+    },
+    "name": "CachyOS Linux",
+    "pretty_name": "CachyOS",
+    "distro_id": "cachyos",
+    "id_like": [
+     "arch"
+    ],
+    "version_id": "",
+    "family": "arch",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "steamos",
+   "etc_os_release": "NAME=\"SteamOS\"\nPRETTY_NAME=\"SteamOS\"\nVERSION_CODENAME=holo\nID=steamos\nID_LIKE=arch\nVERSION_ID=3.7.8\nBUILD_ID=20250522.1\nVARIANT_ID=steamdeck\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "pacman"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "SteamOS",
+     "PRETTY_NAME": "SteamOS",
+     "VERSION_CODENAME": "holo",
+     "ID": "steamos",
+     "ID_LIKE": "arch",
+     "VERSION_ID": "3.7.8",
+     "BUILD_ID": "20250522.1",
+     "VARIANT_ID": "steamdeck"
+    },
+    "name": "SteamOS",
+    "pretty_name": "SteamOS",
+    "distro_id": "steamos",
+    "id_like": [
+     "arch"
+    ],
+    "version_id": "3.7.8",
+    "family": "arch",
+    "is_steamos": true,
+    "is_immutable": true
+   }
+  },
+  {
+   "label": "astra-se",
+   "etc_os_release": "PRETTY_NAME=\"Astra Linux\"\nNAME=\"Astra Linux\"\nID=astra\nID_LIKE=debian\nVERSION_ID=1.7_x86-64\nVARIANT_ID=orel\nVARIANT=Orel\nHOME_URL=\"https://astralinux.ru\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get",
+    "dpkg"
+   ],
+   "expected": {
+    "info": {
+     "PRETTY_NAME": "Astra Linux",
+     "NAME": "Astra Linux",
+     "ID": "astra",
+     "ID_LIKE": "debian",
+     "VERSION_ID": "1.7_x86-64",
+     "VARIANT_ID": "orel",
+     "VARIANT": "Orel",
+     "HOME_URL": "https://astralinux.ru"
+    },
+    "name": "Astra Linux",
+    "pretty_name": "Astra Linux",
+    "distro_id": "astra",
+    "id_like": [
+     "debian"
+    ],
+    "version_id": "1.7_x86-64",
+    "family": "debian",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "rosa",
+   "etc_os_release": "NAME=\"ROSA Fresh Desktop\"\nVERSION=\"13\"\nID=rosa\nVERSION_ID=13\nPRETTY_NAME=\"ROSA Fresh Desktop 13\"\nHOME_URL=\"http://www.rosalinux.ru/\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "dnf",
+    "rpm"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "ROSA Fresh Desktop",
+     "VERSION": "13",
+     "ID": "rosa",
+     "VERSION_ID": "13",
+     "PRETTY_NAME": "ROSA Fresh Desktop 13",
+     "HOME_URL": "http://www.rosalinux.ru/"
+    },
+    "name": "ROSA Fresh Desktop",
+    "pretty_name": "ROSA Fresh Desktop 13",
+    "distro_id": "rosa",
+    "id_like": [],
+    "version_id": "13",
+    "family": "fedora",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "alt-workstation",
+   "etc_os_release": "NAME=\"ALT Workstation\"\nVERSION=\"10.2\"\nID=altlinux\nVERSION_ID=10.2\nPRETTY_NAME=\"ALT Workstation 10.2\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get",
+    "rpm"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "ALT Workstation",
+     "VERSION": "10.2",
+     "ID": "altlinux",
+     "VERSION_ID": "10.2",
+     "PRETTY_NAME": "ALT Workstation 10.2"
+    },
+    "name": "ALT Workstation",
+    "pretty_name": "ALT Workstation 10.2",
+    "distro_id": "altlinux",
+    "id_like": [],
+    "version_id": "10.2",
+    "family": "alt",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "nixos",
+   "etc_os_release": "NAME=NixOS\nID=nixos\nVERSION=\"24.11 (Vicuna)\"\nVERSION_CODENAME=vicuna\nVERSION_ID=\"24.11\"\nPRETTY_NAME=\"NixOS 24.11 (Vicuna)\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "nix-env"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "NixOS",
+     "ID": "nixos",
+     "VERSION": "24.11 (Vicuna)",
+     "VERSION_CODENAME": "vicuna",
+     "VERSION_ID": "24.11",
+     "PRETTY_NAME": "NixOS 24.11 (Vicuna)"
+    },
+    "name": "NixOS",
+    "pretty_name": "NixOS 24.11 (Vicuna)",
+    "distro_id": "nixos",
+    "id_like": [],
+    "version_id": "24.11",
+    "family": "nix",
+    "is_steamos": false,
+    "is_immutable": true
+   }
+  },
+  {
+   "label": "ubuntu",
+   "etc_os_release": "PRETTY_NAME=\"Ubuntu 24.04.2 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.2 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get",
+    "dpkg"
+   ],
+   "expected": {
+    "info": {
+     "PRETTY_NAME": "Ubuntu 24.04.2 LTS",
+     "NAME": "Ubuntu",
+     "VERSION_ID": "24.04",
+     "VERSION": "24.04.2 LTS (Noble Numbat)",
+     "VERSION_CODENAME": "noble",
+     "ID": "ubuntu",
+     "ID_LIKE": "debian"
+    },
+    "name": "Ubuntu",
+    "pretty_name": "Ubuntu 24.04.2 LTS",
+    "distro_id": "ubuntu",
+    "id_like": [
+     "debian"
+    ],
+    "version_id": "24.04",
+    "family": "debian",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "tumbleweed",
+   "etc_os_release": "NAME=\"openSUSE Tumbleweed\"\n# VERSION=\"20250701\"\nID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\nVERSION_ID=\"20250701\"\nPRETTY_NAME=\"openSUSE Tumbleweed\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "zypper"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "openSUSE Tumbleweed",
+     "ID": "opensuse-tumbleweed",
+     "ID_LIKE": "opensuse suse",
+     "VERSION_ID": "20250701",
+     "PRETTY_NAME": "openSUSE Tumbleweed"
+    },
+    "name": "openSUSE Tumbleweed",
+    "pretty_name": "openSUSE Tumbleweed",
+    "distro_id": "opensuse-tumbleweed",
+    "id_like": [
+     "opensuse",
+     "suse"
+    ],
+    "version_id": "20250701",
+    "family": "suse",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "bazzite",
+   "etc_os_release": "NAME=\"Bazzite\"\nID=bazzite\nID_LIKE=\"fedora\"\nVARIANT_ID=kinoite\nVERSION_ID=41\nPRETTY_NAME=\"Bazzite 41 (FROM Fedora Kinoite)\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "dnf",
+    "rpm"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "Bazzite",
+     "ID": "bazzite",
+     "ID_LIKE": "fedora",
+     "VARIANT_ID": "kinoite",
+     "VERSION_ID": "41",
+     "PRETTY_NAME": "Bazzite 41 (FROM Fedora Kinoite)"
+    },
+    "name": "Bazzite",
+    "pretty_name": "Bazzite 41 (FROM Fedora Kinoite)",
+    "distro_id": "bazzite",
+    "id_like": [
+     "fedora"
+    ],
+    "version_id": "41",
+    "family": "fedora",
+    "is_steamos": false,
+    "is_immutable": true
+   }
+  },
+  {
+   "label": "silverblue",
+   "etc_os_release": "NAME=\"Fedora Linux\"\nVERSION=\"41 (Silverblue)\"\nID=fedora\nVERSION_ID=41\nVARIANT=\"Silverblue\"\nVARIANT_ID=silverblue\nPRETTY_NAME=\"Fedora Linux 41 (Silverblue)\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "dnf",
+    "rpm"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "Fedora Linux",
+     "VERSION": "41 (Silverblue)",
+     "ID": "fedora",
+     "VERSION_ID": "41",
+     "VARIANT": "Silverblue",
+     "VARIANT_ID": "silverblue",
+     "PRETTY_NAME": "Fedora Linux 41 (Silverblue)"
+    },
+    "name": "Fedora Linux",
+    "pretty_name": "Fedora Linux 41 (Silverblue)",
+    "distro_id": "fedora",
+    "id_like": [],
+    "version_id": "41",
+    "family": "fedora",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "unknown-idlike-suse",
+   "etc_os_release": "NAME=\"MysteryOS\"\nID=mysteryos\nID_LIKE=\"sle opensuse suse\"\nPRETTY_NAME=\"MysteryOS 1.0\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [],
+   "expected": {
+    "info": {
+     "NAME": "MysteryOS",
+     "ID": "mysteryos",
+     "ID_LIKE": "sle opensuse suse",
+     "PRETTY_NAME": "MysteryOS 1.0"
+    },
+    "name": "MysteryOS",
+    "pretty_name": "MysteryOS 1.0",
+    "distro_id": "mysteryos",
+    "id_like": [
+     "sle",
+     "opensuse",
+     "suse"
+    ],
+    "version_id": "",
+    "family": "suse",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "quoting-edge",
+   "etc_os_release": "# комментарий\nNAME='Quoted OS'\n\nID=\"quotedos\"\nEMPTY=\nBROKEN_LINE_NO_EQ\nPRETTY_NAME=\"Очень 'странный' дистрибутив\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [],
+   "expected": {
+    "info": {
+     "NAME": "Quoted OS",
+     "ID": "quotedos",
+     "EMPTY": "",
+     "PRETTY_NAME": "Очень 'странный' дистрибутив"
+    },
+    "name": "Quoted OS",
+    "pretty_name": "Очень 'странный' дистрибутив",
+    "distro_id": "quotedos",
+    "id_like": [],
+    "version_id": "",
+    "family": "unknown",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "empty-name",
+   "etc_os_release": "NAME=\"\"\nID=emptyname\nPRETTY_NAME=\"Empty Name OS\"\n",
+   "usr_lib_os_release": null,
+   "binaries": [],
+   "expected": {
+    "info": {
+     "NAME": "",
+     "ID": "emptyname",
+     "PRETTY_NAME": "Empty Name OS"
+    },
+    "name": "",
+    "pretty_name": "Empty Name OS",
+    "distro_id": "emptyname",
+    "id_like": [],
+    "version_id": "",
+    "family": "unknown",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "usrlib-fallback",
+   "etc_os_release": null,
+   "usr_lib_os_release": "NAME=\"CachyOS Linux\"\nPRETTY_NAME=\"CachyOS\"\nID=cachyos\nID_LIKE=\"arch\"\nBUILD_ID=rolling\nANSI_COLOR=\"38;2;23;147;209\"\nHOME_URL=\"https://cachyos.org/\"\nLOGO=cachyos\n",
+   "binaries": [
+    "pacman"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "CachyOS Linux",
+     "PRETTY_NAME": "CachyOS",
+     "ID": "cachyos",
+     "ID_LIKE": "arch",
+     "BUILD_ID": "rolling",
+     "ANSI_COLOR": "38;2;23;147;209",
+     "HOME_URL": "https://cachyos.org/",
+     "LOGO": "cachyos"
+    },
+    "name": "CachyOS Linux",
+    "pretty_name": "CachyOS",
+    "distro_id": "cachyos",
+    "id_like": [
+     "arch"
+    ],
+    "version_id": "",
+    "family": "arch",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-apt-dpkg",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get",
+    "dpkg"
+   ],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "debian",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-apt-rpm",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get",
+    "rpm"
+   ],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "alt",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-apt-only",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [
+    "apt-get"
+   ],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "debian",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-pacman",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [
+    "pacman"
+   ],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "arch",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-xbps",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [
+    "xbps-install"
+   ],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "void",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "no-osrelease-nothing",
+   "etc_os_release": null,
+   "usr_lib_os_release": null,
+   "binaries": [],
+   "expected": {
+    "info": {},
+    "name": "Linux",
+    "pretty_name": "Linux",
+    "distro_id": "",
+    "id_like": [],
+    "version_id": "",
+    "family": "unknown",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  },
+  {
+   "label": "unknown-binary-eopkg",
+   "etc_os_release": "NAME=\"SoloMystery\"\nID=solomystery\n",
+   "usr_lib_os_release": null,
+   "binaries": [
+    "eopkg"
+   ],
+   "expected": {
+    "info": {
+     "NAME": "SoloMystery",
+     "ID": "solomystery"
+    },
+    "name": "SoloMystery",
+    "pretty_name": "SoloMystery",
+    "distro_id": "solomystery",
+    "id_like": [],
+    "version_id": "",
+    "family": "solus",
+    "is_steamos": false,
+    "is_immutable": false
+   }
+  }
+ ]
+}

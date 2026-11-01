@@ -1,0 +1,318 @@
+{
+  "_note": "Рамки и кнопки заголовка Openbox и labwc (rc.xml). Переснимать осознанно: REXON_UPDATE_GOLDEN=1.",
+  "rc_xml": [
+    {
+      "name": "openbox: тема — меняется только <theme><name>, не <name> шрифта и не в комментарии",
+      "path": [
+        "name"
+      ],
+      "value": "Onyx-Citrus",
+      "input": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n",
+      "expected": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Onyx-Citrus</name>\n  <titleLayout>NLIMC</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n"
+    },
+    {
+      "name": "openbox: раскладка кнопок <titleLayout>",
+      "path": [
+        "titleLayout"
+      ],
+      "value": "CIMLN",
+      "input": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n",
+      "expected": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>CIMLN</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n"
+    },
+    {
+      "name": "openbox: файла нет — не заводим (свой rc.xml заменил бы системный целиком)",
+      "path": [
+        "name"
+      ],
+      "value": "Onyx",
+      "input": null,
+      "expected": null
+    },
+    {
+      "name": "labwc: файла нет — заводится с одной <theme>",
+      "path": [
+        "name"
+      ],
+      "value": "Bear2",
+      "input": null,
+      "expected": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Bear2</name>\n  </theme>\n</labwc_config>\n"
+    },
+    {
+      "name": "labwc: <titlebar> есть, <layout> нет — встаёт в <titlebar>",
+      "path": [
+        "titlebar",
+        "layout"
+      ],
+      "value": "close,max,iconify:menu",
+      "input": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Onyx</name>\n    <titlebar>\n      <showTitle>yes</showTitle>\n    </titlebar>\n  </theme>\n</labwc_config>\n",
+      "expected": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Onyx</name>\n    <titlebar>\n      <layout>close,max,iconify:menu</layout>\n      <showTitle>yes</showTitle>\n    </titlebar>\n  </theme>\n</labwc_config>\n"
+    },
+    {
+      "name": "labwc: нет <theme> — встаёт в корень вместе с <titlebar>",
+      "path": [
+        "titlebar",
+        "layout"
+      ],
+      "value": "icon:iconify,max,close",
+      "input": "<labwc_config>\n  <core><gap>4</gap></core>\n</labwc_config>\n",
+      "expected": "<labwc_config>\n  <theme>\n    <titlebar>\n      <layout>icon:iconify,max,close</layout>\n    </titlebar>\n  </theme>\n  <core><gap>4</gap></core>\n</labwc_config>\n"
+    },
+    {
+      "name": "labwc: самозакрытая <theme/> и имя с & экранируется",
+      "path": [
+        "name"
+      ],
+      "value": "Black & White",
+      "input": "<labwc_config>\n  <theme/>\n</labwc_config>\n",
+      "expected": "<labwc_config>\n  <theme>\n    <name>Black &amp; White</name>\n  </theme>\n</labwc_config>\n"
+    },
+    {
+      "name": "labwc: <theme> в одну строку",
+      "path": [
+        "name"
+      ],
+      "value": "Natura",
+      "input": "<labwc_config><theme></theme></labwc_config>",
+      "expected": "<labwc_config><theme>\n  <name>Natura</name>\n</theme></labwc_config>"
+    },
+    {
+      "name": "битый файл — не трогаем",
+      "path": [
+        "name"
+      ],
+      "value": "X",
+      "input": "<labwc_config>\n  <theme>\n</labwc_config>\n",
+      "expected": null
+    }
+  ],
+  "buttons": {
+    "lxqt X11 + Openbox: «как в macOS» из системного rc.xml": {
+      "message": "Title bar settings applied.",
+      "files": {
+        "/c/gtk-3.0/settings.ini": "[Settings]\ngtk-decoration-layout=close,minimize,maximize:menu\n",
+        "/c/gtk-4.0/settings.ini": "[Settings]\ngtk-decoration-layout=close,minimize,maximize:menu\n",
+        "/c/lxqt/session.conf": "[General]\nwindow_manager=openbox\ncompositor=labwc\n",
+        "/c/openbox/rc.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>CIMLN</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n",
+        "/etc/xdg/openbox/rc.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n"
+      },
+      "ran": [
+        [
+          "openbox",
+          "--reconfigure"
+        ]
+      ],
+      "state": {
+        "de": "openbox",
+        "side": "left",
+        "left": [
+          "close",
+          "minimize",
+          "maximize"
+        ],
+        "right": [
+          "menu"
+        ],
+        "buttons": [
+          "menu",
+          "sticky",
+          "minimize",
+          "maximize",
+          "close",
+          "shade"
+        ],
+        "custom": "",
+        "note": "",
+        "unavailable": "Openbox has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": false,
+        "border_note": "In Openbox the window border is drawn by the window theme; choose another window theme to change it."
+      }
+    },
+    "lxqt Wayland + labwc: поставить «свернуть в заголовок»": {
+      "message": "Title bar settings applied.",
+      "files": {
+        "/c/gtk-3.0/settings.ini": "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n",
+        "/c/gtk-4.0/settings.ini": "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n",
+        "/c/labwc/rc.xml": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <titlebar>\n      <layout>icon:shade,iconify,max,close</layout>\n    </titlebar>\n    <name>Onyx</name>\n  </theme>\n</labwc_config>\n",
+        "/c/lxqt/session.conf": "[General]\nwindow_manager=openbox\ncompositor=labwc\n"
+      },
+      "ran": [
+        [
+          "labwc",
+          "--reconfigure"
+        ]
+      ],
+      "state": {
+        "de": "labwc",
+        "side": "right",
+        "left": [],
+        "right": [
+          "shade",
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "buttons": [
+          "menu",
+          "sticky",
+          "minimize",
+          "maximize",
+          "close",
+          "shade"
+        ],
+        "custom": "",
+        "note": "",
+        "unavailable": "labwc has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": true,
+        "border_note": ""
+      }
+    },
+    "labwc без rc.xml: «на всех рабочих столах» слева": {
+      "message": "Title bar settings applied.",
+      "files": {
+        "/c/gtk-3.0/settings.ini": "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n",
+        "/c/gtk-4.0/settings.ini": "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n",
+        "/c/labwc/rc.xml": "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <titlebar>\n      <layout>icon,desk:iconify,max,close</layout>\n    </titlebar>\n  </theme>\n</labwc_config>\n"
+      },
+      "ran": [
+        [
+          "labwc",
+          "--reconfigure"
+        ]
+      ],
+      "state": {
+        "de": "labwc",
+        "side": "right",
+        "left": [
+          "sticky"
+        ],
+        "right": [
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "buttons": [
+          "menu",
+          "sticky",
+          "minimize",
+          "maximize",
+          "close",
+          "shade"
+        ],
+        "custom": "",
+        "note": "",
+        "unavailable": "labwc has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": true,
+        "border_note": ""
+      }
+    },
+    "Openbox: «по умолчанию» возвращает NLIMC": {
+      "message": "Title bar settings applied.",
+      "files": {
+        "/c/gtk-3.0/settings.ini": "[Settings]\ngtk-decoration-layout=menu:minimize,maximize,close\n",
+        "/c/gtk-4.0/settings.ini": "[Settings]\ngtk-decoration-layout=menu:minimize,maximize,close\n",
+        "/c/lxqt/session.conf": "[General]\nwindow_manager=openbox\ncompositor=labwc\n",
+        "/c/openbox/rc.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<resistance>\n  <strength>10</strength>\n</resistance>\n<theme>\n  <name>Clearlooks</name>\n  <titleLayout>NLIMC</titleLayout>\n  <!--\n      available characters are NDSLIMC, each can occur at most once.\n      <name>в комментарии не трогается</name>\n  -->\n  <keepBorder>yes</keepBorder>\n  <font place=\"ActiveWindow\">\n    <name>sans</name>\n    <size>8</size>\n  </font>\n</theme>\n<desktops>\n  <names>\n    <name>1</name>\n  </names>\n</desktops>\n</openbox_config>\n"
+      },
+      "ran": [
+        [
+          "openbox",
+          "--reconfigure"
+        ]
+      ],
+      "state": {
+        "de": "openbox",
+        "side": "right",
+        "left": [
+          "menu"
+        ],
+        "right": [
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "buttons": [
+          "menu",
+          "sticky",
+          "minimize",
+          "maximize",
+          "close",
+          "shade"
+        ],
+        "custom": "",
+        "note": "",
+        "unavailable": "Openbox has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": false,
+        "border_note": "In Openbox the window border is drawn by the window theme; choose another window theme to change it."
+      }
+    },
+    "Openbox без rc.xml: отказ": {
+      "message": "Openbox has no settings file to change: /c/openbox/rc.xml doesn't exist, and there is no system one to start from.",
+      "files": {
+        "/c/lxqt/session.conf": "[General]\nwindow_manager=openbox\ncompositor=labwc\n"
+      },
+      "ran": [],
+      "state": {
+        "de": "openbox",
+        "side": "right",
+        "left": [
+          "menu"
+        ],
+        "right": [
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "buttons": [
+          "menu",
+          "sticky",
+          "minimize",
+          "maximize",
+          "close",
+          "shade"
+        ],
+        "custom": "",
+        "note": "",
+        "unavailable": "Openbox has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": false,
+        "border_note": "In Openbox the window border is drawn by the window theme; choose another window theme to change it."
+      }
+    },
+    "LXQt с незнакомым менеджером": {
+      "message": "",
+      "files": {
+        "/c/lxqt/session.conf": "[General]\nwindow_manager=icewm\n"
+      },
+      "ran": [],
+      "state": {
+        "de": "lxqt",
+        "side": "right",
+        "left": [
+          "menu"
+        ],
+        "right": [
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "buttons": [
+          "menu",
+          "minimize",
+          "maximize",
+          "close"
+        ],
+        "custom": "",
+        "note": "In LXQt, title bars are drawn by the window manager chosen in Session Settings. Rexon changes their buttons under Openbox, labwc, KWin, xfwm4 and Marco, and this session uses another one (or none is chosen): the layout applies only to applications that draw their title bar themselves (GTK).",
+        "unavailable": "Title bars drawn by GTK have no such buttons: Application menu, On all desktops, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer.",
+        "has_border": false,
+        "border_note": "In LXQt the window border is drawn by the window manager's theme (Openbox, KWin or labwc)."
+      }
+    }
+  },
+  "theme": {
+    "lxqt X11 + Openbox": "Steps {\n    steps: [\n        File(\n            WriteFile {\n                path: \"/c/openbox/rc.xml\",\n                content: \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n<openbox_config xmlns=\\\"http://openbox.org/3.4/rc\\\" xmlns:xi=\\\"http://www.w3.org/2001/XInclude\\\">\\n<resistance>\\n  <strength>10</strength>\\n</resistance>\\n<theme>\\n  <name>Onyx-Citrus</name>\\n  <titleLayout>NLIMC</titleLayout>\\n  <!--\\n      available characters are NDSLIMC, each can occur at most once.\\n      <name>в комментарии не трогается</name>\\n  -->\\n  <keepBorder>yes</keepBorder>\\n  <font place=\\\"ActiveWindow\\\">\\n    <name>sans</name>\\n    <size>8</size>\\n  </font>\\n</theme>\\n<desktops>\\n  <names>\\n    <name>1</name>\\n  </names>\\n</desktops>\\n</openbox_config>\\n\",\n            },\n        ),\n        File(\n            Run {\n                argv: [\n                    \"openbox\",\n                    \"--reconfigure\",\n                ],\n                timeout_secs: Some(\n                    10,\n                ),\n            },\n        ),\n    ],\n    check: Theme {\n        kind: \"theme-openbox\",\n        name: \"Onyx-Citrus\",\n    },\n}",
+    "lxqt Wayland + labwc без rc.xml": "Steps {\n    steps: [\n        File(\n            WriteFile {\n                path: \"/c/labwc/rc.xml\",\n                content: \"<?xml version=\\\"1.0\\\"?>\\n<labwc_config>\\n  <theme>\\n    <name>Onyx-Citrus</name>\\n  </theme>\\n</labwc_config>\\n\",\n            },\n        ),\n        File(\n            Run {\n                argv: [\n                    \"labwc\",\n                    \"--reconfigure\",\n                ],\n                timeout_secs: Some(\n                    10,\n                ),\n            },\n        ),\n    ],\n    check: Theme {\n        kind: \"theme-openbox\",\n        name: \"Onyx-Citrus\",\n    },\n}",
+    "сеанс labwc": "Steps {\n    steps: [\n        File(\n            WriteFile {\n                path: \"/c/labwc/rc.xml\",\n                content: \"<labwc_config>\\n  <theme>\\n    <name>Onyx-Citrus</name>\\n  </theme>\\n</labwc_config>\\n\",\n            },\n        ),\n        File(\n            Run {\n                argv: [\n                    \"labwc\",\n                    \"--reconfigure\",\n                ],\n                timeout_secs: Some(\n                    10,\n                ),\n            },\n        ),\n    ],\n    check: Theme {\n        kind: \"theme-openbox\",\n        name: \"Onyx-Citrus\",\n    },\n}",
+    "lxqt + KWin: отказ": "Refused(\n    \"Couldn't apply “Onyx-Citrus”: window borders in this session are drawn by kwin, and Openbox themes only work in Openbox and labwc\",\n)",
+    "Openbox без rc.xml: отказ": "Refused(\n    \"Couldn't apply “Onyx-Citrus”: /c/openbox/rc.xml doesn't exist, and there is no system settings file to start from\",\n)"
+  }
+}

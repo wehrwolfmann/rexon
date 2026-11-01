@@ -1,0 +1,1349 @@
+{
+ "_comment": "Сверка titlebar_launch_parity.rs: кнопки заголовка (все кнопки KDE), флажки KWin и отклик при запуске на подставном вводе-выводе. Правится руками вместе с поведением.",
+ "cases": [
+  {
+   "name": "kde_state_default",
+   "de": "kde",
+   "action": [
+    "state"
+   ],
+   "state": {
+    "buttons": [
+     {
+      "id": "menu"
+     },
+     {
+      "id": "appmenu"
+     },
+     {
+      "id": "sticky"
+     },
+     {
+      "id": "minimize"
+     },
+     {
+      "id": "maximize"
+     },
+     {
+      "id": "close"
+     },
+     {
+      "id": "help"
+     },
+     {
+      "id": "below"
+     },
+     {
+      "id": "above"
+     },
+     {
+      "id": "exclude_capture"
+     },
+     {
+      "id": "spacer"
+     }
+    ],
+    "left": [
+     "menu",
+     "sticky",
+     "exclude_capture"
+    ],
+    "right": [
+     "help",
+     "minimize",
+     "maximize",
+     "close"
+    ],
+    "unavailable": "",
+    "flags_note": "",
+    "custom": "",
+    "flags": [
+     {
+      "id": "close_on_double_click",
+      "checked": false,
+      "enabled": true
+     },
+     {
+      "id": "show_tooltips",
+      "checked": true,
+      "enabled": true
+     },
+     {
+      "id": "always_show_exclude_capture",
+      "checked": false,
+      "enabled": true
+     }
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_all_buttons_with_spacers",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nButtonsOnLeft=MN_SE\nButtonsOnRight=HB_FIAX\n"
+   },
+   "action": [
+    "state"
+   ],
+   "state": {
+    "left": [
+     "menu",
+     "appmenu",
+     "spacer",
+     "sticky",
+     "exclude_capture"
+    ],
+    "right": [
+     "help",
+     "below",
+     "spacer",
+     "above",
+     "minimize",
+     "maximize",
+     "close"
+    ],
+    "custom": ""
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_toggle_below_left",
+   "de": "kde",
+   "action": [
+    "toggle",
+    "left",
+    "below",
+    "true"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnLeft",
+     "--notify",
+     "MSBE"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_toggle_spacer_right_only",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nButtonsOnLeft=M_S\nButtonsOnRight=_IAX\n"
+   },
+   "action": [
+    "toggle",
+    "right",
+    "spacer",
+    "false"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "IAX"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_preset_left_keeps_every_button",
+   "de": "kde",
+   "action": [
+    "preset",
+    "left",
+    "menu,sticky,exclude_capture,help,minimize,maximize,close"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnLeft",
+     "--notify",
+     "XIAH"
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "MSE"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_flag_tooltips_off",
+   "de": "kde",
+   "action": [
+    "flag",
+    "show_tooltips",
+    "false"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ShowToolTips",
+     "--notify",
+     "--type",
+     "bool",
+     "false"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_flag_tooltips_back_to_default",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nShowToolTips=false\n"
+   },
+   "action": [
+    "flag",
+    "show_tooltips",
+    "true"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ShowToolTips",
+     "--notify",
+     "--delete",
+     ""
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_flag_close_on_double_click",
+   "de": "kde",
+   "action": [
+    "flag",
+    "close_on_double_click",
+    "true"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "CloseOnDoubleClickOnMenu",
+     "--notify",
+     "--type",
+     "bool",
+     "true"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_exclude_flag_needs_the_button",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nButtonsOnLeft=MS\n"
+   },
+   "action": [
+    "state"
+   ],
+   "state": {
+    "flags": [
+     {
+      "id": "close_on_double_click"
+     },
+     {
+      "id": "show_tooltips"
+     },
+     {
+      "id": "always_show_exclude_capture",
+      "enabled": false
+     }
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_exclude_flag_refused_without_button",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nButtonsOnLeft=MS\n"
+   },
+   "action": [
+    "flag",
+    "always_show_exclude_capture",
+    "true"
+   ],
+   "commands": []
+  },
+  {
+   "name": "kde_defaults_reset_flags_too",
+   "de": "kde",
+   "files": {
+    "kwinrc": "[org.kde.kdecoration2]\nButtonsOnRight=IAX\nCloseOnDoubleClickOnMenu=true\n"
+   },
+   "action": [
+    "defaults"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "--delete",
+     ""
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "CloseOnDoubleClickOnMenu",
+     "--notify",
+     "--delete",
+     ""
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "mate_state",
+   "de": "mate",
+   "keys": {
+    "org.mate.Marco.general button-layout": "menu:minimize,maximize,close"
+   },
+   "action": [
+    "state"
+   ],
+   "state": {
+    "buttons": [
+     {
+      "id": "menu"
+     },
+     {
+      "id": "appmenu"
+     },
+     {
+      "id": "sticky"
+     },
+     {
+      "id": "minimize"
+     },
+     {
+      "id": "maximize"
+     },
+     {
+      "id": "close"
+     },
+     {
+      "id": "above"
+     },
+     {
+      "id": "shade"
+     },
+     {
+      "id": "spacer"
+     }
+    ],
+    "unavailable": "Marco, the MATE window manager, has no such title bar buttons: Context help, Keep below others, Hide from screenshots and screen recordings.",
+    "flags": [],
+    "flags_note": "MATE has no settings for closing windows by double-clicking the menu button, for title bar button tooltips or for the “Hide from screenshots” button: these are options of KWin, the KDE window manager."
+   },
+   "commands": []
+  },
+  {
+   "name": "mate_toggle_shade_right",
+   "de": "mate",
+   "keys": {
+    "org.mate.Marco.general button-layout": "menu:minimize,maximize,close"
+   },
+   "action": [
+    "toggle",
+    "right",
+    "shade",
+    "true"
+   ],
+   "commands": [
+    [
+     "gsettings",
+     "set",
+     "org.mate.Marco.general",
+     "button-layout",
+     "'menu:shade,minimize,maximize,close'"
+    ],
+    [
+     "gsettings",
+     "set",
+     "org.mate.interface",
+     "gtk-decoration-layout",
+     "'menu:minimize,maximize,close'"
+    ]
+   ]
+  },
+  {
+   "name": "xfce_state_default",
+   "de": "xfce",
+   "action": [
+    "state"
+   ],
+   "state": {
+    "buttons": [
+     {
+      "id": "menu"
+     },
+     {
+      "id": "sticky"
+     },
+     {
+      "id": "minimize"
+     },
+     {
+      "id": "maximize"
+     },
+     {
+      "id": "close"
+     },
+     {
+      "id": "shade"
+     }
+    ],
+    "left": [
+     "menu"
+    ],
+    "right": [
+     "shade",
+     "minimize",
+     "maximize",
+     "close"
+    ],
+    "custom": "",
+    "unavailable": "xfwm4, the Xfce window manager, has no such title bar buttons: Application menu, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer."
+   },
+   "commands": []
+  },
+  {
+   "name": "xfce_toggle_shade_off",
+   "de": "xfce",
+   "keys": {
+    "xfwm4 /general/button_layout": "O|SHMC"
+   },
+   "action": [
+    "toggle",
+    "right",
+    "shade",
+    "false"
+   ],
+   "commands": [
+    [
+     "xfconf-query",
+     "-c",
+     "xfwm4",
+     "-p",
+     "/general/button_layout",
+     "-n",
+     "-t",
+     "string",
+     "-s",
+     "O|HMC"
+    ]
+   ]
+  },
+  {
+   "name": "cinnamon_spacer_right",
+   "de": "cinnamon-mint",
+   "keys": {
+    "org.cinnamon.desktop.wm.preferences button-layout": ":minimize,maximize,close"
+   },
+   "action": [
+    "toggle",
+    "right",
+    "spacer",
+    "true"
+   ],
+   "commands": [
+    [
+     "gsettings",
+     "set",
+     "org.cinnamon.desktop.wm.preferences",
+     "button-layout",
+     "':spacer,minimize,maximize,close'"
+    ]
+   ]
+  },
+  {
+   "name": "gnome_keeps_appmenu_and_names_gtk",
+   "de": "gnome",
+   "keys": {
+    "org.gnome.desktop.wm.preferences button-layout": "appmenu:close"
+   },
+   "action": [
+    "state"
+   ],
+   "state": {
+    "buttons": [
+     {
+      "id": "menu"
+     },
+     {
+      "id": "minimize"
+     },
+     {
+      "id": "maximize"
+     },
+     {
+      "id": "close"
+     }
+    ],
+    "left": [],
+    "right": [
+     "close"
+    ],
+    "custom": "",
+    "unavailable": "Title bars drawn by GTK have no such buttons: Application menu, On all desktops, Context help, Keep below others, Keep above others, Hide from screenshots and screen recordings, Spacer."
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_state_shelf",
+   "de": "kde",
+   "action": [
+    "state"
+   ],
+   "state": {
+    "drag": true,
+    "shelf": [
+     {
+      "id": "menu",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "appmenu",
+      "available": true,
+      "placed": false
+     },
+     {
+      "id": "sticky",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "minimize",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "maximize",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "close",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "help",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "below",
+      "available": true,
+      "placed": false
+     },
+     {
+      "id": "above",
+      "available": true,
+      "placed": false
+     },
+     {
+      "id": "exclude_capture",
+      "available": true,
+      "placed": true
+     },
+     {
+      "id": "spacer",
+      "available": true,
+      "placed": false
+     }
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_drag_close_to_left",
+   "de": "kde",
+   "action": [
+    "move",
+    "close",
+    "right",
+    "3",
+    "left",
+    "0"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnLeft",
+     "--notify",
+     "XMSE"
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "HIA"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_drag_spacer_from_shelf",
+   "de": "kde",
+   "action": [
+    "move",
+    "spacer",
+    "shelf",
+    "0",
+    "right",
+    "1"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "H_IAX"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_drag_sticky_to_shelf",
+   "de": "kde",
+   "action": [
+    "move",
+    "sticky",
+    "left",
+    "1",
+    "shelf",
+    "0"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnLeft",
+     "--notify",
+     "ME"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_nudge_help_across_title",
+   "de": "kde",
+   "action": [
+    "nudge",
+    "right",
+    "0",
+    "left"
+   ],
+   "state": {
+    "message": "Title bar settings applied.",
+    "at": [
+     "left",
+     3
+    ]
+   },
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnLeft",
+     "--notify",
+     "MSEH"
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "IAX"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "kde_nudge_at_window_edge_writes_nothing",
+   "de": "kde",
+   "action": [
+    "nudge",
+    "right",
+    "3",
+    "right"
+   ],
+   "state": {
+    "message": "",
+    "at": [
+     "right",
+     3
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "kde_add_above_right",
+   "de": "kde",
+   "action": [
+    "add",
+    "above",
+    "right"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "kwinrc",
+     "--group",
+     "org.kde.kdecoration2",
+     "--key",
+     "ButtonsOnRight",
+     "--notify",
+     "FHIAX"
+    ],
+    [
+     "dbus-send",
+     "--session",
+     "--print-reply",
+     "--dest=org.kde.KWin",
+     "--type=method_call",
+     "/KWin",
+     "org.kde.KWin.reconfigure"
+    ]
+   ]
+  },
+  {
+   "name": "mate_drag_close_to_left",
+   "de": "mate",
+   "keys": {
+    "org.mate.Marco.general button-layout": "menu:minimize,maximize,close"
+   },
+   "action": [
+    "move",
+    "close",
+    "right",
+    "2",
+    "left",
+    "0"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "gsettings",
+     "set",
+     "org.mate.Marco.general",
+     "button-layout",
+     "'close,menu:minimize,maximize'"
+    ],
+    [
+     "gsettings",
+     "set",
+     "org.mate.interface",
+     "gtk-decoration-layout",
+     "'close,menu:minimize,maximize'"
+    ]
+   ]
+  },
+  {
+   "name": "mate_drag_help_refused",
+   "de": "mate",
+   "keys": {
+    "org.mate.Marco.general button-layout": "menu:minimize,maximize,close"
+   },
+   "action": [
+    "move",
+    "help",
+    "shelf",
+    "0",
+    "right",
+    "0"
+   ],
+   "state": {
+    "message": "Marco has no such title bar button."
+   },
+   "commands": []
+  },
+  {
+   "name": "mate_state_shelf",
+   "de": "mate",
+   "keys": {
+    "org.mate.Marco.general button-layout": "menu:minimize,maximize,close"
+   },
+   "action": [
+    "state"
+   ],
+   "state": {
+    "drag": true,
+    "shelf": [
+     {
+      "id": "menu",
+      "placed": true,
+      "available": true
+     },
+     {
+      "id": "appmenu",
+      "placed": false,
+      "available": true
+     },
+     {
+      "id": "sticky",
+      "available": true
+     },
+     {
+      "id": "minimize",
+      "placed": true
+     },
+     {
+      "id": "maximize",
+      "placed": true
+     },
+     {
+      "id": "close",
+      "placed": true
+     },
+     {
+      "id": "help",
+      "available": false,
+      "reason": "Marco has no such title bar button."
+     },
+     {
+      "id": "below",
+      "available": false
+     },
+     {
+      "id": "above",
+      "available": true
+     },
+     {
+      "id": "shade",
+      "available": true,
+      "placed": false
+     },
+     {
+      "id": "exclude_capture",
+      "available": false
+     },
+     {
+      "id": "spacer",
+      "available": true,
+      "placed": false
+     }
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "xfce_nudge_menu_across_title",
+   "de": "xfce",
+   "keys": {
+    "xfwm4 /general/button_layout": "O|SHMC"
+   },
+   "action": [
+    "nudge",
+    "left",
+    "0",
+    "right"
+   ],
+   "state": {
+    "message": "Title bar settings applied.",
+    "at": [
+     "right",
+     0
+    ]
+   },
+   "commands": [
+    [
+     "xfconf-query",
+     "-c",
+     "xfwm4",
+     "-p",
+     "/general/button_layout",
+     "-n",
+     "-t",
+     "string",
+     "-s",
+     "|OSHMC"
+    ]
+   ]
+  },
+  {
+   "name": "xfce_drag_spacer_refused",
+   "de": "xfce",
+   "keys": {
+    "xfwm4 /general/button_layout": "O|SHMC"
+   },
+   "action": [
+    "move",
+    "spacer",
+    "shelf",
+    "0",
+    "left",
+    "1"
+   ],
+   "state": {
+    "message": "xfwm4 has no such title bar button."
+   },
+   "commands": []
+  },
+  {
+   "name": "gnome_drag_keeps_appmenu",
+   "de": "gnome",
+   "keys": {
+    "org.gnome.desktop.wm.preferences button-layout": "appmenu:close"
+   },
+   "action": [
+    "move",
+    "close",
+    "right",
+    "0",
+    "left",
+    "0"
+   ],
+   "state": {
+    "message": "Title bar settings applied."
+   },
+   "commands": [
+    [
+     "gsettings",
+     "set",
+     "org.gnome.desktop.wm.preferences",
+     "button-layout",
+     "'appmenu,close:'"
+    ]
+   ]
+  },
+  {
+   "name": "cosmic_has_no_drag",
+   "de": "cosmic",
+   "action": [
+    "state"
+   ],
+   "state": {
+    "drag": false
+   },
+   "commands": []
+  },
+  {
+   "name": "lf_kde_default",
+   "de": "kde",
+   "action": [
+    "lf_state"
+   ],
+   "state": {
+    "supported": true,
+    "cursor": "bouncing",
+    "taskbar": true,
+    "timeout": "5",
+    "timeout_enabled": true,
+    "note": "",
+    "cursor_options": [
+     {
+      "id": "none"
+     },
+     {
+      "id": "static"
+     },
+     {
+      "id": "blinking"
+     },
+     {
+      "id": "bouncing"
+     }
+    ]
+   },
+   "commands": []
+  },
+  {
+   "name": "lf_kde_blinking_read",
+   "de": "kde",
+   "files": {
+    "klaunchrc": "[BusyCursorSettings]\nBlinking=true\nBouncing=false\nTimeout=12\n"
+   },
+   "action": [
+    "lf_state"
+   ],
+   "state": {
+    "cursor": "blinking",
+    "timeout": "12"
+   },
+   "commands": []
+  },
+  {
+   "name": "lf_kde_none_read",
+   "de": "kde",
+   "files": {
+    "klaunchrc": "[FeedbackStyle]\nBusyCursor=false\nTaskbarButton=false\n"
+   },
+   "action": [
+    "lf_state"
+   ],
+   "state": {
+    "cursor": "none",
+    "taskbar": false,
+    "timeout_enabled": false
+   },
+   "commands": []
+  },
+  {
+   "name": "lf_cursor_static",
+   "de": "kde",
+   "action": [
+    "lf_cursor",
+    "static"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "BusyCursorSettings",
+     "--key",
+     "Bouncing",
+     "--notify",
+     "--type",
+     "bool",
+     "false"
+    ]
+   ]
+  },
+  {
+   "name": "lf_cursor_none_keeps_bouncing_off",
+   "de": "kde",
+   "files": {
+    "klaunchrc": "[BusyCursorSettings]\nBouncing=false\n"
+   },
+   "action": [
+    "lf_cursor",
+    "none"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "FeedbackStyle",
+     "--key",
+     "BusyCursor",
+     "--notify",
+     "--type",
+     "bool",
+     "false"
+    ]
+   ]
+  },
+  {
+   "name": "lf_taskbar_off",
+   "de": "kde",
+   "action": [
+    "lf_taskbar",
+    "false"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "FeedbackStyle",
+     "--key",
+     "TaskbarButton",
+     "--notify",
+     "--type",
+     "bool",
+     "false"
+    ]
+   ]
+  },
+  {
+   "name": "lf_timeout_both_keys",
+   "de": "kde",
+   "action": [
+    "lf_timeout",
+    "10"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "BusyCursorSettings",
+     "--key",
+     "Timeout",
+     "--notify",
+     "10"
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "TaskbarButtonSettings",
+     "--key",
+     "Timeout",
+     "--notify",
+     "10"
+    ]
+   ]
+  },
+  {
+   "name": "lf_defaults",
+   "de": "kde",
+   "files": {
+    "klaunchrc": "[FeedbackStyle]\nTaskbarButton=false\n[BusyCursorSettings]\nTimeout=8\n[TaskbarButtonSettings]\nTimeout=8\n"
+   },
+   "action": [
+    "lf_defaults"
+   ],
+   "commands": [
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "FeedbackStyle",
+     "--key",
+     "TaskbarButton",
+     "--notify",
+     "--delete",
+     ""
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "BusyCursorSettings",
+     "--key",
+     "Timeout",
+     "--notify",
+     "--delete",
+     ""
+    ],
+    [
+     "kwriteconfig6",
+     "--file",
+     "klaunchrc",
+     "--group",
+     "TaskbarButtonSettings",
+     "--key",
+     "Timeout",
+     "--notify",
+     "--delete",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "lf_gnome_honest",
+   "de": "gnome",
+   "action": [
+    "lf_state"
+   ],
+   "state": {
+    "supported": false,
+    "note": "GNOME has no launch feedback settings: its window manager doesn't let you choose how the pointer or the task bar shows that an application is starting."
+   },
+   "commands": []
+  },
+  {
+   "name": "lf_gnome_writes_nothing",
+   "de": "gnome",
+   "action": [
+    "lf_cursor",
+    "none"
+   ],
+   "commands": []
+  }
+ ]
+}

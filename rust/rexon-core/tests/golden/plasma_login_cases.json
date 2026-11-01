@@ -1,0 +1,103 @@
+{
+  "qt": {
+    "empty_map": "00000000",
+    "save_args": "000000020000000c0063006f006e0066006900670000000a0000000134005b0047007200650065007400650072005d000a00570061006c006c007000610070006500720050006c007500670069006e00490064003d006f00720067002e006b00640065002e0069006d006100670065000a000a005b0047007200650065007400650072005d005b00570061006c006c00700061007000650072005d005b006f00720067002e006b00640065002e0069006d006100670065005d005b00470065006e006500720061006c005d000a0049006d006100670065003d00660069006c0065003a002f002f002f007600610072002f006c00690062002f0070006c00610073006d0061006c006f00670069006e002f00770061006c006c007000610070006500720073002f007200650078006f006e002d006200610063006b00670072006f0075006e0064002e006a00700067000a0000001400770061006c006c0070006100700065007200730000000b000000000100000028007200650078006f006e002d006200610063006b00670072006f0075006e0064002e006a00700067",
+    "sync_args": "000000030000002a0066006f006e00740063006f006e006600690067002f0066006f006e00740073002e0063006f006e00660000000a00ffffffff00000014006b006400650067006c006f00620061006c00730000000a000000004e005b00470065006e006500720061006c005d000a0066006f006e0074003d004e006f0074006f002000530061006e0073002c00310030000a0418043c044f003d0424043e043d0020d83cdfa8000a000000100070006c00610073006d0061007200630000000a0000000000",
+    "reset_bg_args": "000000020000000c0063006f006e0066006900670000000a00ffffffff0000001400770061006c006c0070006100700065007200730000000b0000000000",
+    "reply_success": "000000000000000000000002ffffffff",
+    "reply_helper_error": "00000000ffffffff00000001ffffffff",
+    "reply_denied": "000000000000000400000000ffffffff",
+    "reply_cancelled": "000000000000000500000000ffffffff",
+    "reply_busy": "000000000000000600000000ffffffff",
+    "reply_helper_error_desc": "0000000200000002006200000001000100000002006e000000020000000005ffffffff0000000100000006041d04350442",
+    "_источник": "Qt 6.12 QDataStream (версия 24) и KAuth 6.31 ActionReply::serialized(), проба снята руками; не переснимается"
+  },
+  "cases": {
+    "background_set": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.save",
+      "arguments": {
+        "config": "[Autologin]\nRelogin=false\nSession=plasma\nUser=tester\n\n[Greeter]\nShowClock=false\n\n[Greeter][Wallpaper][org.kde.image][General]\nImage=file:///var/lib/plasmalogin/wallpapers/rexon-background.jpg\n",
+        "wallpapers": [
+          "rexon-background.jpg"
+        ]
+      },
+      "fds": [
+        "_fd_rexon-background.jpg"
+      ]
+    },
+    "background_reset": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.save",
+      "arguments": {
+        "config": "[Autologin]\nRelogin=false\nSession=plasma\nUser=tester\n\n[Greeter]\nShowClock=false\n\n"
+      },
+      "fds": []
+    },
+    "background_from_color": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.save",
+      "arguments": {
+        "config": "[Greeter]\nWallpaperPluginId=org.kde.image\n\n[Greeter][Wallpaper][org.kde.color][General]\nColor=0,0,0\n\n[Greeter][Wallpaper][org.kde.image][General]\nImage=file:///var/lib/plasmalogin/wallpapers/rexon-background.jpg\n",
+        "wallpapers": [
+          "rexon-background.jpg"
+        ]
+      },
+      "fds": [
+        "_fd_rexon-background.jpg"
+      ]
+    },
+    "look_plasma_items": {
+      "items": [
+        "Keyboard layouts",
+        "NumLock preference",
+        "Font",
+        "Font rendering",
+        "Color scheme",
+        "Cursor theme and size",
+        "Plasma theme"
+      ],
+      "missing": [
+        "Language and locale settings",
+        "Screen arrangement, scale, and orientation settings"
+      ]
+    },
+    "look_plasma_sync": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.sync",
+      "arguments": {
+        "fontconfig/fonts.conf": "<fontconfig/>\n",
+        "kcminputrc": "[Keyboard]\nNumLock=0\n\n[Mouse]\ncursorTheme=Bibata-Modern-Ice\ncursorSize=24\n",
+        "kdeglobals": "[General]\nColorScheme=BreezeDark\nfont=Inter,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n",
+        "kxkbrc": "[Layout]\nLayoutList=us,ru\nUse=true\n",
+        "plasmarc": "[Theme]\nname=breeze-dark\n"
+      },
+      "fds": []
+    },
+    "look_other_items": {
+      "items": [
+        "Font",
+        "Font rendering",
+        "Color scheme",
+        "Cursor theme and size"
+      ],
+      "missing": [
+        "Language and locale settings",
+        "Keyboard layouts",
+        "Screen arrangement, scale, and orientation settings",
+        "NumLock preference",
+        "Plasma theme"
+      ]
+    },
+    "look_other_sync": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.sync",
+      "arguments": {
+        "fontconfig/fonts.conf": "<fontconfig/>\n",
+        "kcminputrc": "[Mouse]\ncursorTheme=Adwaita\ncursorSize=32\n",
+        "kdeglobals": "[General]\nColorScheme=BreezeDark\nfont=Cantarell,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n"
+      },
+      "fds": []
+    },
+    "look_reset": {
+      "action": "org.kde.kcontrol.kcmplasmalogin.reset",
+      "arguments": {},
+      "fds": []
+    }
+  }
+}

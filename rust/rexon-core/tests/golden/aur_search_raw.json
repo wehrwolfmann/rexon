@@ -1,0 +1,71 @@
+{
+ "resultcount": 4,
+ "results": [
+  {
+   "Description": "An alternative shell for KDE Plasma that aims to replicate the look and feel of Windows 7",
+   "FirstSubmitted": 1772325181,
+   "ID": 2132223,
+   "LastModified": 1781979659,
+   "Maintainer": "WackyIdeas",
+   "Name": "aerothemeplasma-desktop-git",
+   "NumVotes": 3,
+   "OutOfDate": null,
+   "PackageBase": "aerothemeplasma-desktop-git",
+   "PackageBaseID": 230281,
+   "Popularity": 1.000909,
+   "URL": "https://github.com/aeroshell-desktop/aerothemeplasma",
+   "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-desktop-git.tar.gz",
+   "Version": "6.7.0_724.r5fd2458-1"
+  },
+  {
+   "Description": "X11 session for AeroThemePlasma",
+   "FirstSubmitted": 1772325162,
+   "ID": 2132224,
+   "LastModified": 1781979683,
+   "Maintainer": "WackyIdeas",
+   "Name": "aerothemeplasma-desktop-x11-git",
+   "NumVotes": 1,
+   "OutOfDate": null,
+   "PackageBase": "aerothemeplasma-desktop-x11-git",
+   "PackageBaseID": 230280,
+   "Popularity": 0.06707,
+   "URL": "https://github.com/aeroshell-desktop/aerothemeplasma",
+   "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-desktop-x11-git.tar.gz",
+   "Version": "6.7.0_724.r5fd2458-1"
+  },
+  {
+   "Description": "Icon theme designed for AeroThemePlasma",
+   "FirstSubmitted": 1772325142,
+   "ID": 2001272,
+   "LastModified": 1773497621,
+   "Maintainer": "WackyIdeas",
+   "Name": "aerothemeplasma-icons-git",
+   "NumVotes": 0,
+   "OutOfDate": null,
+   "PackageBase": "aerothemeplasma-icons-git",
+   "PackageBaseID": 230279,
+   "Popularity": 0,
+   "URL": "https://gitgud.io/aeroshell/atp/aerothemeplasma-icons",
+   "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-icons-git.tar.gz",
+   "Version": "8.rb8d5ce1-1"
+  },
+  {
+   "Description": "Collection of sound themes designed for AeroThemePlasma",
+   "FirstSubmitted": 1772325118,
+   "ID": 1986512,
+   "LastModified": 1772325118,
+   "Maintainer": "WackyIdeas",
+   "Name": "aerothemeplasma-sounds-git",
+   "NumVotes": 0,
+   "OutOfDate": null,
+   "PackageBase": "aerothemeplasma-sounds-git",
+   "PackageBaseID": 230278,
+   "Popularity": 0,
+   "URL": "https://gitgud.io/aeroshell/atp/aerothemeplasma-sounds",
+   "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-sounds-git.tar.gz",
+   "Version": "4.r55d2f5f-1"
+  }
+ ],
+ "type": "search",
+ "version": 5
+}

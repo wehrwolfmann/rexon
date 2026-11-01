@@ -1,0 +1,4710 @@
+{
+ "источник": "rexon/qt_wallpaper_engine/qml_ui/bridge.py: RemoteAvailabilityQuery / RemoteSearchQuery / RemoteDetailsQuery / RemoteDownloadQuery",
+ "как_пересобрать": "python3 rust/rexon-gui/tests/golden/discover_queries_cases.py",
+ "pickDefault": [
+  {
+   "sources": [
+    "wallhaven",
+    "local"
+   ],
+   "daemonDefault": "local",
+   "expected": "local"
+  },
+  {
+   "sources": [
+    "wallhaven",
+    "wallpaper_engine"
+   ],
+   "daemonDefault": "wallhaven",
+   "expected": "wallhaven"
+  },
+  {
+   "sources": [],
+   "daemonDefault": "",
+   "expected": ""
+  },
+  {
+   "sources": [
+    "wallpaper_engine"
+   ],
+   "daemonDefault": "",
+   "expected": ""
+  }
+ ],
+ "cases": [
+  {
+   "name": "доступность: описания источников доезжают целиком",
+   "steps": [
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_availability",
+      "sources": [
+       {
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "displayName": "Wallhaven",
+        "supportsSearch": true,
+        "sorts": [
+         {
+          "key": "toplist",
+          "label": "Toplist"
+         },
+         {
+          "key": "date_added",
+          "label": "Date added"
+         }
+        ],
+        "tags": [
+         "anime",
+         "nature"
+        ],
+        "contentDir": "/tmp/wallhaven",
+        "ownerPluginId": "org.waywallen.wallhaven",
+        "remoteCapability": 1,
+        "remoteHint": "Download",
+        "avatarUrl": "https://example.invalid/avatar.png",
+        "filters": [
+         {
+          "id": "categories",
+          "title": "Categories",
+          "type": 1,
+          "values": [
+           "anime",
+           "nature",
+           "CG"
+          ],
+          "description": "Pick categories",
+          "confirmation": ""
+         }
+        ],
+        "actions": [
+         {
+          "id": "sign_in",
+          "label": "Sign in",
+          "group": "account",
+          "order": 1,
+          "kind": 2,
+          "visible": true,
+          "enabled": true,
+          "description": "Sign in to browse",
+          "requiredForBrowsing": false,
+          "browseDescription": "Sign in required",
+          "browseButtonLabel": "Sign in",
+          "fields": [
+           {
+            "key": "token",
+            "label": "Token",
+            "description": "Personal token",
+            "placeholder": "abc",
+            "secret": true,
+            "required": true
+           }
+          ]
+         }
+        ],
+        "status": [
+         {
+          "id": "account",
+          "label": "Account",
+          "group": "a",
+          "order": 1,
+          "value": "Not signed in"
+         }
+        ]
+       },
+       {
+        "id": "local",
+        "name": "Local"
+       }
+      ],
+      "defaultSourceId": "local"
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "sourcesChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 2,
+     "error": "",
+     "forwardError": true,
+     "sources": [
+      {
+       "id": "wallhaven",
+       "name": "Wallhaven",
+       "displayName": "Wallhaven",
+       "supportsSearch": true,
+       "sorts": [
+        {
+         "key": "toplist",
+         "label": "Toplist"
+        },
+        {
+         "key": "date_added",
+         "label": "Date added"
+        }
+       ],
+       "tags": [
+        "anime",
+        "nature"
+       ],
+       "contentDir": "/tmp/wallhaven",
+       "ownerPluginId": "org.waywallen.wallhaven",
+       "remoteCapability": 1,
+       "remoteHint": "Download",
+       "avatarUrl": "https://example.invalid/avatar.png",
+       "filters": [
+        {
+         "id": "categories",
+         "title": "Categories",
+         "type": 1,
+         "values": [
+          "anime",
+          "nature",
+          "CGI"
+         ],
+         "description": "Pick categories",
+         "confirmation": ""
+        }
+       ],
+       "actions": [
+        {
+         "id": "sign_in",
+         "label": "Sign in",
+         "group": "account",
+         "order": 1,
+         "kind": 2,
+         "visible": true,
+         "enabled": true,
+         "description": "Sign in to browse",
+         "requiredForBrowsing": false,
+         "browseDescription": "Sign in required",
+         "browseButtonLabel": "Sign in",
+         "fields": [
+          {
+           "key": "token",
+           "label": "Token",
+           "description": "Personal token",
+           "placeholder": "abc",
+           "secret": true,
+           "required": true
+          }
+         ]
+        }
+       ],
+       "status": [
+        {
+         "id": "account",
+         "label": "Account",
+         "group": "a",
+         "order": 1,
+         "value": "Not signed in"
+        }
+       ]
+      },
+      {
+       "id": "local",
+       "name": "Local",
+       "displayName": "Local",
+       "supportsSearch": false,
+       "sorts": [],
+       "tags": [],
+       "contentDir": "",
+       "ownerPluginId": "",
+       "remoteCapability": 0,
+       "remoteHint": "",
+       "avatarUrl": "",
+       "filters": [],
+       "actions": [],
+       "status": []
+      }
+     ],
+     "defaultSourceId": "local"
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "доступность: ошибка демона уходит и в глобальный обработчик",
+   "steps": [
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respondError",
+     "token": 1,
+     "status": "INTERNAL",
+     "message": "плагин источников не отвечает"
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "errorOccurred",
+     "error": "плагин источников не отвечает"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "плагин источников не отвечает"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 3,
+     "error": "плагин источников не отвечает",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "доступность: пустое сообщение ошибки заменяется номером",
+   "steps": [
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respondError",
+     "token": 1,
+     "status": "NOT_FOUND",
+     "message": ""
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "errorOccurred",
+     "error": "status 3"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "status 3"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 3,
+     "error": "status 3",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "доступность: forwardError=false не будит глобальный обработчик",
+   "steps": [
+    {
+     "op": "set",
+     "q": "availability",
+     "name": "forwardError",
+     "value": false
+    },
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respondError",
+     "token": 1,
+     "status": "INTERNAL",
+     "message": "тихая ошибка"
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "forwardErrorChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "errorOccurred",
+     "error": "тихая ошибка"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 3,
+     "error": "тихая ошибка",
+     "forwardError": false,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: три смены параметров дают ОДИН запрос первой страницы",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sortKey",
+     "value": "toplist"
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "query",
+     "value": "лес"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": true,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sortKeyChanged"
+    },
+    {
+     "q": "search",
+     "sig": "queryChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "лес",
+      "sort_key": "toplist",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "лес",
+     "sortKey": "toplist",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": true,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: повтор того же значения свойства запроса не рождает",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "бесконечная прокрутка: страница вида просит следующую",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": true,
+      "error": ""
+     }
+    },
+    {
+     "op": "modelFetchMore"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "b1",
+        "title": "Четвёртая",
+        "previewUrl": "https://example.invalid/b1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "b2",
+        "title": "Пятая",
+        "previewUrl": "https://example.invalid/b2.jpg",
+        "author": "автор",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "modelFetchMore"
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": false
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 2,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "reqFetchMore",
+     "row": 3
+    },
+    {
+     "q": "search.model",
+     "sig": "rowsInserted",
+     "first": 3,
+     "last": 4
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      "",
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 1,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "wallhaven",
+       "title": "Пятая",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "автор",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "бесконечная прокрутка: пустая страница гасит догрузку",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [],
+      "hasMore": true,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: догрузка при исчерпанной выдаче ничего не шлёт",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "loadMore"
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "fetchMore"
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: loadMore во время ожидания страницы не задваивает",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": true,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "loadMore"
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "loadMore"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "b1",
+        "title": "Четвёртая",
+        "previewUrl": "https://example.invalid/b1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "b2",
+        "title": "Пятая",
+        "previewUrl": "https://example.invalid/b2.jpg",
+        "author": "автор",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       }
+      ],
+      "hasMore": true,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": false
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 2,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "rowsInserted",
+     "first": 3,
+     "last": 4
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": true,
+     "errorText": "",
+     "errorTextTrace": [
+      "",
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 1,
+     "noMore": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "wallhaven",
+       "title": "Пятая",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "автор",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: текст ошибки источника показывается без статуса Error",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [],
+      "hasMore": false,
+      "error": "источник недоступен"
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "источник недоступен",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "источник недоступен",
+     "errorTextTrace": [
+      "источник недоступен"
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: ошибка демона поднимает статус Error",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respondError",
+     "token": 1,
+     "status": "INTERNAL",
+     "message": "источник упал"
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "errorOccurred",
+     "error": "источник упал"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "источник упал"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 3,
+     "error": "источник упал",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "источник упал",
+     "errorTextTrace": [],
+     "errorTrace": [
+      "источник упал"
+     ],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: без соединения статус сразу Error, кадр не уходит",
+   "steps": [
+    {
+     "op": "connected",
+     "value": false
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "connected",
+     "value": true
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "reload"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "search",
+     "sig": "errorOccurred",
+     "error": "no connection to the daemon"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "no connection to the daemon"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [
+      "no connection to the daemon"
+     ],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "поиск: запрет просмотра чистит выдачу, разрешение перезагружает",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": true,
+      "error": ""
+     }
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "browsingEnabled",
+     "value": false
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "reload"
+    },
+    {
+     "op": "call",
+     "q": "search",
+     "method": "loadMore"
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "browsingEnabled",
+     "value": true
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "b1",
+        "title": "Четвёртая",
+        "previewUrl": "https://example.invalid/b1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "b2",
+        "title": "Пятая",
+        "previewUrl": "https://example.invalid/b2.jpg",
+        "author": "автор",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search",
+     "sig": "browsingEnabledChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search.model",
+     "sig": "hasMoreChanged",
+     "value": false
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "browsingEnabledChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      "",
+      "",
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "wallhaven",
+       "title": "Пятая",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "автор",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "фильтры: подпись уходит источнику его собственным значением",
+   "steps": [
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_availability",
+      "sources": [
+       {
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "displayName": "Wallhaven",
+        "supportsSearch": true,
+        "sorts": [
+         {
+          "key": "toplist",
+          "label": "Toplist"
+         },
+         {
+          "key": "date_added",
+          "label": "Date added"
+         }
+        ],
+        "tags": [
+         "anime",
+         "nature"
+        ],
+        "contentDir": "/tmp/wallhaven",
+        "ownerPluginId": "org.waywallen.wallhaven",
+        "remoteCapability": 1,
+        "remoteHint": "Download",
+        "avatarUrl": "https://example.invalid/avatar.png",
+        "filters": [
+         {
+          "id": "categories",
+          "title": "Categories",
+          "type": 1,
+          "values": [
+           "anime",
+           "nature",
+           "CG"
+          ],
+          "description": "Pick categories",
+          "confirmation": ""
+         }
+        ],
+        "actions": [
+         {
+          "id": "sign_in",
+          "label": "Sign in",
+          "group": "account",
+          "order": 1,
+          "kind": 2,
+          "visible": true,
+          "enabled": true,
+          "description": "Sign in to browse",
+          "requiredForBrowsing": false,
+          "browseDescription": "Sign in required",
+          "browseButtonLabel": "Sign in",
+          "fields": [
+           {
+            "key": "token",
+            "label": "Token",
+            "description": "Personal token",
+            "placeholder": "abc",
+            "secret": true,
+            "required": true
+           }
+          ]
+         }
+        ],
+        "status": [
+         {
+          "id": "account",
+          "label": "Account",
+          "group": "a",
+          "order": 1,
+          "value": "Not signed in"
+         }
+        ]
+       }
+      ],
+      "defaultSourceId": "wallhaven"
+     }
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "set",
+     "q": "search",
+     "name": "tags",
+     "value": [
+      "Anime",
+      "Nature",
+      "Компьютерная графика"
+     ]
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "sourcesChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "finished"
+    },
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "tagsChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": [
+       "Anime",
+       "Nature",
+       "Компьютерная графика"
+      ]
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 2,
+     "error": "",
+     "forwardError": true,
+     "sources": [
+      {
+       "id": "wallhaven",
+       "name": "Wallhaven",
+       "displayName": "Wallhaven",
+       "supportsSearch": true,
+       "sorts": [
+        {
+         "key": "toplist",
+         "label": "Toplist"
+        },
+        {
+         "key": "date_added",
+         "label": "Date added"
+        }
+       ],
+       "tags": [
+        "anime",
+        "nature"
+       ],
+       "contentDir": "/tmp/wallhaven",
+       "ownerPluginId": "org.waywallen.wallhaven",
+       "remoteCapability": 1,
+       "remoteHint": "Download",
+       "avatarUrl": "https://example.invalid/avatar.png",
+       "filters": [
+        {
+         "id": "categories",
+         "title": "Categories",
+         "type": 1,
+         "values": [
+          "anime",
+          "nature",
+          "CGI"
+         ],
+         "description": "Pick categories",
+         "confirmation": ""
+        }
+       ],
+       "actions": [
+        {
+         "id": "sign_in",
+         "label": "Sign in",
+         "group": "account",
+         "order": 1,
+         "kind": 2,
+         "visible": true,
+         "enabled": true,
+         "description": "Sign in to browse",
+         "requiredForBrowsing": false,
+         "browseDescription": "Sign in required",
+         "browseButtonLabel": "Sign in",
+         "fields": [
+          {
+           "key": "token",
+           "label": "Token",
+           "description": "Personal token",
+           "placeholder": "abc",
+           "secret": true,
+           "required": true
+          }
+         ]
+        }
+       ],
+       "status": [
+        {
+         "id": "account",
+         "label": "Account",
+         "group": "a",
+         "order": 1,
+         "value": "Not signed in"
+        }
+       ]
+      }
+     ],
+     "defaultSourceId": "wallhaven"
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [
+      "Anime",
+      "Nature",
+      "Компьютерная графика"
+     ],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "детали: сброс полей, потом запрос",
+   "steps": [
+    {
+     "op": "set",
+     "q": "details",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "set",
+     "q": "details",
+     "name": "itemId",
+     "value": "a1"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_details",
+      "description": "Описание обоины",
+      "size": "12 МБ",
+      "tags": [
+       "anime",
+       "nature"
+      ],
+      "error": "",
+      "width": 1920,
+      "height": 1080,
+      "webUrl": "https://example.invalid/a1"
+     }
+    },
+    {
+     "op": "set",
+     "q": "details",
+     "name": "itemId",
+     "value": ""
+    },
+    {
+     "op": "settle"
+    }
+   ],
+   "events": [
+    {
+     "q": "details",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "details",
+     "sig": "itemIdChanged"
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_details",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a1"
+     }
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "finished"
+    },
+    {
+     "q": "details",
+     "sig": "itemIdChanged"
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "детали: ошибка демона не оставляет старых полей",
+   "steps": [
+    {
+     "op": "set",
+     "q": "details",
+     "name": "itemId",
+     "value": "a1"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_details",
+      "description": "Первое",
+      "size": "1 МБ",
+      "tags": [],
+      "error": "",
+      "width": 1,
+      "height": 2,
+      "webUrl": "u"
+     }
+    },
+    {
+     "op": "set",
+     "q": "details",
+     "name": "itemId",
+     "value": "a2"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respondError",
+     "token": 2,
+     "status": "NOT_FOUND",
+     "message": "нет такого предмета"
+    }
+   ],
+   "events": [
+    {
+     "q": "details",
+     "sig": "itemIdChanged"
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_details",
+     "request": {
+      "source_id": "",
+      "id": "a1"
+     }
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "finished"
+    },
+    {
+     "q": "details",
+     "sig": "itemIdChanged"
+    },
+    {
+     "q": "details",
+     "sig": "loaded"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_details",
+     "request": {
+      "source_id": "",
+      "id": "a2"
+     }
+    },
+    {
+     "q": "details",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "details",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "details",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "details",
+     "sig": "errorOccurred",
+     "error": "нет такого предмета"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "нет такого предмета"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 3,
+     "error": "нет такого предмета",
+     "sourceId": "",
+     "itemId": "a2",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "скачивание: принято демоном",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "start",
+     "sourceId": "wallhaven",
+     "itemId": "a1"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_download",
+      "accepted": true,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_download",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a1"
+     }
+    },
+    {
+     "q": "download",
+     "sig": "accepted",
+     "sourceId": "wallhaven",
+     "itemId": "a1"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 2,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "скачивание: отказ возвращает карточку в исходное состояние",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "start",
+     "sourceId": "wallhaven",
+     "itemId": "a1"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_download",
+      "accepted": false,
+      "error": "источник отказал"
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_download",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a1"
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "rejected",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "error": "источник отказал"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 2,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "скачивание: ошибка демона тоже снимает очередь",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "start",
+     "sourceId": "wallhaven",
+     "itemId": "a1"
+    },
+    {
+     "op": "respondError",
+     "token": 2,
+     "status": "INTERNAL",
+     "message": "демон упал"
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_download",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a1"
+     }
+    },
+    {
+     "q": "download",
+     "sig": "errorChanged"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 3
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "errorOccurred",
+     "error": "демон упал"
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": "демон упал"
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "rejected",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "error": "демон упал"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 3,
+     "error": "демон упал"
+    }
+   }
+  },
+  {
+   "name": "скачивание: пустые идентификаторы не рождают кадра",
+   "steps": [
+    {
+     "op": "call",
+     "q": "download",
+     "method": "start",
+     "sourceId": "",
+     "itemId": "a1"
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "start",
+     "sourceId": "wallhaven",
+     "itemId": ""
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "remove",
+     "sourceId": "",
+     "itemId": ""
+    }
+   ],
+   "events": [],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "удаление: скачанная обоина снимается со склада",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "remove",
+     "sourceId": "wallhaven",
+     "itemId": "a2"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_uninstall",
+      "removed": true,
+      "error": ""
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_uninstall",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a2"
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "dataChanged",
+     "first": 1,
+     "last": 1,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "q": "download",
+     "sig": "removed",
+     "sourceId": "wallhaven",
+     "itemId": "a2"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 2,
+     "error": ""
+    }
+   }
+  },
+  {
+   "name": "удаление: отказ оставляет карточку скачанной",
+   "steps": [
+    {
+     "op": "set",
+     "q": "search",
+     "name": "sourceId",
+     "value": "wallhaven"
+    },
+    {
+     "op": "settle"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_search",
+      "items": [
+       {
+        "id": "a1",
+        "title": "Первая",
+        "previewUrl": "https://example.invalid/a1.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a2",
+        "title": "Вторая",
+        "previewUrl": "https://example.invalid/a2.jpg",
+        "author": "",
+        "downloaded": true,
+        "sourceId": "wallhaven",
+        "wpType": "scene"
+       },
+       {
+        "id": "a3",
+        "title": "Третья",
+        "previewUrl": "https://example.invalid/a3.jpg",
+        "author": "",
+        "downloaded": false,
+        "sourceId": "wallhaven",
+        "wpType": "web"
+       }
+      ],
+      "hasMore": false,
+      "error": ""
+     }
+    },
+    {
+     "op": "call",
+     "q": "download",
+     "method": "remove",
+     "sourceId": "wallhaven",
+     "itemId": "a2"
+    },
+    {
+     "op": "respond",
+     "token": 2,
+     "payload": {
+      "kind": "remote_uninstall",
+      "removed": false,
+      "error": "файл занят"
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "search",
+     "sig": "sourceIdChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_search",
+     "request": {
+      "source_id": "wallhaven",
+      "query": "",
+      "sort_key": "",
+      "page": 1,
+      "required_tags": []
+     }
+    },
+    {
+     "q": "search.model",
+     "sig": "modelReset"
+    },
+    {
+     "q": "search.model",
+     "sig": "countChanged"
+    },
+    {
+     "q": "search",
+     "sig": "stateChanged"
+    },
+    {
+     "q": "search",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "search",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "search",
+     "sig": "finished"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "sent",
+     "token": 2,
+     "field": "remote_uninstall",
+     "request": {
+      "source_id": "wallhaven",
+      "id": "a2"
+     }
+    },
+    {
+     "q": "download",
+     "sig": "removeFailed",
+     "sourceId": "wallhaven",
+     "itemId": "a2",
+     "error": "файл занят"
+    },
+    {
+     "q": "download",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "download",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "download",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 0,
+     "error": "",
+     "forwardError": true,
+     "sources": [],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 2,
+     "error": "",
+     "sourceId": "wallhaven",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [
+      ""
+     ],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": true,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ]
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 2,
+     "error": ""
+    }
+   }
+  }
+ ]
+}

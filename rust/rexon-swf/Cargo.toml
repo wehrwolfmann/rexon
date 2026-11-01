@@ -1,0 +1,37 @@
+# rexon-swf — Flash-обои (SWF) без Qt: Ruffle рисует через wgpu (Vulkan) в окно
+# хоста по raw-handle либо в mmap-кадр для расширения оболочки GNOME/Cinnamon.
+# Размещение окна (LayerShellQt, xprop), разбор REXON_WP_* и путь счётчика
+# поколения — забота хоста (`rexon-gui`, режим `rexon-wallpaper-host --mode swf`)
+# и ядра (`rexon-core::wallpaper_mmap`); здесь только отрисовка, темп, пауза, звук.
+#
+# Лицензия — Apache-2.0, как у всего Rexon (решение владельца 02.10.2026).
+[package]
+name = "rexon-swf"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Flash-обои Rexon: Ruffle + wgpu без Qt"
+
+[features]
+default = []
+# Звук Ruffle через cpal (ALSA). Выключен в сборке по умолчанию и во время
+# выполнения (`Settings::audio_volume = None`). symphonia (MPL-2.0) не тянется:
+# включён только микшер `ruffle_core/audio` (PCM/ADPCM), без mp3/aac.
+sound = ["dep:cpal", "ruffle_core/audio"]
+
+[dependencies]
+# Ruffle — git-зависимость на закреплённую ревизию (на crates.io его нет).
+# Лицензия Ruffle — MIT OR Apache-2.0. Фича `default_font` встраивает
+# подмножество шрифта Noto Sans (SIL OFL-1.1): текст лицензии шрифта кладётся
+# в поставку (packaging/aur/PKGBUILD).
+ruffle_core = { git = "https://github.com/ruffle-rs/ruffle", rev = "9525d0fb8773a0d1868940918385e66360927a07", features = ["default_font"] }
+ruffle_render_wgpu = { git = "https://github.com/ruffle-rs/ruffle", rev = "9525d0fb8773a0d1868940918385e66360927a07" }
+futures = "0.3"
+ash = "0.38"
+libc = "0.2"
+# Общий журнал Rexon (`applog`): строки звука идут в тот же файл, что и
+# строки хоста обоев (`rexon-wallpaper-host --mode swf`). Ядро без Qt.
+rexon-core = { path = "../rexon-core" }
+raw-window-handle = "0.6"
+cpal = { version = "0.17", optional = true }

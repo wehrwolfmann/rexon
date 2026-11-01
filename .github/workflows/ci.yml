@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Smaller debug builds: the runner disk is limited, and CI needs no debugger info.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  LANG: C.UTF-8
+
+jobs:
+  core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git rust protobuf pkgconf openssl gettext zstd
+
+      - uses: actions/checkout@v4
+
+      - name: Mark the checkout as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: core
+
+      # Run from rust/: the cargo aliases and the [env] section of
+      # rust/.cargo/config.toml are only read from there.
+      - name: Test rexon-core
+        working-directory: rust
+        run: cargo test-core-isolated --locked --no-fail-fast
+
+  app:
+    name: Build the application
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git rust protobuf pkgconf openssl gettext zstd \
+            qt6-base qt6-declarative qt6-websockets qt6-multimedia qt6-svg \
+            layer-shell-qt wayland libglvnd mpv alsa-lib \
+            jre-openjdk-headless
+
+      - uses: actions/checkout@v4
+
+      - name: Mark the checkout as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: app
+
+      - name: Build core, window and QML libraries
+        working-directory: rust
+        run: cargo build-app-debug --locked
+
+      - name: Build the startup-movie player
+        working-directory: rust
+        run: cargo build --locked -p rexon-splash-overlay
+
+  i18n:
+    name: Translation template
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed bash gettext
+
+      - uses: actions/checkout@v4
+
+      - name: Check that po/rexon.pot is up to date
+        run: scripts/i18n-update.sh --check

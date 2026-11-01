@@ -1,0 +1,296 @@
+{
+  "appearance_steam_colors": {
+    "accent": "#66c0f4",
+    "accent_green": "#5ba32b",
+    "accent_green_hover": "#6fc733",
+    "author_self": "#ff5252",
+    "bg_card": "#1e2d3d",
+    "bg_card_hover": "#263d52",
+    "bg_primary": "#1b2838",
+    "bg_secondary": "#16202d",
+    "border": "#2a4055",
+    "rating_star": "#ffc300",
+    "scrollbar": "255,255,255",
+    "text_dim": "#ffffff",
+    "text_primary": "#ffffff",
+    "text_secondary": "#ffffff"
+  },
+  "available_skins": [
+    [
+      "system",
+      "Системный (как в системе)"
+    ],
+    [
+      "steam_dark",
+      "Тёмный (Steam)"
+    ],
+    [
+      "light",
+      "Светлый"
+    ],
+    [
+      "synthwave",
+      "Synthwave / Neon Space Retro"
+    ],
+    [
+      "waywallen",
+      "Тёмный (Material)"
+    ]
+  ],
+  "dark_colors": {
+    "muted": "#ffffff",
+    "primary": "#ffffff",
+    "secondary": "#ffffff"
+  },
+  "dark_text_colors_fn": [
+    "#ffffff",
+    "#ffffff",
+    "#ffffff"
+  ],
+  "default_skin": "steam_dark",
+  "escape": {
+    "": "",
+    "<b>тег</b>": "&lt;b&gt;тег&lt;/b&gt;",
+    "a < b & c > d": "a &lt; b &amp; c &gt; d",
+    "амперсанд & сам по себе": "амперсанд &amp; сам по себе",
+    "кавычки \"двойные\" и 'одинарные'": "кавычки \"двойные\" и 'одинарные'",
+    "простой": "простой",
+    "путь/к/файлу": "путь/к/файлу",
+    "строка1\nстрока2": "строка1<br>строка2"
+  },
+  "escape_nonstr": [
+    "None",
+    "42",
+    "3.5",
+    "['a', '&lt;b&gt;']"
+  ],
+  "heading_outline": {
+    "light": null,
+    "steam_dark": null,
+    "synthwave": [
+      "#2bd83a",
+      "#9dff7a",
+      1
+    ],
+    "system": null
+  },
+  "indicator_svg": {
+    "#0d1b2a": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 14 14\"><path d=\"M3 7.6l2.7 2.7L11.2 4.2\" fill=\"none\" stroke=\"#0d1b2a\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    "#ffffff": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 14 14\"><path d=\"M3 7.6l2.7 2.7L11.2 4.2\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    "0d1b2a": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 14 14\"><path d=\"M3 7.6l2.7 2.7L11.2 4.2\" fill=\"none\" stroke=\"0d1b2a\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>"
+  },
+  "is_valid": {
+    "": false,
+    "light": true,
+    "steam_dark": true,
+    "synthwave": true,
+    "system": true,
+    "нет-такого": false
+  },
+  "light_colors": {
+    "muted": "#5d6166",
+    "primary": "#1f2326",
+    "secondary": "#3d4147"
+  },
+  "light_text_colors_fn": [
+    "#1f2326",
+    "#3d4147",
+    "#5d6166"
+  ],
+  "neutral_rgba": {
+    "0.0": "rgba(127,127,127,0)",
+    "0.06": "rgba(127,127,127,0.06)",
+    "0.125": "rgba(127,127,127,0.125)",
+    "0.5": "rgba(127,127,127,0.5)",
+    "0.6": "rgba(127,127,127,0.6)",
+    "1.0": "rgba(127,127,127,1)"
+  },
+  "rich_text": {
+    "": false,
+    "5 < 7": false,
+    "</code>": true,
+    "<3": false,
+    "<a href=\"x\">ссылка</a>": true,
+    "<b>жирный</b>": true,
+    "<br>": true,
+    "<div class='x'>": true,
+    "<img src=y />": true,
+    "<не-тег>": false,
+    "a < b и c > d": true,
+    "обычный текст": false,
+    "текст\nс переводом <i>строки</i>": true
+  },
+  "scrollbar_dark": "\nQScrollBar:vertical {\n    background: transparent;\n    width: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:vertical {\n    background: rgba(255,255,255,0.28);\n    border-radius: 5px;\n    min-height: 28px;\n}\nQScrollBar::handle:vertical:hover   { background: rgba(255,255,255,0.45); }\nQScrollBar::handle:vertical:pressed { background: rgba(255,255,255,0.60); }\nQScrollBar:horizontal {\n    background: transparent;\n    height: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:horizontal {\n    background: rgba(255,255,255,0.28);\n    border-radius: 5px;\n    min-width: 28px;\n}\nQScrollBar::handle:horizontal:hover   { background: rgba(255,255,255,0.45); }\nQScrollBar::handle:horizontal:pressed { background: rgba(255,255,255,0.60); }\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+  "scrollbar_dark_track": "\nQScrollBar:vertical {\n    background: #1b2838;\n    width: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:vertical {\n    background: rgba(255,255,255,0.28);\n    border-radius: 5px;\n    min-height: 28px;\n}\nQScrollBar::handle:vertical:hover   { background: rgba(255,255,255,0.45); }\nQScrollBar::handle:vertical:pressed { background: rgba(255,255,255,0.60); }\nQScrollBar:horizontal {\n    background: #1b2838;\n    height: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:horizontal {\n    background: rgba(255,255,255,0.28);\n    border-radius: 5px;\n    min-width: 28px;\n}\nQScrollBar::handle:horizontal:hover   { background: rgba(255,255,255,0.45); }\nQScrollBar::handle:horizontal:pressed { background: rgba(255,255,255,0.60); }\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+  "scrollbar_light": "\nQScrollBar:vertical {\n    background: transparent;\n    width: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:vertical {\n    background: rgba(0,0,0,0.28);\n    border-radius: 5px;\n    min-height: 28px;\n}\nQScrollBar::handle:vertical:hover   { background: rgba(0,0,0,0.45); }\nQScrollBar::handle:vertical:pressed { background: rgba(0,0,0,0.60); }\nQScrollBar:horizontal {\n    background: transparent;\n    height: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:horizontal {\n    background: rgba(0,0,0,0.28);\n    border-radius: 5px;\n    min-width: 28px;\n}\nQScrollBar::handle:horizontal:hover   { background: rgba(0,0,0,0.45); }\nQScrollBar::handle:horizontal:pressed { background: rgba(0,0,0,0.60); }\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+  "scrollbar_light_track": "\nQScrollBar:vertical {\n    background: #f0f0f0;\n    width: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:vertical {\n    background: rgba(0,0,0,0.28);\n    border-radius: 5px;\n    min-height: 28px;\n}\nQScrollBar::handle:vertical:hover   { background: rgba(0,0,0,0.45); }\nQScrollBar::handle:vertical:pressed { background: rgba(0,0,0,0.60); }\nQScrollBar:horizontal {\n    background: #f0f0f0;\n    height: 11px;\n    margin: 0;\n    border: none;\n}\nQScrollBar::handle:horizontal {\n    background: rgba(0,0,0,0.28);\n    border-radius: 5px;\n    min-width: 28px;\n}\nQScrollBar::handle:horizontal:hover   { background: rgba(0,0,0,0.45); }\nQScrollBar::handle:horizontal:pressed { background: rgba(0,0,0,0.60); }\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+  "skin_colors": {
+    "light": {
+      "accent": "#2563eb",
+      "accent_green": "#2e9e3f",
+      "accent_green_hover": "#37b84a",
+      "author_self": "#d22d2d",
+      "bg_card": "#ffffff",
+      "bg_card_hover": "#e3eaf2",
+      "bg_primary": "#f4f5f6",
+      "bg_secondary": "#eceef0",
+      "border": "#cdd3da",
+      "rating_star": "#e0a800",
+      "scrollbar": "0,0,0",
+      "text_dim": "#5d6166",
+      "text_primary": "#1f2326",
+      "text_secondary": "#3d4147"
+    },
+    "steam_dark": {
+      "accent": "#66c0f4",
+      "accent_green": "#5ba32b",
+      "accent_green_hover": "#6fc733",
+      "author_self": "#ff5252",
+      "bg_card": "#1e2d3d",
+      "bg_card_hover": "#263d52",
+      "bg_primary": "#1b2838",
+      "bg_secondary": "#16202d",
+      "border": "#2a4055",
+      "rating_star": "#ffc300",
+      "scrollbar": "255,255,255",
+      "text_dim": "#ffffff",
+      "text_primary": "#ffffff",
+      "text_secondary": "#ffffff"
+    },
+    "synthwave": {
+      "accent": "#00f0ff",
+      "accent_green": "#1f7a30",
+      "accent_green_hover": "#39ff14",
+      "author_self": "#ff2d95",
+      "bg_card": "#1c0a38",
+      "bg_card_hover": "#2a0f52",
+      "bg_primary": "#1a0533",
+      "bg_secondary": "#0d1b2a",
+      "border": "#00f0ff",
+      "rating_star": "#ffd400",
+      "scrollbar": "0,240,255",
+      "text_dim": "#9fb4c6",
+      "text_primary": "#eaf6ff",
+      "text_secondary": "#00f0ff"
+    },
+    "system": {
+      "accent": "#66c0f4",
+      "accent_green": "#5ba32b",
+      "accent_green_hover": "#6fc733",
+      "author_self": "#ff5252",
+      "bg_card": "#1e2d3d",
+      "bg_card_hover": "#263d52",
+      "bg_primary": "#1b2838",
+      "bg_secondary": "#16202d",
+      "border": "#2a4055",
+      "rating_star": "#ffc300",
+      "scrollbar": "255,255,255",
+      "text_dim": "#ffffff",
+      "text_primary": "#ffffff",
+      "text_secondary": "#ffffff"
+    },
+    "нет-такого": {
+      "accent": "#66c0f4",
+      "accent_green": "#5ba32b",
+      "accent_green_hover": "#6fc733",
+      "author_self": "#ff5252",
+      "bg_card": "#1e2d3d",
+      "bg_card_hover": "#263d52",
+      "bg_primary": "#1b2838",
+      "bg_secondary": "#16202d",
+      "border": "#2a4055",
+      "rating_star": "#ffc300",
+      "scrollbar": "255,255,255",
+      "text_dim": "#ffffff",
+      "text_primary": "#ffffff",
+      "text_secondary": "#ffffff"
+    }
+  },
+  "skin_desc": {
+    "": "Тёмно-синяя палитра в стиле Steam-клиента. По умолчанию.",
+    "light": "Светлая нейтральная палитра (тёмный текст на белом фоне).",
+    "steam_dark": "Тёмно-синяя палитра в стиле Steam-клиента. По умолчанию.",
+    "synthwave": "Неон-ретро: градиент фиолет→синий, акценты розовый/зелёный/голубой, неон-рамки и скругления. Свечение приближено (Qt QSS не поддерживает box-shadow).",
+    "system": "Палитра берётся из системной темы Plasma/Qt.",
+    "нет-такого": "Тёмно-синяя палитра в стиле Steam-клиента. По умолчанию."
+  },
+  "skin_palette": {
+    "light": {
+      "AlternateBase": "#eceef0",
+      "Base": "#ffffff",
+      "Button": "#e3e6e8",
+      "ButtonText": "#1f2326",
+      "Highlight": "#3b82f6",
+      "HighlightedText": "#ffffff",
+      "Link": "#2563eb",
+      "PlaceholderText": "#7a8086",
+      "Text": "#1f2326",
+      "ToolTipBase": "#ffffff",
+      "ToolTipText": "#1f2326",
+      "Window": "#f4f5f6",
+      "WindowText": "#1f2326"
+    },
+    "steam_dark": {
+      "AlternateBase": "#1e2d3d",
+      "Base": "#16202d",
+      "Button": "#2a4055",
+      "ButtonText": "#ffffff",
+      "Highlight": "#66c0f4",
+      "HighlightedText": "#0b1722",
+      "Link": "#66c0f4",
+      "PlaceholderText": "#9fb4c6",
+      "Text": "#ffffff",
+      "ToolTipBase": "#1e2d3d",
+      "ToolTipText": "#ffffff",
+      "Window": "#1b2838",
+      "WindowText": "#ffffff"
+    },
+    "synthwave": {
+      "AlternateBase": "#160a2e",
+      "Base": "#0d1b2a",
+      "Button": "#1f0a3a",
+      "ButtonText": "#00f0ff",
+      "Highlight": "#ff2d95",
+      "HighlightedText": "#0d1b2a",
+      "Link": "#00f0ff",
+      "PlaceholderText": "#8aa6c0",
+      "Text": "#eaf6ff",
+      "ToolTipBase": "#0d1b2a",
+      "ToolTipText": "#00f0ff",
+      "Window": "#1a0533",
+      "WindowText": "#eaf6ff"
+    },
+    "system": null
+  },
+  "skin_qss": {
+    "light": "",
+    "steam_dark": "",
+    "synthwave": "\n/* ── Synthwave / Neon Space Retro (application overlay) ── */\nQWidget {\n    color: #eaf6ff;\n}\nQMainWindow, QDialog, QScrollArea > QWidget > QWidget {\n    background-color: qlineargradient(x1:0, y1:0, x2:0.4, y2:1,\n        stop:0 #1a0533, stop:1 #0d1b2a);\n}\nQTabWidget::pane {\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    background: transparent;\n}\nQTabBar::tab {\n    background: rgba(20,8,40,0.55);\n    color: #eaf6ff;\n    border: 1px solid rgba(0,240,255,0.35);\n    border-bottom: none;\n    border-top-left-radius: 8px;\n    border-top-right-radius: 8px;\n    padding: 8px 16px;\n    margin-right: 2px;\n    font-weight: bold;\n}\nQTabBar::tab:selected {\n    background: rgba(40,12,70,0.75);\n    color: #00f0ff;\n    border: 2px solid #00f0ff;\n    border-bottom: none;\n}\nQTabBar::tab:hover { color: #ff2d95; }\nQPushButton {\n    background: rgba(20,8,40,0.55);\n    color: #00f0ff;\n    border: 2px solid #00f0ff;\n    border-radius: 10px;\n    padding: 7px 16px;\n    font-weight: bold;\n}\nQPushButton:hover {\n    background: rgba(40,12,70,0.75);\n    border: 2px solid #ff2d95;\n    color: #ff2d95;\n}\nQPushButton:pressed { background: rgba(255,45,149,0.25); }\nQPushButton:disabled {\n    border: 2px solid rgba(120,120,140,0.4);\n    color: rgba(180,180,200,0.5);\n}\nQLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit {\n    background: rgba(13,27,42,0.75);\n    color: #eaf6ff;\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    padding: 5px 8px;\n    selection-background-color: #ff2d95;\n}\nQLineEdit:focus, QComboBox:focus { border: 2px solid #ff2d95; }\nQComboBox QAbstractItemView {\n    background: #0d1b2a;\n    color: #eaf6ff;\n    border: 1px solid #00f0ff;\n    selection-background-color: rgba(255,45,149,0.45);\n}\nQCheckBox, QRadioButton, QLabel { color: #eaf6ff; background: transparent; }\n/* Полная стилизация индикаторов: если задать только :checked, Qt рисует\n   невыбранные как пустой бокс, а радио без border-radius выходит КВАДРАТНЫМ\n   (баг 2026-06-22: зелёный квадрат вместо круга). Описываем обе стадии +\n   форму. */\nQCheckBox::indicator, QRadioButton::indicator {\n    width: 14px;\n    height: 14px;\n    border: 2px solid #00f0ff;\n    background: rgba(13,27,42,0.75);\n}\nQRadioButton::indicator { border-radius: 9px; }   /* круг */\nQCheckBox::indicator { border-radius: 4px; }      /* скруглённый квадрат */\nQCheckBox::indicator:checked, QRadioButton::indicator:checked {\n    background: #39ff14;\n    border: 2px solid #39ff14;\n    /* галочка внутри — иначе «просто зелёное пятно», не видно что\n       применилось (общий хелпер indicator_check_url, правило #12) */\n    image: url(<CHECK>);\n}\nQGroupBox {\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    margin-top: 8px;\n}\nQProgressBar {\n    background: rgba(13,27,42,0.75);\n    border: 1px solid #00f0ff;\n    border-radius: 6px;\n    text-align: center;\n    color: #eaf6ff;\n}\nQProgressBar::chunk {\n    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\n        stop:0 #ff2d95, stop:1 #00f0ff);\n    border-radius: 6px;\n}\nQScrollBar:vertical, QScrollBar:horizontal {\n    background: transparent; width: 11px; height: 11px; margin: 0; border: none;\n}\nQScrollBar::handle:vertical, QScrollBar::handle:horizontal {\n    background: rgba(0,240,255,0.35); border-radius: 5px;\n    min-height: 28px; min-width: 28px;\n}\nQScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {\n    background: rgba(255,45,149,0.55);\n}\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+    "system": "",
+    "нет-такого": ""
+  },
+  "sw_tokens": {
+    "card": "rgba(20,8,40,0.55)",
+    "card_hi": "rgba(40,12,70,0.75)",
+    "cyan": "#00f0ff",
+    "field": "rgba(13,27,42,0.75)",
+    "green": "#39ff14",
+    "navy": "#0d1b2a",
+    "pink": "#ff2d95",
+    "text": "#eaf6ff",
+    "violet": "#1a0533"
+  },
+  "synthwave_qss": "\n/* ── Synthwave / Neon Space Retro (application overlay) ── */\nQWidget {\n    color: #eaf6ff;\n}\nQMainWindow, QDialog, QScrollArea > QWidget > QWidget {\n    background-color: qlineargradient(x1:0, y1:0, x2:0.4, y2:1,\n        stop:0 #1a0533, stop:1 #0d1b2a);\n}\nQTabWidget::pane {\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    background: transparent;\n}\nQTabBar::tab {\n    background: rgba(20,8,40,0.55);\n    color: #eaf6ff;\n    border: 1px solid rgba(0,240,255,0.35);\n    border-bottom: none;\n    border-top-left-radius: 8px;\n    border-top-right-radius: 8px;\n    padding: 8px 16px;\n    margin-right: 2px;\n    font-weight: bold;\n}\nQTabBar::tab:selected {\n    background: rgba(40,12,70,0.75);\n    color: #00f0ff;\n    border: 2px solid #00f0ff;\n    border-bottom: none;\n}\nQTabBar::tab:hover { color: #ff2d95; }\nQPushButton {\n    background: rgba(20,8,40,0.55);\n    color: #00f0ff;\n    border: 2px solid #00f0ff;\n    border-radius: 10px;\n    padding: 7px 16px;\n    font-weight: bold;\n}\nQPushButton:hover {\n    background: rgba(40,12,70,0.75);\n    border: 2px solid #ff2d95;\n    color: #ff2d95;\n}\nQPushButton:pressed { background: rgba(255,45,149,0.25); }\nQPushButton:disabled {\n    border: 2px solid rgba(120,120,140,0.4);\n    color: rgba(180,180,200,0.5);\n}\nQLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit {\n    background: rgba(13,27,42,0.75);\n    color: #eaf6ff;\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    padding: 5px 8px;\n    selection-background-color: #ff2d95;\n}\nQLineEdit:focus, QComboBox:focus { border: 2px solid #ff2d95; }\nQComboBox QAbstractItemView {\n    background: #0d1b2a;\n    color: #eaf6ff;\n    border: 1px solid #00f0ff;\n    selection-background-color: rgba(255,45,149,0.45);\n}\nQCheckBox, QRadioButton, QLabel { color: #eaf6ff; background: transparent; }\n/* Полная стилизация индикаторов: если задать только :checked, Qt рисует\n   невыбранные как пустой бокс, а радио без border-radius выходит КВАДРАТНЫМ\n   (баг 2026-06-22: зелёный квадрат вместо круга). Описываем обе стадии +\n   форму. */\nQCheckBox::indicator, QRadioButton::indicator {\n    width: 14px;\n    height: 14px;\n    border: 2px solid #00f0ff;\n    background: rgba(13,27,42,0.75);\n}\nQRadioButton::indicator { border-radius: 9px; }   /* круг */\nQCheckBox::indicator { border-radius: 4px; }      /* скруглённый квадрат */\nQCheckBox::indicator:checked, QRadioButton::indicator:checked {\n    background: #39ff14;\n    border: 2px solid #39ff14;\n    /* галочка внутри — иначе «просто зелёное пятно», не видно что\n       применилось (общий хелпер indicator_check_url, правило #12) */\n    image: url(<CHECK>);\n}\nQGroupBox {\n    border: 1px solid #00f0ff;\n    border-radius: 8px;\n    margin-top: 8px;\n}\nQProgressBar {\n    background: rgba(13,27,42,0.75);\n    border: 1px solid #00f0ff;\n    border-radius: 6px;\n    text-align: center;\n    color: #eaf6ff;\n}\nQProgressBar::chunk {\n    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\n        stop:0 #ff2d95, stop:1 #00f0ff);\n    border-radius: 6px;\n}\nQScrollBar:vertical, QScrollBar:horizontal {\n    background: transparent; width: 11px; height: 11px; margin: 0; border: none;\n}\nQScrollBar::handle:vertical, QScrollBar::handle:horizontal {\n    background: rgba(0,240,255,0.35); border-radius: 5px;\n    min-height: 28px; min-width: 28px;\n}\nQScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {\n    background: rgba(255,45,149,0.55);\n}\nQScrollBar::add-line, QScrollBar::sub-line {\n    width: 0; height: 0; background: none; border: none;\n}\nQScrollBar::add-page, QScrollBar::sub-page { background: none; }\n",
+  "text_qss": {
+    "muted": "color: palette(window-text); font-weight: 600;",
+    "muted_extra": "color: palette(window-text); font-weight: 600; padding: 2px;",
+    "primary": "color: palette(window-text);",
+    "primary_extra": "color: palette(window-text); font-size: 13pt;",
+    "secondary": "color: palette(window-text); font-weight: 600;",
+    "secondary_extra": "color: palette(window-text); font-weight: 600; font-size: 11pt;"
+  },
+  "toast_qss": {
+    "dark": "QLabel { background-color: rgba(30,30,30,0.94); color: rgba(255,255,255,0.92); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 10px 14px; }",
+    "light": "QLabel { background-color: rgba(250,250,250,0.96); color: rgba(0,0,0,0.88); border: 1px solid rgba(0,0,0,0.18); border-radius: 8px; padding: 10px 14px; }"
+  }
+}

@@ -1,0 +1,283 @@
+{
+ "arch": {
+  "x86_64": "x86_64",
+  "AMD64": "x86_64",
+  "amd64": "x86_64",
+  "aarch64": "aarch64",
+  "ARM64": "aarch64",
+  "arm64": "aarch64",
+  "armv7l": "armv7l",
+  "i686": "i686",
+  "riscv64": "riscv64",
+  "ppc64le": "ppc64le"
+ },
+ "download_urls": {
+  "x86_64": "https://github.com/ruffle-rs/ruffle/releases/latest/download/ruffle-nightly-linux-x86_64.tar.gz",
+  "aarch64": "https://github.com/ruffle-rs/ruffle/releases/latest/download/ruffle-nightly-linux-aarch64.tar.gz"
+ },
+ "download_url_web": "https://github.com/ruffle-rs/ruffle/releases/latest/download/ruffle-nightly-web-selfhosted.zip",
+ "github_releases_url": "https://github.com/ruffle-rs/ruffle/releases",
+ "expected_size_mb": 25,
+ "expected_size_web_mb": 18,
+ "paths": {
+  "home": "/HOME",
+  "dir": "/HOME/.config/rexon/ruffle",
+  "bin": "/HOME/.config/rexon/ruffle/ruffle",
+  "web_dir": "/HOME/.config/rexon/ruffle/web",
+  "version_file": "/HOME/.config/rexon/ruffle/.version",
+  "web_js": "/HOME/.config/rexon/ruffle/web/ruffle.js"
+ },
+ "ruffle_path": {
+  "neither": null,
+  "system_only": "ruffle",
+  "installed": "/HOME/.config/rexon/ruffle/ruffle",
+  "both": "ruffle"
+ },
+ "run_swf_argv": {
+  "fullscreen": [
+   "/HOME/.config/rexon/ruffle/ruffle",
+   "--fullscreen",
+   "--graphics",
+   "default",
+   "/HOME/Мои обои/cool.swf"
+  ],
+  "windowed": [
+   "/HOME/.config/rexon/ruffle/ruffle",
+   "--graphics",
+   "default",
+   "/HOME/Мои обои/cool.swf"
+  ]
+ },
+ "run_swf_as_wallpaper": {
+  "cmd": [
+   "/PY",
+   "-m",
+   "rexon.app_wallpaper",
+   "/HOME/.config/rexon/ruffle/wrappers/run_cool.sh",
+   "--mode",
+   "subprocess"
+  ],
+  "wrapper_path": "/HOME/.config/rexon/ruffle/wrappers/run_cool.sh",
+  "wrapper_content": "#!/bin/bash\nexec \"/HOME/.config/rexon/ruffle/ruffle\" --fullscreen \"/HOME/Мои обои/cool.swf\"\n",
+  "swf_stem": "cool"
+ },
+ "swf_stem": {
+  "/a/b/game.swf": "game",
+  "game.swf": "game",
+  "/x/no_ext": "no_ext",
+  "/x/dot.tar.swf": "dot.tar",
+  "/x/.hidden": ".hidden",
+  "/x/name.SWF": "name",
+  "trailing/": ""
+ },
+ "version": {
+  "cmd_ok": "ruffle nightly-2026-07-20",
+  "file_fallback": "nightly-2026-07-19",
+  "none": null,
+  "no_path_ignores_file": null
+ },
+ "version_file_content": {
+  "date": "2026-07-21",
+  "content": "nightly-2026-07-21"
+ },
+ "ensure": [
+  {
+   "is_installed": false,
+   "is_system_installed": false,
+   "is_web_installed": false,
+   "result": true,
+   "need_bin": true,
+   "need_web": true
+  },
+  {
+   "is_installed": false,
+   "is_system_installed": false,
+   "is_web_installed": true,
+   "result": true,
+   "need_bin": true,
+   "need_web": false
+  },
+  {
+   "is_installed": false,
+   "is_system_installed": true,
+   "is_web_installed": false,
+   "result": true,
+   "need_bin": false,
+   "need_web": true
+  },
+  {
+   "is_installed": false,
+   "is_system_installed": true,
+   "is_web_installed": true,
+   "result": true,
+   "need_bin": false,
+   "need_web": false
+  },
+  {
+   "is_installed": true,
+   "is_system_installed": false,
+   "is_web_installed": false,
+   "result": true,
+   "need_bin": false,
+   "need_web": true
+  },
+  {
+   "is_installed": true,
+   "is_system_installed": false,
+   "is_web_installed": true,
+   "result": true,
+   "need_bin": false,
+   "need_web": false
+  },
+  {
+   "is_installed": true,
+   "is_system_installed": true,
+   "is_web_installed": false,
+   "result": true,
+   "need_bin": false,
+   "need_web": true
+  },
+  {
+   "is_installed": true,
+   "is_system_installed": true,
+   "is_web_installed": true,
+   "result": true,
+   "need_bin": false,
+   "need_web": false
+  }
+ ],
+ "progress_pct": [
+  {
+   "downloaded": 0,
+   "total": 100,
+   "pct": 0
+  },
+  {
+   "downloaded": 50,
+   "total": 100,
+   "pct": 37
+  },
+  {
+   "downloaded": 100,
+   "total": 100,
+   "pct": 75
+  },
+  {
+   "downloaded": 99,
+   "total": 100,
+   "pct": 74
+  },
+  {
+   "downloaded": 1,
+   "total": 3,
+   "pct": 25
+  },
+  {
+   "downloaded": 2,
+   "total": 3,
+   "pct": 50
+  },
+  {
+   "downloaded": 12345,
+   "total": 26214400,
+   "pct": 0
+  },
+  {
+   "downloaded": 26214400,
+   "total": 26214400,
+   "pct": 75
+  },
+  {
+   "downloaded": 13107200,
+   "total": 26214400,
+   "pct": 37
+  }
+ ],
+ "progress_bar": [
+  {
+   "pct": 0,
+   "bar": "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░"
+  },
+  {
+   "pct": 25,
+   "bar": "███████░░░░░░░░░░░░░░░░░░░░░░░"
+  },
+  {
+   "pct": 33,
+   "bar": "█████████░░░░░░░░░░░░░░░░░░░░░"
+  },
+  {
+   "pct": 50,
+   "bar": "███████████████░░░░░░░░░░░░░░░"
+  },
+  {
+   "pct": 75,
+   "bar": "██████████████████████░░░░░░░░"
+  },
+  {
+   "pct": 80,
+   "bar": "████████████████████████░░░░░░"
+  },
+  {
+   "pct": 90,
+   "bar": "███████████████████████████░░░"
+  },
+  {
+   "pct": 100,
+   "bar": "██████████████████████████████"
+  }
+ ],
+ "system_bin": [
+  {
+   "which": {
+    "ruffle": "/usr/bin/ruffle"
+   },
+   "expected": "/usr/bin/ruffle"
+  },
+  {
+   "which": {
+    "ruffle-nightly": "/usr/local/bin/ruffle-nightly"
+   },
+   "expected": "/usr/local/bin/ruffle-nightly"
+  },
+  {
+   "which": {
+    "ruffle_desktop": "/opt/r/ruffle_desktop"
+   },
+   "expected": "/opt/r/ruffle_desktop"
+  },
+  {
+   "which": {
+    "ruffle-nightly": "/a/ruffle-nightly",
+    "ruffle_desktop": "/b/rd"
+   },
+   "expected": "/a/ruffle-nightly"
+  },
+  {
+   "which": {
+    "ruffle": "/first/ruffle",
+    "ruffle-nightly": "/second/rn"
+   },
+   "expected": "/first/ruffle"
+  },
+  {
+   "which": {},
+   "expected": null
+  }
+ ],
+ "extra_asset": {
+  "LICENSE": true,
+  "LICENSE_APACHE": true,
+  "LICENSE-MIT": true,
+  "README.md": true,
+  "README": false,
+  "ruffle": false,
+  "readme.md": false,
+  "licenses.txt": false
+ },
+ "system_bin_names": [
+  "ruffle",
+  "ruffle-nightly",
+  "ruffle_desktop"
+ ]
+}

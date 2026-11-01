@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="rexon-wallpaper">
+  <schema id="org.cinnamon.extensions.rexon-wallpaper"
+          path="/org/cinnamon/extensions/rexon-wallpaper/">
+    <key name="engine" type="s">
+      <default>"video"</default>
+      <summary>Wallpaper engine</summary>
+      <description>Type of wallpaper engine. Supported: "video" (Rexon video wallpaper host). Web/scene/application engines were removed — those types are rendered by the waywallen daemon on compositors that support wlr-layer-shell.</description>
+    </key>
+    <key name="source" type="s">
+      <default>""</default>
+      <summary>Source file or URL</summary>
+      <description>Path to scene.json, plugin .py, HTML file, or URL — depending on selected engine.</description>
+    </key>
+    <key name="daemon-argv" type="as">
+      <default>[]</default>
+      <summary>Wallpaper host command line</summary>
+      <description>Full command line of the wallpaper host process, written by Rexon when it hands a wallpaper over. The extension spawns it as is. Empty means Rexon has not written it yet (extension installed by an older version) - there is no fallback any more, so the extension logs an error and shows nothing until the extension is reinstalled from Rexon.</description>
+    </key>
+    <key name="fps" type="i">
+      <default>30</default>
+      <range min="1" max="120"/>
+      <summary>Target FPS</summary>
+      <description>Frames per second for the wallpaper renderer.</description>
+    </key>
+  </schema>
+</schemalist>

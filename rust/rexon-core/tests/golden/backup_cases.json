@@ -1,0 +1,1080 @@
+{
+  "constants": {
+    "STAGE_SUFFIX": ".rexon-new",
+    "ROLLBACK_SUFFIX": ".rexon-rollback",
+    "PANEL_CONFIGS": [
+      "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+      "~/.config/plasmashellrc",
+      "~/.config/plasmarc",
+      "~/.config/plasmanotifyrc",
+      "~/.config/plasma-localerc"
+    ],
+    "FULL_CONFIGS": [
+      "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+      "~/.config/plasmashellrc",
+      "~/.config/plasmarc",
+      "~/.config/plasmanotifyrc",
+      "~/.config/plasma-localerc",
+      "~/.config/kdeglobals",
+      "~/.config/kwinrc",
+      "~/.config/kglobalshortcutsrc",
+      "~/.config/kcminputrc",
+      "~/.config/kscreenlockerrc",
+      "~/.config/ksmserverrc",
+      "~/.config/klaunchrc",
+      "~/.config/khotkeysrc",
+      "~/.config/lattedockrc",
+      "~/.local/share/plasma"
+    ]
+  },
+  "home": "/home/weh",
+  "relpaths": {
+    "/home/weh/.config/gtk-3.0/settings.ini": ".config/gtk-3.0/settings.ini",
+    "/home/weh/.config/plasma-org.kde.plasma.desktop-appletsrc": ".config/plasma-org.kde.plasma.desktop-appletsrc",
+    "/home/weh/.config/kwinrc": ".config/kwinrc",
+    "/home/weh/.local/share/plasma": ".local/share/plasma",
+    "/home/weh/.icons/Custom/cursors/left_ptr": ".icons/Custom/cursors/left_ptr",
+    "/home/weh/plainfile": "plainfile",
+    "/home/weh": ".",
+    "/home/weh/.config/../.config/kdeglobals": ".config/kdeglobals",
+    "/home/weh/a//b/c": "a/b/c"
+  },
+  "safe_config_name": {
+    "/home/weh/.config/gtk-3.0/settings.ini": "config_gtk-3.0_settings.ini",
+    "/home/weh/.config/plasma-org.kde.plasma.desktop-appletsrc": "config_plasma-org.kde.plasma.desktop-appletsrc",
+    "/home/weh/.config/kwinrc": "config_kwinrc",
+    "/home/weh/.local/share/plasma": "local_share_plasma",
+    "/home/weh/.icons/Custom/cursors/left_ptr": "icons_Custom_cursors_left_ptr",
+    "/home/weh/plainfile": "plainfile",
+    "/home/weh": "",
+    "/home/weh/.config/../.config/kdeglobals": "config_kdeglobals",
+    "/home/weh/a//b/c": "a_b_c"
+  },
+  "is_plasma": {
+    "KDE": true,
+    "plasma": true,
+    "GNOME": false,
+    "kde-plasma": true,
+    "": false,
+    "X-Cinnamon": false,
+    "MATE": false,
+    "plasmawayland": true,
+    "KDE:plasma": true,
+    "budgie:GNOME": false
+  },
+  "expand_panel": [
+    "/home/weh/.config/plasma-org.kde.plasma.desktop-appletsrc",
+    "/home/weh/.config/plasmashellrc",
+    "/home/weh/.config/plasmarc",
+    "/home/weh/.config/plasmanotifyrc",
+    "/home/weh/.config/plasma-localerc"
+  ],
+  "backup_name": {
+    "kde|20260715_101112": "kde_20260715_101112",
+    "gnome-shell|20250101_000000": "gnome-shell_20250101_000000"
+  },
+  "de_backups_for": {
+    "kde": [
+      {
+        "name": "kde_20260103_100000",
+        "timestamp": "20260103_100000",
+        "files_count": 0
+      },
+      {
+        "name": "kde_20260101_100000",
+        "timestamp": "20260101_100000",
+        "files_count": 2
+      },
+      {
+        "name": "kde_dup_100000",
+        "timestamp": "20260101_100000",
+        "files_count": 3
+      }
+    ],
+    "gnome": [
+      {
+        "name": "gnome_20260102_100000",
+        "timestamp": "20260102_100000",
+        "files_count": 1
+      }
+    ],
+    "xfce": []
+  },
+  "plasma_lists": {
+    "get_backups": [
+      {
+        "timestamp": "20260102_100000",
+        "reason": "before_install",
+        "path": "/b",
+        "files": [
+          "f2",
+          "f3"
+        ],
+        "full": true
+      },
+      {
+        "timestamp": "20260101_100000",
+        "reason": "manual",
+        "path": "/a",
+        "files": [
+          "f1"
+        ],
+        "full": false
+      }
+    ],
+    "get_latest_backup": {
+      "timestamp": "20260102_100000",
+      "reason": "before_install",
+      "path": "/b",
+      "files": [
+        "f2",
+        "f3"
+      ],
+      "full": true
+    },
+    "has_backups": true
+  },
+  "plasma_empty": {
+    "get_backups": [],
+    "get_latest_backup": null,
+    "has_backups": false
+  },
+  "pure_v2": {
+    "home": "/home/user",
+    "snapshot_items": {
+      "backup_path": "/tmp/bk/kde_20260730_010203",
+      "paths": [
+        "/home/user/.config/kdeglobals",
+        "/home/user/.config/plasmarc",
+        "/home/user/.config/gtk-3.0/settings.ini",
+        "/home/user/.local/share/plasma",
+        "/etc/environment"
+      ],
+      "want": [
+        [
+          "/home/user/.config/kdeglobals",
+          "/tmp/bk/kde_20260730_010203/config_kdeglobals"
+        ],
+        [
+          "/home/user/.config/plasmarc",
+          "/tmp/bk/kde_20260730_010203/config_plasmarc"
+        ],
+        [
+          "/home/user/.config/gtk-3.0/settings.ini",
+          "/tmp/bk/kde_20260730_010203/config_gtk-3.0_settings.ini"
+        ],
+        [
+          "/home/user/.local/share/plasma",
+          "/tmp/bk/kde_20260730_010203/local_share_plasma"
+        ],
+        [
+          "/etc/environment",
+          "/tmp/bk/kde_20260730_010203/etc_environment"
+        ]
+      ]
+    },
+    "de_meta_entry": {
+      "de_name": "kde",
+      "timestamp": "20260730_010203",
+      "paths": [
+        "/home/user/.config/kdeglobals",
+        "/home/user/.config/plasmarc"
+      ],
+      "backup_path": "/tmp/bk/kde_20260730_010203",
+      "want": {
+        "de_name": "kde",
+        "timestamp": "20260730_010203",
+        "paths": [
+          "/home/user/.config/kdeglobals",
+          "/home/user/.config/plasmarc"
+        ],
+        "backup_path": "/tmp/bk/kde_20260730_010203"
+      }
+    },
+    "messages": {
+      "restored_items_0": "Восстановлено 0 элементов",
+      "restored_items_3": "Восстановлено 3 элементов",
+      "transaction_restored_3": "восстановлено 3 элементов",
+      "backup_created_5": "Бэкап создан (5 файлов)",
+      "snapshot_not_found": "Бэкап 20260730_010203 не найден",
+      "snapshot_dir_missing": "Папка бэкапа не существует: /tmp/bk/nope",
+      "restore_failed": "Восстановление не удалось: swap failed",
+      "restored_files": "Восстановлено 4 файлов из бэкапа 20260730_010203"
+    },
+    "texts": {
+      "MAX_PLASMA_SNAPSHOTS": 10,
+      "BACKUP_NOT_FOUND": "Резервная копия не найдена",
+      "NOTHING_TO_BACKUP": "Нет файлов для бэкапа",
+      "NO_PLASMA_BACKUPS": "Нет бэкапов Plasma",
+      "NONE_RESTORED": "Не удалось восстановить ни одного файла",
+      "PLASMASHELL_RESTARTED": "\nPlasmashell перезапущен"
+    },
+    "restart_cmds": {
+      "quit": [
+        "systemctl",
+        "--user",
+        "restart",
+        "plasma-plasmashell.service"
+      ],
+      "kill": [
+        "kquitapp6",
+        "plasmashell"
+      ],
+      "start": [
+        "kstart",
+        "plasmashell"
+      ],
+      "settle_secs": 2
+    },
+    "restore_items": {
+      "backup_path": "/tmp/rexon_golden_zvuntd6x/kde_20260730_010203",
+      "orig_paths": [
+        "/home/user/.config/kdeglobals",
+        "/home/user/.config/plasmarc",
+        "/home/user/.config/does-not-exist-rexon"
+      ],
+      "present": [
+        "config_kdeglobals",
+        "plasmarc"
+      ],
+      "want": [
+        [
+          "/tmp/rexon_golden_zvuntd6x/kde_20260730_010203/config_kdeglobals",
+          "/home/user/.config/kdeglobals"
+        ],
+        [
+          "/tmp/rexon_golden_zvuntd6x/kde_20260730_010203/plasmarc",
+          "/home/user/.config/plasmarc"
+        ]
+      ]
+    },
+    "plasma_snapshot_items": {
+      "snap_dir": "/tmp/bk/plasma-panel/20260730_010203",
+      "configs": [
+        "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc",
+        "/home/user/.config/plasmashellrc",
+        "/home/user/.config/plasmarc",
+        "/home/user/.config/plasmanotifyrc",
+        "/home/user/.config/plasma-localerc"
+      ],
+      "present": [
+        "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc",
+        "/home/user/.config/plasmashellrc",
+        "/home/user/.config/plasmarc",
+        "/home/user/.config/plasmanotifyrc",
+        "/home/user/.config/plasma-localerc"
+      ],
+      "want": [
+        [
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc",
+          "/tmp/bk/plasma-panel/20260730_010203/plasma-org.kde.plasma.desktop-appletsrc"
+        ],
+        [
+          "/home/user/.config/plasmashellrc",
+          "/tmp/bk/plasma-panel/20260730_010203/plasmashellrc"
+        ],
+        [
+          "/home/user/.config/plasmarc",
+          "/tmp/bk/plasma-panel/20260730_010203/plasmarc"
+        ],
+        [
+          "/home/user/.config/plasmanotifyrc",
+          "/tmp/bk/plasma-panel/20260730_010203/plasmanotifyrc"
+        ],
+        [
+          "/home/user/.config/plasma-localerc",
+          "/tmp/bk/plasma-panel/20260730_010203/plasma-localerc"
+        ]
+      ]
+    },
+    "plasma_entry": {
+      "timestamp": "20260730_010203",
+      "reason": "before_switch",
+      "path": "/tmp/bk/plasma-panel/20260730_010203",
+      "files": [
+        "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc",
+        "/home/user/.config/plasmashellrc"
+      ],
+      "full": true
+    },
+    "plasma_rotate": {
+      "input": [
+        {
+          "timestamp": "20260730_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260730_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260731_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260731_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260732_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260732_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260733_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260733_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260734_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260734_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260735_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260735_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260736_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260736_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260737_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260737_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260738_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260738_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260739_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260739_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "202607310_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/202607310_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "202607311_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/202607311_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        }
+      ],
+      "kept": [
+        {
+          "timestamp": "20260732_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260732_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260733_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260733_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260734_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260734_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260735_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260735_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260736_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260736_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260737_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260737_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260738_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260738_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "20260739_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260739_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "202607310_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/202607310_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        },
+        {
+          "timestamp": "202607311_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/202607311_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        }
+      ],
+      "dropped": [
+        "/tmp/bk/plasma-panel/20260730_000000",
+        "/tmp/bk/plasma-panel/20260731_000000"
+      ]
+    },
+    "plasma_pick": [
+      {
+        "backups": [],
+        "timestamp": null,
+        "want_err": "Нет бэкапов Plasma"
+      },
+      {
+        "backups": [
+          {
+            "timestamp": "20260730_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260730_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260731_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260731_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260732_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260732_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          }
+        ],
+        "timestamp": null,
+        "want": {
+          "timestamp": "20260732_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260732_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        }
+      },
+      {
+        "backups": [
+          {
+            "timestamp": "20260730_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260730_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260731_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260731_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260732_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260732_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          }
+        ],
+        "timestamp": "20260731_000000",
+        "want": {
+          "timestamp": "20260731_000000",
+          "reason": "manual",
+          "path": "/tmp/bk/plasma-panel/20260731_000000",
+          "files": [
+            "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+          ],
+          "full": false
+        }
+      },
+      {
+        "backups": [
+          {
+            "timestamp": "20260730_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260730_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260731_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260731_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          },
+          {
+            "timestamp": "20260732_000000",
+            "reason": "manual",
+            "path": "/tmp/bk/plasma-panel/20260732_000000",
+            "files": [
+              "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+            ],
+            "full": false
+          }
+        ],
+        "timestamp": "нет-такого",
+        "want_err": "Бэкап нет-такого не найден"
+      }
+    ],
+    "plasma_delete_index": [
+      {
+        "timestamp": "20260730_000000",
+        "want": 0
+      },
+      {
+        "timestamp": "20260732_000000",
+        "want": 2
+      },
+      {
+        "timestamp": "нет-такого",
+        "want": null
+      }
+    ],
+    "plasma_delete_backups": [
+      {
+        "timestamp": "20260730_000000",
+        "reason": "manual",
+        "path": "/tmp/bk/plasma-panel/20260730_000000",
+        "files": [
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+        ],
+        "full": false
+      },
+      {
+        "timestamp": "20260731_000000",
+        "reason": "manual",
+        "path": "/tmp/bk/plasma-panel/20260731_000000",
+        "files": [
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+        ],
+        "full": false
+      },
+      {
+        "timestamp": "20260732_000000",
+        "reason": "manual",
+        "path": "/tmp/bk/plasma-panel/20260732_000000",
+        "files": [
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+        ],
+        "full": false
+      }
+    ],
+    "plasma_restore_items": {
+      "entry": {
+        "timestamp": "20260730_010203",
+        "reason": "manual",
+        "path": "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203",
+        "files": [
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc",
+          "/home/user/.config/plasmashellrc",
+          "/home/user/.config/plasmarc",
+          "/home/user/.config/plasmanotifyrc",
+          "/home/user/.config/plasma-localerc",
+          "/home/user/.config/нет-в-снимке"
+        ],
+        "full": false
+      },
+      "present": [
+        "plasma-localerc",
+        "plasma-org.kde.plasma.desktop-appletsrc",
+        "plasmanotifyrc",
+        "plasmarc",
+        "plasmashellrc"
+      ],
+      "want": [
+        [
+          "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203/plasma-org.kde.plasma.desktop-appletsrc",
+          "/home/user/.config/plasma-org.kde.plasma.desktop-appletsrc"
+        ],
+        [
+          "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203/plasmashellrc",
+          "/home/user/.config/plasmashellrc"
+        ],
+        [
+          "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203/plasmarc",
+          "/home/user/.config/plasmarc"
+        ],
+        [
+          "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203/plasmanotifyrc",
+          "/home/user/.config/plasmanotifyrc"
+        ],
+        [
+          "/tmp/rexon_golden_zvuntd6x/plasma-panel/20260730_010203/plasma-localerc",
+          "/home/user/.config/plasma-localerc"
+        ]
+      ]
+    }
+  },
+  "tx": [
+    {
+      "name": "files_over_existing",
+      "before": {
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasmarc": {
+          "kind": "file",
+          "text": "[Wallpapers]\nusersWallpapers=/home/user/.cache/rexon/steam_profile_bg/1111080767.jpg\n"
+        },
+        "snap/kcminputrc": {
+          "kind": "file",
+          "text": "[Mouse]\nX11LibInputXAccelProfileFlat=true\n"
+        },
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "[General]\nсломано=1\n"
+        },
+        "cfg/plasmarc": {
+          "kind": "file",
+          "text": "мусор\n"
+        }
+      },
+      "items": [
+        [
+          "snap/kdeglobals",
+          "cfg/kdeglobals"
+        ],
+        [
+          "snap/plasmarc",
+          "cfg/plasmarc"
+        ],
+        [
+          "snap/kcminputrc",
+          "cfg/kcminputrc"
+        ]
+      ],
+      "want_ok": true,
+      "want_restored": 3,
+      "want_message": "восстановлено 3 элементов",
+      "after": {
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kcminputrc": {
+          "kind": "file",
+          "text": "[Mouse]\nX11LibInputXAccelProfileFlat=true\n"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "cfg/plasmarc": {
+          "kind": "file",
+          "text": "[Wallpapers]\nusersWallpapers=/home/user/.cache/rexon/steam_profile_bg/1111080767.jpg\n"
+        },
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/kcminputrc": {
+          "kind": "file",
+          "text": "[Mouse]\nX11LibInputXAccelProfileFlat=true\n"
+        },
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasmarc": {
+          "kind": "file",
+          "text": "[Wallpapers]\nusersWallpapers=/home/user/.cache/rexon/steam_profile_bg/1111080767.jpg\n"
+        }
+      }
+    },
+    {
+      "name": "dir_with_symlink_and_missing_src",
+      "before": {
+        "snap/plasma/desktoptheme/default/metadata.json": {
+          "kind": "file",
+          "text": "{\"KPlugin\": {\"Name\": \"default\"}}\n"
+        },
+        "snap/plasma/desktoptheme/link-to-default": {
+          "kind": "link",
+          "target": "default"
+        },
+        "snap/plasma/plasmoids": {
+          "kind": "dir"
+        },
+        "data": {
+          "kind": "dir"
+        }
+      },
+      "items": [
+        [
+          "snap/plasma",
+          "data/plasma"
+        ],
+        [
+          "snap/нет-такого",
+          "data/нет-такого"
+        ]
+      ],
+      "want_ok": true,
+      "want_restored": 1,
+      "want_message": "восстановлено 1 элементов",
+      "after": {
+        "data": {
+          "kind": "dir"
+        },
+        "data/plasma": {
+          "kind": "dir"
+        },
+        "data/plasma/desktoptheme": {
+          "kind": "dir"
+        },
+        "data/plasma/desktoptheme/default": {
+          "kind": "dir"
+        },
+        "data/plasma/desktoptheme/default/metadata.json": {
+          "kind": "file",
+          "text": "{\"KPlugin\": {\"Name\": \"default\"}}\n"
+        },
+        "data/plasma/desktoptheme/link-to-default": {
+          "kind": "link",
+          "target": "default"
+        },
+        "data/plasma/plasmoids": {
+          "kind": "dir"
+        },
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/plasma": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme/default": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme/default/metadata.json": {
+          "kind": "file",
+          "text": "{\"KPlugin\": {\"Name\": \"default\"}}\n"
+        },
+        "snap/plasma/desktoptheme/link-to-default": {
+          "kind": "link",
+          "target": "default"
+        },
+        "snap/plasma/plasmoids": {
+          "kind": "dir"
+        }
+      }
+    },
+    {
+      "name": "creates_parent_and_symlink_src",
+      "before": {
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/link": {
+          "kind": "link",
+          "target": "kdeglobals"
+        }
+      },
+      "items": [
+        [
+          "snap/kdeglobals",
+          "deep/nested/cfg/kdeglobals"
+        ],
+        [
+          "snap/link",
+          "deep/nested/cfg/link"
+        ]
+      ],
+      "want_ok": true,
+      "want_restored": 2,
+      "want_message": "восстановлено 2 элементов",
+      "after": {
+        "deep": {
+          "kind": "dir"
+        },
+        "deep/nested": {
+          "kind": "dir"
+        },
+        "deep/nested/cfg": {
+          "kind": "dir"
+        },
+        "deep/nested/cfg/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "deep/nested/cfg/link": {
+          "kind": "link",
+          "target": "kdeglobals"
+        },
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/link": {
+          "kind": "link",
+          "target": "kdeglobals"
+        }
+      }
+    },
+    {
+      "name": "staging_fails_leaves_everything",
+      "before": {
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasmarc": {
+          "kind": "file",
+          "text": "[Wallpapers]\nusersWallpapers=/home/user/.cache/rexon/steam_profile_bg/1111080767.jpg\n"
+        },
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "оригинал\n"
+        },
+        "busy": {
+          "kind": "file",
+          "text": "это файл, а не каталог\n"
+        }
+      },
+      "items": [
+        [
+          "snap/kdeglobals",
+          "cfg/kdeglobals"
+        ],
+        [
+          "snap/plasmarc",
+          "busy/plasmarc"
+        ]
+      ],
+      "want_ok": false,
+      "want_restored": 0,
+      "want_message": "staging failed",
+      "after": {
+        "busy": {
+          "kind": "file",
+          "text": "это файл, а не каталог\n"
+        },
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "оригинал\n"
+        },
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasmarc": {
+          "kind": "file",
+          "text": "[Wallpapers]\nusersWallpapers=/home/user/.cache/rexon/steam_profile_bg/1111080767.jpg\n"
+        }
+      }
+    },
+    {
+      "name": "swap_fails_rolls_back_first",
+      "before": {
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasma/desktoptheme/default/metadata.json": {
+          "kind": "file",
+          "text": "{\"новое\": true}\n"
+        },
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "оригинал kdeglobals\n"
+        },
+        "cfg/plasma/старое.txt": {
+          "kind": "file",
+          "text": "оригинал plasma\n"
+        }
+      },
+      "items": [
+        [
+          "snap/kdeglobals",
+          "cfg/kdeglobals"
+        ],
+        [
+          "snap/plasma",
+          "cfg/plasma"
+        ]
+      ],
+      "want_ok": false,
+      "want_restored": 0,
+      "want_message": "swap failed, rolled back",
+      "after": {
+        "cfg": {
+          "kind": "dir"
+        },
+        "cfg/kdeglobals": {
+          "kind": "file",
+          "text": "оригинал kdeglobals\n"
+        },
+        "cfg/plasma": {
+          "kind": "dir"
+        },
+        "cfg/plasma.rexon-rollback": {
+          "kind": "dir"
+        },
+        "cfg/plasma.rexon-rollback/занято": {
+          "kind": "file",
+          "text": "x"
+        },
+        "cfg/plasma/старое.txt": {
+          "kind": "file",
+          "text": "оригинал plasma\n"
+        },
+        "snap": {
+          "kind": "dir"
+        },
+        "snap/kdeglobals": {
+          "kind": "file",
+          "text": "[ColorEffects:Disabled]\nChangeSelectionColor=\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nEnable=\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=176,55,69\nForegroundNeutral=198,92,0\nForegroundNormal=252,252,252\nForegroundPositive=23,104,57\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorSchemeHash=9d38eb71ded8ff549da26d57d7cbab9164da243a\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\naccentColorFromWallpaper=true\n\n[KDE]\nAnimationDurationFactor=0.25\nLookAndFeelPackage=org.kde.breezedark.desktop\nShowDeleteCommand=false\ncontrast=4\nframeContrast=0.2\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=true\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=201\nView Style=DetailTree\n\n[Mouse]\ncursorTheme=breeze_cursors\n\n[PreviewSettings]\nEnableRemoteFolderThumbnail=false\nMaximumRemoteSize=0\n\n[Sounds]\nEnableNotificationSounds=true\nTheme=mate\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveFont=Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n"
+        },
+        "snap/plasma": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme/default": {
+          "kind": "dir"
+        },
+        "snap/plasma/desktoptheme/default/metadata.json": {
+          "kind": "file",
+          "text": "{\"новое\": true}\n"
+        }
+      },
+      "mutate": "lock_rollback",
+      "mutate_path": "cfg/plasma.rexon-rollback"
+    }
+  ]
+}

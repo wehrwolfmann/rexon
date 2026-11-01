@@ -1,0 +1,730 @@
+{
+  "welcome_arch": {
+    "windowTitle": "Install Rexon",
+    "title": "Welcome to Rexon",
+    "description": "Rexon is a desktop environment manager for Linux. Install it to use it like any other application:",
+    "benefits": [
+      "Rexon appears in the application menu, together with an emergency item for restoring the desktop appearance.",
+      "Live wallpapers work in GNOME and Cinnamon too."
+    ],
+    "modesTitle": "Install for",
+    "modes": [
+      {
+        "mode": "system",
+        "title": "For everyone on this computer",
+        "description": "Rexon will appear in the application menu for everyone who uses this computer. The administrator password is needed once. Missing components are installed along the way, and Rexon will ask for the password less often when changing the system.",
+        "hint": "Program files: /usr/local/lib/rexon\nMenu shortcut: /usr/share/applications",
+        "blocked": ""
+      },
+      {
+        "mode": "user",
+        "title": "Just for you",
+        "description": "Rexon will appear in the application menu for you only. No password is needed, but this option does not install missing components either.",
+        "hint": "Program files: /home/tester/.local/lib/rexon\nMenu shortcut: /home/tester/.local/share/applications",
+        "blocked": ""
+      }
+    ],
+    "installButton": "Install",
+    "skipButton": "Skip",
+    "dontAskAgain": "Don't ask again",
+    "dontAskAgainHint": "This window will not appear again. Rexon will keep running from the folder it is in."
+  },
+  "welcome_steamos": {
+    "windowTitle": "Install Rexon",
+    "title": "Welcome to Rexon",
+    "description": "Rexon is a desktop environment manager for Linux. Install it to use it like any other application:",
+    "benefits": [
+      "Rexon appears in the application menu, together with an emergency item for restoring the desktop appearance.",
+      "Live wallpapers work in GNOME and Cinnamon too."
+    ],
+    "modesTitle": "Install for",
+    "modes": [
+      {
+        "mode": "system",
+        "title": "For everyone on this computer",
+        "description": "Rexon will appear in the application menu for everyone who uses this computer. The administrator password is needed once. Missing components are installed along the way, and Rexon will ask for the password less often when changing the system.",
+        "hint": "Program files: /usr/local/lib/rexon\nMenu shortcut: /usr/share/applications",
+        "blocked": "On this system (for example, Steam Deck) system folders are write-protected and wiped by every system update. Rexon will be installed into your home folder so that it survives updates."
+      },
+      {
+        "mode": "user",
+        "title": "Just for you",
+        "description": "Rexon will appear in the application menu for you only. No password is needed, but this option does not install missing components either.",
+        "hint": "Program files: /home/tester/.local/lib/rexon\nMenu shortcut: /home/tester/.local/share/applications",
+        "blocked": ""
+      }
+    ],
+    "installButton": "Install",
+    "skipButton": "Skip",
+    "dontAskAgain": "Don't ask again",
+    "dontAskAgainHint": "This window will not appear again. Rexon will keep running from the folder it is in."
+  },
+  "welcome_xdg": {
+    "windowTitle": "Install Rexon",
+    "title": "Welcome to Rexon",
+    "description": "Rexon is a desktop environment manager for Linux. Install it to use it like any other application:",
+    "benefits": [
+      "Rexon appears in the application menu, together with an emergency item for restoring the desktop appearance.",
+      "Live wallpapers work in GNOME and Cinnamon too."
+    ],
+    "modesTitle": "Install for",
+    "modes": [
+      {
+        "mode": "system",
+        "title": "For everyone on this computer",
+        "description": "Rexon will appear in the application menu for everyone who uses this computer. The administrator password is needed once. Missing components are installed along the way, and Rexon will ask for the password less often when changing the system.",
+        "hint": "Program files: /usr/local/lib/rexon\nMenu shortcut: /usr/share/applications",
+        "blocked": ""
+      },
+      {
+        "mode": "user",
+        "title": "Just for you",
+        "description": "Rexon will appear in the application menu for you only. No password is needed, but this option does not install missing components either.",
+        "hint": "Program files: /home/tester/.local/lib/rexon\nMenu shortcut: /data/xdg/applications",
+        "blocked": ""
+      }
+    ],
+    "installButton": "Install",
+    "skipButton": "Skip",
+    "dontAskAgain": "Don't ask again",
+    "dontAskAgainHint": "This window will not appear again. Rexon will keep running from the folder it is in."
+  },
+  "consent": {
+    "title": "Don't ask for the password for Rexon actions",
+    "checkbox": "Allow Rexon to change the system without a password",
+    "description": "Normally Rexon asks for the administrator password before changing the system. With this permission on, Rexon actions will not ask for the password. The permission is off by default.",
+    "what": "What is allowed: only installing desktop environments from Rexon's list. Login and boot screen themes and installing or removing other software still ask for the password.",
+    "who": "Who: members of the administrators group, and only while they are sitting at this computer. Remote logins are asked for the password as usual.",
+    "risk": "The risk: any program running under your account will be able to install desktop environments from Rexon's list through Rexon (and turn on their login screen if the system has none) without your confirmation.",
+    "undo": "How to undo: uninstall Rexon from its menu (☰ → “🗑️ Uninstall Rexon”) — the permission is removed together with the application.",
+    "hint": "Permission file: /etc/polkit-1/rules.d/49-rexon-nopasswd.rules\nAdministrators group: wheel (Debian and Ubuntu use their own administrators group)",
+    "defaultOn": false
+  },
+  "progress_system": {
+    "title": "Installing Rexon",
+    "subtitle": "Please wait. When the password window appears, enter the administrator password."
+  },
+  "install_done_system": "Rexon is installed for everyone on this computer.",
+  "mode_title_system": "For everyone on this computer",
+  "mode_description_system": "Rexon will appear in the application menu for everyone who uses this computer. The administrator password is needed once. Missing components are installed along the way, and Rexon will ask for the password less often when changing the system.",
+  "mode_hint_system": "Program files: /usr/local/lib/rexon\nMenu shortcut: /usr/share/applications",
+  "progress_user": {
+    "title": "Installing Rexon",
+    "subtitle": "Please wait."
+  },
+  "install_done_user": "Rexon is installed just for you.",
+  "mode_title_user": "Just for you",
+  "mode_description_user": "Rexon will appear in the application menu for you only. No password is needed, but this option does not install missing components either.",
+  "mode_hint_user": "Program files: /home/tester/.local/lib/rexon\nMenu shortcut: /home/tester/.local/share/applications",
+  "progress_portable": {
+    "title": "Installing Rexon",
+    "subtitle": "Please wait."
+  },
+  "install_done_portable": "No installation needed: Rexon runs straight from its folder.",
+  "mode_title_portable": "Standalone folder",
+  "mode_description_portable": "Rexon runs straight from the folder it is in and installs nothing into the system.",
+  "mode_hint_portable": "",
+  "result_installed_system": {
+    "ok": true,
+    "title": "Done — Rexon is installed",
+    "description": "Rexon is in the application menu for everyone on this computer.",
+    "notes": [],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "",
+    "unavailable": [],
+    "primaryButton": "Continue",
+    "secondaryButton": ""
+  },
+  "result_installed_user": {
+    "ok": true,
+    "title": "Done — Rexon is installed",
+    "description": "Rexon is in the application menu — just for you.",
+    "notes": [],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "",
+    "unavailable": [],
+    "primaryButton": "Continue",
+    "secondaryButton": ""
+  },
+  "result_installed_portable": {
+    "ok": true,
+    "title": "Done — Rexon is installed",
+    "description": "No installation needed: Rexon runs straight from its folder.",
+    "notes": [],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "",
+    "unavailable": [],
+    "primaryButton": "Continue",
+    "secondaryButton": ""
+  },
+  "result_installed_fell_back": {
+    "ok": true,
+    "title": "Done — Rexon is installed",
+    "description": "Rexon is in the application menu — just for you.",
+    "notes": [
+      "On this system (for example, Steam Deck) system folders are write-protected and wiped by every system update. Rexon will be installed into your home folder so that it survives updates.",
+      "Start Rexon from the application menu: the “rexon” command may not be found in a terminal with this option."
+    ],
+    "hint": "The command is in /home/tester/.local/bin, and that folder is not on the list of places the terminal searches for programs.",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "",
+    "unavailable": [],
+    "primaryButton": "Continue",
+    "secondaryButton": ""
+  },
+  "result_failed_password_denied": {
+    "ok": false,
+    "title": "Password not confirmed",
+    "description": "The password window was closed, or the password did not match. Nothing was changed.",
+    "notes": [
+      "Press “Retry” and enter the administrator password of this computer.",
+      "If you do not have the administrator password, choose “Just for you” — it needs no password."
+    ],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_prompt_missing": {
+    "ok": false,
+    "title": "Could not ask for the password",
+    "description": "Couldn't ask for the administrator password: a component needed for that is missing on this system. Nothing was changed.",
+    "notes": [
+      "Choose “Just for you” — it needs no password.",
+      "Install the polkit package (pkexec on Debian and Ubuntu) and try again."
+    ],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_timed_out_300": {
+    "ok": false,
+    "title": "The installation took too long",
+    "description": "The installation ran longer than 5 min and was stopped. Some files may already have been installed.",
+    "notes": [
+      "Check your internet connection — missing components are downloaded — and press “Retry”."
+    ],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_timed_out_1": {
+    "ok": false,
+    "title": "The installation took too long",
+    "description": "The installation ran longer than 1 min and was stopped. Some files may already have been installed.",
+    "notes": [
+      "Check your internet connection — missing components are downloaded — and press “Retry”."
+    ],
+    "hint": "",
+    "detailsTitle": "",
+    "details": "",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_copy_files": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: preparing the program files. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_launcher": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: preparing the start command. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_menu_shortcuts": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: creating application menu shortcuts. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_icons": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: preparing the icons. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_fewer_passwords": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: setting up fewer password prompts. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_dependencies": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "The parts Rexon cannot start without could not be installed: the Qt6 framework, the wallpaper layer under the desktop, the video player and the Vulkan loader. Nothing in the system was changed — Rexon was not installed.",
+    "notes": [
+      "Check your internet connection — the missing parts are downloaded — and press “Retry”.",
+      "If the error happens again, copy the details below and send them to the developer: these parts may be named differently in your system."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_system_install": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: installing into the system. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_wallpaper_addons": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: installing live wallpaper add-ons for GNOME and Cinnamon. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_menu_refresh": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: refreshing the application menu. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "result_failed_step_user_folders": {
+    "ok": false,
+    "title": "The installation did not finish",
+    "description": "This step failed: creating folders for settings and backups. Some changes made before it may remain.",
+    "notes": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "hint": "",
+    "detailsTitle": "Details for the developer",
+    "details": "exit 1",
+    "unavailableTitle": "Without installing:",
+    "unavailable": [
+      "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+      "The menu will not have the emergency item for restoring the desktop appearance.",
+      "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+      "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+    ],
+    "primaryButton": "Retry",
+    "secondaryButton": "Continue without installing"
+  },
+  "failure_password_denied": {
+    "title": "Password not confirmed",
+    "problem": "The password window was closed, or the password did not match. Nothing was changed.",
+    "advice": [
+      "Press “Retry” and enter the administrator password of this computer.",
+      "If you do not have the administrator password, choose “Just for you” — it needs no password."
+    ],
+    "log_line": "Password not confirmed. The password window was closed, or the password did not match. Nothing was changed.",
+    "uninstall": "The password window was closed, or the password did not match — removal was stopped."
+  },
+  "failure_prompt_missing": {
+    "title": "Could not ask for the password",
+    "problem": "Couldn't ask for the administrator password: a component needed for that is missing on this system. Nothing was changed.",
+    "advice": [
+      "Choose “Just for you” — it needs no password.",
+      "Install the polkit package (pkexec on Debian and Ubuntu) and try again."
+    ],
+    "log_line": "Could not ask for the password. Couldn't ask for the administrator password: a component needed for that is missing on this system. Nothing was changed.",
+    "uninstall": "Couldn't ask for the administrator password: a component needed for that is missing on this system. Nothing was changed.\nInstall the polkit package (pkexec on Debian and Ubuntu) and try again."
+  },
+  "failure_timed_out_300": {
+    "title": "The installation took too long",
+    "problem": "The installation ran longer than 5 min and was stopped. Some files may already have been installed.",
+    "advice": [
+      "Check your internet connection — missing components are downloaded — and press “Retry”."
+    ],
+    "log_line": "The installation took too long. The installation ran longer than 5 min and was stopped. Some files may already have been installed.",
+    "uninstall": "The removal ran longer than 5 min and was stopped. Some Rexon files may remain — try removing it again."
+  },
+  "failure_timed_out_1": {
+    "title": "The installation took too long",
+    "problem": "The installation ran longer than 1 min and was stopped. Some files may already have been installed.",
+    "advice": [
+      "Check your internet connection — missing components are downloaded — and press “Retry”."
+    ],
+    "log_line": "The installation took too long. The installation ran longer than 1 min and was stopped. Some files may already have been installed.",
+    "uninstall": "The removal ran longer than 1 min and was stopped. Some Rexon files may remain — try removing it again."
+  },
+  "failure_step_copy_files": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: preparing the program files. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: preparing the program files. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_launcher": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: preparing the start command. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: preparing the start command. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_menu_shortcuts": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: creating application menu shortcuts. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: creating application menu shortcuts. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_icons": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: preparing the icons. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: preparing the icons. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_fewer_passwords": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: setting up fewer password prompts. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: setting up fewer password prompts. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_dependencies": {
+    "title": "The installation did not finish",
+    "problem": "The parts Rexon cannot start without could not be installed: the Qt6 framework, the wallpaper layer under the desktop, the video player and the Vulkan loader. Nothing in the system was changed — Rexon was not installed.",
+    "advice": [
+      "Check your internet connection — the missing parts are downloaded — and press “Retry”.",
+      "If the error happens again, copy the details below and send them to the developer: these parts may be named differently in your system."
+    ],
+    "log_line": "The installation did not finish. The parts Rexon cannot start without could not be installed: the Qt6 framework, the wallpaper layer under the desktop, the video player and the Vulkan loader. Nothing in the system was changed — Rexon was not installed.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_system_install": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: installing into the system. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: installing into the system. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_wallpaper_addons": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: installing live wallpaper add-ons for GNOME and Cinnamon. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: installing live wallpaper add-ons for GNOME and Cinnamon. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_menu_refresh": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: refreshing the application menu. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: refreshing the application menu. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "failure_step_user_folders": {
+    "title": "The installation did not finish",
+    "problem": "This step failed: creating folders for settings and backups. Some changes made before it may remain.",
+    "advice": [
+      "Press “Retry”. If the error happens again, copy the details below and send them to the developer."
+    ],
+    "log_line": "The installation did not finish. This step failed: creating folders for settings and backups. Some changes made before it may remain.",
+    "uninstall": "Rexon could not be removed completely: some files may remain. Try removing it again; if that does not help, tell the developer.\n\nDetails for the developer:\nexit 1"
+  },
+  "step_copy_files": [
+    "preparing the program files",
+    "Preparing the program files…"
+  ],
+  "step_launcher": [
+    "preparing the start command",
+    "Preparing the start command…"
+  ],
+  "step_menu_shortcuts": [
+    "creating application menu shortcuts",
+    "Creating application menu shortcuts…"
+  ],
+  "step_icons": [
+    "preparing the icons",
+    "Preparing the icons…"
+  ],
+  "step_fewer_passwords": [
+    "setting up fewer password prompts",
+    "Setting up fewer password prompts…"
+  ],
+  "step_dependencies": [
+    "installing missing components",
+    "Installing missing components…"
+  ],
+  "step_system_install": [
+    "installing into the system",
+    "Installing into the system…"
+  ],
+  "step_wallpaper_addons": [
+    "installing live wallpaper add-ons for GNOME and Cinnamon",
+    "Installing live wallpaper add-ons for GNOME and Cinnamon…"
+  ],
+  "step_menu_refresh": [
+    "refreshing the application menu",
+    "Refreshing the application menu…"
+  ],
+  "step_user_folders": [
+    "creating folders for settings and backups",
+    "Creating folders for settings and backups…"
+  ],
+  "icons_missing": "Program icons were not found — Rexon will have a generic icon in the menu.",
+  "menu_refresh_later": "The Rexon shortcut will appear in the application menu after you log in again.",
+  "dependencies_with_rexon": "Missing components will be installed together with Rexon.",
+  "dependencies_failed": "The parts Rexon cannot start without could not be installed: the Qt6 framework, the wallpaper layer under the desktop, the video player and the Vulkan loader. Nothing in the system was changed — Rexon was not installed.",
+  "portable_no_install": "No installation needed: Rexon runs straight from its folder.",
+  "command_path_notice": "Start Rexon from the application menu: the “rexon” command may not be found in a terminal with this option.",
+  "command_path_hint": "The command is in /home/tester/.local/bin, and that folder is not on the list of places the terminal searches for programs.",
+  "wizard_window_title": "Install Rexon",
+  "dry_run": "Trial run: Rexon will walk through the wizard to the end, but will install nothing and change nothing on this computer.",
+  "blocked_steamos": "On this system (for example, Steam Deck) system folders are write-protected and wiped by every system update. Rexon will be installed into your home folder so that it survives updates.",
+  "blocked_arch": null,
+  "without_install": [
+    "Rexon will not appear in the application menu — you will have to start it from the folder it is in.",
+    "The menu will not have the emergency item for restoring the desktop appearance.",
+    "Live wallpapers will not work in GNOME and Cinnamon: the add-on they need is set up only by the installation.",
+    "Every system change (desktop environments, login and boot screen themes) will ask for the administrator password again."
+  ],
+  "settings_install": [
+    "Install Rexon on this computer…",
+    "Rexon will appear in the application menu and work like any other program.",
+    "Opening the Rexon installation window.",
+    "Installation is available only in the main Rexon window — open the whole window, not a single tab."
+  ],
+  "buttons": [
+    "Continue",
+    "Retry",
+    "Continue without installing"
+  ],
+  "uninstall_part_package": "Removing the Rexon package…",
+  "uninstall_part_system": "Removing Rexon for everyone on this computer…",
+  "uninstall_part_user": "Removing Rexon from your home folder…",
+  "uninstall_part_cache": "Removing Rexon's temporary files…",
+  "uninstall_part_profile": "Removing settings, backups and installed wallpapers, themes and add-ons…",
+  "user_data_cache": "Rexon's temporary files",
+  "user_data_settings": "Rexon settings",
+  "user_data_backups": "Desktop backups",
+  "user_data_content": "Installed wallpapers, themes and add-ons",
+  "uninstall_done": [
+    "Rexon has been removed. Your settings, desktop backups and installed wallpapers, themes and add-ons were kept: if you install Rexon again, it will pick up where you left off. Rexon's temporary files were deleted.",
+    "Rexon has been removed completely, together with its settings, desktop backups, installed wallpapers, themes, add-ons and temporary files."
+  ],
+  "uninstall_nothing": "Rexon is not installed — there is nothing to remove. Nothing was changed.",
+  "uninstall_listed_package": [
+    "the “rexon-git” package (with all its files on the system)"
+  ],
+  "uninstall_kept_link": "/usr/local/lib/rexon is a link to another folder. Rexon left it alone: neither the link nor what it points to was touched.",
+  "uninstall_removed_link": "/home/u/.cache/rexon was a link to another folder. Rexon removed only the link and did not touch what it pointed to.",
+  "uninstall_package_unsupported": "Rexon was installed from the “rexon-git” package, which Rexon cannot remove by itself. Remove it with your system's software installer. Nothing was changed.",
+  "de_reason_ok": {
+    "title": "",
+    "problem": "",
+    "advice": "",
+    "explanation": ""
+  },
+  "de_reason_astra_zps": {
+    "title": "Astra Linux SE security blocks the installation",
+    "problem": "Astra Linux Special Edition runs a closed software environment: it only starts software signed by the vendor. Desktop environment packages carry no such signature, so the installation cannot succeed — it would fail somewhere in the middle.",
+    "advice": "What you can do: turn the closed software environment off (administrator rights and a reboot are required) — or install the desktop on Astra Linux CE, which has no such restriction.",
+    "explanation": "Astra Linux Special Edition runs a closed software environment: it only starts software signed by the vendor. Desktop environment packages carry no such signature, so the installation cannot succeed — it would fail somewhere in the middle.\n\nWhat you can do: turn the closed software environment off (administrator rights and a reboot are required) — or install the desktop on Astra Linux CE, which has no such restriction."
+  },
+  "de_reason_astra_no_repos": {
+    "title": "This desktop is not in the Astra Linux repositories",
+    "problem": "The stock Astra Linux package sources only carry its own Fly desktop. There are no “gnome” packages there, so there is nothing to download.",
+    "advice": "What you can do: add the Debian package sources — Astra is based on Debian, and the required packages will show up afterwards.",
+    "explanation": "The stock Astra Linux package sources only carry its own Fly desktop. There are no “gnome” packages there, so there is nothing to download.\n\nWhat you can do: add the Debian package sources — Astra is based on Debian, and the required packages will show up afterwards."
+  },
+  "de_reason_osnova_closed": {
+    "title": "OSnova repositories are not public",
+    "problem": "OSnova is a certified distribution with closed package sources. There is no public place to download desktop environments from, so Rexon has nothing to fetch.",
+    "advice": "What you can do: request the package source from your system vendor (it usually comes with the licence) and add it — Rexon will see the desktops afterwards.",
+    "explanation": "OSnova is a certified distribution with closed package sources. There is no public place to download desktop environments from, so Rexon has nothing to fetch.\n\nWhat you can do: request the package source from your system vendor (it usually comes with the licence) and add it — Rexon will see the desktops afterwards."
+  },
+  "de_reason_alt_unsupported_de": {
+    "title": "ALT Linux: this desktop is not supported yet",
+    "problem": "ALT Linux builds its own packages under its own names. The mapping for “cosmic” is not described yet, so Rexon does not know what to install.",
+    "advice": "What you can do: pick one of the desktops verified on ALT Linux — kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt.",
+    "explanation": "ALT Linux builds its own packages under its own names. The mapping for “cosmic” is not described yet, so Rexon does not know what to install.\n\nWhat you can do: pick one of the desktops verified on ALT Linux — kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt."
+  },
+  "de_reason_cosmic_unavailable": {
+    "title": "COSMIC is not packaged for this distribution yet",
+    "problem": "COSMIC is a young desktop and is not packaged everywhere yet. This distribution's package sources do not carry it.",
+    "advice": "What you can do: pick another desktop. COSMIC is packaged for Arch, Fedora, openSUSE, Gentoo (through cosmic-overlay), Void and Alpine.",
+    "explanation": "COSMIC is a young desktop and is not packaged everywhere yet. This distribution's package sources do not carry it.\n\nWhat you can do: pick another desktop. COSMIC is packaged for Arch, Fedora, openSUSE, Gentoo (through cosmic-overlay), Void and Alpine."
+  },
+  "de_reason_rosa_no_task_package": {
+    "title": "ROSA Linux: installation is possible, but not guaranteed",
+    "problem": "ROSA installs desktops through its own task-* package sets, and there is none for “budgie”. Rexon will try the regular Fedora groups, but ROSA's package sources may not have them.",
+    "advice": "You may continue: if the packages are missing, the installation simply stops and nothing breaks. Installed without a warning: kde, gnome, xfce, mate, lxqt.",
+    "explanation": "ROSA installs desktops through its own task-* package sets, and there is none for “budgie”. Rexon will try the regular Fedora groups, but ROSA's package sources may not have them.\n\nYou may continue: if the packages are missing, the installation simply stops and nothing breaks. Installed without a warning: kde, gnome, xfce, mate, lxqt."
+  },
+  "de_reason_steamos_not_yet": {
+    "title": "SteamOS: this desktop environment can't be installed yet",
+    "problem": "On SteamOS Rexon builds a desktop as a system extension from Valve's own package sources, and so far only Xfce, LXQt, Hyprland have been checked this way. This desktop hasn't been checked yet: it may need parts that SteamOS keeps for itself (login screen, drivers), so Rexon doesn't offer it.",
+    "advice": "Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update.",
+    "explanation": "On SteamOS Rexon builds a desktop as a system extension from Valve's own package sources, and so far only Xfce, LXQt, Hyprland have been checked this way. This desktop hasn't been checked yet: it may need parts that SteamOS keeps for itself (login screen, drivers), so Rexon doesn't offer it.\n\nXfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+  }
+}

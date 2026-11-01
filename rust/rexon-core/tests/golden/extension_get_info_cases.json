@@ -1,0 +1,343 @@
+[
+ {
+  "name": "plugin_full",
+  "manifest": {
+   "id": "my.plugin",
+   "name": "Мой плагин",
+   "type": "plugin",
+   "version": "1.2.3",
+   "author": "Wehrwolfmann",
+   "description": "Тест",
+   "de_support": [
+    "kde",
+    "gnome"
+   ],
+   "tags": [
+    "util",
+    "test"
+   ],
+   "license": "MIT",
+   "homepage": "https://x"
+  },
+  "files": [],
+  "enabled_state": {},
+  "info": {
+   "id": "my.plugin",
+   "name": "Мой плагин",
+   "version": "1.2.3",
+   "author": "Wehrwolfmann",
+   "description": "Тест",
+   "type": "plugin",
+   "type_label": "Плагин",
+   "type_icon": "🧩",
+   "de_support": [
+    "kde",
+    "gnome"
+   ],
+   "tags": [
+    "util",
+    "test"
+   ],
+   "enabled": true,
+   "has_preview": false,
+   "has_icon": false,
+   "has_readme": false,
+   "preview_path": null,
+   "icon_path": null,
+   "readme_path": null,
+   "license": "MIT",
+   "homepage": "https://x"
+  }
+ },
+ {
+  "name": "plugin_minimal_disabled",
+  "manifest": {
+   "id": "p2",
+   "name": "P2",
+   "type": "plugin"
+  },
+  "files": [],
+  "enabled_state": {
+   "p2": false
+  },
+  "info": {
+   "id": "p2",
+   "name": "P2",
+   "version": "0.0.0",
+   "author": "Неизвестно",
+   "description": "",
+   "type": "plugin",
+   "type_label": "Плагин",
+   "type_icon": "🧩",
+   "de_support": [],
+   "tags": [],
+   "enabled": false,
+   "has_preview": false,
+   "has_icon": false,
+   "has_readme": false,
+   "preview_path": null,
+   "icon_path": null,
+   "readme_path": null,
+   "license": "",
+   "homepage": ""
+  }
+ },
+ {
+  "name": "wallpaper_pack_scene",
+  "manifest": {
+   "id": "wp1",
+   "name": "Обои",
+   "type": "wallpaper-pack",
+   "wallpaper_format": "scene",
+   "wallpapers": [
+    {
+     "file": "a"
+    },
+    {
+     "file": "b",
+     "has_audio": false
+    }
+   ],
+   "ambient_sounds": [
+    {
+     "file": "rain.ogg"
+    }
+   ],
+   "scene": {
+    "layers": 3
+   }
+  },
+  "files": [
+   "preview.png",
+   "icon.png",
+   "README.md"
+  ],
+  "enabled_state": {},
+  "info": {
+   "id": "wp1",
+   "name": "Обои",
+   "version": "0.0.0",
+   "author": "Неизвестно",
+   "description": "",
+   "type": "wallpaper-pack",
+   "type_label": "Обои",
+   "type_icon": "🖼️",
+   "de_support": [],
+   "tags": [],
+   "enabled": true,
+   "has_preview": true,
+   "has_icon": true,
+   "has_readme": true,
+   "preview_path": "DIR/preview.png",
+   "icon_path": "DIR/icon.png",
+   "readme_path": "DIR/README.md",
+   "license": "",
+   "homepage": "",
+   "wallpaper_format": "scene",
+   "wallpaper_format_label": "Сцена (Parallax/Particles)",
+   "wallpaper_format_icon": "🎭",
+   "has_audio": true,
+   "wallpaper_count": 2,
+   "ambient_sound_count": 1
+  }
+ },
+ {
+  "name": "wallpaper_pack_default",
+  "manifest": {
+   "id": "wp2",
+   "name": "WP2",
+   "type": "wallpaper-pack",
+   "wallpapers": [
+    {
+     "file": "v.mp4",
+     "has_audio": true
+    }
+   ]
+  },
+  "files": [
+   "icon.png"
+  ],
+  "enabled_state": {},
+  "info": {
+   "id": "wp2",
+   "name": "WP2",
+   "version": "0.0.0",
+   "author": "Неизвестно",
+   "description": "",
+   "type": "wallpaper-pack",
+   "type_label": "Обои",
+   "type_icon": "🖼️",
+   "de_support": [],
+   "tags": [],
+   "enabled": true,
+   "has_preview": false,
+   "has_icon": true,
+   "has_readme": false,
+   "preview_path": null,
+   "icon_path": "DIR/icon.png",
+   "readme_path": null,
+   "license": "",
+   "homepage": "",
+   "wallpaper_format": "static",
+   "wallpaper_format_label": "Статические",
+   "wallpaper_format_icon": "🏞️",
+   "has_audio": true,
+   "wallpaper_count": 1,
+   "ambient_sound_count": 0
+  }
+ },
+ {
+  "name": "font_pack",
+  "manifest": {
+   "id": "f1",
+   "name": "Шрифты",
+   "type": "font-pack",
+   "font_families": [
+    "JetBrains Mono",
+    "Iosevka"
+   ]
+  },
+  "files": [
+   "data/a.ttf",
+   "data/b.otf",
+   "data/notafont.txt",
+   "data/sub/c.woff2"
+  ],
+  "enabled_state": {},
+  "info": {
+   "id": "f1",
+   "name": "Шрифты",
+   "version": "0.0.0",
+   "author": "Неизвестно",
+   "description": "",
+   "type": "font-pack",
+   "type_label": "Шрифты",
+   "type_icon": "🔤",
+   "de_support": [],
+   "tags": [],
+   "enabled": true,
+   "has_preview": false,
+   "has_icon": false,
+   "has_readme": false,
+   "preview_path": null,
+   "icon_path": null,
+   "readme_path": null,
+   "license": "",
+   "homepage": "",
+   "font_count": 3,
+   "font_families": [
+    "JetBrains Mono",
+    "Iosevka"
+   ]
+  }
+ },
+ {
+  "name": "real_installed_wallpaper_pack",
+  "manifest": {
+   "format_version": 3,
+   "id": "midnight-office-shift",
+   "name": "Midnight Office Shift",
+   "version": "1.0",
+   "author": "dr-mccoy",
+   "description": "Resolution: FullHD\n\nThis wallpaper goes well with the Modern Office Night Theme",
+   "type": "wallpaper-pack",
+   "tags": [
+    "original-product",
+    "cc-by-sa"
+   ],
+   "license": "",
+   "source": "https://store.kde.org/p/2359770",
+   "de_support": [
+    "any"
+   ],
+   "wallpapers": [
+    {
+     "file": "midnightOfficeShift.jpg",
+     "format": "static"
+    }
+   ]
+  },
+  "files": [
+   "preview.png",
+   "midnightOfficeShift.jpg"
+  ],
+  "enabled_state": {},
+  "info": {
+   "id": "midnight-office-shift",
+   "name": "Midnight Office Shift",
+   "version": "1.0",
+   "author": "dr-mccoy",
+   "description": "Resolution: FullHD\n\nThis wallpaper goes well with the Modern Office Night Theme",
+   "type": "wallpaper-pack",
+   "type_label": "Обои",
+   "type_icon": "🖼️",
+   "de_support": [
+    "any"
+   ],
+   "tags": [
+    "original-product",
+    "cc-by-sa"
+   ],
+   "enabled": true,
+   "has_preview": true,
+   "has_icon": false,
+   "has_readme": false,
+   "preview_path": "DIR/preview.png",
+   "icon_path": null,
+   "readme_path": null,
+   "license": "",
+   "homepage": "",
+   "wallpaper_format": "static",
+   "wallpaper_format_label": "Статические",
+   "wallpaper_format_icon": "🏞️",
+   "has_audio": false,
+   "wallpaper_count": 1,
+   "ambient_sound_count": 0
+  }
+ },
+ {
+  "name": "font_pack_pcf_gz",
+  "manifest": {
+   "id": "terminus",
+   "name": "Terminus",
+   "type": "font-pack",
+   "font_families": [
+    "Terminus",
+    "Terminus Bold"
+   ]
+  },
+  "files": [
+   "data/ter-x14n.pcf.gz",
+   "data/sub/ter-x14b.pcf.gz",
+   "data/Regular.ttf",
+   "data/readme.gz"
+  ],
+  "enabled_state": {},
+  "info": {
+   "id": "terminus",
+   "name": "Terminus",
+   "version": "0.0.0",
+   "author": "Неизвестно",
+   "description": "",
+   "type": "font-pack",
+   "type_label": "Шрифты",
+   "type_icon": "🔤",
+   "de_support": [],
+   "tags": [],
+   "enabled": true,
+   "has_preview": false,
+   "has_icon": false,
+   "has_readme": false,
+   "preview_path": null,
+   "icon_path": null,
+   "readme_path": null,
+   "license": "",
+   "homepage": "",
+   "font_count": 3,
+   "font_families": [
+    "Terminus",
+    "Terminus Bold"
+   ]
+  }
+ }
+]

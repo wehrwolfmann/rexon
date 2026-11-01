@@ -1,0 +1,740 @@
+{
+ "detail_ttl_secs": 86400,
+ "parsed_list": {
+  "total": 895,
+  "items": [
+   {
+    "id": "1352754",
+    "name": "ROUNDED",
+    "description": "<p>Plasma Theme inspired by Breeze style.<br />This theme have support KDE Color Scheme.<br />All elements &amp; icons have rounded corners.<br /><br />Wallpaper - Space Plasma by antechdesigns:<br /><a href=\"https://www.pling.com/p/1243989\">https://www.pling.com/p/1243989</a><br /><br />Latte 0.10 layout here:<br /><a href=\"https://www.pling.com/p/1571402\">https://www.pling.com/p/1571402</a></p>",
+    "description_translated": "",
+    "author": "x-varlesh-x",
+    "license": "GPL-3.0",
+    "version": "20220919",
+    "rating": 89,
+    "downloads": 170822,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233f50cb71637814cf8c24fbf173d66f43ef.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233f50cb71637814cf8c24fbf173d66f43ef.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233ff7c5f86249b6d78f7754cb49ba1f8932.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/7a352a7819d6c60a5b709e7a3c489dcd9dde6b93647a6081eea92e8f2e39cf012385.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTY2MDg4NzYwMiwibyI6IjEiLCJzIjoiOTRmY2E3YjgxZGI5MmYyNGNkY2JkMzZiNTc3MGUyNWI1ZGQwMTcwNGQ5YTQ1NTg4YWU4MTdkYjRmNGE5ZGMxYWZjNTI3MGUxMzY4ODViMmUyN2M2NWQ2YjVkNmZmYzMyYmRlY2JiMjIyN2M2ZWYzYzZjNGVjYjFiNGYwNTc3MTIiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.sGQJMfMD2KBhoaxkeRIZ3lkJZsuV054r-FBfct9W9zE/ROUNDED-COLOR-OPAQUE.tar.gz",
+    "download_name": "ROUNDED-COLOR-OPAQUE.tar.gz",
+    "download_size": 223,
+    "category_id": 104,
+    "created": "2020-01-17T08:57:42+00:00",
+    "updated": "2022-09-19T10:06:54+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTY2MDg4NzYwMiwibyI6IjEiLCJzIjoiOTRmY2E3YjgxZGI5MmYyNGNkY2JkMzZiNTc3MGUyNWI1ZGQwMTcwNGQ5YTQ1NTg4YWU4MTdkYjRmNGE5ZGMxYWZjNTI3MGUxMzY4ODViMmUyN2M2NWQ2YjVkNmZmYzMyYmRlY2JiMjIyN2M2ZWYzYzZjNGVjYjFiNGYwNTc3MTIiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.sGQJMfMD2KBhoaxkeRIZ3lkJZsuV054r-FBfct9W9zE/ROUNDED-COLOR-OPAQUE.tar.gz",
+      "name": "ROUNDED-COLOR-OPAQUE.tar.gz",
+      "size": 223
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTY2MzU4Mjc0NiwibyI6IjEiLCJzIjoiOTRmY2E3YjgxZGI5MmYyNGNkY2JkMzZiNTc3MGUyNWI1ZGQwMTcwNGQ5YTQ1NTg4YWU4MTdkYjRmNGE5ZGMxYWZjNTI3MGUxMzY4ODViMmUyN2M2NWQ2YjVkNmZmYzMyYmRlY2JiMjIyN2M2ZWYzYzZjNGVjYjFiNGYwNTc3MTIiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.i6JSw-nEAw6kv_Z1fv8L9XcU9OsSXhtxcg8PkArhhgo/ROUNDED-COLOR.tar.gz",
+      "name": "ROUNDED-COLOR.tar.gz",
+      "size": 224
+     }
+    ],
+    "comment_count": 58,
+    "rating_stars": 4.5,
+    "display_description": "<p>Plasma Theme inspired by Breeze style.<br />This theme have support KDE Color Scheme.<br />All elements &amp; icons have rounded corners.<br /><br />Wallpaper - Space Plasma by antechdesigns:<br /><a href=\"https://www.pling.com/p/1243989\">https://www.pling.com/p/1243989</a><br /><br />Latte 0.10 layout here:<br /><a href=\"https://www.pling.com/p/1571402\">https://www.pling.com/p/1571402</a></p>"
+   },
+   {
+    "id": "1294174",
+    "name": "Sweet KDE",
+    "description": "<p>A dark and modern theme for Plasma  based on the awesome <a href=\"https://store.kde.org/p/998869/\">Helium</a> theme.<br /><br /></p><h2><b>&iexcl;IMPORTANT!</b></h2><br /><b> Hi, if you are really enjoying these themes from me and also from other authors please consider  <a href=\"https://www.pling.com/support-predefined?section_id=5&amp;amount_predefined=1\"> becoming a supporter for the  KDE Themes and Extensions section </a> , I'm sure that me and others creators would be very grateful with your sponsorship since that help us to  keep mantaining and creating new themes for the community <img src=\"https://www.pling.com/media/emoticons/happy.png\" alt=\"\" />  </b><br /><br /><a href=\"https://www.pling.com/support-predefined?section_id=5&amp;amount_predefined=1\"><b> Become a supporter here </b></a><br /><br />Suggested settings: <br /><br /><a href=\"https://store.kde.org/p/1294013/\">Sweet Kvantum theme</a><br /><br /><a href=\"https://store.kde.org/p/1286856/\">Sweet Aurorae theme </a><br /><br /><a href=\"https://store.kde.org/p/1294011/\">Sweet color scheme</a><br /><br /><a href=\"https://store.kde.org/p/1297008/\">Sweet Konsole color scheme </a><br /><br /><a href=\"https://www.pling.com/p/1305251/\">Candy icons</a><br /><br /><b>- Note -</b><br /><br />Firefox: if you are a firefox user, you can give a chance to the <a href=\"https://addons.mozilla.org/es/firefox/addon/sweet-dark/\">sweet-dark</a> extension for a better looking or try my complete <a href=\"https://github.com/EliverLara/firefox-sweet-theme\"><b>Firefox-Sweet-Theme</b> </a>.",
+    "description_translated": "",
+    "author": "eliverlara",
+    "license": "CC-BY-SA",
+    "version": "",
+    "rating": 89,
+    "downloads": 1743599,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-162026.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-162026.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/palsma.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/eb7d3d42c60bdda5b426e76836f78b7b82091.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-163845.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/5b8050884b522fad2cbf3cc5c3e527653b301.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/5fc1fca90b357262e97b13bcde5f2cb9e7032.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTc3NDc0NjgzOCwibyI6IjEiLCJzIjoiODM0NDMwOWVmMzkxNjQyNjNiOTJkZWY0Y2U4ZWEwNTA3MWRlMTY2MTFmOGU3MjMzNjI3NzZlNWQ3OGVmODVhNzc0NThjZTMwYzk2NjcyOTQ0OTI4NGEyYmFkYTRkNjdhZTZkMzNlZjRhZjg4M2NjNjNmYTE2NmE0Yzg1YWEwMGQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.ruWn08mtRffg4iJJtJFSwt-E25BOFXXfYYL8o13qStY/Sweet.tar.xz",
+    "download_name": "Sweet.tar.xz",
+    "download_size": 535,
+    "category_id": 104,
+    "created": "2019-03-11T17:10:56+00:00",
+    "updated": "2026-03-29T01:02:26+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTc3NDc0NjgzOCwibyI6IjEiLCJzIjoiODM0NDMwOWVmMzkxNjQyNjNiOTJkZWY0Y2U4ZWEwNTA3MWRlMTY2MTFmOGU3MjMzNjI3NzZlNWQ3OGVmODVhNzc0NThjZTMwYzk2NjcyOTQ0OTI4NGEyYmFkYTRkNjdhZTZkMzNlZjRhZjg4M2NjNjNmYTE2NmE0Yzg1YWEwMGQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.ruWn08mtRffg4iJJtJFSwt-E25BOFXXfYYL8o13qStY/Sweet.tar.xz",
+      "name": "Sweet.tar.xz",
+      "size": 535
+     }
+    ],
+    "comment_count": 158,
+    "rating_stars": 4.5,
+    "display_description": "<p>A dark and modern theme for Plasma  based on the awesome <a href=\"https://store.kde.org/p/998869/\">Helium</a> theme.<br /><br /></p><h2><b>&iexcl;IMPORTANT!</b></h2><br /><b> Hi, if you are really enjoying these themes from me and also from other authors please consider  <a href=\"https://www.pling.com/support-predefined?section_id=5&amp;amount_predefined=1\"> becoming a supporter for the  KDE Themes and Extensions section </a> , I'm sure that me and others creators would be very grateful with your sponsorship since that help us to  keep mantaining and creating new themes for the community <img src=\"https://www.pling.com/media/emoticons/happy.png\" alt=\"\" />  </b><br /><br /><a href=\"https://www.pling.com/support-predefined?section_id=5&amp;amount_predefined=1\"><b> Become a supporter here </b></a><br /><br />Suggested settings: <br /><br /><a href=\"https://store.kde.org/p/1294013/\">Sweet Kvantum theme</a><br /><br /><a href=\"https://store.kde.org/p/1286856/\">Sweet Aurorae theme </a><br /><br /><a href=\"https://store.kde.org/p/1294011/\">Sweet color scheme</a><br /><br /><a href=\"https://store.kde.org/p/1297008/\">Sweet Konsole color scheme </a><br /><br /><a href=\"https://www.pling.com/p/1305251/\">Candy icons</a><br /><br /><b>- Note -</b><br /><br />Firefox: if you are a firefox user, you can give a chance to the <a href=\"https://addons.mozilla.org/es/firefox/addon/sweet-dark/\">sweet-dark</a> extension for a better looking or try my complete <a href=\"https://github.com/EliverLara/firefox-sweet-theme\"><b>Firefox-Sweet-Theme</b> </a>."
+   },
+   {
+    "id": "1226329",
+    "name": "Nilium",
+    "description": "<p><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/nilium2.png\" alt=\"\" /> Nilium Plasma Theme: <br /><br />A dark theme based on Noc and Helium<br /><br />I hope you like it :-)<br /><br /><a href=\"https://phabricator.kde.org/T12724\"><b>Wallpaper</b></a><br /><br /><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/antu.png\" alt=\"\" /> <a href=\"https://www.opendesktop.org/p/1188266/\"><b>Ant&uuml; Icons</b></a><br /><br />Official wallpapers:<br /><br /><a href=\"https://www.opendesktop.org/p/1253745/\"><b>Nilium Wallpaper V2</b></a><br /><br /><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/fav.png\" alt=\"\" /> If you like my work, please press the &quot;Pling me&quot; button to make a donation or you can do it directly to my <b>PayPal account</b><br /><br /><a href=\"https://www.paypal.me/mcder3\"><img src=\"https://i.ibb.co/dpvHPb4/Support-Pay-Pal.png\" alt=\"\" /></a><br /><br />License: <a href=\"https://creativecommons.org/licenses/by-sa/4.0/\"><b>CC BY-SA 4.0</b></a><br /><br /><b>read this before forking my work:</b><br /><br />If you use my work to create forks. please try to donate some money, since it takes me a lot of time and effort to create and discover new techniques to improve themes for Plasmashell.<br /><br />I will be very grateful if you do :-)</p>",
+    "description_translated": "",
+    "author": "mcder",
+    "license": "CC-BY-SA",
+    "version": "7.0.1",
+    "rating": 88,
+    "downloads": 91587,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/c3d1bd8909c4f08eae98c68c05ad83c01444.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/c3d1bd8909c4f08eae98c68c05ad83c01444.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/1.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/2.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/3.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTU4Nzg3MzY5OCwibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.AhQduguKpwzAY53u0UzTiGmrzlZMxVX-TzI1Zbdf2_4/Nilium-20200426034630.tar.gz",
+    "download_name": "Nilium-20200426034630.tar.gz",
+    "download_size": 252,
+    "category_id": 104,
+    "created": "2018-03-31T14:41:38+00:00",
+    "updated": "2024-07-05T04:18:18+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTU4Nzg3MzY5OCwibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.AhQduguKpwzAY53u0UzTiGmrzlZMxVX-TzI1Zbdf2_4/Nilium-20200426034630.tar.gz",
+      "name": "Nilium-20200426034630.tar.gz",
+      "size": 252
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYxMTgxMDk1NSwibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.7JtJXcK-kErpB-65k1hSoPrLMrKVCttkOn40KbxDBkw/Nilium-20210128050038.tar.gz",
+      "name": "Nilium-20210128050038.tar.gz",
+      "size": 262
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYxOTMwNzE0NywibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.HEwaeq46LZG9vypVnSHbISQG4JNFJC7p7rQzw2ja8_g/Nilium-20210424231816.tar.gz",
+      "name": "Nilium-20210424231816.tar.gz",
+      "size": 270
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYyMzg4Nzk1NSwibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.k6AwZo8bmuRMw477x6iK2oKpYt86IAnx0K_dgAmaHBA/Nilium-20210616235911.tar.gz",
+      "name": "Nilium-20210616235911.tar.gz",
+      "size": 268
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYzODM3MTA2NywibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ._H7KckSLkzXGeAww3AjHB-1UumhEZmDaN-K7-jXBR9g/Nilium-20211201145227.tar.gz",
+      "name": "Nilium-20211201145227.tar.gz",
+      "size": 270
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTcyMDE1MzQ2OCwibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.msbtehf9zeg3gw55TRG3K8vdNymrO1obnII51nPZgTw/Nilium.tar-20240705041632.gz",
+      "name": "Nilium.tar-20240705041632.gz",
+      "size": 129
+     },
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTU5MTgyNTkyMywibyI6IjEiLCJzIjoiOGRlYjhjNjk2N2YyYmQwYmNjNWNkNjJiNzZjZTI4MDI5ZjljMzExYzFmYzg5OGU1YmE2YWNlZTczZmM0MWU5NmMxODQ2NmZiYTFiYTJhYjQzMjI3MmU3N2UwMzkwY2VlMWFmZmE4Njk2MWVlZTc2MDBiMTNmYTQ5MjZkNWQwYjQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.NM_GiGDtR9y7e1ou73si8Ex8WFSnkz91su17pHxHUCM/Nilium.tar.gz",
+      "name": "Nilium.tar.gz",
+      "size": 254
+     }
+    ],
+    "comment_count": 70,
+    "rating_stars": 4.4,
+    "display_description": "<p><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/nilium2.png\" alt=\"\" /> Nilium Plasma Theme: <br /><br />A dark theme based on Noc and Helium<br /><br />I hope you like it :-)<br /><br /><a href=\"https://phabricator.kde.org/T12724\"><b>Wallpaper</b></a><br /><br /><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/antu.png\" alt=\"\" /> <a href=\"https://www.opendesktop.org/p/1188266/\"><b>Ant&uuml; Icons</b></a><br /><br />Official wallpapers:<br /><br /><a href=\"https://www.opendesktop.org/p/1253745/\"><b>Nilium Wallpaper V2</b></a><br /><br /><img src=\"https://pinguinosyuncafe.files.wordpress.com/2018/09/fav.png\" alt=\"\" /> If you like my work, please press the &quot;Pling me&quot; button to make a donation or you can do it directly to my <b>PayPal account</b><br /><br /><a href=\"https://www.paypal.me/mcder3\"><img src=\"https://i.ibb.co/dpvHPb4/Support-Pay-Pal.png\" alt=\"\" /></a><br /><br />License: <a href=\"https://creativecommons.org/licenses/by-sa/4.0/\"><b>CC BY-SA 4.0</b></a><br /><br /><b>read this before forking my work:</b><br /><br />If you use my work to create forks. please try to donate some money, since it takes me a lot of time and effort to create and discover new techniques to improve themes for Plasmashell.<br /><br />I will be very grateful if you do :-)</p>"
+   },
+   {
+    "id": "1284575",
+    "name": "Moe Themes",
+    "description": "<p>Light theme, with blur transparencies and red tones with gradients.<br /><br />Video of Moe theme: <a href=\"https://www.youtube.com/watch?v=MSKXN2rjBag\">https://www.youtube.com/watch?v=MSKXN2rjBag</a><br /><br />Based on Aether Dark by KenVermette.<br /><br />Moe window decorations: <a href=\"https://store.kde.org/p/1437785\">https://store.kde.org/p/1437785</a><br />Moe color schemes: <a href=\"https://store.kde.org/p/1284573/\">https://store.kde.org/p/1284573/</a><br />Moe konsole theme: <a href=\"https://store.kde.org/p/1284572/\">https://store.kde.org/p/1284572/</a><br />Moe Kvantum: <a href=\"https://store.kde.org/p/1337441/\">https://store.kde.org/p/1337441/</a><br />Moe Look and feel: <a href=\"https://store.kde.org/p/1338879/\">https://store.kde.org/p/1338879/</a><br /><br />Latte Layout Moe: <a href=\"https://store.kde.org/p/1373008/\">https://store.kde.org/p/1373008/</a></p>",
+    "description_translated": "",
+    "author": "jomada",
+    "license": "GPL-3.0",
+    "version": "3.2",
+    "rating": 87,
+    "downloads": 146523,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moe-moedark.jpg",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moe-moedark.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moe-moedark-redond2.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220514-211308.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220518-0007232.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220518-0007443.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moeventana.jpg"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTczODcxNzMxNiwibyI6IjEiLCJzIjoiZTdmYWE0MDg5NWJkZmNjYjExMDk1N2M1ZTViYTg4NGY3ZTJkODcwOTcwNmMwN2M4YWJkNTk4MzY4MmNmMzQ4MGUzMGExYzg3ODNlNzljOTlmMTg2MTIyZjhjZGNiN2U1NWNhZjA5ZTAyNGY1Mjc4OTI4ZTUyODU1MGEwMjlmMDAiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.uYEEb1IRxK0yYUZB8KiWYTC40Q9gJ-xeTVHpk-BFO2E/Moe.tar.gz",
+    "download_name": "Moe.tar.gz",
+    "download_size": 1505,
+    "category_id": 104,
+    "created": "2019-01-10T18:13:48+00:00",
+    "updated": "2026-04-07T12:14:04+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTczODcxNzMxNiwibyI6IjEiLCJzIjoiZTdmYWE0MDg5NWJkZmNjYjExMDk1N2M1ZTViYTg4NGY3ZTJkODcwOTcwNmMwN2M4YWJkNTk4MzY4MmNmMzQ4MGUzMGExYzg3ODNlNzljOTlmMTg2MTIyZjhjZGNiN2U1NWNhZjA5ZTAyNGY1Mjc4OTI4ZTUyODU1MGEwMjlmMDAiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.uYEEb1IRxK0yYUZB8KiWYTC40Q9gJ-xeTVHpk-BFO2E/Moe.tar.gz",
+      "name": "Moe.tar.gz",
+      "size": 1505
+     }
+    ],
+    "comment_count": 96,
+    "rating_stars": 4.3,
+    "display_description": "<p>Light theme, with blur transparencies and red tones with gradients.<br /><br />Video of Moe theme: <a href=\"https://www.youtube.com/watch?v=MSKXN2rjBag\">https://www.youtube.com/watch?v=MSKXN2rjBag</a><br /><br />Based on Aether Dark by KenVermette.<br /><br />Moe window decorations: <a href=\"https://store.kde.org/p/1437785\">https://store.kde.org/p/1437785</a><br />Moe color schemes: <a href=\"https://store.kde.org/p/1284573/\">https://store.kde.org/p/1284573/</a><br />Moe konsole theme: <a href=\"https://store.kde.org/p/1284572/\">https://store.kde.org/p/1284572/</a><br />Moe Kvantum: <a href=\"https://store.kde.org/p/1337441/\">https://store.kde.org/p/1337441/</a><br />Moe Look and feel: <a href=\"https://store.kde.org/p/1338879/\">https://store.kde.org/p/1338879/</a><br /><br />Latte Layout Moe: <a href=\"https://store.kde.org/p/1373008/\">https://store.kde.org/p/1373008/</a></p>"
+   },
+   {
+    "id": "1358262",
+    "name": "Otto",
+    "description": "<p>Dark plasma theme, with orange and yellow gradient tones.<br /><br />Otto Konsole color schemes: <a href=\"https://store.kde.org/p/1358261/\">https://store.kde.org/p/1358261/</a><br /><br />Otto Kvantum theme: <a href=\"https://store.kde.org/p/1358260/\">https://store.kde.org/p/1358260/</a><br /><br />Otto Color-schemes: <a href=\"https://store.kde.org/p/1358259/\">https://store.kde.org/p/1358259/</a><br /><br />Otto Aurorae: <a href=\"https://store.kde.org/p/1414937/\">https://store.kde.org/p/1414937/</a><br /><br />Otto wallpaper: <a href=\"https://store.kde.org/p/1358263/\">https://store.kde.org/p/1358263/</a></p>",
+    "description_translated": "",
+    "author": "jomada",
+    "license": "GPL-3.0",
+    "version": "2.6",
+    "rating": 86,
+    "downloads": 354128,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma-logo.jpg",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma-logo.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma1.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma2.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma3.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma4.jpg",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma5.jpg"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTczNzEyMDYyNSwibyI6IjEiLCJzIjoiYTgxMGNiNjdmNTBiNmJkMDEyMzFhNTRhYjlkYTVkZWMyMzQ3YjMyM2JkZWY3MGI3NjM4YmNkMWJhNGRmODhmMDkyZGRlMjMzZjFiNzNjZDMyZjY3ODA0Njg5NTJmZDMyMjQ5OWIzNDE0ZWY4YmYzZDllYmZiYjY5ZjMwOWMzYzQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.lHto_b3Bf--CBghreOX0PfoRCv_4J985wP-JnRDYAMs/Otto.tar.gz",
+    "download_name": "Otto.tar.gz",
+    "download_size": 1163,
+    "category_id": 104,
+    "created": "2020-02-08T13:36:10+00:00",
+    "updated": "2026-03-30T01:26:45+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTczNzEyMDYyNSwibyI6IjEiLCJzIjoiYTgxMGNiNjdmNTBiNmJkMDEyMzFhNTRhYjlkYTVkZWMyMzQ3YjMyM2JkZWY3MGI3NjM4YmNkMWJhNGRmODhmMDkyZGRlMjMzZjFiNzNjZDMyZjY3ODA0Njg5NTJmZDMyMjQ5OWIzNDE0ZWY4YmYzZDllYmZiYjY5ZjMwOWMzYzQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.lHto_b3Bf--CBghreOX0PfoRCv_4J985wP-JnRDYAMs/Otto.tar.gz",
+      "name": "Otto.tar.gz",
+      "size": 1163
+     }
+    ],
+    "comment_count": 65,
+    "rating_stars": 4.3,
+    "display_description": "<p>Dark plasma theme, with orange and yellow gradient tones.<br /><br />Otto Konsole color schemes: <a href=\"https://store.kde.org/p/1358261/\">https://store.kde.org/p/1358261/</a><br /><br />Otto Kvantum theme: <a href=\"https://store.kde.org/p/1358260/\">https://store.kde.org/p/1358260/</a><br /><br />Otto Color-schemes: <a href=\"https://store.kde.org/p/1358259/\">https://store.kde.org/p/1358259/</a><br /><br />Otto Aurorae: <a href=\"https://store.kde.org/p/1414937/\">https://store.kde.org/p/1414937/</a><br /><br />Otto wallpaper: <a href=\"https://store.kde.org/p/1358263/\">https://store.kde.org/p/1358263/</a></p>"
+   },
+   {
+    "id": "1229134",
+    "name": "Materia Dark KDE",
+    "description": "<p>Materia pack for Plasma 5 desktop.<br /><br />Please use Kvantum Engine and Theme for better looking:<br /><a href=\"https://www.pling.com/p/1229126\">https://www.pling.com/p/1229126</a><br /><br />Install full Materia pack from my collection.</p>",
+    "description_translated": "",
+    "author": "x-varlesh-x",
+    "license": "GPL-3.0",
+    "version": "20220823",
+    "rating": 86,
+    "downloads": 361197,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1229134/99c41b3a358c1d87fd833d6b327c9aaf998a8db376a2cfc97d24f7afbf819eb9aa2a.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1229134/99c41b3a358c1d87fd833d6b327c9aaf998a8db376a2cfc97d24f7afbf819eb9aa2a.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1229134/99c41b3a358c1d87fd833d6b327c9aaf998ac6b57b527a3e57dbf19ddab879388f35.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTY2MTIzMDU3MCwibyI6IjEiLCJzIjoiNTI5M2ZlNGQ1YTVjNDQ5NGU4MGNiNWI3YWMyYjhiOTBhZmRlMzhjYjgyN2MzOGI0ZTZlOTIwZGE2N2QzMTM5ZmZmNDBjNTJmZmMxMmQxY2UxNjlmNDE1N2I4N2Q0NWQzNzZlOGZlNzk3Mzg2YjU1MDBiMjY2ZGI2NzBhMTgwZjEiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.q9ywkaxKuUKMOMjQvhYSAhuaZVRCN9PUbLKUIHmoNPA/Materia.tar.gz",
+    "download_name": "Materia.tar.gz",
+    "download_size": 264,
+    "category_id": 104,
+    "created": "2018-04-14T07:33:30+00:00",
+    "updated": "2022-08-23T04:42:42+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTY2MTIzMDU3MCwibyI6IjEiLCJzIjoiNTI5M2ZlNGQ1YTVjNDQ5NGU4MGNiNWI3YWMyYjhiOTBhZmRlMzhjYjgyN2MzOGI0ZTZlOTIwZGE2N2QzMTM5ZmZmNDBjNTJmZmMxMmQxY2UxNjlmNDE1N2I4N2Q0NWQzNzZlOGZlNzk3Mzg2YjU1MDBiMjY2ZGI2NzBhMTgwZjEiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.q9ywkaxKuUKMOMjQvhYSAhuaZVRCN9PUbLKUIHmoNPA/Materia.tar.gz",
+      "name": "Materia.tar.gz",
+      "size": 264
+     }
+    ],
+    "comment_count": 37,
+    "rating_stars": 4.3,
+    "display_description": "<p>Materia pack for Plasma 5 desktop.<br /><br />Please use Kvantum Engine and Theme for better looking:<br /><a href=\"https://www.pling.com/p/1229126\">https://www.pling.com/p/1229126</a><br /><br />Install full Materia pack from my collection.</p>"
+   },
+   {
+    "id": "1084931",
+    "name": "Breeze AlphaBlack",
+    "description": "<p><b>Plasma 6:</b> The Plasma 6 theme and widget are maintained by another developer (dhruv8sh) and can be found at (Plasma6 Widget: <a href=\"https://www.pling.com/p/2136860\"></a><a href=\"https://www.pling.com/p/2136860\">https://www.pling.com/p/2136860</a>).<br /><br />I took the default Breeze Light theme and made all the panel related stuff a slightly transparent black.<br /><br />The &quot;AlphaBlack Control&quot; widget (Plasma5: <a href=\"https://store.kde.org/p/1237963/\"></a><a href=\"https://store.kde.org/p/1237963/\">https://store.kde.org/p/1237963/</a>) will be automatically installed to quickly change the theme's colors or the panel transparency. It should appear in the system tray after relogging with widgets unlocked.<br /><br />For Plasma 5.21, I recommend changing the panel padding to 0 to fix the dead space around the widgets.<br /><br /><em> [Pager] I removed the transparent blue fill on the active desktop in the pager, instead using just a white outline to show which is selected (similar to dexpot).<br /></em> [Tasks] Don't use a solid fill on minimized tasks.<br /><br />After installing, run the following to set the panel / breeze window border colors.<br /><b>python3 ~/.local/share/plasma/desktoptheme/breeze-alphablack/desktoptheme.py set theme.accentColor 0,0,0</b><br /><br />=[ Other Stuff ]=<br /><b>Menu:</b> <a href=\"https://store.kde.org/p/1160672/\"></a><a href=\"https://store.kde.org/p/1160672/\">https://store.kde.org/p/1160672/</a><br /><b>Volume Mixer:</b> <a href=\"https://store.kde.org/p/1100894/\"></a><a href=\"https://store.kde.org/p/1100894/\">https://store.kde.org/p/1100894/</a><br /><b>Calendar:</b> <a href=\"https://store.kde.org/p/998901/\"></a><a href=\"https://store.kde.org/p/998901/\">https://store.kde.org/p/998901/</a><br /><b>Win7 Show Desktop:</b> <a href=\"https://store.kde.org/p/1100895/\"></a><a href=\"https://store.kde.org/p/1100895/\">https://store.kde.org/p/1100895/</a><br /><b>Alt+Tab Skin:</b> <a href=\"https://store.kde.org/p/1153173/\"></a><a href=\"https://store.kde.org/p/1153173/\">https://store.kde.org/p/1153173/</a></p>",
+    "description_translated": "",
+    "author": "Zren",
+    "license": "GPL-2.0-or-later",
+    "version": "20",
+    "rating": 85,
+    "downloads": 66105,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/39/56/1084931/6b9b5f875ef0d753b676db8907b7606104a6.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/39/56/1084931/6b9b5f875ef0d753b676db8907b7606104a6.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/39/56/1084931/7f50888757a024f34ef3906c0948817605b3.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/39/56/1084931/a4d2c436e42cbae0df6ab5575238a13211f7.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYzMzgyNDk1MywibyI6IjEiLCJzIjoiNWViOWYzOTI2N2NkMTQ3MmM3YzEyYjJiZDU4MDUzMDQ2OGFlZjk5NDJhMjMwNmE1MGE4NzIxOGVhZTRmMWRhOWUyMDNkZGI5NzUwZTM0MmFmZWEwNjZiZTJjZThiOTYwMDZkYTg3NTk4ZTQ2MTIzNjNmMzE1MDQ1ZTIzYjMyNDQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ._FVGbly2gONFOqAgoixHY4_Nt4piNi4M16G0HW789bU/breeze-alphablack-v20.zip",
+    "download_name": "breeze-alphablack-v20.zip",
+    "download_size": 54,
+    "category_id": 104,
+    "created": "2016-04-10T18:16:59+00:00",
+    "updated": "2024-03-12T19:22:13+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTYzMzgyNDk1MywibyI6IjEiLCJzIjoiNWViOWYzOTI2N2NkMTQ3MmM3YzEyYjJiZDU4MDUzMDQ2OGFlZjk5NDJhMjMwNmE1MGE4NzIxOGVhZTRmMWRhOWUyMDNkZGI5NzUwZTM0MmFmZWEwNjZiZTJjZThiOTYwMDZkYTg3NTk4ZTQ2MTIzNjNmMzE1MDQ1ZTIzYjMyNDQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ._FVGbly2gONFOqAgoixHY4_Nt4piNi4M16G0HW789bU/breeze-alphablack-v20.zip",
+      "name": "breeze-alphablack-v20.zip",
+      "size": 54
+     }
+    ],
+    "comment_count": 61,
+    "rating_stars": 4.2,
+    "display_description": "<p><b>Plasma 6:</b> The Plasma 6 theme and widget are maintained by another developer (dhruv8sh) and can be found at (Plasma6 Widget: <a href=\"https://www.pling.com/p/2136860\"></a><a href=\"https://www.pling.com/p/2136860\">https://www.pling.com/p/2136860</a>).<br /><br />I took the default Breeze Light theme and made all the panel related stuff a slightly transparent black.<br /><br />The &quot;AlphaBlack Control&quot; widget (Plasma5: <a href=\"https://store.kde.org/p/1237963/\"></a><a href=\"https://store.kde.org/p/1237963/\">https://store.kde.org/p/1237963/</a>) will be automatically installed to quickly change the theme's colors or the panel transparency. It should appear in the system tray after relogging with widgets unlocked.<br /><br />For Plasma 5.21, I recommend changing the panel padding to 0 to fix the dead space around the widgets.<br /><br /><em> [Pager] I removed the transparent blue fill on the active desktop in the pager, instead using just a white outline to show which is selected (similar to dexpot).<br /></em> [Tasks] Don't use a solid fill on minimized tasks.<br /><br />After installing, run the following to set the panel / breeze window border colors.<br /><b>python3 ~/.local/share/plasma/desktoptheme/breeze-alphablack/desktoptheme.py set theme.accentColor 0,0,0</b><br /><br />=[ Other Stuff ]=<br /><b>Menu:</b> <a href=\"https://store.kde.org/p/1160672/\"></a><a href=\"https://store.kde.org/p/1160672/\">https://store.kde.org/p/1160672/</a><br /><b>Volume Mixer:</b> <a href=\"https://store.kde.org/p/1100894/\"></a><a href=\"https://store.kde.org/p/1100894/\">https://store.kde.org/p/1100894/</a><br /><b>Calendar:</b> <a href=\"https://store.kde.org/p/998901/\"></a><a href=\"https://store.kde.org/p/998901/\">https://store.kde.org/p/998901/</a><br /><b>Win7 Show Desktop:</b> <a href=\"https://store.kde.org/p/1100895/\"></a><a href=\"https://store.kde.org/p/1100895/\">https://store.kde.org/p/1100895/</a><br /><b>Alt+Tab Skin:</b> <a href=\"https://store.kde.org/p/1153173/\"></a><a href=\"https://store.kde.org/p/1153173/\">https://store.kde.org/p/1153173/</a></p>"
+   },
+   {
+    "id": "1191695",
+    "name": "Adapta KDE",
+    "description": "<p>Adapta KDE - This is a port of the popular GTK theme Adapta for Plasma 5 desktop with a few additions and extras.<br />Breeze engine not supported!!!<br />PLEASE USE THIS CUSTOMIZATION WITH KVANTUM ENGINE:<br /><a href=\"https://www.opendesktop.org/p/1005410/\">https://www.opendesktop.org/p/1005410/</a><br /><a href=\"https://github.com/tsujan/Kvantum/releases\">https://github.com/tsujan/Kvantum/releases</a></p>",
+    "description_translated": "",
+    "author": "x-varlesh-x",
+    "license": "GPL-3.0",
+    "version": "20180828",
+    "rating": 84,
+    "downloads": 293749,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1191695/76d5353fa081571df5723ae32be3d548d6c4.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1191695/76d5353fa081571df5723ae32be3d548d6c4.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1191695/4fa434ea4a7216fc8be0c7950825209613f8.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTUzNTQzNDY4NywibyI6IjEiLCJzIjoiNWViNTg2NWQ3OWFhNzkzZWNlYzhmMmQ2MTk2ZjQ5M2U5YTEwYmY2Mjc3ZGU1YjdlOWZmOGZhYTYxMTliYzIyNTJkODFhZTE2ZmYzNTg1YmQ4Mzk5YTFmOTU3OThjODI2ZWI4MGQwMGNjMjQ5ZGZlMDFhNjNlZDgxODI4MTEzMTQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.EozpqnTwz4hIbkS3n4lhO5NOR6C0h16z4aNZMmg9f_g/adapta-plasma.tar.gz",
+    "download_name": "adapta-plasma.tar.gz",
+    "download_size": 214,
+    "category_id": 104,
+    "created": "2017-09-18T00:49:23+00:00",
+    "updated": "2018-08-28T01:38:32+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTUzNTQzNDY4NywibyI6IjEiLCJzIjoiNWViNTg2NWQ3OWFhNzkzZWNlYzhmMmQ2MTk2ZjQ5M2U5YTEwYmY2Mjc3ZGU1YjdlOWZmOGZhYTYxMTliYzIyNTJkODFhZTE2ZmYzNTg1YmQ4Mzk5YTFmOTU3OThjODI2ZWI4MGQwMGNjMjQ5ZGZlMDFhNjNlZDgxODI4MTEzMTQiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.EozpqnTwz4hIbkS3n4lhO5NOR6C0h16z4aNZMmg9f_g/adapta-plasma.tar.gz",
+      "name": "adapta-plasma.tar.gz",
+      "size": 214
+     }
+    ],
+    "comment_count": 19,
+    "rating_stars": 4.2,
+    "display_description": "<p>Adapta KDE - This is a port of the popular GTK theme Adapta for Plasma 5 desktop with a few additions and extras.<br />Breeze engine not supported!!!<br />PLEASE USE THIS CUSTOMIZATION WITH KVANTUM ENGINE:<br /><a href=\"https://www.opendesktop.org/p/1005410/\">https://www.opendesktop.org/p/1005410/</a><br /><a href=\"https://github.com/tsujan/Kvantum/releases\">https://github.com/tsujan/Kvantum/releases</a></p>"
+   },
+   {
+    "id": "1368853",
+    "name": "We10XOS-dark Plasma Theme",
+    "description": "<p>We10XOS-dark kde is a light clean theme for KDE Plasma desktop.<br /><br />In this repository you'll find:<br /><br />    Aurorae Themes<br />    Kvantum Themes<br />    Plasma Color Schemes<br />    Plasma Desktop Themes<br />    Plasma Look-and-Feel Settings<br /><br /><b>Plasmoids for KDE</b><br />------------------------------<br /><br />Main launcher:Tiled Menu<br /><br />------------------------------<br /><br /><b>We10XOS-light Global Theme</b>:<a href=\"https://www.pling.com/p/1568549/\"></a><a href=\"https://www.pling.com/p/1568549/\">https://www.pling.com/p/1568549/</a><br /><br />------------------------------<br /><br /><b>We10XOS Sddm Theme</b>:<a href=\"https://www.pling.com/p/1368854/\"></a><a href=\"https://www.pling.com/p/1368854/\">https://www.pling.com/p/1368854/</a><br /><br /><b>We10XOS Wallpaper</b>:<a href=\"https://www.pling.com/p/1368857/\"></a><a href=\"https://www.pling.com/p/1368857/\">https://www.pling.com/p/1368857/</a><br /><br /><b>We10XOS-dark Global Theme</b>:<a href=\"https://www.pling.com/p/1368860/\"></a><a href=\"https://www.pling.com/p/1368860/\">https://www.pling.com/p/1368860/</a><br /><br /><b>We10XOS-dark Color Theme</b>:<a href=\"https://www.pling.com/p/1368852/\"></a><a href=\"https://www.pling.com/p/1368852/\">https://www.pling.com/p/1368852/</a><br /><br /><b>We10XOS-dark Aurorae Theme </b>:<a href=\"https://www.pling.com/p/1368851/\"></a><a href=\"https://www.pling.com/p/1368851/\">https://www.pling.com/p/1368851/</a><br /><br /><b>We10XOS-dark Kvantum</b>:<a href=\"https://www.pling.com/p/1368859/\"></a><a href=\"https://www.pling.com/p/1368859/\">https://www.pling.com/p/1368859/</a><br /><br />------------------------------<br /><br /><b>We10X icon theme </b>:<a href=\"https://www.pling.com/p/1366371/\"></a><a href=\"https://www.pling.com/p/1366371/\">https://www.pling.com/p/1366371/</a></p>",
+    "description_translated": "",
+    "author": "yeyushengfan258",
+    "license": "GPL-3.0",
+    "version": "",
+    "rating": 84,
+    "downloads": 381249,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/screenshot-20220717-0812171.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/screenshot-20220717-0812171.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/1.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/2.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/3.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/screenshot-20210104-005910.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/54/79/90/1368853/screenshot-20220717-081217.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTc0MTkzNTIzNiwibyI6IjEiLCJzIjoiN2RlMjMxYTM1NmU2MzFkNTM5ZTQwNDYzYzliMTIxZTgwMTRkZWQyZDU3NzJmNGYwYzI1NThjMWQzZWJmMzJkMWMwYmFmYjVhZGVkODQwNDFjNzMyMzkwOTAyMWFjMGMwNTk2OGU5ODdiY2Q3ZDY4NGE2MjY5ZTJkNTJiNDQyZDMiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.Zm-_GHmNvqFlXnLKV06r64FT7fdE3NE1eT8w4Qrw9TQ/We10XOS-dark.tar.xz",
+    "download_name": "We10XOS-dark.tar.xz",
+    "download_size": 1223,
+    "category_id": 104,
+    "created": "2020-03-20T15:16:51+00:00",
+    "updated": "2026-03-25T18:48:48+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTc0MTkzNTIzNiwibyI6IjEiLCJzIjoiN2RlMjMxYTM1NmU2MzFkNTM5ZTQwNDYzYzliMTIxZTgwMTRkZWQyZDU3NzJmNGYwYzI1NThjMWQzZWJmMzJkMWMwYmFmYjVhZGVkODQwNDFjNzMyMzkwOTAyMWFjMGMwNTk2OGU5ODdiY2Q3ZDY4NGE2MjY5ZTJkNTJiNDQyZDMiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.Zm-_GHmNvqFlXnLKV06r64FT7fdE3NE1eT8w4Qrw9TQ/We10XOS-dark.tar.xz",
+      "name": "We10XOS-dark.tar.xz",
+      "size": 1223
+     }
+    ],
+    "comment_count": 34,
+    "rating_stars": 4.2,
+    "display_description": "<p>We10XOS-dark kde is a light clean theme for KDE Plasma desktop.<br /><br />In this repository you'll find:<br /><br />    Aurorae Themes<br />    Kvantum Themes<br />    Plasma Color Schemes<br />    Plasma Desktop Themes<br />    Plasma Look-and-Feel Settings<br /><br /><b>Plasmoids for KDE</b><br />------------------------------<br /><br />Main launcher:Tiled Menu<br /><br />------------------------------<br /><br /><b>We10XOS-light Global Theme</b>:<a href=\"https://www.pling.com/p/1568549/\"></a><a href=\"https://www.pling.com/p/1568549/\">https://www.pling.com/p/1568549/</a><br /><br />------------------------------<br /><br /><b>We10XOS Sddm Theme</b>:<a href=\"https://www.pling.com/p/1368854/\"></a><a href=\"https://www.pling.com/p/1368854/\">https://www.pling.com/p/1368854/</a><br /><br /><b>We10XOS Wallpaper</b>:<a href=\"https://www.pling.com/p/1368857/\"></a><a href=\"https://www.pling.com/p/1368857/\">https://www.pling.com/p/1368857/</a><br /><br /><b>We10XOS-dark Global Theme</b>:<a href=\"https://www.pling.com/p/1368860/\"></a><a href=\"https://www.pling.com/p/1368860/\">https://www.pling.com/p/1368860/</a><br /><br /><b>We10XOS-dark Color Theme</b>:<a href=\"https://www.pling.com/p/1368852/\"></a><a href=\"https://www.pling.com/p/1368852/\">https://www.pling.com/p/1368852/</a><br /><br /><b>We10XOS-dark Aurorae Theme </b>:<a href=\"https://www.pling.com/p/1368851/\"></a><a href=\"https://www.pling.com/p/1368851/\">https://www.pling.com/p/1368851/</a><br /><br /><b>We10XOS-dark Kvantum</b>:<a href=\"https://www.pling.com/p/1368859/\"></a><a href=\"https://www.pling.com/p/1368859/\">https://www.pling.com/p/1368859/</a><br /><br />------------------------------<br /><br /><b>We10X icon theme </b>:<a href=\"https://www.pling.com/p/1366371/\"></a><a href=\"https://www.pling.com/p/1366371/\">https://www.pling.com/p/1366371/</a></p>"
+   },
+   {
+    "id": "998881",
+    "name": "Fushigi",
+    "description": "<p>A simple plasma theme for FushigiProject.<br /><br />It's not complete, some svgz are air ones with only colors modified so credits for those to the Air plasma theme designers.<br /><br />For daily updates you can get the SVN version:<br />svn co <a href=\"https://fushigiproject.svn.sourceforge.net/svnroot/fushigiproject/plasma/theme/Fushigi\">https://fushigiproject.svn.sourceforge.net/svnroot/fushigiproject/plasma/theme/Fushigi</a> Fushigi<br /><br />Feedback is very welcome! (if you want to help with this project-we need a wallpaper! <img src=\"https://www.pling.com/media/emoticons/gah.png\" alt=\"\" />-, you can contact me anytime <img src=\"https://www.pling.com/media/emoticons/wink.png\" alt=\"\" />)<br /><br />P.S. Quick-adapted for opaque version but still need some love <img src=\"https://www.pling.com/media/emoticons/tongue.png\" alt=\"\" /></p>",
+    "description_translated": "",
+    "author": "gomezhyuuga1",
+    "license": "",
+    "version": "0.4.2",
+    "rating": 83,
+    "downloads": 27112,
+    "preview_url": "https://images.pling.com/cache/770x540-4/img/00/00/10/43/00/998881/137517-11.png",
+    "preview_urls": [
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/43/00/998881/137517-11.png",
+     "https://images.pling.com/cache/770x540-4/img/00/00/10/43/00/998881/137517-1.png"
+    ],
+    "preview_local": "",
+    "download_url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTQ2MDczMjcyOCwibyI6IjEiLCJzIjoiMGNkZmJiNmNmYjQ1ZjA5ZTg3NTgxMDI4Y2YzY2ZhNWQ3YTEwMGZlZDc4MDk1N2I1YWUwNmRkMGJhYWI4YzcwNDk3NzJhNWRiY2VjMjZkOGVhOTFhZmYzOGVlNmZmM2QwMGUwNGNmZjU0MDBlNzEzNzA3NjAzYzkwMDI4Mzg1OTIiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.eP9ijgY3LbIOTE0J3kSqpB6da10AxFD2_XtTb3qbGkk/137517-Fushigi.tar.gz",
+    "download_name": "137517-Fushigi.tar.gz",
+    "download_size": 447,
+    "category_id": 104,
+    "created": "2011-01-17T03:35:59+00:00",
+    "updated": "2011-01-18T16:50:31+00:00",
+    "installed": false,
+    "install_path": "",
+    "download_links": [
+     {
+      "url": "https://files06.pling.com/api/files/download/j/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTQ2MDczMjcyOCwibyI6IjEiLCJzIjoiMGNkZmJiNmNmYjQ1ZjA5ZTg3NTgxMDI4Y2YzY2ZhNWQ3YTEwMGZlZDc4MDk1N2I1YWUwNmRkMGJhYWI4YzcwNDk3NzJhNWRiY2VjMjZkOGVhOTFhZmYzOGVlNmZmM2QwMGUwNGNmZjU0MDBlNzEzNzA3NjAzYzkwMDI4Mzg1OTIiLCJ0IjoxNzg0MTQzNDUwLCJzdGZwIjpudWxsLCJzdGlwIjoiMTc2LjMuODMuMjUifQ.eP9ijgY3LbIOTE0J3kSqpB6da10AxFD2_XtTb3qbGkk/137517-Fushigi.tar.gz",
+      "name": "137517-Fushigi.tar.gz",
+      "size": 447
+     }
+    ],
+    "comment_count": 31,
+    "rating_stars": 4.2,
+    "display_description": "<p>A simple plasma theme for FushigiProject.<br /><br />It's not complete, some svgz are air ones with only colors modified so credits for those to the Air plasma theme designers.<br /><br />For daily updates you can get the SVN version:<br />svn co <a href=\"https://fushigiproject.svn.sourceforge.net/svnroot/fushigiproject/plasma/theme/Fushigi\">https://fushigiproject.svn.sourceforge.net/svnroot/fushigiproject/plasma/theme/Fushigi</a> Fushigi<br /><br />Feedback is very welcome! (if you want to help with this project-we need a wallpaper! <img src=\"https://www.pling.com/media/emoticons/gah.png\" alt=\"\" />-, you can contact me anytime <img src=\"https://www.pling.com/media/emoticons/wink.png\" alt=\"\" />)<br /><br />P.S. Quick-adapted for opaque version but still need some love <img src=\"https://www.pling.com/media/emoticons/tongue.png\" alt=\"\" /></p>"
+   }
+  ]
+ },
+ "comments": [
+  {
+   "author": "quicken2k",
+   "date": "2022-11-08T03:18:20+00:00",
+   "subject": "",
+   "text": "I used the ocs-url installer on chrome on Opensuse. I cannot see the theme under Global themes. Where did I go wrong?",
+   "score": "",
+   "depth": 0
+  },
+  {
+   "author": "442206",
+   "date": "2022-07-31T00:57:52+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "a night version is missing",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "x-varlesh-x",
+   "date": "2022-07-31T04:18:34+00:00",
+   "subject": "",
+   "text": "Dark version here https://www.pling.com/p/1493719/",
+   "score": "",
+   "depth": 1
+  },
+  {
+   "author": "rapdigol",
+   "date": "2022-07-03T14:05:08+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "10 the best",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "plutonem",
+   "date": "2022-06-18T11:47:36+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "very nice! beautiful theme!",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "alienflorin",
+   "date": "2022-05-03T18:20:31+00:00",
+   "subject": "",
+   "text": "Amazing theme! I That's why I love Plasma. I was thinking that I don't like the corners especially on the notifications bubbles.. and boom I found this theme! \nI have one request though. It seems the icon for \"show desktop\" has changed to the old one. Is there a way to make it like the default?",
+   "score": "",
+   "depth": 0
+  },
+  {
+   "author": "abimagnus",
+   "date": "2021-06-02T11:10:55+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "Your Work is just  incredible..Love the theme and the gradient colors..Please keep it updated !!!",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "leinatan",
+   "date": "2021-04-12T11:47:39+00:00",
+   "subject": "Awesome",
+   "text": "Great theme! But there's a bug. \nIt seems that the \"rounded\" theme made my panel-attached sticky note unusable. \nNote is not it's usual size but rather super small. Text can't be read unless scrolling down. But there's very few horizontal space so only a few words fit in.",
+   "score": "90",
+   "depth": 0
+  },
+  {
+   "author": "am86shekari",
+   "date": "2021-04-05T10:31:59+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "10 the best",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "boospy",
+   "date": "2021-03-11T19:36:20+00:00",
+   "subject": "Absolutely Perfect",
+   "text": "10 the best",
+   "score": "100",
+   "depth": 0
+  },
+  {
+   "author": "ben2talk",
+   "date": "2020-12-30T22:32:01+00:00",
+   "subject": "Pretty Good",
+   "text": "6 okay, not keen. Breeze with Transparency works for me.",
+   "score": "60",
+   "depth": 0
+  }
+ ],
+ "safe_url": {
+  "https://cdn.pling.com/img/4K KDE Plasma Abstract 345 NO LOGO.png": "https://cdn.pling.com/img/4K%20KDE%20Plasma%20Abstract%20345%20NO%20LOGO.png",
+  "https://api.opendesktop.org/ocs/v1/content/data?categories=104&search=a b": "https://api.opendesktop.org/ocs/v1/content/data?categories=104&search=a%20b",
+  "https://example.com/already%20encoded/path?q=1%2B2": "https://example.com/already%20encoded/path?q=1%2B2",
+  "https://host.com/plain": "https://host.com/plain",
+  "not a url at all": "not%20a%20url%20at%20all",
+  "https://host/p?x=a+b&y=c d#frag ment": "https://host/p?x=a+b&y=c%20d#frag ment"
+ },
+ "link_cases": [
+  {
+   "links": [],
+   "scores": [],
+   "best": -1
+  },
+  {
+   "links": [
+    {
+     "name": "theme-Linux.tar.xz",
+     "url": "https://a/x"
+    }
+   ],
+   "scores": [
+    110
+   ],
+   "best": 0
+  },
+  {
+   "links": [
+    {
+     "name": "win.zip",
+     "url": "https://a/win"
+    },
+    {
+     "name": "linux.tar.gz",
+     "url": "https://a/lin"
+    }
+   ],
+   "scores": [
+    100,
+    110
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "",
+     "url": "https://github.com/foo/bar"
+    },
+    {
+     "name": "Bibata-Modern-Ice.tar.xz",
+     "url": "https://a/b"
+    }
+   ],
+   "scores": [
+    -100,
+    110
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "theme-Windows.zip",
+     "url": "https://a/w"
+    },
+    {
+     "name": "cursors.tar.zst",
+     "url": "https://a/c"
+    },
+    {
+     "name": "extra.7z",
+     "url": "https://a/e"
+    }
+   ],
+   "scores": [
+    -100,
+    110,
+    70
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "a.tar",
+     "url": "u1"
+    },
+    {
+     "name": "b.tar",
+     "url": "u2"
+    }
+   ],
+   "scores": [
+    110,
+    110
+   ],
+   "best": 0
+  },
+  {
+   "links": [
+    {
+     "name": "readme.txt",
+     "url": "u"
+    }
+   ],
+   "scores": [
+    -1100
+   ],
+   "best": 0
+  },
+  {
+   "links": [
+    {
+     "name": "README-20261004175305.md",
+     "url": "https://a/README-20261004175305.md"
+    },
+    {
+     "name": "org.james.htmlwidgets-20261004175227.plasmoid",
+     "url": "https://a/org.james.htmlwidgets-20261004175227.plasmoid"
+    }
+   ],
+   "kpackage_kind": true,
+   "scores": [
+    -1100,
+    140
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "README-20261004175305.md",
+     "url": "https://a/README-20261004175305.md"
+    },
+    {
+     "name": "org.james.htmlwidgets-20261004175227.plasmoid",
+     "url": "https://a/org.james.htmlwidgets-20261004175227.plasmoid"
+    }
+   ],
+   "scores": [
+    -1100,
+    110
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "WallpaperEngine-kde6-1-1j-1-x86-64.pkg.tar.zst",
+     "url": "https://a/WallpaperEngine-kde6-1-1j-1-x86-64.pkg.tar.zst"
+    },
+    {
+     "name": "WallpaperEngine-kde6-1.1d-1-x86-64.pkg.tar.zst",
+     "url": "https://a/WallpaperEngine-kde6-1.1d-1-x86-64.pkg.tar.zst"
+    },
+    {
+     "name": "com.github.catsout.wallpaperEngineKde.tar.gz",
+     "url": "https://a/com.github.catsout.wallpaperEngineKde.tar.gz"
+    },
+    {
+     "name": "int-wallpaper-engine-qt6-1-1-amd64.deb",
+     "url": "https://a/int-wallpaper-engine-qt6-1-1-amd64.deb"
+    }
+   ],
+   "kpackage_kind": true,
+   "scores": [
+    -40,
+    -40,
+    110,
+    -250
+   ],
+   "best": 2
+  },
+  {
+   "links": [
+    {
+     "name": "myscript-src.tar.gz",
+     "url": "https://a/myscript-src.tar.gz"
+    },
+    {
+     "name": "myscript.kwinscript",
+     "url": "https://a/myscript.kwinscript"
+    }
+   ],
+   "kpackage_kind": true,
+   "scores": [
+    110,
+    140
+   ],
+   "best": 1
+  },
+  {
+   "links": [
+    {
+     "name": "theme.tar.gz",
+     "url": "https://a/theme.tar.gz"
+    },
+    {
+     "name": "theme.kpackage",
+     "url": "https://a/theme.kpackage"
+    }
+   ],
+   "scores": [
+    110,
+    110
+   ],
+   "best": 0
+  },
+  {
+   "links": [
+    {
+     "name": "Theme-setup.exe",
+     "url": "https://a/Theme-setup.exe"
+    },
+    {
+     "name": "theme.rpm",
+     "url": "https://a/theme.rpm"
+    },
+    {
+     "name": "theme.AppImage",
+     "url": "https://a/theme.AppImage"
+    },
+    {
+     "name": "theme.zip",
+     "url": "https://a/theme.zip"
+    }
+   ],
+   "scores": [
+    -450,
+    -250,
+    -250,
+    100
+   ],
+   "best": 3
+  }
+ ]
+}

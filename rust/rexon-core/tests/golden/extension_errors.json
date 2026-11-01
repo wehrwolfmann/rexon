@@ -1,0 +1,47 @@
+[
+ {
+  "name": "missing_id",
+  "manifest": {
+   "name": "X",
+   "type": "plugin"
+  },
+  "error": {
+   "type": "ValueError",
+   "msg": "manifest.json: нет обязательного поля 'id'"
+  }
+ },
+ {
+  "name": "missing_name",
+  "manifest": {
+   "id": "x",
+   "type": "plugin"
+  },
+  "error": {
+   "type": "ValueError",
+   "msg": "manifest.json: нет обязательного поля 'name'"
+  }
+ },
+ {
+  "name": "missing_type",
+  "manifest": {
+   "id": "x",
+   "name": "X"
+  },
+  "error": {
+   "type": "ValueError",
+   "msg": "manifest.json: нет обязательного поля 'type'"
+  }
+ },
+ {
+  "name": "invalid_type",
+  "manifest": {
+   "id": "x",
+   "name": "X",
+   "type": "foo-bar"
+  },
+  "error": {
+   "type": "ValueError",
+   "msg": "manifest.json: неизвестный тип 'foo-bar'. Допустимые: cinnamon-applet, cinnamon-desklet, cinnamon-extension, desktop-tool, font-pack, gnome-shell-extension, kde-kwin-effect, kde-kwin-script, kde-wallpaper-plugin, kde-window-switcher, nemo-action, plugin, theme-bundle, theme-cinnamon, theme-conky, theme-cursors, theme-gnome-shell, theme-gtk, theme-icons, theme-kde-colors, theme-kde-global, theme-kde-lockscreen, theme-kde-plasma, theme-kde-splash, theme-kvantum, theme-login-screen, theme-lxqt, theme-marco, theme-openbox, theme-plasmoid, theme-plymouth, theme-sounds, theme-window-decoration, theme-xfwm4, wallpaper-pack, wallpaper-video-adaptive"
+  }
+ }
+]

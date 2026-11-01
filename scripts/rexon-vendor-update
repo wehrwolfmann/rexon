@@ -1,0 +1,1656 @@
+#!/usr/bin/env python3
+"""Обновление вендора waywallen ОДНОЙ командой (Wehrwolfmann).
+
+ЗАЧЕМ. Замер обновления waywallen 0.3.7 → 0.3.8: ~13 часов, и 8-9 из них
+съели НАШИ СОБСТВЕННЫЕ ЛЕСА, а не приём чужих изменений. Причина названа
+точно: ЧЕТЫРЕ коммита из шести были «упало ещё одно, ищем почему».
+Поломки выходили ПО ОДНОЙ, потому что каждая проверка запускалась отдельно
+и в разное время: пересобрал разметку — узнал про протокол; починил
+протокол — узнал про сборку; собрал — узнал про эталон. Каждый
+такой заход стоил контекста, сборки и получаса.
+
+Эта команда закрывает дыру: девять шагов подряд, ОДИН отчёт, в котором
+видно ВСЁ сразу — что изменилось, что покраснело, что не проверено.
+
+⭐ ГЛАВНОЕ СВОЙСТВО — ДОЙТИ ДО КОНЦА. Прогон НЕ останавливается на первой
+поломке: красный шаг записывается в свою корзину, и следующий всё равно
+запускается. Три поломки разного рода должны быть названы все три, а не
+первая. Там, где продолжать нечего физически, шаг НЕ пропускается
+молча, а печатается как «ДАЛЬШЕ НЕ ПРОВЕРЕНО, потому что …».
+
+⚠️ С 02.10.2026 Python в проекте — только архив (`_archived/`): колеса
+`rexon_py`, сверок моста и Python-генераторов эталонов больше нет, и
+шагов `wheel` и `bridge` тоже. Сама команда остаётся скриптом-обвязкой.
+
+ЧЕСТНЫЙ РЕЖИМ. Шаги, которым нужна ЖИВАЯ машина (клон апстрима, `lrelease`
+из Qt), без неё говорят «НЕ ПРОВЕРЕНО» и называют
+причину. ⛔Тихий пропуск ХУЖЕ отсутствия проверки: 06.09.2026 сверка
+краснела вдвойне, и второй дефект не был виден за первым.
+
+ПОРЯДОК ШАГОВ (и почему он такой):
+
+    1. versions   вендор / система / апстрим  — самый дешёвый, и он один
+                                              говорит, ТОТ ЛИ выпуск берём
+    2. proto      протокол контрол-плейна    — дешевле всего, ломает всё
+    3. qml        вендорная разметка          — сюда же qmldir, наши патчи
+                                              и срез lito.lock для QExtra
+    4. modules    собранные QML-модули        — Qcm.Material,
+                                              waywallen.control и QExtra
+                                              едут вместе с вендором, но
+                                              собираются ОТДЕЛЬНЫМИ скриптами
+    5. signals    оповещения моделей          — что вендор шлёт и слушает,
+                                              а наш порт молча потерял
+    6. qm         каталог перевода            — зависит от вендорного .ts
+    7. build      cargo build-app             — ядро + вкладки + фильтр
+    8. test-core  cargo test-core             — сверки ядра
+    9. golden     scripts/rexon-golden-update --check — что разошлось
+
+⚠️ Последний шаг СВЕРЯЕТ, а не переснимает — намеренно. Пересъёмка эталонов
+на обновлении вендора молча благословила бы любое изменение поведения;
+переснимать надо ОСОЗНАННО и поимённо: `scripts/rexon-golden-update <группа>`.
+Исключение — `.qm`: он не эталон поведения, а собранный из вендорного `.ts`
+артефакт, и его пересборка (шаг `qm`) — часть самого вендоринга.
+
+Запуск:
+    scripts/rexon-vendor-update v0.3.9        — обновить вендор на этот тег
+    scripts/rexon-vendor-update               — тег из ui/UPSTREAM_TAG
+    scripts/rexon-vendor-update --check v0.3.9 — ничего не менять, только
+                                                 сказать, что разошлось
+    scripts/rexon-vendor-update --git <url> --ref v0.3.9
+    scripts/rexon-vendor-update --list        — что делает каждый шаг
+    scripts/rexon-vendor-update --only qml qm — только эти шаги
+    scripts/rexon-vendor-update --skip build  — все, кроме этого
+
+Коды возврата:
+    0 — всё сошлось и всё проверено;
+    1 — есть красное или расхождение (перечислены поимённо);
+    2 — что-то не собралось, и часть проверок из-за этого невозможна;
+    3 — красного нет, но часть шагов НЕ ПРОВЕРЕНА (нет клона, нет
+        `lrelease`, режим `--check`).
+    ⚠️ 2 перекрывает 1, 1 перекрывает 3 — но в сводке печатаются ВСЕ
+    корзины, даже когда первая уже красная.
+
+⛔ Живую систему не ломает: pkexec/pacman/makepkg не зовёт, обои
+пользователя и демона не трогает, за пределы дерева не пишет (кроме
+каталога сборки cargo и собранных QML-модулей на шаге `modules`).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+
+REPO = Path(__file__).resolve().parent.parent
+SCRIPTS = REPO / "scripts"
+RUST = REPO / "rust"
+VENDOR_UI = REPO / "data/qt_wallpaper_engine/qml_ui/waywallen/ui"
+DEFAULT_SOURCE = Path(os.path.expanduser("~/Загрузки/owe-ref/waywallen"))
+#: Куда `tools/build_qml_material.sh` и `tools/build_qml_control.sh` кладут
+#: собранные QML-модули. Путь тот же, что у них по умолчанию.
+QML_MODULES = Path(os.path.expanduser("~/.local/share/rexon/qml_modules"))
+
+#: Потолок на один шаг. Самый долгий (сборка приложения) укладывается в минуты;
+#: запас взят на холодный кэш cargo и занятый диск.
+STEP_TIMEOUT = 2400
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Печать
+# ══════════════════════════════════════════════════════════════════════════
+
+_TTY = sys.stdout.isatty()
+
+
+def paint(text: str, code: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if _TTY else text
+
+
+def red(t: str) -> str:
+    return paint(t, "31")
+
+
+def green(t: str) -> str:
+    return paint(t, "32")
+
+
+def yellow(t: str) -> str:
+    return paint(t, "33")
+
+
+def dim(t: str) -> str:
+    return paint(t, "2")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Исходы шага
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Пять исходов, и это не роскошь: «сделано» и «изменено» ведут себя
+# по-разному в двух режимах, а «не проверено» и «дальше не проверено»
+# требуют РАЗНЫХ действий от человека (поднять демон / починить сборку).
+
+DONE = "сделано"           # шаг прошёл, разницы нет
+CHANGED = "изменено"       # шаг прошёл, что-то поменялось (или разошлось)
+FAILED = "КРАСНОЕ"         # проверка не сошлась
+BROKEN = "НЕ СОБРАЛОСЬ"    # прогон не состоялся
+UNCHECKED = "НЕ ПРОВЕРЕНО"  # нет предпосылки (демон, lrelease, режим)
+BLOCKED = "ДАЛЬШЕ НЕ ПРОВЕРЕНО"  # предыдущий шаг не дал материала
+
+_PAINT = {
+    DONE: green, CHANGED: yellow, FAILED: red,
+    BROKEN: red, UNCHECKED: yellow, BLOCKED: yellow,
+}
+
+
+@dataclass
+class Outcome:
+    status: str
+    headline: str = ""
+    details: list = field(default_factory=list)
+    reason: str = ""            # почему не проверено / что сломалось
+    took: float = 0.0
+    #: «изменилось» бывает двух родов: перенос чужой правки в дерево (это
+    #: работа, а не беда) и расхождение, которое кто-то должен разобрать
+    #: руками. Второе поднимает код возврата, первое — нет.
+    needs_action: bool = False
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Запуск подпрогонов
+# ══════════════════════════════════════════════════════════════════════════
+
+def stream(argv: list[str], *, cwd: Path = REPO, keep: str = "",
+           verbose: bool = False, env: dict | None = None,
+           ) -> tuple[int, list[str]]:
+    """Запустить и ПОКАЗЫВАТЬ по строке, а не молчать до конца.
+
+    ⚠️ Молчание тут дороже шума: сторож агентов считает именно тишину
+    (600 с), а `cargo build-app` и `cargo test-core` легко берут больше.
+    Поэтому вывод идёт наружу построчно; в обычном режиме — только строки,
+    подошедшие под `keep`, плюс точка на каждые 20 придержанных, чтобы
+    прогон было видно живым.
+    """
+    rx = re.compile(keep) if keep else None
+    lines: list[str] = []
+    held = 0        # придержанных строк с последней точки
+    dots = 0        # напечатанных точек: перевод строки нужен только после них
+    try:
+        proc = subprocess.Popen(
+            argv, cwd=str(cwd), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, errors="replace",
+            env={**os.environ, **(env or {})}, bufsize=1)
+    except OSError as exc:
+        return 127, [f"не запустилось: {exc}"]
+    assert proc.stdout is not None
+    deadline = time.monotonic() + STEP_TIMEOUT
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        lines.append(line)
+        if verbose or (rx is not None and rx.search(line)):
+            if dots:
+                sys.stdout.write("\n")
+                dots = 0
+            held = 0
+            print(f"    {dim('│')} {line}", flush=True)
+        else:
+            held += 1
+            if held % 20 == 0:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+                dots += 1
+        if time.monotonic() > deadline:
+            proc.kill()
+            lines.append(f"[стоп] шаг не уложился в {STEP_TIMEOUT} с")
+            break
+    if dots:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    return proc.wait(), lines
+
+
+def pick(lines: list[str], pattern: str, limit: int = 12) -> list[str]:
+    """Строки вывода, подошедшие под шаблон, — материал для сводки."""
+    rx = re.compile(pattern)
+    hits = [ln.strip() for ln in lines if rx.search(ln)]
+    if len(hits) > limit:
+        hits = hits[:limit] + [f"… ещё {len(hits) - limit}"]
+    return hits
+
+
+def tail(lines: list[str], n: int = 3) -> str:
+    body = [ln.strip() for ln in lines if ln.strip()]
+    return " / ".join(body[-n:])[:400] if body else "без вывода"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Тег и источник апстрима
+# ══════════════════════════════════════════════════════════════════════════
+
+def vendored_ref() -> str:
+    """Тег, на котором вендор СЕЙЧАС: первое слово `ui/UPSTREAM_TAG`."""
+    f = VENDOR_UI / "UPSTREAM_TAG"
+    try:
+        return f.read_text(encoding="utf-8").split()[0]
+    except (OSError, IndexError):
+        return ""
+
+
+def archive_subtree(source: Path, ref: str, subdir: str,
+                    into: Path) -> str:
+    """Достать `<subdir>` тега `ref` из клона в отдельный каталог.
+
+    ⚠️ Нужно из-за честной асимметрии соседних скриптов: разметку
+    `sync-waywallen-qml.py` берёт `git archive` по тегу сам, а
+    `sync-waywallen-proto.py` для локального источника читает РАБОЧЕЕ
+    ДЕРЕВО клона (его `--ref` действует только вместе с `--git`).
+    Клон при этом почти всегда стоит на своём локальном коммите — и
+    протокол уехал бы не с того выпуска, о чём никто бы не узнал.
+    Поэтому тег материализуется здесь, а скрипту отдаётся уже готовое.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["git", "archive", "--format=tar", ref, subdir],
+        cwd=str(source), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=300)
+    if proc.returncode != 0:
+        why = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError(f"в клоне {source} нет тега {ref}"
+                           + (f": {why[-1]}" if why else ""))
+    untar = subprocess.run(["tar", "-x", "-C", str(into)],
+                           input=proc.stdout, stderr=subprocess.PIPE,
+                           timeout=300)
+    if untar.returncode != 0:
+        raise RuntimeError("распаковка среза апстрима не удалась: "
+                           + untar.stderr.decode("utf-8", "replace")[-300:])
+    return str(into)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Контекст прогона
+# ══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Ctx:
+    ref: str
+    have: str
+    source: Path
+    git: str
+    check: bool
+    verbose: bool
+    tmp: Path
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Шаги
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── Шаг «versions»: вендор / система / апстрим ────────────────────────────
+#
+# Числа, которые ОБЯЗАНЫ совпадать, а сверялись руками — распаковкой
+# AppImage и грепом бинаря. Ровно поэтому и не сверялись: ручная сверка
+# стоит десяти минут, а разойтись эти числа могут молча и тремя разными
+# способами, каждый со своей бедой:
+#
+#   * вендор отстал от апстрима — принимаем не тот выпуск, и весь прогон
+#     ниже добросовестно сверяет дерево со вчерашним тегом;
+#   * движок в системе СТАРЕЕ вендорной разметки — страница зовёт ручку,
+#     которой у демона ещё нет, и остаётся ПУСТОЙ (тот же класс, что
+#     новые типы `W.*` на шаге `qml`);
+#   * движок в системе НОВЕЕ разметки — движок обновился сам (не из
+#     Rexon), а интерфейс у нас вчерашний.
+#
+# ⚠️ С 02.10.2026 сверяются только вендор и апстрим. Версию движка в
+# системе и живого демона разбирало ядро через мост `rexon_py`, а мост
+# ушёл в архив вместе с Python; переписывать правила ядра здесь второй
+# копией нельзя — разошлась бы молча. Поэтому эти два числа честно
+# печатаются как «НЕ ПРОВЕРЕНО» с причиной; живую версию движка показывает
+# страница «Разработчик» вкладки «Wallpaper Engine».
+
+ENGINE_VERSION_UNCHECKED = (
+    "разбор версии движка жил в мосте rexon_py, мост в архиве; смотреть "
+    "страницу «Разработчик» вкладки «Wallpaper Engine»")
+
+
+def version_tuple(text: str) -> tuple:
+    """«v0.3.10» → (0, 3, 10); нечисловой хвост отбрасывается.
+
+    Нужно ТОЛЬКО чтобы сказать «старее/новее», а не для равенства:
+    равенство сравнивается по строкам после снятия «v».
+    """
+    out = []
+    for part in text.strip().lstrip("vV").split("."):
+        digits = ""
+        for ch in part:
+            if not ch.isdigit():
+                break
+            digits += ch
+        if not digits:
+            break
+        out.append(int(digits))
+    return tuple(out)
+
+
+def same_version(a: str, b: str) -> bool:
+    """«v0.3.8» и «0.3.8» — одно и то же: «v» в теге, но не в выводе бинаря."""
+    return bool(a) and bool(b) and a.lstrip("vV") == b.lstrip("vV")
+
+
+def which_is_older(a: str, b: str) -> str:
+    """«старее» / «новее» / «» (числа не сравнить — говорим только «≠»)."""
+    x, y = version_tuple(a), version_tuple(b)
+    if not x or not y or x == y:
+        return ""
+    return "старее" if x < y else "новее"
+
+
+def upstream_latest(ctx: Ctx) -> tuple[str, str, str]:
+    """(последний тег апстрима, откуда взят, что помешало).
+
+    Берём ОТТУДА ЖЕ, откуда шаги `proto` и `qml` берут сам срез: из клона
+    (`--source`) либо, если задан `--git`, прямым запросом к URL.
+
+    ⚠️ Клон отвечает за себя: без `git fetch --tags` он честно назовёт
+    вчерашний выпуск, и тогда «вендор ВПЕРЕДИ апстрима» — это не про
+    апстрим, а про несвежий клон. Поэтому источник печатается рядом с
+    числом, а не подразумевается.
+
+    Старшинство считаем сами (`version_tuple`), а не `--sort=v:refname`:
+    порядок должен быть один и тот же и для клона, и для `ls-remote`.
+    """
+    if ctx.git:
+        argv = ["git", "ls-remote", "--tags", "--refs", ctx.git]
+        where = ctx.git
+    else:
+        argv = ["git", "-C", str(ctx.source), "tag", "--list"]
+        where = f"клон {ctx.source}"
+    try:
+        proc = subprocess.run(argv, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True,
+                              errors="replace", timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "", where, f"теги апстрима не достались: {exc}"
+    if proc.returncode != 0:
+        why = proc.stderr.strip().splitlines()
+        return "", where, ("теги апстрима не достались"
+                           + (f": {why[-1]}" if why else ""))
+    tags = []
+    for line in proc.stdout.splitlines():
+        name = line.strip().rsplit("/", 1)[-1]
+        if name and version_tuple(name):
+            tags.append(name)
+    if not tags:
+        return "", where, f"в источнике {where} нет ни одного тега вида vN.N.N"
+    return max(tags, key=version_tuple), where, ""
+
+
+def step_versions(ctx: Ctx) -> Outcome:
+    """Сверить три версии и НАЗВАТЬ ВСЕ расхождения разом.
+
+    Свойство «дойти до конца» действует и внутри шага: расхождений может
+    быть три сразу, и печатаются все три, а не первое.
+    """
+    vendor = ctx.have                       # тег нашей вендорной копии
+    system, system_why = "", ENGINE_VERSION_UNCHECKED
+    live, live_why = "", ENGINE_VERSION_UNCHECKED
+    upstream, upstream_where, upstream_why = upstream_latest(ctx)
+
+    # Три числа рядом — их читают глазами, а не только в сводке.
+    def show(label: str, value: str, note: str) -> None:
+        shown = value or yellow("не узнать")
+        print(f"    {dim('│')} {label:<22}{shown:<12} {dim(note)}", flush=True)
+
+    show("вендор в дереве:", vendor, "ui/UPSTREAM_TAG")
+    show("в системе:", system, system_why or "waywallen --version (правда с диска)")
+    show("живой демон:", live, live_why or "D-Bus, версия РАБОТАЮЩЕГО процесса")
+    show("последний у апстрима:", upstream, upstream_why or upstream_where)
+
+    drift: list[str] = []
+    if vendor and upstream and not same_version(vendor, upstream):
+        side = which_is_older(vendor, upstream)
+        if side == "старее":
+            drift.append(f"вендор ОТСТАЛ от апстрима: в дереве {vendor}, "
+                         f"у апстрима уже {upstream} — принимать новый тег")
+        else:
+            drift.append(f"вендор ВПЕРЕДИ апстрима: в дереве {vendor}, а "
+                         f"последний тег {upstream} — скорее всего несвежий "
+                         f"источник ({upstream_where}), обновить теги")
+    if vendor and system and not same_version(vendor, system):
+        side = which_is_older(system, vendor)
+        if side == "старее":
+            drift.append(f"движок в системе СТАРЕЕ вендорной разметки: "
+                         f"{system} против {vendor} — страница может звать "
+                         f"ручку, которой у демона ещё нет, и остаться ПУСТОЙ")
+        else:
+            drift.append(f"движок в системе НОВЕЕ вендорной разметки: "
+                         f"{system} против {vendor} — движок обновился не из "
+                         f"Rexon, разметку пора принимать")
+    # Третью пару печатаем, только когда она говорит НОВОЕ: при совпавших
+    # вендоре и апстриме она дословно повторила бы строку выше.
+    if (system and upstream and not same_version(system, upstream)
+            and not same_version(vendor, upstream)):
+        drift.append(f"движок в системе не с последнего выпуска: {system} "
+                     f"против {upstream} у апстрима")
+    # Диск и живой процесс — отдельная пара: она не про вендоринг, а про
+    # «движок обновили, а перезапустить забыли».
+    if system and live and not same_version(system, live):
+        drift.append(f"на диске {system}, а РАБОТАЮЩИЙ демон рапортует {live} "
+                     f"— перезапустить: systemctl --user restart "
+                     f"rexon-wallpaper-engine")
+
+    # Чего не узнали — тоже говорим вслух: молчание тут читается как «сошлось».
+    unknown = [w for w in (system_why, upstream_why) if w]
+    known = [v for v in (vendor, system, upstream) if v]
+
+    if drift:
+        out = Outcome(CHANGED, f"версии разошлись, расхождений: {len(drift)}",
+                      drift, needs_action=True)
+        if unknown:
+            out.reason = "; ".join(unknown)
+        return out
+    if len(known) < 2:
+        return Outcome(UNCHECKED, reason=("сравнивать нечего: "
+                                          + ("; ".join(unknown) or "нет чисел")))
+    # «v0.3.8» и «0.3.8» — одно число: в заголовке печатаем его один раз,
+    # иначе «сошлись» выглядит как перечисление РАЗНЫХ версий.
+    number = known[0].lstrip("vV")
+    out = Outcome(DONE, f"все три сошлись на {number}" if len(known) == 3
+                  else f"сошлись на {number} ({len(known)} источника из 3)")
+    if unknown:
+        out.reason = "; ".join(unknown)
+    return out
+
+
+def ref_label(source: Path, ref: str) -> str:
+    """«v0.3.9 (c62441e)» — выпуск и его коммит, как пишет разметка.
+
+    ⚠️ Нужно ровно потому, что срез тега материализуется в ОБЫЧНЫЙ каталог
+    (`archive_subtree`): git-истории в нём нет, и сам по себе
+    `sync-waywallen-proto.py` выпуск оттуда не узнает. Метку считаем здесь
+    и отдаём ему явно — иначе `proto/UPSTREAM_TAG` останется на прошлом
+    теге, а сверка со живым демоном будет мерить ВЧЕРАШНИЙ снимок
+    (поймано на приёме v0.3.9).
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(source), "rev-parse", "--short", ref],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    sha = proc.stdout.strip() if proc.returncode == 0 else ""
+    return f"{ref} ({sha})" if sha else ""
+
+
+def step_proto(ctx: Ctx) -> Outcome:
+    argv = [sys.executable, str(SCRIPTS / "sync-waywallen-proto.py")]
+    if ctx.git:
+        argv += ["--git", ctx.git, "--ref", ctx.ref]
+    else:
+        try:
+            src = archive_subtree(ctx.source, ctx.ref, "proto",
+                                  ctx.tmp / "proto-src")
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+            return Outcome(UNCHECKED, reason=f"источник апстрима недоступен: {exc}")
+        argv += ["--source", src]
+        label = ref_label(ctx.source, ctx.ref)
+        if label:
+            argv += ["--tag", label]
+    if ctx.check:
+        argv.append("--check")
+    rc, lines = stream(argv, keep=r"^\[(sync|check|err|git)\]",
+                       verbose=ctx.verbose)
+    if rc == 0:
+        moved = pick(lines, r"\[sync\] (обновлён|добавлен)")
+        if moved:
+            return Outcome(CHANGED, f"протокол обновлён, файлов: {len(moved)}",
+                           moved)
+        return Outcome(DONE, "протокол совпадает с апстримом")
+    if rc == 3:
+        drift = pick(lines, r"РАСХОЖДЕНИЕ|НЕТ в апстриме")
+        return Outcome(CHANGED, f"протокол разошёлся с {ctx.ref}", drift,
+                       needs_action=True)
+    if rc == 2:
+        return Outcome(UNCHECKED,
+                       reason=f"апстрим-proto не достался: {tail(lines)}")
+    return Outcome(FAILED, "синхронизация протокола не прошла",
+                   pick(lines, r"ОТКАТ|провал|НЕТ в апстриме") or [tail(lines)])
+
+
+def step_qml(ctx: Ctx) -> Outcome:
+    argv = [sys.executable, str(SCRIPTS / "sync-waywallen-qml.py"),
+            "--ref", ctx.ref]
+    if ctx.git:
+        argv += ["--git", ctx.git]
+    else:
+        argv += ["--source", str(ctx.source)]
+    if ctx.check:
+        argv.append("--check")
+    rc, lines = stream(argv, keep=r"^\[(sync|check|types|err|git)\]",
+                       verbose=ctx.verbose)
+    # Незарегистрированный тип — отдельная находка, и она не должна
+    # потеряться за кодом возврата: страница молча останется ПУСТОЙ.
+    new_types = pick(lines, r"^\[types\]\s+(W|QE)\.")
+    if rc in (0, 4):
+        moved = pick(lines, r"\[sync\] (обновлён|добавлен|удалён)")
+        out = (Outcome(CHANGED, f"разметка обновлена, файлов: {len(moved)}",
+                       moved)
+               if moved else Outcome(DONE, "разметка совпадает с апстримом"))
+        if rc == 4 or new_types:
+            out.status = FAILED if new_types else out.status
+            out.headline = (out.headline
+                            + "; у апстрима НОВЫЕ типы W.*/QE.*, у нас их нет")
+            out.details = out.details + [
+                "страница с таким типом останется ПУСТОЙ — W.* регистрировать "
+                "в rust/rexon-gui/cpp/rexon_register_we.cpp, QE.* добавлять в "
+                "QML-подмену data/qt_wallpaper_engine/qml_ui/QExtra/"
+            ] + new_types
+        return out
+    if rc == 3:
+        # Сюда же попадает срез lito.lock плагина QExtra: его выписывает
+        # тот же скрипт, и строка расхождения называет смену ревизии.
+        drift = pick(lines, r"РАСХОЖДЕНИЕ|НЕТ в дереве|лишний файл")
+        return Outcome(CHANGED, f"разметка разошлась с {ctx.ref}",
+                       drift + new_types, needs_action=True)
+    if rc == 2:
+        return Outcome(UNCHECKED,
+                       reason=f"источник апстрима недоступен: {tail(lines)}")
+    return Outcome(FAILED, "синхронизация разметки не прошла "
+                           "(дерево НЕ тронуто)",
+                   pick(lines, r"\[sync\]|\[err\]") or [tail(lines)])
+
+
+# ── Шаг «signals»: оповещения вендорных моделей против наших портов ───────
+#
+# ЧТО ЛОВИМ. Наш Rust-порт вендорной модели молча теряет ОПОВЕЩЕНИЕ об
+# изменении. Дефект этого рода живёт месяцами и не ловится ни одной сверкой
+# в дереве: `data()` при опросе возвращает ПРАВИЛЬНОЕ значение — не
+# рассылается лишь весть о том, что оно поменялось. Видит такую пропажу
+# только глаз на живом экране.
+#
+# Случай, ради которого шаг и написан (08.09.2026): вендорная
+# `ui/src/model/user_property_model.cpp` в конструкторе подписана на
+# `PluginTranslationStore::revisionChanged` и по приходу каталогов шлёт
+# `dataChanged`; наш порт эту подписку не воспроизвёл — и подписи свойств
+# обоины НАВСЕГДА застревали на английском в русском окне. Три недели
+# незамеченного дефекта; опрос модели всё это время отвечал по-русски.
+#
+# ТРИ СВЕРКИ, и все три идут до конца — красное в одной не отменяет прочие:
+#
+#   1. СОСТАВ. Каждый `Q_SIGNAL void x()` вендорного класса обязан быть
+#      объявлен в мосте порта под ТЕМ ЖЕ именем C++ (`#[cxx_name]`).
+#   2. РАССЫЛКА. Каждый сигнал, который вендор где-то поднимает
+#      (`Q_EMIT x`), обязан подниматься и у нас хотя бы в одном месте.
+#      Сюда же идут цепочки `connect(this, &A::y, this, &A::x)`: у вендора
+#      `x` рассылает сам Qt, у нас его обязан поднять код.
+#   3. ПОДПИСКИ НА ЧУЖОЕ. `connect(<не this>, …)` — единственный способ
+#      услышать чужой объект, и ровно он терялся при порте. Мест подписки
+#      в порту должно быть НЕ МЕНЬШЕ, чем таких connect у вендора.
+#
+# ⚠️ ЧТО НЕ СВЕРЯЕТСЯ НАРОЧНО — ЧИСЛО МЕСТ рассылки. Оно меряет форму кода,
+# а не поведение: у вендора `resetRequested` поднят в трёх методах по
+# отдельности, у нас те же три метода зовут один помощник, и «3 против 1» —
+# это правильный порт, а не пропажа. Числа печатаются в журнале шага, чтобы
+# их видел глаз, но красным НЕ становятся: сторож, который каждый раз
+# краснеет зря, перестают читать вовсе.
+#
+# ⚠️ Имена НЕ дословны: `Q_EMIT dataChanged` ↔ `self.data_changed`. Мостом
+# между ними служит не догадка, а `#[cxx_name = "dataChanged"]` в самом
+# порту — то самое имя, под которым сигнал уходит в Qt.
+
+#: Где у вендора живут модели. Порты ищутся по всему `rust/*/src`.
+VENDOR_MODEL_SUBDIR = "ui/src/model"
+
+#: Формы, которыми Rust-порт подписывается на чужие оповещения. Списком, а
+#: не одной регуляркой: подписки у нас трёх родов, и все три законные —
+#: наш реестр подписчиков, штатная связка cxx-qt и голый QObject::connect.
+_SUBSCRIBE_FORMS = (
+    re.compile(r"subscribers::watch\s*\("),
+    re.compile(r"\.on_[a-z0-9_]+\s*\("),
+    re.compile(r"(?<![\w.>])connect\s*\("),
+)
+
+_RX_CPP_CLASS = re.compile(r"(?:^|\n)\s*(?:export\s+)?class\s+(\w+)\b[^{;]*\{")
+#: Начало определения метода: `auto X::y() -> Z {`, `int X::y(…) const {`,
+#: `X::X(QObject* parent) {`. Скобки в набор НЕ входят намеренно, и строка
+#: обязана начинаться с ПЕРВОЙ КОЛОНКИ: у вендора определения написаны
+#: только так, а вот перенос аргумента `connect(` — всегда с отступом.
+#: Без этого условия строка
+#:     `    PluginTranslationStore::instance(), &…::revisionChanged, …`
+#: притворялась бы началом метода чужого класса, и подписка, ради которой
+#: шаг и написан, уехала бы в несуществующий класс (поймано укусом).
+_RX_CPP_MEMBER = re.compile(r"^(?:[\w:<>,&*][\w:<>,&*\s]*?\s)?([A-Z]\w*)::(~?\w+)\s*\(")
+_RX_RUST_TYPE = re.compile(r"\btype\s+(\w+)\s*=\s*super::")
+#: `#[cxx_name]` бывает и до `#[qsignal]`, и после (перед ним ещё `#[inherit]`),
+#: а между ними попадаются строки документации — забираем всё окружение.
+_RX_RUST_SIGNAL = re.compile(
+    r"(?P<pre>(?:#\[[^\]]*\]\s*|///[^\n]*\n\s*)*)"
+    r"#\[qsignal\]"
+    r"(?P<post>(?:\s*(?:#\[[^\]]*\]|///[^\n]*))*)"
+    r"\s*fn\s+(?P<fn>\w+)\s*\(\s*self:\s*Pin\s*<\s*&mut\s*(?P<cls>\w+)\s*>")
+
+
+def _strip_cpp(text: str) -> str:
+    """Код без комментариев: слово `connect` в пояснении — не подписка."""
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def _strip_rust(text: str) -> str:
+    """Тело порта: без комментариев и БЕЗ блока тестов.
+
+    Тесты режем нарочно: стенд поднимает модель и сам вешает на неё
+    `.on_*`, и эти подписки закрыли бы собой пропажу подписки в самом
+    порту — а именно её мы и ищем.
+    """
+    cut = text.find("#[cfg(test)]")
+    if cut > 0:
+        text = text[:cut]
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def _braced(text: str, start: int) -> str:
+    """Тело от `{` по адресу `start` до парной `}`."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i]
+    return text[start:]
+
+
+def _split_args(text: str, start: int) -> list[str]:
+    """Аргументы вызова от `(` по адресу `start` до парной `)`.
+
+    Запятые считаются только на верхнем уровне: лямбда `[this]() { … }`
+    четвёртым аргументом `connect` не должна рассыпаться на куски.
+    """
+    depth = 0
+    args: list[str] = []
+    cur: list[str] = []
+    for i in range(start, len(text)):
+        ch = text[i]
+        if ch in "([{":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append("".join(cur).strip())
+                return args
+        if depth == 1 and ch == ",":
+            args.append("".join(cur).strip())
+            cur = []
+            continue
+        cur.append(ch)
+    return args
+
+
+def _cpp_class_signals(text: str) -> dict[str, list[str]]:
+    """Класс → его объявленные сигналы (`Q_SIGNAL void x(…)`)."""
+    out: dict[str, list[str]] = {}
+    for m in _RX_CPP_CLASS.finditer(text):
+        body = _braced(text, m.end() - 1)
+        got = out.setdefault(m.group(1), [])
+        for s in re.finditer(r"Q_SIGNAL\s+void\s+(\w+)\s*\(", body):
+            if s.group(1) not in got:
+                got.append(s.group(1))
+    return out
+
+
+def _cpp_class_chunks(text: str) -> dict[str, str]:
+    """Класс → его определения из `.cpp`.
+
+    Разбор нарочно построчный и простой: у вендора все определения записаны
+    как `Класс::метод`, и первая же такая строка задаёт хозяина всего, что
+    идёт ниже, до следующей. Строки до первого определения (безымянное
+    пространство имён с вольными функциями) уходят в ключ «», и если в них
+    вдруг окажется `Q_EMIT`, шаг скажет об этом вслух, а не проглотит.
+    """
+    out: dict[str, list[str]] = {}
+    current = ""
+    for line in text.splitlines():
+        m = None if line[:1].isspace() else _RX_CPP_MEMBER.match(line)
+        if m:
+            current = m.group(1)
+        out.setdefault(current, []).append(line)
+    return {k: "\n".join(v) for k, v in out.items()}
+
+
+@dataclass
+class VendorClass:
+    """Оповещения ОДНОГО вендорного класса — то, что порт обязан повторить."""
+    name: str
+    unit: str
+    signals: list = field(default_factory=list)      # объявленные Q_SIGNAL
+    emits: dict = field(default_factory=dict)        # имя → сколько мест
+    foreign: list = field(default_factory=list)      # «источник → сигнал»
+    chains: list = field(default_factory=list)       # (свой сигнал, куда)
+
+    def has_anything(self) -> bool:
+        return bool(self.signals or self.emits or self.foreign or self.chains)
+
+
+@dataclass
+class RustPort:
+    """Файл нашего порта: что он объявляет и чем подписывается."""
+    path: Path
+    body: str                                   # без комментариев и тестов
+    classes: set = field(default_factory=set)   # типы моста
+    units: set = field(default_factory=set)     # названные вендорные файлы
+    signals: dict = field(default_factory=dict)  # класс → {имяC++: rust_fn}
+
+
+def _camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(p.capitalize() for p in rest)
+
+
+def _vendor_classes(model_dir: Path) -> dict[str, VendorClass]:
+    """Все вендорные модели тега: объявления из `.cppm`, тела из `.cpp`."""
+    classes: dict[str, VendorClass] = {}
+
+    def unit_of(name: str, unit: str) -> VendorClass:
+        vc = classes.get(name)
+        if vc is None:
+            vc = classes[name] = VendorClass(name, unit)
+        return vc
+
+    for cppm in sorted(model_dir.glob("*.cppm")):
+        text = _strip_cpp(cppm.read_text(encoding="utf-8", errors="replace"))
+        for name, sigs in _cpp_class_signals(text).items():
+            vc = unit_of(name, cppm.stem)
+            for s in sigs:
+                if s not in vc.signals:
+                    vc.signals.append(s)
+    for cpp in sorted(model_dir.glob("*.cpp")):
+        text = _strip_cpp(cpp.read_text(encoding="utf-8", errors="replace"))
+        for name, chunk in _cpp_class_chunks(text).items():
+            vc = unit_of(name or "", cpp.stem)
+            for m in re.finditer(r"Q_EMIT\s+(\w+)\s*\(", chunk):
+                vc.emits[m.group(1)] = vc.emits.get(m.group(1), 0) + 1
+            for m in re.finditer(r"(?<![\w.>])connect\s*\(", chunk):
+                args = _split_args(chunk, m.end() - 1)
+                if len(args) < 2:
+                    continue
+                src = " ".join(args[0].split())
+                sig = args[1].lstrip("&").rsplit("::", 1)[-1]
+                target = ""
+                if len(args) >= 4:
+                    target = ("лямбда" if args[3].startswith("[")
+                              else args[3].lstrip("&").rsplit("::", 1)[-1])
+                if src == "this":
+                    vc.chains.append((sig, target))
+                else:
+                    vc.foreign.append(f"{src} → {sig}")
+    return classes
+
+
+def _rust_ports(units: set) -> list[RustPort]:
+    """Наши порты: тип моста, названный вендорный файл, объявленные сигналы."""
+    ports: list[RustPort] = []
+    for path in sorted(RUST.glob("*/src/**/*.rs")):
+        if "/target/" in str(path):
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        classes = set(_RX_RUST_TYPE.findall(raw))
+        named = {u for u in units
+                 if re.search(rf"\b{re.escape(u)}\.cppm?\b", raw)}
+        if not classes and not named:
+            continue
+        sigs: dict[str, dict] = {}
+        for m in _RX_RUST_SIGNAL.finditer(raw):
+            attrs = (m.group("pre") or "") + (m.group("post") or "")
+            cx = re.search(r'cxx_name\s*=\s*"([^"]+)"', attrs)
+            name = cx.group(1) if cx else _camel(m.group("fn"))
+            sigs.setdefault(m.group("cls"), {})[name] = m.group("fn")
+        ports.append(RustPort(path, _strip_rust(raw), classes, named, sigs))
+    return ports
+
+
+def _qml_uses(name: str) -> str:
+    """Файл вендорной разметки, создающий этот тип, — или пусто.
+
+    Нужно, чтобы отличить настоящую дыру от чужого добра: класс, которого
+    в нашей разметке нет, портировать было незачем, и вечно жёлтая строка
+    про него — шум. А вот тип, который разметка СОЗДАЁТ, без порта оставит
+    страницу пустой (тот же класс беды, что новые `W.*` на шаге `qml`).
+    """
+    rx = re.compile(rf"\b{re.escape(name)}\s*\{{")
+    try:
+        files = sorted((VENDOR_UI / "qml").rglob("*.qml"))
+    except OSError:
+        return ""
+    for f in files:
+        try:
+            if rx.search(f.read_text(encoding="utf-8", errors="replace")):
+                return f.name
+        except OSError:
+            continue
+    return ""
+
+
+def step_signals(ctx: Ctx) -> Outcome:
+    """Сверить оповещения вендорных моделей с нашими портами."""
+    try:
+        root = archive_subtree(ctx.source, ctx.ref, VENDOR_MODEL_SUBDIR,
+                               ctx.tmp / "model-src")
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        return Outcome(UNCHECKED, reason=(
+            f"исходники вендорных моделей не достались: {exc}"
+            + ("; шаг читает C++ ИЗ КЛОНА, а при --git его взять неоткуда"
+               if ctx.git else "")))
+    model_dir = Path(root) / VENDOR_MODEL_SUBDIR
+    vendor = _vendor_classes(model_dir)
+    if not vendor:
+        return Outcome(UNCHECKED, reason=(
+            f"в {VENDOR_MODEL_SUBDIR} тега {ctx.ref} не нашлось ни одного "
+            "класса — сменилась раскладка апстрима, разбор надо править"))
+    ports = _rust_ports({vc.unit for vc in vendor.values()})
+
+    findings: list[str] = []      # красное
+    notes: list[str] = []         # сказать вслух, но это не беда
+    unknown: list[str] = []       # не с чем сверить
+    n_class = n_signal = n_sub = 0
+
+    for vc in sorted(vendor.values(), key=lambda c: c.name):
+        if not vc.has_anything():
+            continue
+        if not vc.name:
+            findings.append(
+                f"[{vc.unit}.cpp] оповещения найдены ВНЕ определения класса "
+                f"({sorted(vc.emits)}) — разбор вендорного файла не понял "
+                "раскладку, сверка этого файла недостоверна")
+            continue
+        by_name = [p for p in ports if vc.name in p.classes]
+        group = list(by_name)
+        for p in ports:
+            if vc.unit in p.units and p not in group:
+                group.append(p)
+        rust_cls = vc.name if by_name else ""
+        if not rust_cls:
+            cands = sorted({c for p in group for c in p.classes})
+            if len(cands) == 1:
+                rust_cls = cands[0]
+                notes.append(f"{vc.name} у нас зовётся {rust_cls} "
+                             f"({group[0].path.name})")
+            elif cands:
+                unknown.append(
+                    f"{vc.name}: на {vc.unit}.cpp ссылаются "
+                    f"{', '.join(p.path.name for p in group)}, а классов там "
+                    f"несколько ({', '.join(cands)}) — какой из них порт, "
+                    "по дереву не понять")
+                continue
+        if not group or not rust_cls:
+            where = _qml_uses(vc.name)
+            if where:
+                findings.append(
+                    f"[{vc.name}] вендорный класс СОЗДАЁТСЯ нашей разметкой "
+                    f"({where}), а порта в дереве нет — ни файла с типом "
+                    f"{vc.name}, ни файла, назвавшего {vc.unit}.cpp")
+            else:
+                notes.append(f"{vc.name} ({vc.unit}.cpp): порта нет, и наша "
+                             "разметка этот тип не создаёт — портировать нечего")
+            continue
+
+        text = "\n".join(p.body for p in group)
+        where = ", ".join(p.path.name for p in group)
+        declared: dict = {}
+        for p in group:
+            declared.update(p.signals.get(rust_cls, {}))
+        n_class += 1
+
+        # 1. Состав: объявленное у вендора обязано быть объявлено у нас.
+        for s in vc.signals:
+            n_signal += 1
+            if s not in declared:
+                findings.append(
+                    f"[{vc.name}] сигнал {s} у вендора объявлен, а в мосте "
+                    f"порта ({where}) его НЕТ — привязка QML, которая его "
+                    "ждёт, не пересчитается никогда")
+
+        # 2. Рассылка: поднятое вендором обязано подниматься и у нас.
+        must = dict(vc.emits)
+        for _, target in vc.chains:
+            if target and target != "лямбда" and (target in vc.signals
+                                                  or target in declared):
+                must.setdefault(target, 0)
+        for s, cnt in sorted(must.items()):
+            fn = declared.get(s)
+            if fn is None:
+                if s not in vc.signals:
+                    findings.append(
+                        f"[{vc.name}] {s} вендор рассылает, а в мосте порта "
+                        f"({where}) такого сигнала нет вовсе")
+                continue
+            if s not in vc.signals:
+                n_signal += 1
+            if not re.search(rf"\.{re.escape(fn)}\s*\(", text):
+                how = (f"{cnt} мест" if cnt
+                       else "цепочкой connect внутри объекта")
+                findings.append(
+                    f"[{vc.name}] {s} у вендора поднимается ({how}), а в "
+                    f"порту ({where}) объявлен и НИ РАЗУ не поднят — данные "
+                    "на экране застынут, а опрос data() будет отвечать "
+                    "правильно и врать, что всё хорошо")
+
+        # 3. Подписки на чужие сигналы — то самое, что терялось при порте.
+        if vc.foreign:
+            n_sub += len(vc.foreign)
+            got = sum(len(rx.findall(text)) for rx in _SUBSCRIBE_FORMS)
+            if got < len(vc.foreign):
+                findings.append(
+                    f"[{vc.name}] ПРОПАЛА ПОДПИСКА НА ЧУЖОЕ: вендор слушает "
+                    + "; ".join(vc.foreign)
+                    + f" — а в порту ({where}) мест подписки {got} из "
+                    f"{len(vc.foreign)}. Чужой объект иначе не услышать: "
+                    "модель не узнает об изменении, экран застынет навсегда, "
+                    "и опрос data() этого НЕ покажет")
+
+        print(f"    {dim('│')} {vc.name:<26}"
+              f"сигналов {len(vc.signals):<3} рассылок {sum(vc.emits.values()):<3}"
+              f"цепочек {len(vc.chains):<3}"
+              f"подписок на чужое {len(vc.foreign)}  {dim(where)}", flush=True)
+
+    for line in notes:
+        print(f"    {dim('│')} {dim(line)}", flush=True)
+
+    if findings:
+        out = Outcome(FAILED, f"оповещения разошлись, находок: {len(findings)}",
+                      findings)
+    else:
+        out = Outcome(DONE, f"классов сверено {n_class}, сигналов {n_signal}, "
+                            f"подписок на чужое {n_sub}")
+    if unknown:
+        out.reason = "; ".join(unknown)
+    return out
+
+
+def step_qm(ctx: Ctx) -> Outcome:
+    argv = [str(SCRIPTS / "rexon-golden-update"), "waywallen_qm"]
+    if ctx.check:
+        argv.append("--check")
+    rc, lines = stream(argv, keep=r"сошлось|обновлён|РАЗОШЁЛСЯ|НЕ ПРОВЕРЕНО|"
+                                  r"ПРОГОН НЕ СОСТОЯЛСЯ",
+                       verbose=ctx.verbose)
+    if rc == 0:
+        return Outcome(DONE, "каталог перевода совпадает")
+    if rc == 1:
+        return Outcome(CHANGED, "каталог перевода разошёлся",
+                       pick(lines, r"РАЗОШЁЛСЯ|байт"),
+                       needs_action=ctx.check)
+    if rc == 3:
+        why = pick(lines, r"НЕ ПРОВЕРЕНО")
+        return Outcome(UNCHECKED,
+                       reason=(why[0] if why else "нет предпосылки"))
+    return Outcome(BROKEN, "пересборка .qm не состоялась", [tail(lines)])
+
+
+#: `cargo` пишет `error:` и там, где ничего не сломалось при СБОРКЕ: строка
+#: «test failed, to rerun pass …» — это красная сверка, а не отказ
+#: компилятора. Спутать их нельзя: «не собралось» и «сверка не сошлась»
+#: чинятся по-разному, и вторая теряет имя упавшего теста, если её записать
+#: в первую (поймано укусом 07.09.2026).
+_NOT_A_BUILD_ERROR = re.compile(r"^error: test failed")
+
+
+def _cargo_errors(lines: list[str]) -> list[str]:
+    """ВСЕ ошибки компиляции, а не первая: в этом весь смысл прогона."""
+    out = []
+    for ln in lines:
+        s = ln.strip()
+        if _NOT_A_BUILD_ERROR.match(s):
+            continue
+        if re.match(r"^error(\[E\d+\])?:", s) or s.startswith("error: "):
+            if s not in out:
+                out.append(s)
+    return out[:15]
+
+
+def _compile_broke(lines: list[str]) -> bool:
+    """Отказ КОМПИЛЯТОРА, а не красная сверка."""
+    return any("could not compile" in ln for ln in lines)
+
+
+def step_build(ctx: Ctx) -> Outcome:
+    rc, lines = stream(["cargo", "build-app"], cwd=RUST,
+                       keep=r"^(error|warning: unused)|Finished|could not compile",
+                       verbose=ctx.verbose)
+    if rc == 0:
+        return Outcome(DONE, "cargo build-app: ядро + вкладки + фильтр собраны")
+    return Outcome(BROKEN, "cargo build-app НЕ собрался",
+                   _cargo_errors(lines) or [tail(lines)])
+
+
+def _cargo_test_failures(lines: list[str]) -> list[str]:
+    """Имена ВСЕХ упавших сверок из вывода libtest — двумя путями сразу.
+
+    Одного пути мало: строку `test <имя> ... FAILED` libtest печатает по
+    ходу, а список `failures:` — в конце, и при `--nocapture` либо обрыве
+    прогона второго может не быть вовсе.
+    """
+    out, inside = [], False
+    for ln in lines:
+        s = ln.strip()
+        m = re.match(r"^test ([\w:]+) \.\.\. FAILED", s)
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+            continue
+        if s == "failures:":
+            inside = True
+            continue
+        if inside:
+            if not s or s.startswith(("test result", "error:", "---")):
+                inside = False
+                continue
+            if re.match(r"^[\w:]+$", s) and s not in out:
+                out.append(s)
+    return out
+
+
+def step_test_core(ctx: Ctx) -> Outcome:
+    rc, lines = stream(["cargo", "test-core"], cwd=RUST,
+                       keep=r"^(error|test result|failures)|could not compile|"
+                            r"^test .* FAILED",
+                       verbose=ctx.verbose)
+    if rc == 0:
+        passed = sum(int(m.group(1)) for ln in lines
+                     if (m := re.search(r"^test result: ok\. (\d+) passed", ln)))
+        return Outcome(DONE, f"cargo test-core зелёный, сверок {passed}")
+    if _compile_broke(lines):
+        return Outcome(BROKEN, "cargo test-core: ядро не компилируется",
+                       _cargo_errors(lines) or [tail(lines)])
+    fails = _cargo_test_failures(lines)
+    suites = pick(lines, r"^error: test failed, to rerun pass", limit=6)
+    return Outcome(FAILED, f"cargo test-core: красных сверок {len(fails)}",
+                   (fails + suites) or [tail(lines)])
+
+
+#: Заголовки корзин в сводке `rexon-golden-update`. Последняя группа
+#: шаблона — счётчик: ноль означает «корзина пуста», и подписывать под неё
+#: следующие строки нельзя.
+_GOLD_BUCKETS = (
+    (re.compile(r"^\s+(?:РАЗОШЛОСЬ|обновлено): (\d+)"), "разошлось"),
+    (re.compile(r"^\s+НЕ ПРОВЕРЕНО: (\d+)"), "не проверено"),
+    (re.compile(r"^\s+прогон не состоялся: (\d+)"), "не состоялся"),
+    (re.compile(r"^\s+НИЧЕЙ ЭТАЛОН: (\d+)"), "ничей"),
+)
+
+
+def _golden_summary(lines: list[str]) -> dict[str, list[str]]:
+    """Разобрать сводку `rexon-golden-update` на корзины.
+
+    Читаем именно ЕГО сводку, а не собственную выжимку: у него внутри
+    восемь групп со своими честными исходами, и переписывать их логику
+    здесь значило бы завести вторую правду, которая разойдётся молча.
+
+    ⚠️ Строки корзины идут с отступом в шесть пробелов, заголовки — в два.
+    Любая строка НЕ с шести пробелов закрывает текущую корзину: иначе
+    список «ничьих эталонов» подписался бы под предыдущий заголовок.
+    """
+    out: dict[str, list[str]] = {}
+    bucket = ""
+    started = False
+    for ln in lines:
+        if ln.startswith("СВОДКА"):
+            started = True
+            continue
+        if not started:
+            continue
+        head = None
+        for rx, name in _GOLD_BUCKETS:
+            m = rx.match(ln)
+            if m:
+                head = name
+                out.setdefault(name, [])
+                bucket = name if m.group(1) != "0" else ""
+                break
+        if head is not None:
+            continue
+        if ln.startswith("      "):
+            if bucket:
+                out[bucket].append(ln.strip())
+        else:
+            bucket = ""
+    return out
+
+
+def step_golden(ctx: Ctx) -> Outcome:
+    rc, lines = stream([str(SCRIPTS / "rexon-golden-update"), "--check"],
+                       keep=r"РАЗОШЁЛСЯ|НЕ ПРОВЕРЕНО|ПРОГОН НЕ СОСТОЯЛСЯ|"
+                            r"^СВОДКА|^  ",
+                       verbose=ctx.verbose)
+    buckets = _golden_summary(lines)
+    drift = buckets.get("разошлось", [])
+    unchecked = buckets.get("не проверено", [])
+    broken = buckets.get("не состоялся", [])
+    orphan = buckets.get("ничей", [])
+    if rc == 2 or broken:
+        return Outcome(BROKEN, "пересъёмка эталонов не состоялась",
+                       broken or [tail(lines)])
+    if rc == 1 or drift:
+        # Расхождение эталона ВСЕГДА требует человека — и в проверке, и в
+        # обновлении: переснимать эталон вслепую значит благословить любое
+        # изменение поведения, ради ловли которого он и заведён.
+        out = Outcome(CHANGED, f"эталонов разошлось: {len(drift)}",
+                      drift + orphan, needs_action=True)
+        if unchecked:
+            out.reason = "; ".join(unchecked)
+        return out
+    if rc == 3 or unchecked:
+        return Outcome(UNCHECKED, "эталоны сошлись, но не все проверены",
+                       orphan, reason="; ".join(unchecked))
+    return Outcome(DONE, "все эталоны сошлись", orphan)
+
+
+# ── Шаг «modules»: собранные QML-модули против их источника ───────────────
+#
+# ЧТО ЛОВИМ. Три QML-модуля едут ВМЕСТЕ с вендором, но собираются
+# отдельными скриптами, и потому отстают молча:
+#
+#   * `Qcm.Material` — чужая библиотека; её редакцию выписывает
+#     `sync-waywallen-qml.py` из замка апстрима в `ui/QML_MATERIAL_PIN`,
+#     а собирает `tools/build_qml_material.sh`;
+#   * `waywallen.control` — Qt-Protobuf-типы, порождённые из НАШИХ
+#     `proto/*.proto` скриптом `tools/build_qml_control.sh`;
+#   * `QExtra` — чужой плагин картинок; его ревизию со всеми зависимостями
+#     тот же `sync-waywallen-qml.py` выписывает срезом замка апстрима в
+#     `tools/qextra_plugin/lito.lock`, а собирает `tools/build_qml_qextra.sh`.
+#     У него три способа отстать: ревизия, версия Qt (плагин зовёт частный
+#     API Qt, и ядро не берёт собранный под другую младшую версию) и набор
+#     типов — новый `QE.Что-то` у вендора, которого плагин не даёт.
+#     Отставший или несобранный QExtra вкладку не ломает (ядро берёт
+#     QML-подмену), поэтому «не собран» здесь — «НЕ ПРОВЕРЕНО», а не красное.
+#
+# Расхождение этого рода не ловит ни одна сверка в дереве: файлы дерева
+# сошлись с тегом, а на живой странице под новой разметкой лежит вчерашняя
+# библиотека. Пойманный случай (07.09.2026): пин отставал на ПЯТЬ выпусков,
+# и починенный у вендора регистр русских подписей до сборки не доезжал.
+
+
+def _read_line(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _newest_mtime(root: Path) -> float:
+    """Самый свежий файл поддерева (0.0 — пусто или нет каталога)."""
+    best = 0.0
+    if not root.is_dir():
+        return best
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                best = max(best, path.stat().st_mtime)
+        except OSError:
+            continue
+    return best
+
+
+QEXTRA_LOCK = REPO / "tools/qextra_plugin/lito.lock"
+#: Младший годный lito — тот же, что требует `tools/build_qml_qextra.sh`.
+QEXTRA_LITO_MIN = (0, 8, 5)
+
+
+def _qextra_lito_note() -> str:
+    """Почему плагин QExtra на этой машине не собрать ('' — собрать можно)."""
+    lito = os.environ.get("LITO") or "lito"
+    need = ".".join(map(str, QEXTRA_LITO_MIN))
+    try:
+        proc = subprocess.run([lito, "--version"], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return f"lito на машине нет (нужен >= {need}; путь — переменной LITO)"
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", proc.stdout)
+    if not m:
+        return f"версию lito узнать не удалось ({lito})"
+    if tuple(map(int, m.groups())) < QEXTRA_LITO_MIN:
+        return (f"lito {m.group(0)} не годится (нужен >= {need}; путь к "
+                f"годному — переменной LITO)")
+    return ""
+
+
+def _qextra_pkgbuild_lost() -> list[str]:
+    """Источники из среза замка, которых нет в списках пакета.
+
+    Пакет собирает QExtra без сети из источников, названных в `PKGBUILD`
+    (`_qe_git`, `_qe_reg`), и его `prepare()` отказывает при расхождении —
+    но это видно только на сборке пакета. Здесь то же самое видно сразу.
+    """
+    lock = _read_line(QEXTRA_LOCK)
+    pkgbuild = _read_line(REPO / "packaging/aur/PKGBUILD")
+    lost = [f"{url} @ {rev[:7]}"
+            for url, rev in re.findall(
+                r'(?m)^source = "git\+([^"#]+)#([0-9a-f]+)"', lock)
+            if f"|{url}|{rev}'" not in pkgbuild]
+    lost += [f"{name} {ver}"
+             for name, ver, digest in re.findall(
+                 r'name = "([^"]+)"\nversion = "([^"]+)"\n'
+                 r'source = "registry\+[^"]*"\nchecksum = "([0-9a-f]{64})"',
+                 lock)
+             if f"'{name}|{ver}|{digest}'" not in pkgbuild]
+    return lost
+
+
+def _qextra_module(show, drift: list[str], unchecked: list[str]) -> None:
+    """Третий модуль: настоящий QExtra против среза замка, Qt и разметки."""
+    m = re.search(r"QExtra\.git#([0-9a-f]{7,40})", _read_line(QEXTRA_LOCK))
+    want = m.group(1) if m else ""
+    lost = _qextra_pkgbuild_lost()
+    if lost:
+        drift.append("источники QExtra в packaging/aur/PKGBUILD отстали от "
+                     "tools/qextra_plugin/lito.lock — обновить _qe_git/_qe_reg"
+                     " и .SRCINFO: " + ", ".join(lost))
+        show("QExtra в пакете:", red(f"источников отстало: {len(lost)}"))
+    elif want:
+        show("QExtra в пакете:", green("источники совпадают со срезом замка"))
+    built = QML_MODULES / "QExtra"
+    have = _read_line(built / "QEXTRA_PIN")
+    rebuild = "пересобрать: tools/build_qml_qextra.sh"
+    if not want:
+        unchecked.append(f"в {QEXTRA_LOCK.relative_to(REPO)} нет ревизии "
+                         f"QExtra — нечего сверять")
+        return
+    if not (built / "libqextraplugin.so").is_file():
+        why = _qextra_lito_note()
+        unchecked.append("QExtra не собран, вкладка идёт на QML-подмене "
+                         "(tools/build_qml_qextra.sh)"
+                         + (f"; {why}" if why else ""))
+        show("QExtra:", yellow("не собран — работает подмена"))
+        return
+    if not have:
+        unchecked.append(f"QExtra собран без отметки ревизии "
+                         f"({built / 'QEXTRA_PIN'}) — {rebuild}")
+        show("QExtra:", yellow("редакция не записана"))
+        return
+    if have != want:
+        drift.append(f"QExtra отстал: собран {have[:7]}, вендор просит "
+                     f"{want[:7]} — {rebuild}")
+        show("QExtra:", red(f"{have[:7]} против {want[:7]}"))
+        return
+    notes: list[str] = []
+    # Версия Qt: ядро берёт плагин только при совпадении старшей и младшей
+    # (`qml_modules::choose_qextra`), иначе молча показывает подмену.
+    stamp = _read_line(built / "QT_VERSION")
+    try:
+        qt = subprocess.run(["pkg-config", "--modversion", "Qt6Core"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        qt = ""
+    if not stamp:
+        drift.append(f"у QExtra нет отметки версии Qt ({built / 'QT_VERSION'})"
+                     f" — ядро такой не берёт; {rebuild}")
+        notes.append("нет отметки Qt")
+    elif not qt:
+        unchecked.append("версию Qt системы узнать не удалось (pkg-config "
+                         "Qt6Core) — отметка QExtra не сверена")
+    elif stamp.split(".")[:2] != qt.split(".")[:2]:
+        drift.append(f"QExtra собран под Qt {stamp}, в системе Qt {qt} — "
+                     f"ядро берёт подмену; {rebuild}")
+        notes.append(f"Qt {stamp} против {qt}")
+    # Набор типов: что вендор зовёт как `QE.*` и что плагин отдаёт наружу.
+    try:
+        types = (built / "module.qmltypes").read_text(encoding="utf-8",
+                                                      errors="replace")
+    except OSError:
+        types = ""
+    gives = set(re.findall(r'"QExtra/(\w+) [\d.]+"', types))
+    calls: dict[str, str] = {}
+    for path in sorted((VENDOR_UI / "qml").rglob("*.qml")):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for name in re.findall(r"\bQE\.([A-Z]\w*)", text):
+            calls.setdefault(name, str(path.relative_to(VENDOR_UI)))
+    if not gives:
+        unchecked.append(f"у QExtra нет описания типов "
+                         f"({built / 'module.qmltypes'}) — набор QE.* не сверен")
+    else:
+        lost = sorted(n for n in calls if n not in gives)
+        for name in lost:
+            drift.append(f"плагин QExtra {have[:7]} не даёт QE.{name} "
+                         f"(зовёт {calls[name]}) — страница останется пустой")
+        if lost:
+            notes.append("не даёт " + ", ".join("QE." + n for n in lost))
+    if notes:
+        show("QExtra:", red(f"{have[:7]}: " + "; ".join(notes)))
+    else:
+        show("QExtra:", green(
+            f"{have[:7]} — совпадает с вендором, Qt {stamp}, "
+            f"типов QE.* {len(calls)} из {len(gives)}"))
+
+
+def step_modules(ctx: Ctx) -> Outcome:
+    """Сказать, какой из трёх модулей отстал от дерева. Все, если все."""
+    drift: list[str] = []
+    unchecked: list[str] = []
+
+    def show(label: str, note: str) -> None:
+        print(f"    {dim('│')} {label:<24}{note}", flush=True)
+
+    # 1. Qcm.Material — по отметке редакции, которую кладёт сборщик.
+    want = _read_line(VENDOR_UI / "QML_MATERIAL_PIN")
+    stamp_file = QML_MODULES / "Qcm" / "QML_MATERIAL_PIN"
+    have = _read_line(stamp_file)
+    if not want:
+        unchecked.append("в дереве нет ui/QML_MATERIAL_PIN — нечего сверять")
+    elif not (QML_MODULES / "Qcm" / "Material").is_dir():
+        unchecked.append("Qcm.Material не собран вовсе "
+                         "(tools/build_qml_material.sh)")
+        show("Qcm.Material:", yellow("не собран"))
+    elif not have:
+        unchecked.append(f"Qcm.Material собран до появления отметки редакции "
+                         f"({stamp_file}) — пересобрать, чтобы сверять")
+        show("Qcm.Material:", yellow("редакция не записана"))
+    elif have != want:
+        drift.append(f"Qcm.Material отстал: собран {have[:7]}, вендор просит "
+                     f"{want[:7]} — пересобрать: tools/build_qml_material.sh")
+        show("Qcm.Material:", red(f"{have[:7]} против {want[:7]}"))
+    else:
+        show("Qcm.Material:", green(f"{have[:7]} — совпадает с вендором"))
+
+    # 2. waywallen.control — по времени: он порождён из наших схем, и
+    #    отдельной отметки редакции у него быть не может.
+    proto = REPO / "data/qt_wallpaper_engine/proto/control.proto"
+    built = QML_MODULES / "waywallen" / "control"
+    built_at = _newest_mtime(built)
+    try:
+        proto_at = proto.stat().st_mtime
+    except OSError:
+        proto_at = 0.0
+    if not built_at:
+        unchecked.append("waywallen.control не собран вовсе "
+                         "(tools/build_qml_control.sh)")
+        show("waywallen.control:", yellow("не собран"))
+    elif proto_at and built_at < proto_at:
+        drift.append("waywallen.control старше наших схем — пересобрать: "
+                     "tools/build_qml_control.sh")
+        show("waywallen.control:", red("старше proto/control.proto"))
+    else:
+        show("waywallen.control:", green("свежее наших схем"))
+
+    # 3. QExtra — по отметкам сборщика и описанию типов рядом с плагином.
+    _qextra_module(show, drift, unchecked)
+
+    if drift:
+        out = Outcome(CHANGED, f"модулей отстало: {len(drift)}", drift,
+                      needs_action=True)
+        if unchecked:
+            out.reason = "; ".join(unchecked)
+        return out
+    if unchecked:
+        return Outcome(UNCHECKED, "модули сверены не полностью",
+                       reason="; ".join(unchecked))
+    return Outcome(DONE, "все три модуля собраны из того, что лежит в дереве")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Реестр шагов
+# ══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Step:
+    name: str
+    title: str
+    how: str
+    run: Callable[[Ctx], Outcome]
+    needs: str = ""
+
+
+def registry() -> list[Step]:
+    return [
+        Step("versions", "версии: вендор и апстрим (движок — НЕ ПРОВЕРЕНО)",
+             "ui/UPSTREAM_TAG + теги источника апстрима",
+             step_versions,
+             needs="источник апстрима"),
+        Step("proto", "протокол контрол-плейна",
+             "scripts/sync-waywallen-proto.py",
+             step_proto, needs="клон/URL апстрима"),
+        Step("qml", "вендорная разметка, qmldir и наша патч-серия",
+             "scripts/sync-waywallen-qml.py", step_qml,
+             needs="клон/URL апстрима"),
+        Step("modules", "собранные QML-модули против их источника",
+             "ui/QML_MATERIAL_PIN, proto/*.proto и tools/qextra_plugin/"
+             "lito.lock против ~/.local/share/rexon/qml_modules", step_modules,
+             needs="собранные модули (tools/build_qml_*.sh)"),
+        Step("signals", "оповещения вендорных моделей против наших портов",
+             "ui/src/model/*.cpp{,m} против rust/*/src (сигналы и подписки)",
+             step_signals, needs="клон/URL апстрима"),
+        Step("qm", "каталог перевода вендорных подписей",
+             "scripts/rexon-golden-update waywallen_qm", step_qm,
+             needs="`lrelease` из Qt"),
+        Step("build", "сборка приложения",
+             "cargo build-app (ядро + rexon-main-window + librexon_qt_filter.so)",
+             step_build),
+        Step("test-core", "сверки ядра",
+             "cargo test-core", step_test_core),
+        Step("golden", "что разошлось из эталонов",
+             "scripts/rexon-golden-update --check", step_golden,
+             needs="`lrelease` из Qt для каталога перевода"),
+    ]
+
+
+def print_table() -> None:
+    print("ШАГИ ОБНОВЛЕНИЯ ВЕНДОРА (по порядку)\n")
+    for i, s in enumerate(registry(), 1):
+        print(f"  {i}. {s.name}  — {s.title}")
+        print(f"       как: {s.how}")
+        if s.needs:
+            print(f"       нужно: {s.needs} (нет — «НЕ ПРОВЕРЕНО», не пропуск)")
+        print()
+    print("Эталоны на 9-м шаге СВЕРЯЮТСЯ, а не переснимаются: переснимать\n"
+          "надо осознанно — `scripts/rexon-golden-update <группа>`.\n"
+          "Карта эталонов — docs/golden_reference_map.md.")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Сводка
+# ══════════════════════════════════════════════════════════════════════════
+
+def report(ctx: Ctx, done: list[tuple[Step, Outcome]], took: float,
+           skipped: list[Step]) -> int:
+    """ОДИН блок в конце: его читают целиком, а не собирают по журналу."""
+    bar = "═" * 72
+    print("\n" + bar)
+    mode = "ПРОВЕРКА (дерево не меняется)" if ctx.check else "ОБНОВЛЕНИЕ"
+    arrow = f"{ctx.have} → {ctx.ref}" if ctx.have != ctx.ref else ctx.ref
+    print(f"ВЕНДОР waywallen {arrow}   режим: {mode}   {took / 60:.1f} мин")
+    print(bar)
+
+    print("\nШАГИ")
+    for i, (s, o) in enumerate(done, 1):
+        mark = _PAINT[o.status](f"{o.status:<20}")
+        line = o.headline or o.reason or ""
+        print(f"  {i}. {s.name:<10} {mark} {line[:90]}")
+        print(f"       {dim(f'{o.took:.0f} с · {s.how}')}")
+
+    changed = [(s, o) for s, o in done if o.status == CHANGED]
+    failed = [(s, o) for s, o in done if o.status == FAILED]
+    broken = [(s, o) for s, o in done if o.status == BROKEN]
+    unchecked = [(s, o) for s, o in done if o.status == UNCHECKED]
+    blocked = [(s, o) for s, o in done if o.status == BLOCKED]
+    # ⚠️ Отдельная строка: у шага может быть зелёный/жёлтый исход И при этом
+    # непроверенный хвост внутри (эталоны сошлись, но демона нет).
+    partial = [(s, o) for s, o in done
+               if o.reason and o.status in (DONE, CHANGED, FAILED)]
+
+    print(f"\nЧТО ИЗМЕНИЛОСЬ — {len(changed)}")
+    if not changed:
+        print("  (ничего: дерево уже соответствует тегу)")
+    for s, o in changed:
+        print(f"  [{s.name}] {o.headline}")
+        for d in o.details:
+            print(f"      {d}")
+
+    print(f"\n{red('ЧТО ПОКРАСНЕЛО')} — {len(failed)}")
+    if not failed:
+        print("  (ничего)")
+    for s, o in failed:
+        print(f"  [{s.name}] {o.headline}")
+        for d in o.details:
+            print(f"      {d}")
+
+    print(f"\n{red('НЕ СОБРАЛОСЬ')} — {len(broken)}")
+    if not broken:
+        print("  (ничего)")
+    for s, o in broken:
+        print(f"  [{s.name}] {o.headline}")
+        for d in o.details:
+            print(f"      {d}")
+
+    total_unchecked = len(unchecked) + len(blocked) + len(partial) + len(skipped)
+    print(f"\n{yellow('НЕ ПРОВЕРЕНО')} — {total_unchecked}"
+          "   ⚠️ это НЕ «в порядке»")
+    if not total_unchecked:
+        print("  (всё проверено)")
+    for s, o in unchecked:
+        print(f"  [{s.name}] {o.reason or o.headline}")
+    for s, o in partial:
+        print(f"  [{s.name}] частично: {o.reason}")
+    for s, o in blocked:
+        print(f"  [{s.name}] ДАЛЬШЕ НЕ ПРОВЕРЕНО, потому что {o.reason}")
+    # Пропуск по просьбе человека — тоже «не проверено», и молчать о нём
+    # нельзя: «не перечислен» читается как «в порядке».
+    for s in skipped:
+        print(f"  [{s.name}] пропущен по --only/--skip: {s.title}")
+
+    print("\nЧТО ДЕЛАТЬ ДАЛЬШЕ")
+    todo = []
+    if broken:
+        todo.append("починить сборку — пока она красная, часть проверок "
+                    "физически невозможна")
+    if failed:
+        todo.append("разобрать красное выше: это НАШИ леса, а не чужие "
+                    "изменения")
+    if any(s.name == "versions" and o.status == CHANGED for s, o in done):
+        todo.append("свести версии: что именно разошлось — вендор с апстримом, "
+                    "движок с разметкой или диск с работающим демоном — "
+                    "сказано выше поимённо")
+    if any(s.name == "golden" and o.status == CHANGED for s, o in done):
+        todo.append("эталоны переснимать ОСОЗНАННО и поимённо: "
+                    "`scripts/rexon-golden-update <группа>` "
+                    "(карта — docs/golden_reference_map.md)")
+    if ctx.check:
+        todo.append("это была проверка; обновить — тот же запуск без --check")
+    if any(o.status == UNCHECKED and "демон" in (o.reason or "")
+           for _, o in done):
+        todo.append("поднять демон обоев: "
+                    "`systemctl --user start rexon-wallpaper-engine`")
+    if not todo:
+        todo.append("ничего: вендор на " + ctx.ref
+                    + ", всё сошлось и всё проверено")
+    for t in todo:
+        print(f"  • {t}")
+    print(bar)
+
+    if broken or blocked:
+        return 2
+    if failed or any(o.needs_action for _, o in changed):
+        return 1
+    if unchecked or partial or skipped:
+        return 3
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  main
+# ══════════════════════════════════════════════════════════════════════════
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Обновление вендора waywallen одной командой",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__)
+    ap.add_argument("tag", nargs="?", default="",
+                    help="тег апстрима (пусто — тот, что в ui/UPSTREAM_TAG)")
+    ap.add_argument("--ref", default="", help="то же, что позиционный тег")
+    ap.add_argument("--source", default=str(DEFAULT_SOURCE),
+                    help=f"локальный клон waywallen (по умолчанию {DEFAULT_SOURCE})")
+    ap.add_argument("--git", default="",
+                    help="URL апстрима вместо локального клона")
+    ap.add_argument("--check", action="store_true",
+                    help="ничего не менять, только сказать, что разошлось")
+    ap.add_argument("--list", action="store_true",
+                    help="что делает каждый шаг")
+    ap.add_argument("--only", nargs="*", default=[], metavar="ШАГ",
+                    help="гнать только эти шаги")
+    ap.add_argument("--skip", nargs="*", default=[], metavar="ШАГ",
+                    help="пропустить эти шаги (пропуск виден в сводке)")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="показывать вывод подпрогонов целиком")
+    args = ap.parse_args()
+
+    if args.list:
+        print_table()
+        return 0
+
+    have = vendored_ref()
+    ref = args.tag or args.ref or have
+    if not ref:
+        print(red("тег не задан и не читается из ui/UPSTREAM_TAG"),
+              file=sys.stderr)
+        return 2
+
+    steps = registry()
+    skipped = [s for s in steps
+               if (args.only and s.name not in args.only)
+               or s.name in args.skip]
+    steps = [s for s in steps if s not in skipped]
+    if not steps:
+        print(red("ни один шаг не подошёл под фильтр"), file=sys.stderr)
+        return 2
+
+    print(f"вендор waywallen: в дереве {have or '?'}, цель {ref}")
+    print("режим: " + ("ПРОВЕРКА (дерево не меняется)" if args.check
+                       else "ОБНОВЛЕНИЕ (дерево будет переписано)"))
+    print(f"шагов: {len(steps)} — " + ", ".join(s.name for s in steps))
+    print("⭐ прогон идёт ДО КОНЦА: красный шаг не отменяет следующие.\n")
+
+    started = time.time()
+    with tempfile.TemporaryDirectory(prefix="rexon-vendor-") as tmp:
+        ctx = Ctx(ref=ref, have=have or ref, source=Path(args.source),
+                  git=args.git, check=args.check, verbose=args.verbose,
+                  tmp=Path(tmp))
+        done: list[tuple[Step, Outcome]] = []
+        for i, s in enumerate(steps, 1):
+            print(f"[{i}/{len(steps)}] {s.name} — {s.title}")
+            print(f"    как: {s.how}", flush=True)
+            t0 = time.time()
+            try:
+                o = s.run(ctx)
+            except Exception as exc:            # noqa: BLE001
+                # ⛔ Ни одно исключение не имеет права оборвать прогон:
+                # ровно из-за таких обрывов поломки и выходили по одной.
+                o = Outcome(BROKEN, f"шаг сорвался: {type(exc).__name__}",
+                            [str(exc)[:400]])
+            o.took = time.time() - t0
+            done.append((s, o))
+            print(f"    {_PAINT[o.status](o.status)}: "
+                  f"{o.headline or o.reason} ({o.took:.0f} с)\n", flush=True)
+        return report(ctx, done, time.time() - started, skipped)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nпрервано", file=sys.stderr)
+        sys.exit(2)

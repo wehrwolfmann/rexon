@@ -1,0 +1,1371 @@
+{
+ "backend_off": {
+  "": false,
+  "  off  ": true,
+  "0": true,
+  "1": false,
+  "<не задан>": false,
+  "OFF": true,
+  "Python": true,
+  "no": true,
+  "off": true,
+  "on": false,
+  "python": true,
+  "yes": false,
+  "мусор": false
+ },
+ "dbus_call_argv": {
+  "dbus-send": {
+   "args": [
+    "строка",
+    5,
+    true,
+    false,
+    -1,
+    ""
+   ],
+   "dest": "org.kde.KWin",
+   "exe": "/usr/bin/dbus-send",
+   "kind": "dbus-send",
+   "method": "org.kde.KWin.reconfigure",
+   "path": "/KWin",
+   "want": [
+    "/usr/bin/dbus-send",
+    "--session",
+    "--print-reply",
+    "--dest=org.kde.KWin",
+    "--type=method_call",
+    "/KWin",
+    "org.kde.KWin.reconfigure",
+    "string:строка",
+    "int32:5",
+    "boolean:true",
+    "boolean:false",
+    "int32:-1",
+    "string:"
+   ]
+  },
+  "qdbus": {
+   "args": [
+    "print('Загрузки')",
+    5,
+    true,
+    false,
+    -1,
+    ""
+   ],
+   "dest": "org.kde.plasmashell",
+   "exe": "/usr/bin/qdbus6",
+   "kind": "qdbus",
+   "method": "org.kde.PlasmaShell.evaluateScript",
+   "path": "/PlasmaShell",
+   "want": [
+    "/usr/bin/qdbus6",
+    "org.kde.plasmashell",
+    "/PlasmaShell",
+    "org.kde.PlasmaShell.evaluateScript",
+    "print('Загрузки')",
+    "5",
+    "True",
+    "False",
+    "-1",
+    ""
+   ]
+  }
+ },
+ "dbus_send_arg": {
+  "-7": "int32:-7",
+  "0": "int32:0",
+  "42": "int32:42",
+  "False": "boolean:false",
+  "True": "boolean:true",
+  "empty": "string:",
+  "float": "string:1.5",
+  "str": "string:org.kde.KWin",
+  "str_cyr": "string:Загрузки"
+ },
+ "dbus_tool_live": [
+  "dbus-send",
+  "/usr/bin/dbus-send"
+ ],
+ "default_timeout": 30,
+ "expand_user": [
+  {
+   "config_home": "/home/user/.config",
+   "data_home": "/home/user/.local/share",
+   "paths": {
+    "": "",
+    "$HOME/x": "$HOME/x",
+    "/usr/local/lib/rexon": "/usr/local/lib/rexon",
+    "relative/path": "relative/path",
+    "~": "/home/user",
+    "~/": "/home/user/",
+    "~/.config": "/home/user/.config",
+    "~/.config-old/x": "/home/user/.config-old/x",
+    "~/.config/": "/home/user/.config",
+    "~/.config//rexon": "/home/user/.config/rexon",
+    "~/.config/rexon": "/home/user/.config/rexon",
+    "~/.config/rexon/settings.json": "/home/user/.config/rexon/settings.json",
+    "~/.config/Загрузки": "/home/user/.config/Загрузки",
+    "~/.configfoo": "/home/user/.configfoo",
+    "~/.local": "/home/user/.local",
+    "~/.local/share": "/home/user/.local/share",
+    "~/.local/share-bak/i": "/home/user/.local/share-bak/i",
+    "~/.local/share/": "/home/user/.local/share",
+    "~/.local/share/icons/hicolor": "/home/user/.local/share/icons/hicolor",
+    "~/.local/shareX": "/home/user/.local/shareX",
+    "~/Загрузки/Rexon/rexon_v5": "/home/user/Загрузки/Rexon/rexon_v5",
+    "~/Загрузки/с пробелом/файл.png": "/home/user/Загрузки/с пробелом/файл.png",
+    "~~/x": "~~/x"
+   },
+   "xdg_config_home": null,
+   "xdg_data_home": null
+  },
+  {
+   "config_home": "/tmp/rexon-cfg",
+   "data_home": "/home/user/.local/share",
+   "paths": {
+    "": "",
+    "$HOME/x": "$HOME/x",
+    "/usr/local/lib/rexon": "/usr/local/lib/rexon",
+    "relative/path": "relative/path",
+    "~": "/home/user",
+    "~/": "/home/user/",
+    "~/.config": "/tmp/rexon-cfg",
+    "~/.config-old/x": "/home/user/.config-old/x",
+    "~/.config/": "/tmp/rexon-cfg",
+    "~/.config//rexon": "/tmp/rexon-cfg/rexon",
+    "~/.config/rexon": "/tmp/rexon-cfg/rexon",
+    "~/.config/rexon/settings.json": "/tmp/rexon-cfg/rexon/settings.json",
+    "~/.config/Загрузки": "/tmp/rexon-cfg/Загрузки",
+    "~/.configfoo": "/home/user/.configfoo",
+    "~/.local": "/home/user/.local",
+    "~/.local/share": "/home/user/.local/share",
+    "~/.local/share-bak/i": "/home/user/.local/share-bak/i",
+    "~/.local/share/": "/home/user/.local/share",
+    "~/.local/share/icons/hicolor": "/home/user/.local/share/icons/hicolor",
+    "~/.local/shareX": "/home/user/.local/shareX",
+    "~/Загрузки/Rexon/rexon_v5": "/home/user/Загрузки/Rexon/rexon_v5",
+    "~/Загрузки/с пробелом/файл.png": "/home/user/Загрузки/с пробелом/файл.png",
+    "~~/x": "~~/x"
+   },
+   "xdg_config_home": "/tmp/rexon-cfg",
+   "xdg_data_home": null
+  },
+  {
+   "config_home": "/home/user/.config",
+   "data_home": "/tmp/rexon-dat",
+   "paths": {
+    "": "",
+    "$HOME/x": "$HOME/x",
+    "/usr/local/lib/rexon": "/usr/local/lib/rexon",
+    "relative/path": "relative/path",
+    "~": "/home/user",
+    "~/": "/home/user/",
+    "~/.config": "/home/user/.config",
+    "~/.config-old/x": "/home/user/.config-old/x",
+    "~/.config/": "/home/user/.config",
+    "~/.config//rexon": "/home/user/.config/rexon",
+    "~/.config/rexon": "/home/user/.config/rexon",
+    "~/.config/rexon/settings.json": "/home/user/.config/rexon/settings.json",
+    "~/.config/Загрузки": "/home/user/.config/Загрузки",
+    "~/.configfoo": "/home/user/.configfoo",
+    "~/.local": "/home/user/.local",
+    "~/.local/share": "/tmp/rexon-dat",
+    "~/.local/share-bak/i": "/home/user/.local/share-bak/i",
+    "~/.local/share/": "/tmp/rexon-dat",
+    "~/.local/share/icons/hicolor": "/tmp/rexon-dat/icons/hicolor",
+    "~/.local/shareX": "/home/user/.local/shareX",
+    "~/Загрузки/Rexon/rexon_v5": "/home/user/Загрузки/Rexon/rexon_v5",
+    "~/Загрузки/с пробелом/файл.png": "/home/user/Загрузки/с пробелом/файл.png",
+    "~~/x": "~~/x"
+   },
+   "xdg_config_home": null,
+   "xdg_data_home": "/tmp/rexon-dat"
+  },
+  {
+   "config_home": "/tmp/rexon-cfg/",
+   "data_home": "/tmp/rexon-dat/",
+   "paths": {
+    "": "",
+    "$HOME/x": "$HOME/x",
+    "/usr/local/lib/rexon": "/usr/local/lib/rexon",
+    "relative/path": "relative/path",
+    "~": "/home/user",
+    "~/": "/home/user/",
+    "~/.config": "/tmp/rexon-cfg/",
+    "~/.config-old/x": "/home/user/.config-old/x",
+    "~/.config/": "/tmp/rexon-cfg/",
+    "~/.config//rexon": "/tmp/rexon-cfg/rexon",
+    "~/.config/rexon": "/tmp/rexon-cfg/rexon",
+    "~/.config/rexon/settings.json": "/tmp/rexon-cfg/rexon/settings.json",
+    "~/.config/Загрузки": "/tmp/rexon-cfg/Загрузки",
+    "~/.configfoo": "/home/user/.configfoo",
+    "~/.local": "/home/user/.local",
+    "~/.local/share": "/tmp/rexon-dat/",
+    "~/.local/share-bak/i": "/home/user/.local/share-bak/i",
+    "~/.local/share/": "/tmp/rexon-dat/",
+    "~/.local/share/icons/hicolor": "/tmp/rexon-dat/icons/hicolor",
+    "~/.local/shareX": "/home/user/.local/shareX",
+    "~/Загрузки/Rexon/rexon_v5": "/home/user/Загрузки/Rexon/rexon_v5",
+    "~/Загрузки/с пробелом/файл.png": "/home/user/Загрузки/с пробелом/файл.png",
+    "~~/x": "~~/x"
+   },
+   "xdg_config_home": "/tmp/rexon-cfg/",
+   "xdg_data_home": "/tmp/rexon-dat/"
+  },
+  {
+   "config_home": "/tmp/Загрузки/конфиг",
+   "data_home": "/tmp/Загрузки/данные",
+   "paths": {
+    "": "",
+    "$HOME/x": "$HOME/x",
+    "/usr/local/lib/rexon": "/usr/local/lib/rexon",
+    "relative/path": "relative/path",
+    "~": "/home/user",
+    "~/": "/home/user/",
+    "~/.config": "/tmp/Загрузки/конфиг",
+    "~/.config-old/x": "/home/user/.config-old/x",
+    "~/.config/": "/tmp/Загрузки/конфиг",
+    "~/.config//rexon": "/tmp/Загрузки/конфиг/rexon",
+    "~/.config/rexon": "/tmp/Загрузки/конфиг/rexon",
+    "~/.config/rexon/settings.json": "/tmp/Загрузки/конфиг/rexon/settings.json",
+    "~/.config/Загрузки": "/tmp/Загрузки/конфиг/Загрузки",
+    "~/.configfoo": "/home/user/.configfoo",
+    "~/.local": "/home/user/.local",
+    "~/.local/share": "/tmp/Загрузки/данные",
+    "~/.local/share-bak/i": "/home/user/.local/share-bak/i",
+    "~/.local/share/": "/tmp/Загрузки/данные",
+    "~/.local/share/icons/hicolor": "/tmp/Загрузки/данные/icons/hicolor",
+    "~/.local/shareX": "/home/user/.local/shareX",
+    "~/Загрузки/Rexon/rexon_v5": "/home/user/Загрузки/Rexon/rexon_v5",
+    "~/Загрузки/с пробелом/файл.png": "/home/user/Загрузки/с пробелом/файл.png",
+    "~~/x": "~~/x"
+   },
+   "xdg_config_home": "/tmp/Загрузки/конфиг",
+   "xdg_data_home": "/tmp/Загрузки/данные"
+  }
+ ],
+ "file_level": 10,
+ "home": "/home/user",
+ "log_datefmt": "%Y-%m-%d %H:%M:%S",
+ "log_dir_tail": ".config/rexon",
+ "log_file_tail": ".config/rexon/rexon.log",
+ "log_format": "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+ "logger_name": "rexon",
+ "msg_missing_tool": {
+  "convert|arch": "Не найден инструмент convert (пробовали: convert, magick). Установите пакет «imagemagick»",
+  "convert|debian": "Не найден инструмент convert (пробовали: convert, magick). Установите пакет «imagemagick»",
+  "convert|unknown": "Не найден инструмент convert (пробовали: convert, magick). Установите пакет «imagemagick»",
+  "kdialog|arch": "Не найден инструмент kdialog",
+  "kdialog|debian": "Не найден инструмент kdialog",
+  "kdialog|unknown": "Не найден инструмент kdialog",
+  "kwriteconfig6|arch": "Не найден инструмент kwriteconfig6 (пробовали: kwriteconfig6, kwriteconfig5). Установите пакет «kconfig»",
+  "kwriteconfig6|debian": "Не найден инструмент kwriteconfig6 (пробовали: kwriteconfig6, kwriteconfig5). Установите пакет «libkf6config-bin»",
+  "kwriteconfig6|unknown": "Не найден инструмент kwriteconfig6 (пробовали: kwriteconfig6, kwriteconfig5). Установите пакет «libkf6config-bin»",
+  "nosuchtool42|arch": "Не найден инструмент nosuchtool42",
+  "nosuchtool42|debian": "Не найден инструмент nosuchtool42",
+  "nosuchtool42|unknown": "Не найден инструмент nosuchtool42",
+  "qdbus6|arch": "Не найден инструмент qdbus6 (пробовали: qdbus6, qdbus-qt6, qdbus, qdbus-qt5). Установите пакет «qt6-tools»",
+  "qdbus6|debian": "Не найден инструмент qdbus6 (пробовали: qdbus6, qdbus-qt6, qdbus, qdbus-qt5). Установите пакет «qdbus-qt6»",
+  "qdbus6|unknown": "Не найден инструмент qdbus6 (пробовали: qdbus6, qdbus-qt6, qdbus, qdbus-qt5). Установите пакет «qdbus-qt6»"
+ },
+ "msg_no_dbus_tool": "Нет ни dbus-send, ни qdbus (qdbus6, qdbus-qt6, qdbus, qdbus-qt5) — обращения к сессионной шине D-Bus невозможны. Поставьте пакет dbus (в Debian/Ubuntu — dbus-bin, в Fedora — dbus-tools).",
+ "notify_dbus_argv": [
+  "/usr/bin/dbus-send",
+  "--session",
+  "--print-reply",
+  "--dest=org.freedesktop.Notifications",
+  "--type=method_call",
+  "/org/freedesktop/Notifications",
+  "org.freedesktop.Notifications.Notify",
+  "string:Rexon",
+  "uint32:0",
+  "string:rexon",
+  "string:Тема применена",
+  "string:Breeze Dark",
+  "array:string:",
+  "dict:string:string:",
+  "int32:5000"
+ ],
+ "notify_send_argv": [
+  "/usr/bin/notify-send",
+  "--app-name=Rexon",
+  "--icon",
+  "rexon",
+  "Тема применена",
+  "Breeze Dark"
+ ],
+ "parse_dbus_reply": {
+  "array": {
+   "raw": "method return time=1\n   array [\n      string \"a\"\n   ]\n",
+   "want": "a"
+  },
+  "bool_int": {
+   "raw": "method return time=1\n   boolean true\n   int32 -5\n",
+   "want": "true\n-5"
+  },
+  "cyrillic": {
+   "raw": "method return time=1\n   string \"Загрузки/обои.png\"\n",
+   "want": "Загрузки/обои.png"
+  },
+  "dict_entry": {
+   "raw": "method return time=1\n   array [\n      dict entry(\n         string \"k\"\n         variant string \"v\"\n      )\n   ]\n",
+   "want": "k\nv"
+  },
+  "empty": {
+   "raw": "",
+   "want": ""
+  },
+  "empty_value": {
+   "raw": "method return time=1\n   string \n",
+   "want": ""
+  },
+  "get_id": {
+   "raw": "method return time=1785366332.815390 sender=org.freedesktop.DBus -> destination=:1.1424 serial=4294967295 reply_serial=2\n   string \"52c534ada5d0fd8c9c63561edb4845fc\"\n",
+   "want": "52c534ada5d0fd8c9c63561edb4845fc"
+  },
+  "not_a_type": {
+   "raw": "method return time=1\n   stringy 5\n   variantstring 6\n",
+   "want": ""
+  },
+  "object_path": {
+   "raw": "method return time=1\n   object path \"/org/kde/KWin\"\n",
+   "want": "/org/kde/KWin"
+  },
+  "object_path_spaced": {
+   "raw": "method return time=1\n   object    path \"/x\"\n",
+   "want": "/x"
+  },
+  "only_header": {
+   "raw": "method return time=1 sender=x -> destination=y\n",
+   "want": ""
+  },
+  "quotes_inside": {
+   "raw": "method return time=1\n   string \"он сказал \"да\"\"\n",
+   "want": "он сказал \"да\""
+  },
+  "server_info": {
+   "raw": "method return time=1785366332.816689 sender=:1.46 -> destination=:1.1425 serial=10076 reply_serial=2\n   string \"Plasma\"\n   string \"KDE\"\n   string \"6.7.3\"\n   string \"1.2\"\n",
+   "want": "Plasma\nKDE\n6.7.3\n1.2"
+  },
+  "single_quote_char": {
+   "raw": "method return time=1\n   string \"\n",
+   "want": "\""
+  },
+  "trailing_spaces": {
+   "raw": "method return time=1\n   string \"x\"   \n",
+   "want": "x"
+  },
+  "types": {
+   "raw": "method return time=1\n   byte 7\n   double 1.5\n   signature \"s\"\n   uint64 18446744073709551615\n   int16 -3\n   uint16 3\n   int64 -9\n",
+   "want": "7\n1.5\ns\n18446744073709551615\n-3\n3\n-9"
+  },
+  "variant_array": {
+   "raw": "method return time=1785366332.818334 sender=org.freedesktop.DBus -> destination=:1.1427 serial=4294967295 reply_serial=2\n   variant       array [\n      ]\n",
+   "want": ""
+  },
+  "variant_prefixed": {
+   "raw": "method return time=1\n   variant   string \"x y\"\n",
+   "want": "x y"
+  },
+  "variant_uint32": {
+   "raw": "method return time=1785366332.817569 sender=:1.92 -> destination=:1.1426 serial=9900 reply_serial=2\n   variant       uint32 2\n",
+   "want": "2"
+  }
+ },
+ "path_env": "/home/user/.local/bin:/home/user/.cargo/bin:/home/user/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/opt/cuda/bin:/usr/lib/jvm/default/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+ "pkg_family_live": "arch",
+ "qdbus_names": [
+  "qdbus6",
+  "qdbus-qt6",
+  "qdbus",
+  "qdbus-qt5"
+ ],
+ "resolve_tool": {
+  "7z": "/usr/bin/7z",
+  "convert": "/usr/bin/convert",
+  "kbuildsycoca6": "/usr/bin/kbuildsycoca6",
+  "kdialog": "/usr/bin/kdialog",
+  "kpackagetool6": "/usr/bin/kpackagetool6",
+  "kquitapp6": "/usr/bin/kquitapp6",
+  "kreadconfig6": "/usr/bin/kreadconfig6",
+  "kwriteconfig6": "/usr/bin/kwriteconfig6",
+  "plymouth-set-default-theme": "/usr/bin/plymouth-set-default-theme",
+  "qdbus6": "/usr/bin/qdbus6",
+  "swww": null,
+  "swww-daemon": null,
+  "update-alternatives": null,
+  "update-initramfs": "/usr/bin/update-initramfs"
+ },
+ "resolved_argv": {
+  "7z": [
+   "/usr/bin/7z",
+   "x",
+   "-o/tmp/Загрузки"
+  ],
+  "convert": [
+   "/usr/bin/convert",
+   "a.png",
+   "b.png"
+  ],
+  "empty": [],
+  "identify": [
+   "/usr/bin/identify",
+   "-format",
+   "%w",
+   "/tmp/х.png"
+  ],
+  "kwriteconfig6": [
+   "/usr/bin/kwriteconfig6",
+   "--file",
+   "kdeglobals"
+  ],
+  "ls": [
+   "ls",
+   "-la"
+  ],
+  "nosuchtool42": [
+   "nosuchtool42",
+   "-v"
+  ]
+ },
+ "root_level": 10,
+ "stream_level": 30,
+ "tool_argv": {
+  "7z": [
+   "/usr/bin/7z"
+  ],
+  "convert": [
+   "/usr/bin/convert"
+  ],
+  "identify": [
+   "/usr/bin/identify"
+  ],
+  "kbuildsycoca6": [
+   "/usr/bin/kbuildsycoca6"
+  ],
+  "kdialog": [
+   "/usr/bin/kdialog"
+  ],
+  "kpackagetool6": [
+   "/usr/bin/kpackagetool6"
+  ],
+  "kquitapp6": [
+   "/usr/bin/kquitapp6"
+  ],
+  "kreadconfig6": [
+   "/usr/bin/kreadconfig6"
+  ],
+  "kwriteconfig6": [
+   "/usr/bin/kwriteconfig6"
+  ],
+  "ls": [
+   "/usr/bin/ls"
+  ],
+  "nosuchtool42": null,
+  "plymouth-set-default-theme": [
+   "/usr/bin/plymouth-set-default-theme"
+  ],
+  "qdbus6": [
+   "/usr/bin/qdbus6"
+  ],
+  "swww": null,
+  "swww-daemon": null,
+  "update-alternatives": null,
+  "update-initramfs": [
+   "/usr/bin/update-initramfs"
+  ]
+ },
+ "tool_argv_args": {
+  "convert": [
+   "/usr/bin/convert",
+   "-resize",
+   "100",
+   "a.png"
+  ],
+  "identify": [
+   "/usr/bin/identify",
+   "-format",
+   "%w %h",
+   "/tmp/Загрузки/х.png"
+  ],
+  "nosuchtool42": null
+ },
+ "tool_cmd": {
+  "identify": [
+   "/usr/bin/identify",
+   "-format",
+   "%w"
+  ],
+  "kwriteconfig6": [
+   "/usr/bin/kwriteconfig6",
+   "--file",
+   "kdeglobals",
+   "--key",
+   "X",
+   "1"
+  ],
+  "nosuchtool42": [
+   "nosuchtool42",
+   "-v"
+  ]
+ },
+ "tool_package_hint": {
+  "7za|": "Установите пакет «7zip»",
+  "7za|arch": "Установите пакет «7zip»",
+  "7za|debian": "Установите пакет «7zip»",
+  "7za|fedora": "Установите пакет «7zip»",
+  "7za|gentoo": "Установите пакет «7zip»",
+  "7za|suse": "Установите пакет «7zip»",
+  "7za|unknown": "Установите пакет «7zip»",
+  "7zz|": "Установите пакет «7zip»",
+  "7zz|arch": "Установите пакет «7zip»",
+  "7zz|debian": "Установите пакет «7zip»",
+  "7zz|fedora": "Установите пакет «7zip»",
+  "7zz|gentoo": "Установите пакет «7zip»",
+  "7zz|suse": "Установите пакет «7zip»",
+  "7zz|unknown": "Установите пакет «7zip»",
+  "7z|": "Установите пакет «7zip»",
+  "7z|arch": "Установите пакет «7zip»",
+  "7z|debian": "Установите пакет «7zip»",
+  "7z|fedora": "Установите пакет «7zip»",
+  "7z|gentoo": "Установите пакет «7zip»",
+  "7z|suse": "Установите пакет «7zip»",
+  "7z|unknown": "Установите пакет «7zip»",
+  "cabextract|": "Установите пакет «cabextract»",
+  "cabextract|arch": "Установите пакет «cabextract»",
+  "cabextract|debian": "Установите пакет «cabextract»",
+  "cabextract|fedora": "Установите пакет «cabextract»",
+  "cabextract|gentoo": "Установите пакет «cabextract»",
+  "cabextract|suse": "Установите пакет «cabextract»",
+  "cabextract|unknown": "Установите пакет «cabextract»",
+  "canberra-gtk-play|": "Установите пакет «gnome-session-canberra»",
+  "canberra-gtk-play|arch": "Установите пакет «libcanberra»",
+  "canberra-gtk-play|debian": "Установите пакет «gnome-session-canberra»",
+  "canberra-gtk-play|fedora": "Установите пакет «libcanberra-gtk3»",
+  "canberra-gtk-play|gentoo": "Установите пакет «gnome-session-canberra»",
+  "canberra-gtk-play|suse": "Установите пакет «libcanberra-gtk3»",
+  "canberra-gtk-play|unknown": "Установите пакет «gnome-session-canberra»",
+  "convert|": "Установите пакет «imagemagick»",
+  "convert|arch": "Установите пакет «imagemagick»",
+  "convert|debian": "Установите пакет «imagemagick»",
+  "convert|fedora": "Установите пакет «ImageMagick»",
+  "convert|gentoo": "Установите пакет «imagemagick»",
+  "convert|suse": "Установите пакет «ImageMagick»",
+  "convert|unknown": "Установите пакет «imagemagick»",
+  "cvlc|": "Установите пакет «vlc-bin»",
+  "cvlc|arch": "Установите пакет «vlc-cli»",
+  "cvlc|debian": "Установите пакет «vlc-bin»",
+  "cvlc|fedora": "Установите пакет «vlc-cli»",
+  "cvlc|gentoo": "Установите пакет «vlc-bin»",
+  "cvlc|suse": "Установите пакет «vlc-noX»",
+  "cvlc|unknown": "Установите пакет «vlc-bin»",
+  "dbus-send|": "Установите пакет «dbus-bin»",
+  "dbus-send|arch": "Установите пакет «dbus»",
+  "dbus-send|debian": "Установите пакет «dbus-bin»",
+  "dbus-send|fedora": "Установите пакет «dbus-tools»",
+  "dbus-send|gentoo": "Установите пакет «dbus-bin»",
+  "dbus-send|suse": "Установите пакет «dbus-1-tools»",
+  "dbus-send|unknown": "Установите пакет «dbus-bin»",
+  "ffmpeg|": "Установите пакет «ffmpeg»",
+  "ffmpeg|arch": "Установите пакет «ffmpeg»",
+  "ffmpeg|debian": "Установите пакет «ffmpeg»",
+  "ffmpeg|fedora": "Установите пакет «ffmpeg-free»",
+  "ffmpeg|gentoo": "Установите пакет «ffmpeg»",
+  "ffmpeg|suse": "Установите пакет «ffmpeg-7»",
+  "ffmpeg|unknown": "Установите пакет «ffmpeg»",
+  "git|": "Установите пакет «git»",
+  "git|arch": "Установите пакет «git»",
+  "git|debian": "Установите пакет «git»",
+  "git|fedora": "Установите пакет «git-core»",
+  "git|gentoo": "Установите пакет «git»",
+  "git|suse": "Установите пакет «git-core»",
+  "git|unknown": "Установите пакет «git»",
+  "glib-compile-schemas|": "Установите пакет «libglib2.0-bin»",
+  "glib-compile-schemas|arch": "Установите пакет «glib2»",
+  "glib-compile-schemas|debian": "Установите пакет «libglib2.0-bin»",
+  "glib-compile-schemas|fedora": "Установите пакет «glib2»",
+  "glib-compile-schemas|gentoo": "Установите пакет «libglib2.0-bin»",
+  "glib-compile-schemas|suse": "Установите пакет «glib2-tools»",
+  "glib-compile-schemas|unknown": "Установите пакет «libglib2.0-bin»",
+  "gtk-update-icon-cache|": "Установите пакет «libgtk-3-bin»",
+  "gtk-update-icon-cache|arch": "Установите пакет «gtk-update-icon-cache»",
+  "gtk-update-icon-cache|debian": "Установите пакет «libgtk-3-bin»",
+  "gtk-update-icon-cache|fedora": "Установите пакет «gtk-update-icon-cache»",
+  "gtk-update-icon-cache|gentoo": "Установите пакет «libgtk-3-bin»",
+  "gtk-update-icon-cache|suse": "Установите пакет «gtk3-tools»",
+  "gtk-update-icon-cache|unknown": "Установите пакет «libgtk-3-bin»",
+  "hyprpaper|": "",
+  "hyprpaper|arch": "Установите пакет «hyprpaper»",
+  "hyprpaper|debian": "",
+  "hyprpaper|fedora": "Установите пакет «hyprpaper»",
+  "hyprpaper|gentoo": "",
+  "hyprpaper|suse": "Установите пакет «hyprpaper»",
+  "hyprpaper|unknown": "",
+  "icotool|": "Установите пакет «icoutils»",
+  "icotool|arch": "Установите пакет «icoutils»",
+  "icotool|debian": "Установите пакет «icoutils»",
+  "icotool|fedora": "Установите пакет «icoutils»",
+  "icotool|gentoo": "Установите пакет «icoutils»",
+  "icotool|suse": "Установите пакет «icoutils»",
+  "icotool|unknown": "Установите пакет «icoutils»",
+  "identify|": "Установите пакет «imagemagick»",
+  "identify|arch": "Установите пакет «imagemagick»",
+  "identify|debian": "Установите пакет «imagemagick»",
+  "identify|fedora": "Установите пакет «ImageMagick»",
+  "identify|gentoo": "Установите пакет «imagemagick»",
+  "identify|suse": "Установите пакет «ImageMagick»",
+  "identify|unknown": "Установите пакет «imagemagick»",
+  "kreadconfig6|": "Установите пакет «libkf6config-bin»",
+  "kreadconfig6|arch": "Установите пакет «kconfig»",
+  "kreadconfig6|debian": "Установите пакет «libkf6config-bin»",
+  "kreadconfig6|fedora": "Установите пакет «kf6-kconfig»",
+  "kreadconfig6|gentoo": "Установите пакет «libkf6config-bin»",
+  "kreadconfig6|suse": "Установите пакет «kf6-kconfig»",
+  "kreadconfig6|unknown": "Установите пакет «libkf6config-bin»",
+  "kvantummanager|": "Установите пакет «qt6-style-kvantum»",
+  "kvantummanager|arch": "Установите пакет «kvantum»",
+  "kvantummanager|debian": "Установите пакет «qt6-style-kvantum»",
+  "kvantummanager|fedora": "Установите пакет «kvantum»",
+  "kvantummanager|gentoo": "Установите пакет «qt6-style-kvantum»",
+  "kvantummanager|suse": "Установите пакет «kvantum-manager»",
+  "kvantummanager|unknown": "Установите пакет «qt6-style-kvantum»",
+  "kwriteconfig6|": "Установите пакет «libkf6config-bin»",
+  "kwriteconfig6|arch": "Установите пакет «kconfig»",
+  "kwriteconfig6|debian": "Установите пакет «libkf6config-bin»",
+  "kwriteconfig6|fedora": "Установите пакет «kf6-kconfig»",
+  "kwriteconfig6|gentoo": "Установите пакет «libkf6config-bin»",
+  "kwriteconfig6|suse": "Установите пакет «kf6-kconfig»",
+  "kwriteconfig6|unknown": "Установите пакет «libkf6config-bin»",
+  "ls|": "",
+  "ls|arch": "",
+  "ls|debian": "",
+  "ls|fedora": "",
+  "ls|gentoo": "",
+  "ls|suse": "",
+  "ls|unknown": "",
+  "magick|": "Установите пакет «imagemagick»",
+  "magick|arch": "Установите пакет «imagemagick»",
+  "magick|debian": "Установите пакет «imagemagick»",
+  "magick|fedora": "Установите пакет «ImageMagick»",
+  "magick|gentoo": "Установите пакет «imagemagick»",
+  "magick|suse": "Установите пакет «ImageMagick»",
+  "magick|unknown": "Установите пакет «imagemagick»",
+  "mpvpaper|": "",
+  "mpvpaper|arch": "Установите пакет «mpvpaper»",
+  "mpvpaper|debian": "",
+  "mpvpaper|fedora": "Установите пакет «mpvpaper (COPR)»",
+  "mpvpaper|gentoo": "",
+  "mpvpaper|suse": "Установите пакет «mpvpaper»",
+  "mpvpaper|unknown": "",
+  "mpv|": "Установите пакет «mpv»",
+  "mpv|arch": "Установите пакет «mpv»",
+  "mpv|debian": "Установите пакет «mpv»",
+  "mpv|fedora": "Установите пакет «mpv»",
+  "mpv|gentoo": "Установите пакет «mpv»",
+  "mpv|suse": "Установите пакет «mpv»",
+  "mpv|unknown": "Установите пакет «mpv»",
+  "nosuchtool42|": "",
+  "nosuchtool42|arch": "",
+  "nosuchtool42|debian": "",
+  "nosuchtool42|fedora": "",
+  "nosuchtool42|gentoo": "",
+  "nosuchtool42|suse": "",
+  "nosuchtool42|unknown": "",
+  "notify-send|": "Установите пакет «libnotify-bin»",
+  "notify-send|arch": "Установите пакет «libnotify»",
+  "notify-send|debian": "Установите пакет «libnotify-bin»",
+  "notify-send|fedora": "Установите пакет «libnotify»",
+  "notify-send|gentoo": "Установите пакет «libnotify-bin»",
+  "notify-send|suse": "Установите пакет «libnotify-tools»",
+  "notify-send|unknown": "Установите пакет «libnotify-bin»",
+  "pactl|": "Установите пакет «pulseaudio-utils»",
+  "pactl|arch": "Установите пакет «libpulse»",
+  "pactl|debian": "Установите пакет «pulseaudio-utils»",
+  "pactl|fedora": "Установите пакет «pulseaudio-utils»",
+  "pactl|gentoo": "Установите пакет «pulseaudio-utils»",
+  "pactl|suse": "Установите пакет «pulseaudio-utils»",
+  "pactl|unknown": "Установите пакет «pulseaudio-utils»",
+  "qdbus6|": "Установите пакет «qdbus-qt6»",
+  "qdbus6|arch": "Установите пакет «qt6-tools»",
+  "qdbus6|debian": "Установите пакет «qdbus-qt6»",
+  "qdbus6|fedora": "Установите пакет «qt6-qttools»",
+  "qdbus6|gentoo": "Установите пакет «qdbus-qt6»",
+  "qdbus6|suse": "Установите пакет «qt6-tools-qdbus»",
+  "qdbus6|unknown": "Установите пакет «qdbus-qt6»",
+  "ruffle|": "",
+  "ruffle|arch": "Установите пакет «ruffle (из AUR)»",
+  "ruffle|debian": "",
+  "ruffle|fedora": "",
+  "ruffle|gentoo": "",
+  "ruffle|suse": "Установите пакет «ruffle»",
+  "ruffle|unknown": "",
+  "swww|": "Установите пакет «awww»",
+  "swww|arch": "Установите пакет «awww»",
+  "swww|debian": "Установите пакет «awww»",
+  "swww|fedora": "Установите пакет «awww»",
+  "swww|gentoo": "Установите пакет «awww»",
+  "swww|suse": "Установите пакет «awww»",
+  "swww|unknown": "Установите пакет «awww»",
+  "update-desktop-database|": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|arch": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|debian": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|fedora": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|gentoo": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|suse": "Установите пакет «desktop-file-utils»",
+  "update-desktop-database|unknown": "Установите пакет «desktop-file-utils»",
+  "win2xcur|": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "win2xcur|arch": "Установите пакет «win2xcur (из AUR)»",
+  "win2xcur|debian": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "win2xcur|fedora": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "win2xcur|gentoo": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "win2xcur|suse": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "win2xcur|unknown": "Установите пакет «win2xcur (pip install win2xcur)»",
+  "wpctl|": "Установите пакет «wireplumber»",
+  "wpctl|arch": "Установите пакет «wireplumber»",
+  "wpctl|debian": "Установите пакет «wireplumber»",
+  "wpctl|fedora": "Установите пакет «wireplumber»",
+  "wpctl|gentoo": "Установите пакет «wireplumber»",
+  "wpctl|suse": "Установите пакет «wireplumber»",
+  "wpctl|unknown": "Установите пакет «wireplumber»",
+  "wrestool|": "Установите пакет «icoutils»",
+  "wrestool|arch": "Установите пакет «icoutils»",
+  "wrestool|debian": "Установите пакет «icoutils»",
+  "wrestool|fedora": "Установите пакет «icoutils»",
+  "wrestool|gentoo": "Установите пакет «icoutils»",
+  "wrestool|suse": "Установите пакет «icoutils»",
+  "wrestool|unknown": "Установите пакет «icoutils»",
+  "xcursorgen|": "Установите пакет «x11-apps»",
+  "xcursorgen|arch": "Установите пакет «xorg-xcursorgen»",
+  "xcursorgen|debian": "Установите пакет «x11-apps»",
+  "xcursorgen|fedora": "Установите пакет «xcursorgen»",
+  "xcursorgen|gentoo": "Установите пакет «x11-apps»",
+  "xcursorgen|suse": "Установите пакет «xcursorgen»",
+  "xcursorgen|unknown": "Установите пакет «x11-apps»",
+  "xdg-terminal-exec|": "Установите пакет «xdg-terminal-exec»",
+  "xdg-terminal-exec|arch": "Установите пакет «xdg-terminal-exec (из AUR)»",
+  "xdg-terminal-exec|debian": "Установите пакет «xdg-terminal-exec»",
+  "xdg-terminal-exec|fedora": "Установите пакет «xdg-terminal-exec (Fedora 42+)»",
+  "xdg-terminal-exec|gentoo": "Установите пакет «xdg-terminal-exec»",
+  "xdg-terminal-exec|suse": "Установите пакет «xdg-terminal-exec»",
+  "xdg-terminal-exec|unknown": "Установите пакет «xdg-terminal-exec»",
+  "xprop|": "Установите пакет «x11-utils»",
+  "xprop|arch": "Установите пакет «xorg-xprop»",
+  "xprop|debian": "Установите пакет «x11-utils»",
+  "xprop|fedora": "Установите пакет «xprop»",
+  "xprop|gentoo": "Установите пакет «x11-utils»",
+  "xprop|suse": "Установите пакет «xprop»",
+  "xprop|unknown": "Установите пакет «x11-utils»",
+  "xrandr|": "Установите пакет «x11-xserver-utils»",
+  "xrandr|arch": "Установите пакет «xorg-xrandr»",
+  "xrandr|debian": "Установите пакет «x11-xserver-utils»",
+  "xrandr|fedora": "Установите пакет «xrandr»",
+  "xrandr|gentoo": "Установите пакет «x11-xserver-utils»",
+  "xrandr|suse": "Установите пакет «xrandr»",
+  "xrandr|unknown": "Установите пакет «x11-xserver-utils»",
+  "xwinwrap|": "",
+  "xwinwrap|arch": "Установите пакет «xwinwrap-git (из AUR)»",
+  "xwinwrap|debian": "",
+  "xwinwrap|fedora": "",
+  "xwinwrap|gentoo": "",
+  "xwinwrap|suse": "",
+  "xwinwrap|unknown": "",
+  "yt-dlp|": "Установите пакет «yt-dlp»",
+  "yt-dlp|arch": "Установите пакет «yt-dlp»",
+  "yt-dlp|debian": "Установите пакет «yt-dlp»",
+  "yt-dlp|fedora": "Установите пакет «yt-dlp»",
+  "yt-dlp|gentoo": "Установите пакет «yt-dlp»",
+  "yt-dlp|suse": "Установите пакет «yt-dlp»",
+  "yt-dlp|unknown": "Установите пакет «yt-dlp»"
+ },
+ "tool_package_name": {
+  "7za|": "7zip",
+  "7za|arch": "7zip",
+  "7za|debian": "7zip",
+  "7za|fedora": "7zip",
+  "7za|gentoo": "7zip",
+  "7za|suse": "7zip",
+  "7za|unknown": "7zip",
+  "7zz|": "7zip",
+  "7zz|arch": "7zip",
+  "7zz|debian": "7zip",
+  "7zz|fedora": "7zip",
+  "7zz|gentoo": "7zip",
+  "7zz|suse": "7zip",
+  "7zz|unknown": "7zip",
+  "7z|": "7zip",
+  "7z|arch": "7zip",
+  "7z|debian": "7zip",
+  "7z|fedora": "7zip",
+  "7z|gentoo": "7zip",
+  "7z|suse": "7zip",
+  "7z|unknown": "7zip",
+  "cabextract|": "cabextract",
+  "cabextract|arch": "cabextract",
+  "cabextract|debian": "cabextract",
+  "cabextract|fedora": "cabextract",
+  "cabextract|gentoo": "cabextract",
+  "cabextract|suse": "cabextract",
+  "cabextract|unknown": "cabextract",
+  "canberra-gtk-play|": "gnome-session-canberra",
+  "canberra-gtk-play|arch": "libcanberra",
+  "canberra-gtk-play|debian": "gnome-session-canberra",
+  "canberra-gtk-play|fedora": "libcanberra-gtk3",
+  "canberra-gtk-play|gentoo": "gnome-session-canberra",
+  "canberra-gtk-play|suse": "libcanberra-gtk3",
+  "canberra-gtk-play|unknown": "gnome-session-canberra",
+  "convert|": "imagemagick",
+  "convert|arch": "imagemagick",
+  "convert|debian": "imagemagick",
+  "convert|fedora": "ImageMagick",
+  "convert|gentoo": "imagemagick",
+  "convert|suse": "ImageMagick",
+  "convert|unknown": "imagemagick",
+  "cvlc|": "vlc-bin",
+  "cvlc|arch": "vlc-cli",
+  "cvlc|debian": "vlc-bin",
+  "cvlc|fedora": "vlc-cli",
+  "cvlc|gentoo": "vlc-bin",
+  "cvlc|suse": "vlc-noX",
+  "cvlc|unknown": "vlc-bin",
+  "dbus-send|": "dbus-bin",
+  "dbus-send|arch": "dbus",
+  "dbus-send|debian": "dbus-bin",
+  "dbus-send|fedora": "dbus-tools",
+  "dbus-send|gentoo": "dbus-bin",
+  "dbus-send|suse": "dbus-1-tools",
+  "dbus-send|unknown": "dbus-bin",
+  "ffmpeg|": "ffmpeg",
+  "ffmpeg|arch": "ffmpeg",
+  "ffmpeg|debian": "ffmpeg",
+  "ffmpeg|fedora": "ffmpeg-free",
+  "ffmpeg|gentoo": "ffmpeg",
+  "ffmpeg|suse": "ffmpeg-7",
+  "ffmpeg|unknown": "ffmpeg",
+  "git|": "git",
+  "git|arch": "git",
+  "git|debian": "git",
+  "git|fedora": "git-core",
+  "git|gentoo": "git",
+  "git|suse": "git-core",
+  "git|unknown": "git",
+  "glib-compile-schemas|": "libglib2.0-bin",
+  "glib-compile-schemas|arch": "glib2",
+  "glib-compile-schemas|debian": "libglib2.0-bin",
+  "glib-compile-schemas|fedora": "glib2",
+  "glib-compile-schemas|gentoo": "libglib2.0-bin",
+  "glib-compile-schemas|suse": "glib2-tools",
+  "glib-compile-schemas|unknown": "libglib2.0-bin",
+  "gtk-update-icon-cache|": "libgtk-3-bin",
+  "gtk-update-icon-cache|arch": "gtk-update-icon-cache",
+  "gtk-update-icon-cache|debian": "libgtk-3-bin",
+  "gtk-update-icon-cache|fedora": "gtk-update-icon-cache",
+  "gtk-update-icon-cache|gentoo": "libgtk-3-bin",
+  "gtk-update-icon-cache|suse": "gtk3-tools",
+  "gtk-update-icon-cache|unknown": "libgtk-3-bin",
+  "hyprpaper|": "",
+  "hyprpaper|arch": "hyprpaper",
+  "hyprpaper|debian": "",
+  "hyprpaper|fedora": "hyprpaper",
+  "hyprpaper|gentoo": "",
+  "hyprpaper|suse": "hyprpaper",
+  "hyprpaper|unknown": "",
+  "icotool|": "icoutils",
+  "icotool|arch": "icoutils",
+  "icotool|debian": "icoutils",
+  "icotool|fedora": "icoutils",
+  "icotool|gentoo": "icoutils",
+  "icotool|suse": "icoutils",
+  "icotool|unknown": "icoutils",
+  "identify|": "imagemagick",
+  "identify|arch": "imagemagick",
+  "identify|debian": "imagemagick",
+  "identify|fedora": "ImageMagick",
+  "identify|gentoo": "imagemagick",
+  "identify|suse": "ImageMagick",
+  "identify|unknown": "imagemagick",
+  "kreadconfig6|": "libkf6config-bin",
+  "kreadconfig6|arch": "kconfig",
+  "kreadconfig6|debian": "libkf6config-bin",
+  "kreadconfig6|fedora": "kf6-kconfig",
+  "kreadconfig6|gentoo": "libkf6config-bin",
+  "kreadconfig6|suse": "kf6-kconfig",
+  "kreadconfig6|unknown": "libkf6config-bin",
+  "kvantummanager|": "qt6-style-kvantum",
+  "kvantummanager|arch": "kvantum",
+  "kvantummanager|debian": "qt6-style-kvantum",
+  "kvantummanager|fedora": "kvantum",
+  "kvantummanager|gentoo": "qt6-style-kvantum",
+  "kvantummanager|suse": "kvantum-manager",
+  "kvantummanager|unknown": "qt6-style-kvantum",
+  "kwriteconfig6|": "libkf6config-bin",
+  "kwriteconfig6|arch": "kconfig",
+  "kwriteconfig6|debian": "libkf6config-bin",
+  "kwriteconfig6|fedora": "kf6-kconfig",
+  "kwriteconfig6|gentoo": "libkf6config-bin",
+  "kwriteconfig6|suse": "kf6-kconfig",
+  "kwriteconfig6|unknown": "libkf6config-bin",
+  "ls|": "",
+  "ls|arch": "",
+  "ls|debian": "",
+  "ls|fedora": "",
+  "ls|gentoo": "",
+  "ls|suse": "",
+  "ls|unknown": "",
+  "magick|": "imagemagick",
+  "magick|arch": "imagemagick",
+  "magick|debian": "imagemagick",
+  "magick|fedora": "ImageMagick",
+  "magick|gentoo": "imagemagick",
+  "magick|suse": "ImageMagick",
+  "magick|unknown": "imagemagick",
+  "mpvpaper|": "",
+  "mpvpaper|arch": "mpvpaper",
+  "mpvpaper|debian": "",
+  "mpvpaper|fedora": "mpvpaper (COPR)",
+  "mpvpaper|gentoo": "",
+  "mpvpaper|suse": "mpvpaper",
+  "mpvpaper|unknown": "",
+  "mpv|": "mpv",
+  "mpv|arch": "mpv",
+  "mpv|debian": "mpv",
+  "mpv|fedora": "mpv",
+  "mpv|gentoo": "mpv",
+  "mpv|suse": "mpv",
+  "mpv|unknown": "mpv",
+  "nosuchtool42|": "",
+  "nosuchtool42|arch": "",
+  "nosuchtool42|debian": "",
+  "nosuchtool42|fedora": "",
+  "nosuchtool42|gentoo": "",
+  "nosuchtool42|suse": "",
+  "nosuchtool42|unknown": "",
+  "notify-send|": "libnotify-bin",
+  "notify-send|arch": "libnotify",
+  "notify-send|debian": "libnotify-bin",
+  "notify-send|fedora": "libnotify",
+  "notify-send|gentoo": "libnotify-bin",
+  "notify-send|suse": "libnotify-tools",
+  "notify-send|unknown": "libnotify-bin",
+  "pactl|": "pulseaudio-utils",
+  "pactl|arch": "libpulse",
+  "pactl|debian": "pulseaudio-utils",
+  "pactl|fedora": "pulseaudio-utils",
+  "pactl|gentoo": "pulseaudio-utils",
+  "pactl|suse": "pulseaudio-utils",
+  "pactl|unknown": "pulseaudio-utils",
+  "qdbus6|": "qdbus-qt6",
+  "qdbus6|arch": "qt6-tools",
+  "qdbus6|debian": "qdbus-qt6",
+  "qdbus6|fedora": "qt6-qttools",
+  "qdbus6|gentoo": "qdbus-qt6",
+  "qdbus6|suse": "qt6-tools-qdbus",
+  "qdbus6|unknown": "qdbus-qt6",
+  "ruffle|": "",
+  "ruffle|arch": "ruffle (из AUR)",
+  "ruffle|debian": "",
+  "ruffle|fedora": "",
+  "ruffle|gentoo": "",
+  "ruffle|suse": "ruffle",
+  "ruffle|unknown": "",
+  "swww|": "awww",
+  "swww|arch": "awww",
+  "swww|debian": "awww",
+  "swww|fedora": "awww",
+  "swww|gentoo": "awww",
+  "swww|suse": "awww",
+  "swww|unknown": "awww",
+  "update-desktop-database|": "desktop-file-utils",
+  "update-desktop-database|arch": "desktop-file-utils",
+  "update-desktop-database|debian": "desktop-file-utils",
+  "update-desktop-database|fedora": "desktop-file-utils",
+  "update-desktop-database|gentoo": "desktop-file-utils",
+  "update-desktop-database|suse": "desktop-file-utils",
+  "update-desktop-database|unknown": "desktop-file-utils",
+  "win2xcur|": "win2xcur (pip install win2xcur)",
+  "win2xcur|arch": "win2xcur (из AUR)",
+  "win2xcur|debian": "win2xcur (pip install win2xcur)",
+  "win2xcur|fedora": "win2xcur (pip install win2xcur)",
+  "win2xcur|gentoo": "win2xcur (pip install win2xcur)",
+  "win2xcur|suse": "win2xcur (pip install win2xcur)",
+  "win2xcur|unknown": "win2xcur (pip install win2xcur)",
+  "wpctl|": "wireplumber",
+  "wpctl|arch": "wireplumber",
+  "wpctl|debian": "wireplumber",
+  "wpctl|fedora": "wireplumber",
+  "wpctl|gentoo": "wireplumber",
+  "wpctl|suse": "wireplumber",
+  "wpctl|unknown": "wireplumber",
+  "wrestool|": "icoutils",
+  "wrestool|arch": "icoutils",
+  "wrestool|debian": "icoutils",
+  "wrestool|fedora": "icoutils",
+  "wrestool|gentoo": "icoutils",
+  "wrestool|suse": "icoutils",
+  "wrestool|unknown": "icoutils",
+  "xcursorgen|": "x11-apps",
+  "xcursorgen|arch": "xorg-xcursorgen",
+  "xcursorgen|debian": "x11-apps",
+  "xcursorgen|fedora": "xcursorgen",
+  "xcursorgen|gentoo": "x11-apps",
+  "xcursorgen|suse": "xcursorgen",
+  "xcursorgen|unknown": "x11-apps",
+  "xdg-terminal-exec|": "xdg-terminal-exec",
+  "xdg-terminal-exec|arch": "xdg-terminal-exec (из AUR)",
+  "xdg-terminal-exec|debian": "xdg-terminal-exec",
+  "xdg-terminal-exec|fedora": "xdg-terminal-exec (Fedora 42+)",
+  "xdg-terminal-exec|gentoo": "xdg-terminal-exec",
+  "xdg-terminal-exec|suse": "xdg-terminal-exec",
+  "xdg-terminal-exec|unknown": "xdg-terminal-exec",
+  "xprop|": "x11-utils",
+  "xprop|arch": "xorg-xprop",
+  "xprop|debian": "x11-utils",
+  "xprop|fedora": "xprop",
+  "xprop|gentoo": "x11-utils",
+  "xprop|suse": "xprop",
+  "xprop|unknown": "x11-utils",
+  "xrandr|": "x11-xserver-utils",
+  "xrandr|arch": "xorg-xrandr",
+  "xrandr|debian": "x11-xserver-utils",
+  "xrandr|fedora": "xrandr",
+  "xrandr|gentoo": "x11-xserver-utils",
+  "xrandr|suse": "xrandr",
+  "xrandr|unknown": "x11-xserver-utils",
+  "xwinwrap|": "",
+  "xwinwrap|arch": "xwinwrap-git (из AUR)",
+  "xwinwrap|debian": "",
+  "xwinwrap|fedora": "",
+  "xwinwrap|gentoo": "",
+  "xwinwrap|suse": "",
+  "xwinwrap|unknown": "",
+  "yt-dlp|": "yt-dlp",
+  "yt-dlp|arch": "yt-dlp",
+  "yt-dlp|debian": "yt-dlp",
+  "yt-dlp|fedora": "yt-dlp",
+  "yt-dlp|gentoo": "yt-dlp",
+  "yt-dlp|suse": "yt-dlp",
+  "yt-dlp|unknown": "yt-dlp"
+ },
+ "tool_sets": {
+  "7z": [
+   [
+    "7z",
+    "7zz",
+    "7za"
+   ],
+   []
+  ],
+  "convert": [
+   [
+    "convert",
+    "magick"
+   ],
+   []
+  ],
+  "kbuildsycoca6": [
+   [
+    "kbuildsycoca6",
+    "kbuildsycoca5"
+   ],
+   []
+  ],
+  "kdialog": [
+   [
+    "kdialog"
+   ],
+   []
+  ],
+  "kpackagetool6": [
+   [
+    "kpackagetool6",
+    "kpackagetool5"
+   ],
+   []
+  ],
+  "kquitapp6": [
+   [
+    "kquitapp6",
+    "kquitapp5"
+   ],
+   []
+  ],
+  "kstart": [
+   [
+    "kstart",
+    "kstart5"
+   ],
+   []
+  ],
+  "kreadconfig6": [
+   [
+    "kreadconfig6",
+    "kreadconfig5"
+   ],
+   []
+  ],
+  "kwriteconfig6": [
+   [
+    "kwriteconfig6",
+    "kwriteconfig5"
+   ],
+   []
+  ],
+  "plymouth-set-default-theme": [
+   [
+    "plymouth-set-default-theme"
+   ],
+   [
+    "/usr/sbin",
+    "/sbin"
+   ]
+  ],
+  "qdbus6": [
+   [
+    "qdbus6",
+    "qdbus-qt6",
+    "qdbus",
+    "qdbus-qt5"
+   ],
+   [
+    "/usr/lib/qt6/bin",
+    "/usr/lib64/qt6/bin",
+    "/usr/lib/*/qt6/bin"
+   ]
+  ],
+  "swww": [
+   [
+    "swww",
+    "awww"
+   ],
+   []
+  ],
+  "swww-daemon": [
+   [
+    "swww-daemon",
+    "awww-daemon"
+   ],
+   []
+  ],
+  "update-alternatives": [
+   [
+    "update-alternatives"
+   ],
+   [
+    "/usr/sbin",
+    "/sbin"
+   ]
+  ],
+  "update-initramfs": [
+   [
+    "update-initramfs"
+   ],
+   [
+    "/usr/sbin",
+    "/sbin"
+   ]
+  ]
+ },
+ "tool_subcommands": {
+  "identify": [
+   "magick",
+   "identify"
+  ]
+ },
+ "which": {
+  "": null,
+  "./ls": null,
+  "//usr//bin//ls": "//usr//bin/ls",
+  "/bin/sh": "/bin/sh",
+  "/nosuch/ls": null,
+  "/usr/bin/": null,
+  "/usr/bin/ls": "/usr/bin/ls",
+  "7z": "/usr/bin/7z",
+  "7za": "/usr/bin/7za",
+  "7zz": null,
+  "awww": null,
+  "convert": "/usr/bin/convert",
+  "dbus-send": "/usr/bin/dbus-send",
+  "ffmpeg": "/usr/bin/ffmpeg",
+  "git": "/usr/bin/git",
+  "identify": "/usr/bin/identify",
+  "kpackagetool6": "/usr/bin/kpackagetool6",
+  "kreadconfig6": "/usr/bin/kreadconfig6",
+  "kwriteconfig5": null,
+  "kwriteconfig6": "/usr/bin/kwriteconfig6",
+  "ls": "/usr/bin/ls",
+  "magick": "/usr/bin/magick",
+  "mpv": "/usr/bin/mpv",
+  "nosuchtool42": null,
+  "notify-send": "/usr/bin/notify-send",
+  "plymouth-set-default-theme": "/usr/bin/plymouth-set-default-theme",
+  "qdbus": null,
+  "qdbus-qt6": null,
+  "qdbus6": "/usr/bin/qdbus6",
+  "sh": "/usr/bin/sh",
+  "swww": null,
+  "update-alternatives": null,
+  "usr/bin/ls": null,
+  "xprop": "/usr/bin/xprop",
+  "yt-dlp": "/usr/bin/yt-dlp"
+ },
+ "which_path_env": [
+  {
+   "cmd": "ls",
+   "path": "",
+   "want": null
+  },
+  {
+   "cmd": "ls",
+   "path": "/usr/bin",
+   "want": "/usr/bin/ls"
+  },
+  {
+   "cmd": "ls",
+   "path": "/nosuch:/usr/bin",
+   "want": "/usr/bin/ls"
+  },
+  {
+   "cmd": "ls",
+   "path": "/usr/bin:/usr/bin",
+   "want": "/usr/bin/ls"
+  },
+  {
+   "cmd": "ls",
+   "path": "/nosuch",
+   "want": null
+  },
+  {
+   "cmd": "sh",
+   "path": "/bin",
+   "want": "/bin/sh"
+  }
+ ],
+ "sound_players": {
+  "cases": [
+   {
+    "available": [
+     "pw-play",
+     "aplay"
+    ],
+    "file": "/usr/share/sounds/freedesktop/stereo/bell.oga",
+    "argv": [
+     "pw-play",
+     "/usr/share/sounds/freedesktop/stereo/bell.oga"
+    ]
+   },
+   {
+    "available": [
+     "paplay",
+     "aplay"
+    ],
+    "file": "/s/bell.oga",
+    "argv": [
+     "paplay",
+     "/s/bell.oga"
+    ]
+   },
+   {
+    "available": [
+     "canberra-gtk-play"
+    ],
+    "file": "/s/bell.oga",
+    "argv": [
+     "canberra-gtk-play",
+     "-f",
+     "/s/bell.oga"
+    ]
+   },
+   {
+    "available": [
+     "ffplay"
+    ],
+    "file": "/s/bell.oga",
+    "argv": [
+     "ffplay",
+     "-nodisp",
+     "-autoexit",
+     "-loglevel",
+     "quiet",
+     "/s/bell.oga"
+    ]
+   },
+   {
+    "available": [
+     "aplay"
+    ],
+    "file": "/s/bell.wav",
+    "argv": [
+     "aplay",
+     "-q",
+     "/s/bell.wav"
+    ]
+   },
+   {
+    "available": [
+     "aplay"
+    ],
+    "file": "/s/bell.oga",
+    "argv": null
+   },
+   {
+    "available": [
+     "aplay"
+    ],
+    "file": "/s/BELL.WAV",
+    "argv": [
+     "aplay",
+     "-q",
+     "/s/BELL.WAV"
+    ]
+   },
+   {
+    "available": [],
+    "file": "/s/bell.oga",
+    "argv": null
+   },
+   {
+    "available": [
+     "aplay",
+     "ffplay",
+     "pw-play"
+    ],
+    "file": "/s/bell.wav",
+    "argv": [
+     "pw-play",
+     "/s/bell.wav"
+    ]
+   }
+  ],
+  "event": [
+   {
+    "available": [
+     "canberra-gtk-play",
+     "aplay"
+    ],
+    "event": "bell",
+    "argv": [
+     "canberra-gtk-play",
+     "-i",
+     "bell"
+    ]
+   },
+   {
+    "available": [
+     "pw-play"
+    ],
+    "event": "bell",
+    "argv": null
+   }
+  ],
+  "suggestion": {
+   "/s/bell.wav": "aplay",
+   "/s/bell.oga": "pw-play",
+   "/s/bell": "pw-play"
+  },
+  "msg": {
+   "with_hint": "Нечем проиграть звук: в системе нет проигрывателя. Установите пакет «pipewire»",
+   "no_hint": "Нечем проиграть звук: в системе нет проигрывателя"
+  }
+ }
+}

@@ -1,0 +1,3 @@
+module QExtra
+plugin qextraplugin
+typeinfo module.qmltypes

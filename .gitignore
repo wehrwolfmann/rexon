@@ -1,0 +1,62 @@
+# Rust build artifacts
+rust/target/
+rust/**/target/
+target/
+
+# Python bytecode / caches
+**/__pycache__/
+*.py[cod]
+*.pyo
+
+# Build outputs that are regenerated
+*.so
+*.dylib
+*.dll
+*.o
+
+# Plasma-плагин обоев org.waywallen.kde в git НЕ лежит: пакет качает
+# официальный архив выпуска (packaging/aur/PKGBUILD), а для запуска из дерева
+# его распаковывает сюда `vendor-check --выкачать`. В git — только описание.
+data/kpackage/org.waywallen.kde/*
+!data/kpackage/org.waywallen.kde/vendor.toml
+
+# CMake/ninja build dir for kpackage helper (regenerated)
+_archived/rexon/kpackage/org.rexon.wallpaper/build/
+
+# Frame dumps / mmap / shared-memory artifacts
+*.mmap
+*.rgba
+*.raw
+/run/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
+
+# Misc caches
+.cache/
+.mypy_cache/
+.pytest_cache/
+_archived/rexon/kpackage/org.rexon.wallpaper/compile_commands.json
+_archived/rexon/kpackage/org.rexon.wallpaper/build/
+
+# Модель перевода описаний (43 МБ) в дерево НЕ кладётся: её место — поставка
+# (packaging/aur/PKGBUILD качает архивы и распаковывает их в каталог данных)
+# либо стендовая копия по REXON_TRANSLATE_MODEL_DIR. Каталог, которым ядро
+# ищет модель в дереве разработчика, закрыт целиком — положенная туда копия
+# не должна молча доехать до коммита.
+/data/translate/
+model.*.intgemm.alphas.bin
+*vocab.*.spm
+_archived/rexon/kpackage/io.openaxon.rexon.video/
+/.build-queue.lock
+/target-shared/
+/target-slot*/
+/.build-queue.lock.*
+/.build-queue.d/

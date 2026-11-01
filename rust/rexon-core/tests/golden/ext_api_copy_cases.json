@@ -1,0 +1,42 @@
+[
+ {
+  "base_dir": "/home/u/.themes",
+  "src_dir": "/tmp/x/Dracula",
+  "target": "/home/u/.themes/Dracula"
+ },
+ {
+  "base_dir": "/home/u/.themes",
+  "src_dir": "/tmp/x/Dracula/",
+  "target": "/home/u/.themes/Dracula"
+ },
+ {
+  "base_dir": "/home/u/.themes",
+  "src_dir": "/tmp/x/Dracula///",
+  "target": "/home/u/.themes/Dracula"
+ },
+ {
+  "base_dir": "/home/u/.local/share/icons",
+  "src_dir": "Papirus",
+  "target": "/home/u/.local/share/icons/Papirus"
+ },
+ {
+  "base_dir": "/usr/share/themes",
+  "src_dir": "/tmp/x/Breeze",
+  "target": "/usr/share/themes/Breeze"
+ },
+ {
+  "base_dir": "/home/u/.themes",
+  "src_dir": "/",
+  "target": null
+ },
+ {
+  "base_dir": "/home/u/.themes",
+  "src_dir": "",
+  "target": null
+ },
+ {
+  "base_dir": "/home/u/.themes/",
+  "src_dir": "/tmp/x/Dracula",
+  "target": "/home/u/.themes/Dracula"
+ }
+]

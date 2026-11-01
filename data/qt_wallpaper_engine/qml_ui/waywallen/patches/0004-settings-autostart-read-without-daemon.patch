@@ -1,0 +1,35 @@
+Тема: автозапуск движка читается без оглядки на демона
+
+Починка дефекта, не доработка. У вендора «Start at login» — это RPC
+демону (autostart_get/autostart_set) и работает только во Flatpak через
+портал Background, поэтому чтение состояния и стояло за условием «демон
+готов». У Rexon переключатель роутится ЛОКАЛЬНО: systemd user unit с
+фолбэком на XDG autostart, демон о нём не знает вовсе.
+
+Без правки при лежачем демоне страница настроек показывала «выключено» на
+включённом автозапуске, и выключить его было нечем: щелчок по такому
+переключателю читается как включение.
+
+Наверх не идёт: правка имеет смысл только при локальном роутинге.
+---
+diff --git a/ui/qml/page/SettingsPage.qml b/ui/qml/page/SettingsPage.qml
+index df1fb82..ee654bb 100644
+--- a/ui/qml/page/SettingsPage.qml
++++ b/ui/qml/page/SettingsPage.qml
+@@ -153,9 +153,14 @@ MD.Page {
+         W.App.refreshNetworkCacheSize();
+         if (W.Notify.daemonPhase === W.Notify.DaemonPhase.Ready) {
+             getQ.reload();
+-            if (W.Util.isFlatpak)
+-                autostartGetQ.reload();
+         }
++        // ПРАВКА REXON (починка дефекта, не доработка): автозапуск читается
++        // ВСЕГДА, а не только при готовом демоне. У вендора он идёт RPC
++        // демону, поэтому чтение и стояло за этим условием; у нас он
++        // локальный (systemd user unit / XDG autostart) и демона не
++        // касается. Без правки при лежачем демоне переключатель показывал
++        // ВЫКЛ на включённом автозапуске — и выключить его было нечем.
++        autostartGetQ.reload();
+     }
+ 
+     onVisibleChanged: if (visible) W.App.refreshNetworkCacheSize()

@@ -1,0 +1,59 @@
+{
+  "_about": "«Настроить…» у рамки окна KDE (kdecoration::config_*), как кнопка правки окна «Оформление окон» Plasma 6.8. Пишется руками по исходникам kwin src/kcms/decoration и aurorae 6.8.2.",
+  "plugin_meta": {
+    "/usr/lib/qt6/plugins/org.kde.kdecoration3/org.kde.breeze.so": {"KPlugin": {"Id": "org.kde.breeze", "Name": "Breeze"}, "X-KDE-ConfigModule": "kcm_breezedecoration", "org.kde.kdecoration3": {"blur": true}},
+    "/usr/lib/qt6/plugins/org.kde.kdecoration3/org.kde.plain.so": {"KPlugin": {"Id": "org.kde.plain", "Name": "Plain"}, "org.kde.kdecoration3": {}}
+  },
+  "files": [
+    "/usr/share/kwin/decorations/kwin4_decoration_qml_plastik/contents/ui/config.ui",
+    "/usr/share/kwin/decorations/kwin4_decoration_qml_plastik/contents/config/main.xml",
+    "/usr/share/kwin/decorations/half/contents/ui/config.ui",
+    "/usr/lib/qt6/plugins/org.kde.kdecoration3.kcm/kcm_breezedecoration.so",
+    "/usr/lib/qt6/plugins/org.kde.kdecoration3.kcm/kcm_auroraedecoration.so",
+    "/opt/qt/plugins/org.kde.kdecoration2.kcm/kcm_klassydecoration.so"
+  ],
+  "targets": [
+    {"name": "Breeze: модуль из X-KDE-ConfigModule", "id": "local:aurorae:org.kde.breeze/Breeze", "path": "/usr/lib/qt6/plugins/org.kde.kdecoration3/org.kde.breeze.so", "caption": "Breeze",
+     "want": {"library": "org.kde.breeze", "theme": "Breeze", "engine_theme": false, "kcmodule": "kcm_breezedecoration"}},
+    {"name": "модуль без ключа — своих настроек нет", "id": "local:aurorae:org.kde.plain/Plain", "path": "/usr/lib/qt6/plugins/org.kde.kdecoration3/org.kde.plain.so", "caption": "Plain",
+     "want": {"library": "org.kde.plain", "theme": "Plain", "engine_theme": false, "kcmodule": ""}},
+    {"name": "тема SVG: модуль Aurorae всегда, тема с приставкой под v2", "id": "local:aurorae:Arc", "path": "/home/u/.local/share/aurorae/themes/Arc", "caption": "Arc",
+     "want": {"library": "org.kde.kwin.aurorae.v2", "theme": "__aurorae__svg__Arc", "engine_theme": true, "kcmodule": "kcm_auroraedecoration"}},
+    {"name": "тема QML с config.ui и main.xml", "id": "local:aurorae:org.kde.kwin.aurorae/kwin4_decoration_qml_plastik", "path": "/usr/share/kwin/decorations/kwin4_decoration_qml_plastik", "caption": "Plastik",
+     "want": {"library": "org.kde.kwin.aurorae", "theme": "kwin4_decoration_qml_plastik", "engine_theme": true, "kcmodule": "kcm_auroraedecoration"}},
+    {"name": "тема QML без main.xml — настроек нет", "id": "local:aurorae:org.kde.kwin.aurorae/half", "path": "/usr/share/kwin/decorations/half/", "caption": "Half",
+     "want": {"library": "org.kde.kwin.aurorae", "theme": "half", "engine_theme": true, "kcmodule": ""}},
+    {"name": "не рамка KDE", "id": "local:xfwm4:Default", "path": "/usr/share/themes/Default", "caption": "Default", "want": null}
+  ],
+  "kcm_plugin": [
+    {"name": "Breeze в kdecoration3.kcm", "kcm": "kcm_breezedecoration", "dirs": ["/usr/lib/qt6/plugins"], "want": "org.kde.kdecoration3.kcm/kcm_breezedecoration"},
+    {"name": "старое пространство во втором каталоге", "kcm": "kcm_klassydecoration", "dirs": ["/usr/lib/qt6/plugins", "/opt/qt/plugins/"], "want": "org.kde.kdecoration2.kcm/kcm_klassydecoration"},
+    {"name": "модуля нет", "kcm": "kcm_oxygendecoration", "dirs": ["/usr/lib/qt6/plugins"], "want": null},
+    {"name": "пустое имя", "kcm": "", "dirs": ["/usr/lib/qt6/plugins"], "want": null},
+    {"name": "косая черта в имени не пускает за пределы пространства", "kcm": "../org.kde.kdecoration3.kcm/kcm_breezedecoration", "dirs": ["/usr/lib/qt6/plugins"], "want": null}
+  ],
+  "buttons": [
+    {"name": "не рамка — кнопки нет", "target": null, "facts": {"plasma": true, "runner": "/usr/lib/qt6/bin/qml", "kcm": null, "kcmshell": true},
+     "visible": false, "enabled": false, "argv": []},
+    {"name": "вне Plasma — выключена с причиной", "target": "breeze", "facts": {"plasma": false, "runner": "/usr/lib/qt6/bin/qml", "kcm": "org.kde.kdecoration3.kcm/kcm_breezedecoration", "kcmshell": true},
+     "visible": true, "enabled": false, "argv": []},
+    {"name": "своих настроек нет — выключена, как в KDE", "target": "plain", "facts": {"plasma": true, "runner": "/usr/lib/qt6/bin/qml", "kcm": null, "kcmshell": true},
+     "visible": true, "enabled": false, "argv": []},
+    {"name": "модуль настроек не установлен", "target": "breeze", "facts": {"plasma": true, "runner": "/usr/lib/qt6/bin/qml", "kcm": null, "kcmshell": true},
+     "visible": true, "enabled": false, "argv": []},
+    {"name": "Breeze: диалог KWin через qml", "target": "breeze", "facts": {"plasma": true, "runner": "/usr/lib/qt6/bin/qml", "kcm": "org.kde.kdecoration3.kcm/kcm_breezedecoration", "kcmshell": true},
+     "visible": true, "enabled": true,
+     "argv": ["/usr/lib/qt6/bin/qml", "-a", "widget", "/c/kdecoration-configure.qml", "--", "org.kde.breeze", "Breeze", "kcm_breezedecoration", "Breeze"]},
+    {"name": "тема SVG: тема уходит модулю", "target": "svg", "facts": {"plasma": true, "runner": "/usr/lib/qt6/bin/qml", "kcm": "org.kde.kdecoration3.kcm/kcm_auroraedecoration", "kcmshell": false},
+     "visible": true, "enabled": true,
+     "argv": ["/usr/lib/qt6/bin/qml", "-a", "widget", "/c/kdecoration-configure.qml", "--", "org.kde.kwin.aurorae.v2", "__aurorae__svg__Arc", "kcm_auroraedecoration", "Arc"]},
+    {"name": "без запускателя модуль-рамка — kcmshell6 по пути плагина", "target": "breeze", "facts": {"plasma": true, "runner": null, "kcm": "org.kde.kdecoration3.kcm/kcm_breezedecoration", "kcmshell": true},
+     "visible": true, "enabled": true,
+     "argv": ["kcmshell6", "org.kde.kdecoration3.kcm/kcm_breezedecoration", "--caption", "Breeze"]},
+    {"name": "без запускателя тема Aurorae — весь модуль «Оформление окон»", "target": "svg", "facts": {"plasma": true, "runner": null, "kcm": "org.kde.kdecoration3.kcm/kcm_auroraedecoration", "kcmshell": true},
+     "visible": true, "enabled": true,
+     "argv": ["kcmshell6", "kcm_kwindecoration"]},
+    {"name": "нечем показать — выключена с причиной", "target": "breeze", "facts": {"plasma": true, "runner": null, "kcm": "org.kde.kdecoration3.kcm/kcm_breezedecoration", "kcmshell": false},
+     "visible": true, "enabled": false, "argv": []}
+  ]
+}

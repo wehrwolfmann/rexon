@@ -1,0 +1,10 @@
+{
+ "_origin": "Снято 02.10.2026 с архивной редакции Python (rexon/app.py, rexon/qt_main/app.py, rexon/utils.py @ 1934352) и с тех пор — собственный эталон точки входа Rust; Python не читается.",
+ "headless_flags": ["--apply-defaults", "--sanitize-gtk", "--session-splash"],
+ "recover_flag": "--recover-kde",
+ "single_tab_flags": ["--appearance-qt", "--extensions-qt", "--compare-qt", "--settings-qt", "--desktops-qt"],
+ "qt_translation_catalogs": ["qtbase", "qt"],
+ "qt_translation_separator": "_",
+ "stop_budget_ms": 8000,
+ "stop_wait_slice_ms": 100
+}

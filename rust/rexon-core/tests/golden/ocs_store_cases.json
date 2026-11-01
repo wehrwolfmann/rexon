@@ -1,0 +1,260 @@
+{
+ "detect": {
+  "aurorae": "aurorae",
+  "bundle": "bundle",
+  "bundle_one": null,
+  "color_scheme": "color-scheme",
+  "empty": null,
+  "icons": "icons",
+  "icons_no_sub": null,
+  "kvantum": "kvantum",
+  "lookandfeel": "look-and-feel",
+  "meta_lnf": "look-and-feel",
+  "meta_other": null,
+  "meta_theme": "plasma-theme",
+  "missing_root": null,
+  "plasma_theme": "plasma-theme",
+  "priority_bundle_over_colors": "bundle",
+  "priority_colors_over_aurorae": "color-scheme"
+ },
+ "detect_input": {
+  "aurorae": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "close.svg",
+    "decoration.svg"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  },
+  "bundle": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "aurorae",
+    "color-schemes",
+    "plasma"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": [
+    "aurorae",
+    "color-schemes",
+    "plasma"
+   ]
+  },
+  "bundle_one": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "aurorae"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": [
+    "aurorae"
+   ]
+  },
+  "color_scheme": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "Nord.colors",
+    "README.md"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  },
+  "empty": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  },
+  "icons": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "apps",
+    "index.theme",
+    "places"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": [
+    "apps",
+    "places"
+   ]
+  },
+  "icons_no_sub": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "index.theme",
+    "scalable"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": [
+    "scalable"
+   ]
+  },
+  "kvantum": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "KvNord.kvconfig"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  },
+  "lookandfeel": {
+   "contents_subdirs": [
+    "defaults"
+   ],
+   "exists": true,
+   "files": [
+    "contents"
+   ],
+   "has_contents_defaults": true,
+   "has_contents_dir": true,
+   "metadata_text": null,
+   "subdirs": [
+    "contents"
+   ]
+  },
+  "meta_lnf": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "metadata.desktop"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": "[Desktop Entry]\nX-KDE-ServiceTypes=Plasma/LookAndFeel\n",
+   "subdirs": []
+  },
+  "meta_other": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "metadata.desktop"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": "[Desktop Entry]\nName=Nothing\n",
+   "subdirs": []
+  },
+  "meta_theme": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "metadata.desktop"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": "[Desktop Entry]\nX-KDE-ServiceTypes=Plasma/Theme\n",
+   "subdirs": []
+  },
+  "missing_root": {
+   "contents_subdirs": [],
+   "exists": false,
+   "files": [],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  },
+  "plasma_theme": {
+   "contents_subdirs": [
+    "dialogs",
+    "widgets"
+   ],
+   "exists": true,
+   "files": [
+    "contents"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": true,
+   "metadata_text": null,
+   "subdirs": [
+    "contents"
+   ]
+  },
+  "priority_bundle_over_colors": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "aurorae",
+    "kvantum",
+    "x.colors"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": [
+    "aurorae",
+    "kvantum"
+   ]
+  },
+  "priority_colors_over_aurorae": {
+   "contents_subdirs": [],
+   "exists": true,
+   "files": [
+    "decoration.svg",
+    "x.colors"
+   ],
+   "has_contents_defaults": false,
+   "has_contents_dir": false,
+   "metadata_text": null,
+   "subdirs": []
+  }
+ },
+ "forget_hit": true,
+ "forget_miss": false,
+ "log_after_forget": "{}",
+ "log_parsed": {
+  "1687249": {
+   "author": "Автор",
+   "category_id": 135,
+   "description": "Опис<ание>",
+   "downloads": 12345,
+   "installed_at": "2026-07-26T15:00:00",
+   "license": "GPL",
+   "name": "Dracula GTK",
+   "paths": [
+    "/usr/share/themes/Dracula"
+   ],
+   "preview_url": "http://u/п.png",
+   "provider_id": "gnome-look",
+   "rexon_type": "theme-gtk",
+   "score": 87,
+   "summary": "кратко",
+   "tags": [
+    "dark",
+    "тёмная"
+   ],
+   "version": "1.2",
+   "web_url": "http://w"
+  }
+ },
+ "log_path_tail": ".config/rexon/ocs_installed.json",
+ "log_text": "{\n  \"1687249\": {\n    \"name\": \"Dracula GTK\",\n    \"rexon_type\": \"theme-gtk\",\n    \"paths\": [\n      \"/usr/share/themes/Dracula\"\n    ],\n    \"installed_at\": \"2026-07-26T15:00:00\",\n    \"author\": \"Автор\",\n    \"description\": \"Опис<ание>\",\n    \"summary\": \"кратко\",\n    \"version\": \"1.2\",\n    \"license\": \"GPL\",\n    \"preview_url\": \"http://u/п.png\",\n    \"score\": 87,\n    \"downloads\": 12345,\n    \"tags\": [\n      \"dark\",\n      \"тёмная\"\n    ],\n    \"web_url\": \"http://w\",\n    \"provider_id\": \"gnome-look\",\n    \"category_id\": 135\n  }\n}",
+ "parse_broken": [
+  {}
+ ]
+}

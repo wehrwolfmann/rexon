@@ -1,0 +1,641 @@
+{
+ "aururl_cases": {
+  "a b": "https://aur.archlinux.org/packages/a%20b",
+  "aerothemeplasma-desktop-git": "https://aur.archlinux.org/packages/aerothemeplasma-desktop-git",
+  "foo": "https://aur.archlinux.org/packages/foo",
+  "foo+bar": "https://aur.archlinux.org/packages/foo%2Bbar",
+  "x@y": "https://aur.archlinux.org/packages/x%40y"
+ },
+ "dedup_global": {
+  "expected": [
+   "aerothemeplasma-desktop-git",
+   "global-theme-y",
+   "some-plasma-theme",
+   "lookandfeel-x"
+  ],
+  "expected_categories": [
+   "global",
+   "global",
+   "global",
+   "global",
+   "global"
+  ],
+  "key": "global",
+  "responses": [
+   {
+    "results": [
+     {
+      "Name": "aerothemeplasma-desktop-git",
+      "NumVotes": 2
+     },
+     {
+      "Name": "aerothemeplasma-icons-git",
+      "NumVotes": 0
+     }
+    ]
+   },
+   {
+    "results": [
+     {
+      "Name": "some-plasma-theme",
+      "NumVotes": 15
+     },
+     {
+      "Name": "aerothemeplasma-desktop-git",
+      "NumVotes": 2
+     }
+    ]
+   },
+   {
+    "results": [
+     {
+      "Name": "lookandfeel-x",
+      "NumVotes": 8
+     }
+    ]
+   },
+   {
+    "results": [
+     {
+      "Name": "global-theme-y",
+      "NumVotes": 30
+     },
+     {
+      "Name": "some-plasma-theme",
+      "NumVotes": 15
+     }
+    ]
+   }
+  ]
+ },
+ "icon_cases": [
+  {
+   "category": "",
+   "icon": "🖱️",
+   "name": "some-cursor-theme"
+  },
+  {
+   "category": "",
+   "icon": "📁",
+   "name": "papirus-icon-theme"
+  },
+  {
+   "category": "",
+   "icon": "🔐",
+   "name": "sddm-sugar-dark"
+  },
+  {
+   "category": "",
+   "icon": "⚡",
+   "name": "plymouth-theme-x"
+  },
+  {
+   "category": "",
+   "icon": "🔤",
+   "name": "ttf-fira"
+  },
+  {
+   "category": "",
+   "icon": "🔤",
+   "name": "otf-foo"
+  },
+  {
+   "category": "",
+   "icon": "🔤",
+   "name": "noto-fonts"
+  },
+  {
+   "category": "",
+   "icon": "🔲",
+   "name": "kvantum-theme-y"
+  },
+  {
+   "category": "",
+   "icon": "🖼️",
+   "name": "nice-wallpaper-pack"
+  },
+  {
+   "category": "",
+   "icon": "💎",
+   "name": "aerothemeplasma-desktop-git"
+  },
+  {
+   "category": "cursor",
+   "icon": "🖱️",
+   "name": "anything"
+  },
+  {
+   "category": "global",
+   "icon": "💎",
+   "name": "anything"
+  },
+  {
+   "category": "unknown-key",
+   "icon": "💎",
+   "name": "anything"
+  }
+ ],
+ "parsed_real": [
+  {
+   "aur_url": "https://aur.archlinux.org/packages/aerothemeplasma-desktop-git",
+   "category": "",
+   "description": "An alternative shell for KDE Plasma that aims to replicate the look and feel of Windows 7",
+   "icon": "💎",
+   "id": "aerothemeplasma-desktop-git",
+   "last_modified": 1781979659,
+   "maintainer": "WackyIdeas",
+   "name": "aerothemeplasma-desktop-git",
+   "out_of_date": false,
+   "popularity": 1.000909,
+   "preview_url": "https://opengraph.githubassets.com/0/aeroshell-desktop/aerothemeplasma",
+   "upstream_url": "https://github.com/aeroshell-desktop/aerothemeplasma",
+   "version": "6.7.0_724.r5fd2458-1",
+   "votes": 3
+  },
+  {
+   "aur_url": "https://aur.archlinux.org/packages/aerothemeplasma-desktop-x11-git",
+   "category": "",
+   "description": "X11 session for AeroThemePlasma",
+   "icon": "💎",
+   "id": "aerothemeplasma-desktop-x11-git",
+   "last_modified": 1781979683,
+   "maintainer": "WackyIdeas",
+   "name": "aerothemeplasma-desktop-x11-git",
+   "out_of_date": false,
+   "popularity": 0.06707,
+   "preview_url": "https://opengraph.githubassets.com/0/aeroshell-desktop/aerothemeplasma",
+   "upstream_url": "https://github.com/aeroshell-desktop/aerothemeplasma",
+   "version": "6.7.0_724.r5fd2458-1",
+   "votes": 1
+  },
+  {
+   "aur_url": "https://aur.archlinux.org/packages/aerothemeplasma-icons-git",
+   "category": "",
+   "description": "Icon theme designed for AeroThemePlasma",
+   "icon": "📁",
+   "id": "aerothemeplasma-icons-git",
+   "last_modified": 1773497621,
+   "maintainer": "WackyIdeas",
+   "name": "aerothemeplasma-icons-git",
+   "out_of_date": false,
+   "popularity": 0.0,
+   "preview_url": "",
+   "upstream_url": "https://gitgud.io/aeroshell/atp/aerothemeplasma-icons",
+   "version": "8.rb8d5ce1-1",
+   "votes": 0
+  },
+  {
+   "aur_url": "https://aur.archlinux.org/packages/aerothemeplasma-sounds-git",
+   "category": "",
+   "description": "Collection of sound themes designed for AeroThemePlasma",
+   "icon": "💎",
+   "id": "aerothemeplasma-sounds-git",
+   "last_modified": 1772325118,
+   "maintainer": "WackyIdeas",
+   "name": "aerothemeplasma-sounds-git",
+   "out_of_date": false,
+   "popularity": 0.0,
+   "preview_url": "",
+   "upstream_url": "https://gitgud.io/aeroshell/atp/aerothemeplasma-sounds",
+   "version": "4.r55d2f5f-1",
+   "votes": 0
+  }
+ ],
+ "search": {
+  "expected": [
+   "aero-icons",
+   "aerothemeplasma-desktop-git",
+   "plasma-aero-old"
+  ],
+  "query": "aero plasma",
+  "response": {
+   "resultcount": 4,
+   "results": [
+    {
+     "Description": "Aero for plasma",
+     "Name": "aerothemeplasma-desktop-git",
+     "NumVotes": 2,
+     "URL": "https://github.com/WackyIdeas/AeroThemePlasma"
+    },
+    {
+     "Description": "a plasma theme",
+     "Name": "some-plasma-theme",
+     "NumVotes": 10
+    },
+    {
+     "Description": "aero style",
+     "Name": "aero-icons",
+     "NumVotes": 5
+    },
+    {
+     "Description": "old",
+     "Name": "plasma-aero-old",
+     "NumVotes": 20,
+     "OutOfDate": 1700000000
+    }
+   ]
+  }
+ },
+ "url_cases": {
+  "": "",
+  "http://github.com/a-b/c.d": "https://opengraph.githubassets.com/0/a-b/c.d",
+  "https://github.com//r": "",
+  "https://github.com/WackyIdeas/AeroThemePlasma": "https://opengraph.githubassets.com/0/WackyIdeas/AeroThemePlasma",
+  "https://github.com/o/r": "https://opengraph.githubassets.com/0/o/r",
+  "https://github.com/only": "",
+  "https://github.com/owner/repo.git": "https://opengraph.githubassets.com/0/owner/repo",
+  "https://github.com/user/proj#readme": "https://opengraph.githubassets.com/0/user/proj",
+  "https://github.com/user/proj/tree/main": "https://opengraph.githubassets.com/0/user/proj",
+  "https://github.com/user/proj?tab=x": "https://opengraph.githubassets.com/0/user/proj",
+  "https://gitlab.com/o/r": "",
+  "https://www.github.com/octo/hello.world": "https://opengraph.githubassets.com/0/octo/hello.world",
+  "not a url": ""
+ },
+ "curated_real": {
+  "expected": [
+   "aerothemeplasma-desktop-git",
+   "aerothemeplasma-icons-git",
+   "aerothemeplasma-sounds-git"
+  ]
+ },
+ "curated_mixed": {
+  "response": {
+   "resultcount": 6,
+   "type": "multiinfo",
+   "results": [
+    {
+     "Description": "Icon theme designed for AeroThemePlasma",
+     "FirstSubmitted": 1772325142,
+     "ID": 2001272,
+     "LastModified": 1773497621,
+     "Maintainer": "WackyIdeas",
+     "Name": "aerothemeplasma-icons-git",
+     "NumVotes": 0,
+     "OutOfDate": null,
+     "PackageBase": "aerothemeplasma-icons-git",
+     "PackageBaseID": 230279,
+     "Popularity": 0,
+     "URL": "https://gitgud.io/aeroshell/atp/aerothemeplasma-icons",
+     "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-icons-git.tar.gz",
+     "Version": "8.rb8d5ce1-1"
+    },
+    {
+     "Name": "klassy",
+     "NumVotes": 40,
+     "Popularity": 1.5,
+     "Description": "Plasma style",
+     "Version": "6.3.0",
+     "URL": "https://github.com/paulmcauley/klassy",
+     "OutOfDate": null,
+     "LastModified": 1770000000,
+     "Maintainer": "pmc"
+    },
+    {
+     "Name": "tela-icon-theme",
+     "NumVotes": 21,
+     "Popularity": 0.9,
+     "Description": "Icons",
+     "Version": "2024",
+     "URL": "",
+     "OutOfDate": 1700000000,
+     "LastModified": 1760000000,
+     "Maintainer": ""
+    },
+    {
+     "NumVotes": 999
+    },
+    {
+     "Description": "An alternative shell for KDE Plasma that aims to replicate the look and feel of Windows 7",
+     "FirstSubmitted": 1772325181,
+     "ID": 2132223,
+     "LastModified": 1781979659,
+     "Maintainer": "WackyIdeas",
+     "Name": "aerothemeplasma-desktop-git",
+     "NumVotes": 3,
+     "OutOfDate": null,
+     "PackageBase": "aerothemeplasma-desktop-git",
+     "PackageBaseID": 230281,
+     "Popularity": 1.000909,
+     "URL": "https://github.com/aeroshell-desktop/aerothemeplasma",
+     "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-desktop-git.tar.gz",
+     "Version": "6.7.0_724.r5fd2458-1"
+    },
+    {
+     "Name": "flat-remix",
+     "NumVotes": 31,
+     "Popularity": 0.5,
+     "Description": "Icons",
+     "Version": "1.0",
+     "URL": null,
+     "OutOfDate": null,
+     "LastModified": 1750000000,
+     "Maintainer": "m"
+    }
+   ]
+  },
+  "expected": [
+   "aerothemeplasma-desktop-git",
+   "aerothemeplasma-icons-git",
+   "klassy",
+   "flat-remix",
+   "tela-icon-theme"
+  ]
+ },
+ "loose_types": {
+  "response": {
+   "results": [
+    {
+     "Name": "a-str-nums",
+     "NumVotes": "42",
+     "Popularity": "0.75",
+     "LastModified": "1700000000",
+     "OutOfDate": 1,
+     "URL": "",
+     "Version": "1"
+    },
+    {
+     "Name": "b-float-votes",
+     "NumVotes": 7.9,
+     "Popularity": 3,
+     "LastModified": -12.7,
+     "OutOfDate": true
+    },
+    {
+     "Name": "c-garbage",
+     "NumVotes": "n/a",
+     "Popularity": "—",
+     "LastModified": {},
+     "OutOfDate": ""
+    },
+    {
+     "Name": "d-null",
+     "NumVotes": null,
+     "Popularity": null,
+     "LastModified": null,
+     "OutOfDate": null,
+     "Description": null
+    },
+    {
+     "Name": "e-bool",
+     "NumVotes": true,
+     "Popularity": false,
+     "LastModified": false,
+     "OutOfDate": 0
+    }
+   ]
+  },
+  "expected": [
+   {
+    "name": "a-str-nums",
+    "description": "",
+    "version": "1",
+    "votes": 42,
+    "popularity": 0.75,
+    "maintainer": "",
+    "out_of_date": true,
+    "upstream_url": "",
+    "installed": false,
+    "category": "",
+    "last_modified": 1700000000,
+    "id": "a-str-nums",
+    "aur_url": "https://aur.archlinux.org/packages/a-str-nums",
+    "preview_url": "",
+    "icon": "💎"
+   },
+   {
+    "name": "b-float-votes",
+    "description": "",
+    "version": "",
+    "votes": 7,
+    "popularity": 3.0,
+    "maintainer": "",
+    "out_of_date": true,
+    "upstream_url": "",
+    "installed": false,
+    "category": "",
+    "last_modified": -12,
+    "id": "b-float-votes",
+    "aur_url": "https://aur.archlinux.org/packages/b-float-votes",
+    "preview_url": "",
+    "icon": "💎"
+   },
+   {
+    "name": "c-garbage",
+    "description": "",
+    "version": "",
+    "votes": 0,
+    "popularity": 0.0,
+    "maintainer": "",
+    "out_of_date": false,
+    "upstream_url": "",
+    "installed": false,
+    "category": "",
+    "last_modified": 0,
+    "id": "c-garbage",
+    "aur_url": "https://aur.archlinux.org/packages/c-garbage",
+    "preview_url": "",
+    "icon": "💎"
+   },
+   {
+    "name": "d-null",
+    "description": "",
+    "version": "",
+    "votes": 0,
+    "popularity": 0.0,
+    "maintainer": "",
+    "out_of_date": false,
+    "upstream_url": "",
+    "installed": false,
+    "category": "",
+    "last_modified": 0,
+    "id": "d-null",
+    "aur_url": "https://aur.archlinux.org/packages/d-null",
+    "preview_url": "",
+    "icon": "💎"
+   },
+   {
+    "name": "e-bool",
+    "description": "",
+    "version": "",
+    "votes": 1,
+    "popularity": 0.0,
+    "maintainer": "",
+    "out_of_date": false,
+    "upstream_url": "",
+    "installed": false,
+    "category": "",
+    "last_modified": 0,
+    "id": "e-bool",
+    "aur_url": "https://aur.archlinux.org/packages/e-bool",
+    "preview_url": "",
+    "icon": "💎"
+   }
+  ]
+ },
+ "rpc_errors": [
+  {
+   "response": {
+    "resultcount": 0,
+    "results": [],
+    "type": "error",
+    "error": "Too many package results.",
+    "version": 5
+   },
+   "error": "Too many package results."
+  },
+  {
+   "response": {
+    "type": "error",
+    "results": []
+   },
+   "error": "AUR RPC error"
+  },
+  {
+   "response": {
+    "error": "query arg too small"
+   },
+   "error": "query arg too small"
+  },
+  {
+   "response": {
+    "error": ""
+   },
+   "error": null
+  },
+  {
+   "response": {
+    "error": null
+   },
+   "error": null
+  },
+  {
+   "response": {
+    "resultcount": 4,
+    "results": [],
+    "type": "search"
+   },
+   "error": null
+  },
+  {
+   "response": {},
+   "error": null
+  }
+ ],
+ "broken_responses": [
+  {
+   "response": {},
+   "parsed": [],
+   "curated": [],
+   "search": [],
+   "dedup": []
+  },
+  {
+   "response": {
+    "results": null
+   },
+   "parsed": [],
+   "curated": [],
+   "search": [],
+   "dedup": []
+  },
+  {
+   "response": {
+    "results": "oops"
+   },
+   "parsed": [],
+   "curated": [],
+   "search": [],
+   "dedup": []
+  },
+  {
+   "response": {
+    "results": []
+   },
+   "parsed": [],
+   "curated": [],
+   "search": [],
+   "dedup": []
+  },
+  {
+   "response": {
+    "results": [
+     {}
+    ]
+   },
+   "parsed": [
+    {
+     "name": "",
+     "description": "",
+     "version": "",
+     "votes": 0,
+     "popularity": 0.0,
+     "maintainer": "",
+     "out_of_date": false,
+     "upstream_url": "",
+     "installed": false,
+     "category": "",
+     "last_modified": 0,
+     "id": "",
+     "aur_url": "https://aur.archlinux.org/packages/",
+     "preview_url": "",
+     "icon": "💎"
+    }
+   ],
+   "curated": [],
+   "search": [
+    ""
+   ],
+   "dedup": []
+  },
+  {
+   "response": {
+    "results": [
+     null,
+     5,
+     "x",
+     {
+      "Name": "survivor",
+      "NumVotes": 1
+     }
+    ]
+   },
+   "parsed": [
+    {
+     "name": "survivor",
+     "description": "",
+     "version": "",
+     "votes": 1,
+     "popularity": 0.0,
+     "maintainer": "",
+     "out_of_date": false,
+     "upstream_url": "",
+     "installed": false,
+     "category": "",
+     "last_modified": 0,
+     "id": "survivor",
+     "aur_url": "https://aur.archlinux.org/packages/survivor",
+     "preview_url": "",
+     "icon": "💎"
+    }
+   ],
+   "curated": [
+    "survivor"
+   ],
+   "search": [
+    "survivor"
+   ],
+   "dedup": [
+    "survivor"
+   ]
+  },
+  {
+   "response": {
+    "resultcount": 1
+   },
+   "parsed": [],
+   "curated": [],
+   "search": [],
+   "dedup": []
+  }
+ ]
+}

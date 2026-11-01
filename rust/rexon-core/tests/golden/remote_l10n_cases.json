@@ -1,0 +1,1284 @@
+{
+  "SOURCE_NAMES": {
+    "wallpaper_engine": "Мастерская Steam",
+    "wallhaven": "Wallhaven"
+  },
+  "WP_TYPES": {
+    "scene": "Сцена",
+    "video": "Видео",
+    "web": "Веб",
+    "image": "Картинка",
+    "application": "Приложение"
+  },
+  "SORTS": {
+    "trend_day": "Популярные (Сегодня)",
+    "trend_week": "Популярные (Неделя)",
+    "trend_month": "Популярные (Месяц)",
+    "trend_3months": "Популярные (3 месяца)",
+    "trend_6months": "Популярные (Полгода)",
+    "trend_year": "Популярные (Год)",
+    "recent": "Недавно добавленные",
+    "most_subscribed": "Больше всего подписчиков",
+    "top_rated": "Лидеры рейтинга",
+    "rexon_my_items": "Мои подписки",
+    "rexon_collections": "Подборки",
+    "trend": "В тренде",
+    "popular": "Популярное"
+  },
+  "FILTER_TITLES": {
+    "type": "Тип",
+    "questionable": "12+ (с ограничениями)",
+    "mature": "18+ (для взрослых)",
+    "miscellaneous": "Возможности",
+    "genre": "Жанр",
+    "resolution": "Разрешение",
+    "topics": "Темы"
+  },
+  "FILTER_DESCRIPTIONS": {
+    "questionable": "Показывать обои с пометкой «12+ (с ограничениями)».",
+    "mature": "Показывать обои с пометкой 18+."
+  },
+  "FILTER_CONFIRMATIONS": {
+    "mature": "Здесь показываются обои с пометкой 18+. Включать можно только совершеннолетним. Продолжить?"
+  },
+  "TAGS": {
+    "Scene": "Сцена",
+    "Video": "Видео",
+    "Web": "Веб",
+    "Application": "Приложение",
+    "Approved": "Одобренные",
+    "Audio responsive": "Реагирующие на звук",
+    "3D": "3D",
+    "Customizable": "Настраиваемый",
+    "Puppet Warp": "Марионетка",
+    "HDR": "HDR",
+    "Media Integration": "Показывает медиа",
+    "User Shortcut": "Свои кнопки",
+    "Video Texture": "Видеотекстура",
+    "No Animation": "Без анимации",
+    "Wallpaper": "Обои",
+    "Preset": "Пресеты",
+    "Asset": "Ресурс",
+    "Asset Pack": "Пакет ресурсов",
+    "Everyone": "0+ (для всех возрастов)",
+    "Questionable": "12+ (с ограничениями)",
+    "Mature": "18+ (для взрослых)",
+    "Abstract": "Абстракция",
+    "Animal": "Животные",
+    "Anime": "Аниме",
+    "Cartoon": "Мультфильм",
+    "CG": "Комп. графика",
+    "CGI": "Комп. графика",
+    "Cyberpunk": "Киберпанк",
+    "Fantasy": "Фантастика",
+    "Game": "Игра",
+    "Girls": "Девушки",
+    "Guys": "Парни",
+    "Landscape": "Пейзаж",
+    "Medieval": "Средневековье",
+    "Memes": "Мемы",
+    "MMD": "MikuMikuDance (анимация)",
+    "Music": "Музыка",
+    "Nature": "Природа",
+    "Pixel art": "Пиксель-арт",
+    "Relaxing": "Расслабляющий",
+    "Retro": "Ретро",
+    "Sci-Fi": "Научная фантастика",
+    "Sports": "Спорт",
+    "Technology": "Технологии",
+    "Television": "Телевидение",
+    "Vehicle": "Транспорт",
+    "Unspecified": "Неопределенный жанр",
+    "Standard Definition": "Стандартное разрешение",
+    "Ultrawide Standard Definition": "Ультраширокий стандарт",
+    "Ultrawide 2560 x 1080": "Ультраширокий 2560 x 1080",
+    "Ultrawide 3440 x 1440": "Ультраширокий 3440 x 1440",
+    "Dual Standard Definition": "Двойной стандарт",
+    "Dual 3840 x 1080": "Двойной 3840 x 1080",
+    "Dual 5120 x 1440": "Двойной 5120 x 1440",
+    "Dual 7680 x 2160": "Двойной 7680 x 2160",
+    "Triple Standard Definition": "Тройной стандарт",
+    "Triple 4096 x 768": "Тройной 4096 x 768",
+    "Triple 5760 x 1080": "Тройной 5760 x 1080",
+    "Triple 7680 x 1440": "Тройной 7680 x 1440",
+    "Triple 11520 x 2160": "Тройной 11520 x 2160",
+    "Portrait Standard Definition": "Портретный стандарт",
+    "Portrait 720 x 1280": "Портретный 720 x 1280",
+    "Portrait 1080 x 1920": "Портретный 1080 x 1920",
+    "Portrait 1440 x 2560": "Портретный 1440 x 2560",
+    "Portrait 2160 x 3840": "Портретный 2160 x 3840",
+    "Other resolution": "Другое разрешение",
+    "Dynamic resolution": "Динамическое разрешение",
+    "Oversized": "Больше экрана"
+  },
+  "TAGS_BACK": {
+    "Сцена": "Scene",
+    "Видео": "Video",
+    "Веб": "Web",
+    "Приложение": "Application",
+    "Одобренные": "Approved",
+    "Реагирующие на звук": "Audio responsive",
+    "3D": "3D",
+    "Настраиваемый": "Customizable",
+    "Марионетка": "Puppet Warp",
+    "HDR": "HDR",
+    "Показывает медиа": "Media Integration",
+    "Свои кнопки": "User Shortcut",
+    "Видеотекстура": "Video Texture",
+    "Без анимации": "No Animation",
+    "Обои": "Wallpaper",
+    "Пресеты": "Preset",
+    "Ресурс": "Asset",
+    "Пакет ресурсов": "Asset Pack",
+    "0+ (для всех возрастов)": "Everyone",
+    "12+ (с ограничениями)": "Questionable",
+    "18+ (для взрослых)": "Mature",
+    "Абстракция": "Abstract",
+    "Животные": "Animal",
+    "Аниме": "Anime",
+    "Мультфильм": "Cartoon",
+    "Комп. графика": "CGI",
+    "Киберпанк": "Cyberpunk",
+    "Фантастика": "Fantasy",
+    "Игра": "Game",
+    "Девушки": "Girls",
+    "Парни": "Guys",
+    "Пейзаж": "Landscape",
+    "Средневековье": "Medieval",
+    "Мемы": "Memes",
+    "MikuMikuDance (анимация)": "MMD",
+    "Музыка": "Music",
+    "Природа": "Nature",
+    "Пиксель-арт": "Pixel art",
+    "Расслабляющий": "Relaxing",
+    "Ретро": "Retro",
+    "Научная фантастика": "Sci-Fi",
+    "Спорт": "Sports",
+    "Технологии": "Technology",
+    "Телевидение": "Television",
+    "Транспорт": "Vehicle",
+    "Неопределенный жанр": "Unspecified",
+    "Стандартное разрешение": "Standard Definition",
+    "Ультраширокий стандарт": "Ultrawide Standard Definition",
+    "Ультраширокий 2560 x 1080": "Ultrawide 2560 x 1080",
+    "Ультраширокий 3440 x 1440": "Ultrawide 3440 x 1440",
+    "Двойной стандарт": "Dual Standard Definition",
+    "Двойной 3840 x 1080": "Dual 3840 x 1080",
+    "Двойной 5120 x 1440": "Dual 5120 x 1440",
+    "Двойной 7680 x 2160": "Dual 7680 x 2160",
+    "Тройной стандарт": "Triple Standard Definition",
+    "Тройной 4096 x 768": "Triple 4096 x 768",
+    "Тройной 5760 x 1080": "Triple 5760 x 1080",
+    "Тройной 7680 x 1440": "Triple 7680 x 1440",
+    "Тройной 11520 x 2160": "Triple 11520 x 2160",
+    "Портретный стандарт": "Portrait Standard Definition",
+    "Портретный 720 x 1280": "Portrait 720 x 1280",
+    "Портретный 1080 x 1920": "Portrait 1080 x 1920",
+    "Портретный 1440 x 2560": "Portrait 1440 x 2560",
+    "Портретный 2160 x 3840": "Portrait 2160 x 3840",
+    "Другое разрешение": "Other resolution",
+    "Динамическое разрешение": "Dynamic resolution",
+    "Больше экрана": "Oversized"
+  },
+  "ACTION_LABELS": {
+    "Log in to Steam": "Войти в Steam",
+    "Sign out": "Выйти",
+    "Log in to Wallhaven": "Войти в Wallhaven",
+    "Remove API key": "Удалить ключ доступа",
+    "API key": "Ключ доступа"
+  },
+  "TEXTS": {
+    "Steam account": "Аккаунт Steam",
+    "Wallhaven account": "Аккаунт Wallhaven",
+    "Status": "Состояние",
+    "Not signed in": "Вход не выполнен",
+    "Guest mode": "Гостевой режим",
+    "Signed in": "Вход выполнен",
+    "Waywallen only manages Workshop subscriptions and does not download wallpapers. Keep the Steam desktop client running to download subscribed items.": "Файлы обоев скачивает сам клиент Steam — держите его запущенным, и подписанные обои появятся в списке автоматически.",
+    "Optional. Use an API key from your Wallhaven account settings. Do not enter your Wallhaven password.": "Необязательно. Вставьте ключ доступа из настроек вашего аккаунта Wallhaven. Пароль вводить не нужно.",
+    "Copy the API key from Wallhaven Account Settings.": "Ключ доступа берётся в настройках аккаунта Wallhaven.",
+    "Wallhaven API key": "Ключ доступа Wallhaven"
+  },
+  "QML_TEXTS": {
+    "Search": "Поиск",
+    "Sort": "Сортировка",
+    "Filters": "Фильтры",
+    "Manage": "Управление",
+    "Manage %1": "Управление: %1",
+    "Any": "Любое",
+    "Select values": "Выбор значений",
+    "No wallpapers found": "Обои не найдены",
+    "Couldn't load this source": "Не удалось загрузить каталог",
+    "Log in to %1": "Вход: %1",
+    "Log in to start browsing.": "Войдите, чтобы смотреть каталог.",
+    "Log in": "Войти",
+    "Login": "Вход",
+    "Sign in": "Войти",
+    "Signed in": "Вход выполнен",
+    "Signed in as %1": "Выполнен вход: %1",
+    "Sign-in expired": "Срок входа истёк",
+    "Sign-in failed": "Войти не удалось",
+    "Login action failed": "Войти не удалось",
+    "Starting sign-in…": "Начинаем вход…",
+    "Waiting for confirmation…": "Ждём подтверждения…",
+    "Scan the QR code to continue": "Отсканируйте QR-код в приложении Steam",
+    "This remote has no login or settings to manage.": "У этого каталога нет ни входа, ни настроек.",
+    "Couldn't save remote settings": "Не удалось сохранить настройки каталога",
+    "Untitled": "Без названия",
+    "by %1": "автор: %1",
+    "Description": "Описание",
+    "Info": "Подробности",
+    "Size": "Размер",
+    "Resolution": "Разрешение",
+    "General": "Основное",
+    "Unknown": "Неизвестно",
+    "Loading…": "Загрузка…",
+    "Saving…": "Сохранение…",
+    "Open web page": "Открыть страницу в Steam",
+    "Close": "Закрыть",
+    "Cancel": "Отмена",
+    "Download": "Скачать",
+    "Downloading": "Скачивается",
+    "Downloaded": "Скачано",
+    "Pending": "В очереди",
+    "Remove": "Удалить",
+    "Removed": "Удалено",
+    "Retry": "Повторить",
+    "Updating": "Обновляется",
+    "Updating…": "Обновляем…",
+    "Subscribe": "Подписаться",
+    "Subscribed": "Вы подписаны",
+    "Unsubscribe": "Отписаться",
+    "Unsubscribed": "Подписка отменена",
+    "Subscription request accepted": "Подписка оформлена",
+    "Unsubscribe request accepted": "Подписка отменена",
+    "Playlists": "Плейлисты",
+    "New playlist": "Новый плейлист",
+    "No playlists found": "Вы ещё не создали ни одного плейлиста.",
+    "Create": "Создать",
+    "Name": "Название",
+    "Mode": "Порядок",
+    "Sequential": "По порядку",
+    "Shuffle": "Вперемешку",
+    "Random": "Случайно",
+    "Rotation interval": "Сменить обои",
+    "Add to playlist": "Добавить в плейлист",
+    "Add selection": "Добавить обои",
+    "Edit selection": "Настроить",
+    "Delete playlist": "Удалить плейлист",
+    "%1 wallpapers": "обоев: %1",
+    "Playlist updated": "Плейлист изменён",
+    "Playlist deleted": "Плейлист удалён",
+    "Playlist update failed": "Не удалось изменить плейлист",
+    "Playlist playback failed": "Не удалось включить плейлист",
+    "No displays": "Нет мониторов",
+    "Display": "Монитор",
+    "Display %1": "Монитор %1",
+    "Loading": "Загрузка",
+    "Waiting": "Ожидание",
+    "Hang": "Завис",
+    "Issue": "Неполадка",
+    "Waiting for the first frame": "Ждём первый кадр",
+    "Waiting for a display to release a frame": "Ждём, пока монитор освободит кадр",
+    "Renderer stopped producing frames": "Рендер перестал выдавать кадры",
+    "Display release state could not be recovered": "Не удалось восстановить состояние монитора",
+    "Runtime issue": "Неполадка на ходу",
+    "Runtime issue: %1": "Неполадка на ходу: %1",
+    "Download failed: ": "Не удалось скачать: ",
+    "Download rejected: ": "Скачивание отклонено: ",
+    "Remove failed: ": "Не удалось удалить: ",
+    "Subscription update failed: ": "Не удалось изменить подписку: ",
+    "Couldn't load subscription status: ": "Не удалось узнать состояние подписки: "
+  },
+  "wp_type_label": [
+    [
+      "scene",
+      "Сцена"
+    ],
+    [
+      "Scene",
+      "Сцена"
+    ],
+    [
+      "  VIDEO  ",
+      "Видео"
+    ],
+    [
+      "web",
+      "Веб"
+    ],
+    [
+      "image",
+      "Картинка"
+    ],
+    [
+      "application",
+      "Приложение"
+    ],
+    [
+      "Приложение",
+      "Приложение"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "unknown",
+      "unknown"
+    ],
+    [
+      "SCENE\t",
+      "Сцена"
+    ],
+    [
+      " Web",
+      "Веб"
+    ],
+    [
+      "scene ",
+      "Сцена"
+    ],
+    [
+      "видео",
+      "видео"
+    ],
+    [
+      "Video",
+      "Видео"
+    ]
+  ],
+  "wp_type_label_none": "",
+  "wp_type_label_zero": "",
+  "wp_type_label_int": "5",
+  "tag_label": [
+    [
+      "Scene",
+      "Сцена"
+    ],
+    [
+      "scene",
+      "scene"
+    ],
+    [
+      "CG",
+      "Комп. графика"
+    ],
+    [
+      "CGI",
+      "Комп. графика"
+    ],
+    [
+      "Комп. графика",
+      "Комп. графика"
+    ],
+    [
+      "3D",
+      "3D"
+    ],
+    [
+      "HDR",
+      "HDR"
+    ],
+    [
+      "MikuMikuDance (анимация)",
+      "MikuMikuDance (анимация)"
+    ],
+    [
+      "Ultrawide 2560 x 1080",
+      "Ультраширокий 2560 x 1080"
+    ],
+    [
+      "1920 x 1080",
+      "1920 x 1080"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "Unspecified",
+      "Неопределенный жанр"
+    ],
+    [
+      "Asset Pack",
+      "Пакет ресурсов"
+    ],
+    [
+      "No Animation",
+      "Без анимации"
+    ]
+  ],
+  "tag_label_none": "None",
+  "tag_labels": [
+    [
+      [
+        "Scene",
+        "3D",
+        "1920 x 1080"
+      ],
+      [
+        "Сцена",
+        "3D",
+        "1920 x 1080"
+      ]
+    ],
+    [
+      [],
+      []
+    ]
+  ],
+  "tag_labels_none": [],
+  "tag_labels_str_quirk": [
+    "3",
+    "D"
+  ],
+  "_text": [
+    [
+      "Status",
+      "Состояние"
+    ],
+    [
+      "Not signed in",
+      "Вход не выполнен"
+    ],
+    [
+      "Guest mode",
+      "Гостевой режим"
+    ],
+    [
+      "Signed in",
+      "Вход выполнен"
+    ],
+    [
+      "Log in to Steam",
+      "Войти в Steam"
+    ],
+    [
+      "Sign out",
+      "Выйти"
+    ],
+    [
+      "API key",
+      "Ключ доступа"
+    ],
+    [
+      "Wallhaven API key",
+      "Ключ доступа Wallhaven"
+    ],
+    [
+      "Steam account",
+      "Аккаунт Steam"
+    ],
+    [
+      "Copy the API key from Wallhaven Account Settings.",
+      "Ключ доступа берётся в настройках аккаунта Wallhaven."
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "Whatever else",
+      "Whatever else"
+    ]
+  ],
+  "_text_none": "",
+  "untranslate_global": [
+    [
+      [
+        "Сцена",
+        "3D",
+        "Комп. графика",
+        "Неизвестное"
+      ],
+      [
+        "Scene",
+        "3D",
+        "CGI",
+        "Неизвестное"
+      ]
+    ],
+    [
+      [],
+      []
+    ]
+  ],
+  "untranslate_none": [],
+  "untranslate_unknown_source": [
+    "CGI"
+  ],
+  "translate_source": [
+    {
+      "name": "workshop",
+      "input": {
+        "id": "wallpaper_engine",
+        "name": "Wallpaper Engine",
+        "displayName": "Wallpaper Engine Workshop",
+        "supportsSearch": true,
+        "sorts": [
+          {
+            "key": "trend_week",
+            "label": "Trending this week"
+          },
+          {
+            "key": "rexon_my_items",
+            "label": "My items"
+          },
+          {
+            "key": "rexon_collections",
+            "label": "Collections"
+          },
+          {
+            "key": "top_rated",
+            "label": "Top rated"
+          },
+          {
+            "key": "brand_new",
+            "label": "Brand new"
+          }
+        ],
+        "tags": [
+          "Scene",
+          "Video",
+          "CGI",
+          "Unspecified"
+        ],
+        "contentDir": "/home/u/.steam/workshop",
+        "ownerPluginId": "org.waywallen.workshop",
+        "remoteCapability": 3,
+        "remoteHint": "Waywallen only manages Workshop subscriptions and does not download wallpapers. Keep the Steam desktop client running to download subscribed items.",
+        "avatarUrl": "",
+        "filters": [
+          {
+            "id": "type",
+            "title": "Type",
+            "type": 1,
+            "values": [
+              "Scene",
+              "Video",
+              "Web",
+              "Application"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "mature",
+            "title": "Mature",
+            "type": 2,
+            "values": [],
+            "description": "Show wallpapers marked as mature.",
+            "confirmation": "This shows adult content. Continue?"
+          },
+          {
+            "id": "genre",
+            "title": "Genre",
+            "type": 1,
+            "values": [
+              "Anime",
+              "CGI",
+              "Nature",
+              "Unspecified"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "resolution",
+            "title": "Resolution",
+            "type": 1,
+            "values": [
+              "Standard Definition",
+              "Dual 3840 x 1080",
+              "1920 x 1080"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "новый_фильтр",
+            "title": "Brand new filter",
+            "type": 1,
+            "values": [
+              "Approved"
+            ],
+            "description": "Copy the API key from Wallhaven Account Settings.",
+            "confirmation": "Sign out"
+          }
+        ],
+        "actions": [
+          {
+            "id": "login",
+            "label": "Log in to Steam",
+            "group": "Steam account",
+            "order": 0,
+            "kind": 1,
+            "visible": true,
+            "enabled": true,
+            "description": "",
+            "requiredForBrowsing": true,
+            "browseDescription": "Waywallen only manages Workshop subscriptions and does not download wallpapers. Keep the Steam desktop client running to download subscribed items.",
+            "browseButtonLabel": "Log in to Steam",
+            "fields": []
+          },
+          {
+            "id": "logout",
+            "label": "Sign out",
+            "group": "Steam account",
+            "order": 1,
+            "kind": 2,
+            "visible": false,
+            "enabled": true,
+            "description": "Untranslated leftover",
+            "requiredForBrowsing": false,
+            "browseDescription": "",
+            "browseButtonLabel": "",
+            "fields": [
+              {
+                "key": "apikey",
+                "label": "API key",
+                "description": "Optional. Use an API key from your Wallhaven account settings. Do not enter your Wallhaven password.",
+                "placeholder": "Wallhaven API key",
+                "secret": true,
+                "required": false
+              },
+              {
+                "key": "raw",
+                "label": "",
+                "description": "",
+                "placeholder": "",
+                "secret": false,
+                "required": true
+              }
+            ]
+          }
+        ],
+        "status": [
+          {
+            "id": "state",
+            "label": "Status",
+            "group": "Steam account",
+            "order": 0,
+            "value": "Not signed in"
+          },
+          {
+            "id": "mode",
+            "label": "Status",
+            "group": "",
+            "order": 1,
+            "value": "Guest mode"
+          }
+        ]
+      },
+      "output": {
+        "id": "wallpaper_engine",
+        "name": "Wallpaper Engine",
+        "displayName": "Мастерская Steam",
+        "supportsSearch": true,
+        "sorts": [
+          {
+            "key": "trend_week",
+            "label": "Популярные (Неделя)"
+          },
+          {
+            "key": "rexon_my_items",
+            "label": "Мои подписки"
+          },
+          {
+            "key": "rexon_collections",
+            "label": "Подборки"
+          },
+          {
+            "key": "top_rated",
+            "label": "Лидеры рейтинга"
+          },
+          {
+            "key": "brand_new",
+            "label": "Brand new"
+          }
+        ],
+        "tags": [
+          "Сцена",
+          "Видео",
+          "Комп. графика",
+          "Неопределенный жанр"
+        ],
+        "contentDir": "/home/u/.steam/workshop",
+        "ownerPluginId": "org.waywallen.workshop",
+        "remoteCapability": 3,
+        "remoteHint": "Файлы обоев скачивает сам клиент Steam — держите его запущенным, и подписанные обои появятся в списке автоматически.",
+        "avatarUrl": "",
+        "filters": [
+          {
+            "id": "type",
+            "title": "Тип",
+            "type": 1,
+            "values": [
+              "Сцена",
+              "Видео",
+              "Веб",
+              "Приложение"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "mature",
+            "title": "18+ (для взрослых)",
+            "type": 2,
+            "values": [],
+            "description": "Показывать обои с пометкой 18+.",
+            "confirmation": "Здесь показываются обои с пометкой 18+. Включать можно только совершеннолетним. Продолжить?"
+          },
+          {
+            "id": "genre",
+            "title": "Жанр",
+            "type": 1,
+            "values": [
+              "Аниме",
+              "Комп. графика",
+              "Природа",
+              "Неопределенный жанр"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "resolution",
+            "title": "Разрешение",
+            "type": 1,
+            "values": [
+              "Стандартное разрешение",
+              "Двойной 3840 x 1080",
+              "1920 x 1080"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "новый_фильтр",
+            "title": "Brand new filter",
+            "type": 1,
+            "values": [
+              "Одобренные"
+            ],
+            "description": "Ключ доступа берётся в настройках аккаунта Wallhaven.",
+            "confirmation": "Выйти"
+          }
+        ],
+        "actions": [
+          {
+            "id": "login",
+            "label": "Войти в Steam",
+            "group": "Аккаунт Steam",
+            "order": 0,
+            "kind": 1,
+            "visible": true,
+            "enabled": true,
+            "description": "",
+            "requiredForBrowsing": true,
+            "browseDescription": "Файлы обоев скачивает сам клиент Steam — держите его запущенным, и подписанные обои появятся в списке автоматически.",
+            "browseButtonLabel": "Войти в Steam",
+            "fields": []
+          },
+          {
+            "id": "logout",
+            "label": "Выйти",
+            "group": "Аккаунт Steam",
+            "order": 1,
+            "kind": 2,
+            "visible": false,
+            "enabled": true,
+            "description": "Untranslated leftover",
+            "requiredForBrowsing": false,
+            "browseDescription": "",
+            "browseButtonLabel": "",
+            "fields": [
+              {
+                "key": "apikey",
+                "label": "Ключ доступа",
+                "description": "Необязательно. Вставьте ключ доступа из настроек вашего аккаунта Wallhaven. Пароль вводить не нужно.",
+                "placeholder": "Ключ доступа Wallhaven",
+                "secret": true,
+                "required": false
+              },
+              {
+                "key": "raw",
+                "label": "",
+                "description": "",
+                "placeholder": "",
+                "secret": false,
+                "required": true
+              }
+            ]
+          }
+        ],
+        "status": [
+          {
+            "id": "state",
+            "label": "Состояние",
+            "group": "Аккаунт Steam",
+            "order": 0,
+            "value": "Вход не выполнен"
+          },
+          {
+            "id": "mode",
+            "label": "Состояние",
+            "group": "",
+            "order": 1,
+            "value": "Гостевой режим"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wallhaven",
+      "input": {
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "displayName": "Wallhaven",
+        "supportsSearch": true,
+        "sorts": [
+          {
+            "key": "trend",
+            "label": "Trending"
+          },
+          {
+            "key": "popular",
+            "label": "Popular"
+          },
+          {
+            "key": "random",
+            "label": "Random"
+          }
+        ],
+        "tags": [
+          "CG",
+          "Anime"
+        ],
+        "contentDir": "",
+        "ownerPluginId": "org.waywallen.wallhaven",
+        "remoteCapability": 1,
+        "remoteHint": "Optional. Use an API key from your Wallhaven account settings. Do not enter your Wallhaven password.",
+        "avatarUrl": "",
+        "filters": [
+          {
+            "id": "genre",
+            "title": "Genre",
+            "type": 1,
+            "values": [
+              "CG",
+              "Anime",
+              "Landscape"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "questionable",
+            "title": "Questionable",
+            "type": 2,
+            "values": [
+              "Everyone",
+              "Questionable",
+              "Mature"
+            ],
+            "description": "Show sketchy stuff.",
+            "confirmation": ""
+          }
+        ],
+        "actions": [
+          {
+            "id": "login",
+            "label": "Log in to Wallhaven",
+            "group": "Wallhaven account",
+            "order": 0,
+            "kind": 3,
+            "visible": true,
+            "enabled": true,
+            "description": "Optional. Use an API key from your Wallhaven account settings. Do not enter your Wallhaven password.",
+            "requiredForBrowsing": false,
+            "browseDescription": "",
+            "browseButtonLabel": "",
+            "fields": [
+              {
+                "key": "key",
+                "label": "API key",
+                "description": "Copy the API key from Wallhaven Account Settings.",
+                "placeholder": "Wallhaven API key",
+                "secret": true,
+                "required": true
+              }
+            ]
+          }
+        ],
+        "status": [
+          {
+            "id": "state",
+            "label": "Status",
+            "group": "Wallhaven account",
+            "order": 0,
+            "value": "Signed in"
+          }
+        ]
+      },
+      "output": {
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "displayName": "Wallhaven",
+        "supportsSearch": true,
+        "sorts": [
+          {
+            "key": "trend",
+            "label": "В тренде"
+          },
+          {
+            "key": "popular",
+            "label": "Популярное"
+          },
+          {
+            "key": "random",
+            "label": "Random"
+          }
+        ],
+        "tags": [
+          "Комп. графика",
+          "Аниме"
+        ],
+        "contentDir": "",
+        "ownerPluginId": "org.waywallen.wallhaven",
+        "remoteCapability": 1,
+        "remoteHint": "Необязательно. Вставьте ключ доступа из настроек вашего аккаунта Wallhaven. Пароль вводить не нужно.",
+        "avatarUrl": "",
+        "filters": [
+          {
+            "id": "genre",
+            "title": "Жанр",
+            "type": 1,
+            "values": [
+              "Комп. графика",
+              "Аниме",
+              "Пейзаж"
+            ],
+            "description": "",
+            "confirmation": ""
+          },
+          {
+            "id": "questionable",
+            "title": "12+ (с ограничениями)",
+            "type": 2,
+            "values": [
+              "0+ (для всех возрастов)",
+              "12+ (с ограничениями)",
+              "18+ (для взрослых)"
+            ],
+            "description": "Показывать обои с пометкой «12+ (с ограничениями)».",
+            "confirmation": ""
+          }
+        ],
+        "actions": [
+          {
+            "id": "login",
+            "label": "Войти в Wallhaven",
+            "group": "Аккаунт Wallhaven",
+            "order": 0,
+            "kind": 3,
+            "visible": true,
+            "enabled": true,
+            "description": "Необязательно. Вставьте ключ доступа из настроек вашего аккаунта Wallhaven. Пароль вводить не нужно.",
+            "requiredForBrowsing": false,
+            "browseDescription": "",
+            "browseButtonLabel": "",
+            "fields": [
+              {
+                "key": "key",
+                "label": "Ключ доступа",
+                "description": "Ключ доступа берётся в настройках аккаунта Wallhaven.",
+                "placeholder": "Ключ доступа Wallhaven",
+                "secret": true,
+                "required": true
+              }
+            ]
+          }
+        ],
+        "status": [
+          {
+            "id": "state",
+            "label": "Состояние",
+            "group": "Аккаунт Wallhaven",
+            "order": 0,
+            "value": "Вход выполнен"
+          }
+        ]
+      }
+    },
+    {
+      "name": "minimal",
+      "input": {
+        "id": "неизвестный_источник"
+      },
+      "output": {
+        "id": "неизвестный_источник",
+        "sorts": [],
+        "tags": [],
+        "filters": [],
+        "actions": [],
+        "status": []
+      }
+    },
+    {
+      "name": "sparse",
+      "input": {
+        "id": "sparse",
+        "sorts": [
+          {
+            "key": "recent"
+          },
+          {
+            "label": "Only label"
+          },
+          {}
+        ],
+        "filters": [
+          {
+            "id": "type"
+          },
+          {
+            "id": "нет_такого",
+            "title": "Kept"
+          }
+        ],
+        "actions": [
+          {
+            "id": "a"
+          },
+          {
+            "id": "b",
+            "label": "Sign out",
+            "fields": [
+              {}
+            ]
+          }
+        ],
+        "status": [
+          {},
+          {
+            "id": "x",
+            "value": "Guest mode"
+          }
+        ],
+        "remoteHint": "",
+        "extraKey": [
+          1,
+          2,
+          {
+            "вложенный": "объект"
+          }
+        ]
+      },
+      "output": {
+        "id": "sparse",
+        "sorts": [
+          {
+            "key": "recent",
+            "label": "Недавно добавленные"
+          },
+          {
+            "key": "",
+            "label": "Only label"
+          },
+          {
+            "key": "",
+            "label": ""
+          }
+        ],
+        "filters": [
+          {
+            "id": "type",
+            "title": "Тип",
+            "values": []
+          },
+          {
+            "id": "нет_такого",
+            "title": "Kept",
+            "values": []
+          }
+        ],
+        "actions": [
+          {
+            "id": "a",
+            "fields": []
+          },
+          {
+            "id": "b",
+            "label": "Выйти",
+            "fields": [
+              {
+                "label": "",
+                "description": "",
+                "placeholder": ""
+              }
+            ]
+          }
+        ],
+        "status": [
+          {
+            "label": "",
+            "group": "",
+            "value": ""
+          },
+          {
+            "id": "x",
+            "value": "Гостевой режим",
+            "label": "",
+            "group": ""
+          }
+        ],
+        "remoteHint": "",
+        "extraKey": [
+          1,
+          2,
+          {
+            "вложенный": "объект"
+          }
+        ],
+        "tags": []
+      }
+    },
+    {
+      "name": "extra_in_sort",
+      "input": {
+        "id": "extra",
+        "sorts": [
+          {
+            "key": "recent",
+            "label": "Recent",
+            "icon": "clock",
+            "order": 7
+          }
+        ]
+      },
+      "output": {
+        "id": "extra",
+        "sorts": [
+          {
+            "key": "recent",
+            "label": "Недавно добавленные"
+          }
+        ],
+        "tags": [],
+        "filters": [],
+        "actions": [],
+        "status": []
+      }
+    }
+  ],
+  "TAGS_BACK_BY_SOURCE": {
+    "wallpaper_engine": {
+      "Сцена": "Scene",
+      "Видео": "Video",
+      "Веб": "Web",
+      "Приложение": "Application",
+      "Аниме": "Anime",
+      "Комп. графика": "CGI",
+      "Природа": "Nature",
+      "Неопределенный жанр": "Unspecified",
+      "Стандартное разрешение": "Standard Definition",
+      "Двойной 3840 x 1080": "Dual 3840 x 1080",
+      "1920 x 1080": "1920 x 1080",
+      "Одобренные": "Approved"
+    },
+    "wallhaven": {
+      "Комп. графика": "CG",
+      "Аниме": "Anime",
+      "Пейзаж": "Landscape",
+      "0+ (для всех возрастов)": "Everyone",
+      "12+ (с ограничениями)": "Questionable",
+      "18+ (для взрослых)": "Mature"
+    },
+    "неизвестный_источник": {},
+    "sparse": {},
+    "extra": {}
+  },
+  "untranslate_by_source": [
+    [
+      "wallpaper_engine",
+      [
+        "Комп. графика",
+        "Сцена",
+        "Стандартное разрешение",
+        "1920 x 1080",
+        "Расслабляющий"
+      ],
+      [
+        "CGI",
+        "Scene",
+        "Standard Definition",
+        "1920 x 1080",
+        "Relaxing"
+      ]
+    ],
+    [
+      "wallhaven",
+      [
+        "Комп. графика",
+        "Аниме",
+        "Пейзаж",
+        "Сцена"
+      ],
+      [
+        "CG",
+        "Anime",
+        "Landscape",
+        "Scene"
+      ]
+    ],
+    [
+      "",
+      [
+        "Комп. графика"
+      ],
+      [
+        "CGI"
+      ]
+    ]
+  ],
+  "build_qm_ts_real": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n<TS version=\"2.1\" language=\"ru_RU\">\n<context><name>AddToPlaylistSheetContent</name>\n  <message><source>%1 wallpapers</source><translation>обоев: %1</translation></message>\n  <message><source>Add selection</source><translation>Добавить обои</translation></message>\n  <message><source>Add to playlist</source><translation>Добавить в плейлист</translation></message>\n  <message><source>No playlists found</source><translation>Вы ещё не создали ни одного плейлиста.</translation></message>\n  <message><source>Untitled</source><translation>Без названия</translation></message>\n</context>\n<context><name>DiscoverPage</name>\n  <message><source>Couldn't load subscription status: </source><translation>Не удалось узнать состояние подписки: </translation></message>\n  <message><source>Couldn't load this source</source><translation>Не удалось загрузить каталог</translation></message>\n  <message><source>Download failed: </source><translation>Не удалось скачать: </translation></message>\n  <message><source>Download rejected: </source><translation>Скачивание отклонено: </translation></message>\n  <message><source>Log in</source><translation>Войти</translation></message>\n  <message><source>Log in to %1</source><translation>Вход: %1</translation></message>\n  <message><source>Log in to start browsing.</source><translation>Войдите, чтобы смотреть каталог.</translation></message>\n  <message><source>Manage</source><translation>Управление</translation></message>\n  <message><source>No wallpapers found</source><translation>Обои не найдены</translation></message>\n  <message><source>Remove failed: </source><translation>Не удалось удалить: </translation></message>\n  <message><source>Removed</source><translation>Удалено</translation></message>\n  <message><source>Search</source><translation>Поиск</translation></message>\n  <message><source>Sort</source><translation>Сортировка</translation></message>\n  <message><source>Subscription request accepted</source><translation>Подписка оформлена</translation></message>\n  <message><source>Subscription update failed: </source><translation>Не удалось изменить подписку: </translation></message>\n  <message><source>Unsubscribe request accepted</source><translation>Подписка отменена</translation></message>\n</context>\n<context><name>DisplayEditDialog</name>\n  <message><source>Display %1</source><translation>Монитор %1</translation></message>\n</context>\n<context><name>NewPlaylistSheetContent</name>\n  <message><source>Create</source><translation>Создать</translation></message>\n  <message><source>Name</source><translation>Название</translation></message>\n  <message><source>New playlist</source><translation>Новый плейлист</translation></message>\n</context>\n<context><name>PlaylistDetailPanel</name>\n  <message><source>Mode</source><translation>Порядок</translation></message>\n  <message><source>Name</source><translation>Название</translation></message>\n  <message><source>Random</source><translation>Случайно</translation></message>\n  <message><source>Rotation interval</source><translation>Сменить обои</translation></message>\n  <message><source>Sequential</source><translation>По порядку</translation></message>\n  <message><source>Shuffle</source><translation>Вперемешку</translation></message>\n</context>\n<context><name>PlaylistListSheet</name>\n  <message><source>%1 wallpapers</source><translation>обоев: %1</translation></message>\n  <message><source>Delete playlist</source><translation>Удалить плейлист</translation></message>\n  <message><source>Edit selection</source><translation>Настроить</translation></message>\n  <message><source>No displays</source><translation>Нет мониторов</translation></message>\n  <message><source>No playlists found</source><translation>Вы ещё не создали ни одного плейлиста.</translation></message>\n  <message><source>Playlists</source><translation>Плейлисты</translation></message>\n  <message><source>Untitled</source><translation>Без названия</translation></message>\n</context>\n<context><name>PluginManagePage</name>\n  <message><source>Name</source><translation>Название</translation></message>\n  <message><source>Updating</source><translation>Обновляется</translation></message>\n</context>\n<context><name>QrLoginDialog</name>\n  <message><source>Cancel</source><translation>Отмена</translation></message>\n  <message><source>Close</source><translation>Закрыть</translation></message>\n  <message><source>Scan the QR code to continue</source><translation>Отсканируйте QR-код в приложении Steam</translation></message>\n  <message><source>Sign in</source><translation>Войти</translation></message>\n  <message><source>Sign-in expired</source><translation>Срок входа истёк</translation></message>\n  <message><source>Sign-in failed</source><translation>Войти не удалось</translation></message>\n  <message><source>Signed in</source><translation>Вход выполнен</translation></message>\n  <message><source>Signed in as %1</source><translation>Выполнен вход: %1</translation></message>\n  <message><source>Starting sign-in…</source><translation>Начинаем вход…</translation></message>\n  <message><source>Waiting for confirmation…</source><translation>Ждём подтверждения…</translation></message>\n</context>\n<context><name>RemoteCard</name>\n  <message><source>Downloaded</source><translation>Скачано</translation></message>\n  <message><source>Subscribed</source><translation>Вы подписаны</translation></message>\n  <message><source>Untitled</source><translation>Без названия</translation></message>\n</context>\n<context><name>RemoteDetailPanel</name>\n  <message><source>Close</source><translation>Закрыть</translation></message>\n  <message><source>Description</source><translation>Описание</translation></message>\n  <message><source>Download</source><translation>Скачать</translation></message>\n  <message><source>Downloading</source><translation>Скачивается</translation></message>\n  <message><source>Info</source><translation>Подробности</translation></message>\n  <message><source>Loading…</source><translation>Загрузка…</translation></message>\n  <message><source>Open web page</source><translation>Открыть страницу в Steam</translation></message>\n  <message><source>Pending</source><translation>В очереди</translation></message>\n  <message><source>Remove</source><translation>Удалить</translation></message>\n  <message><source>Resolution</source><translation>Разрешение</translation></message>\n  <message><source>Retry</source><translation>Повторить</translation></message>\n  <message><source>Size</source><translation>Размер</translation></message>\n  <message><source>Subscribe</source><translation>Подписаться</translation></message>\n  <message><source>Unsubscribe</source><translation>Отписаться</translation></message>\n  <message><source>Untitled</source><translation>Без названия</translation></message>\n  <message><source>Updating…</source><translation>Обновляем…</translation></message>\n  <message><source>by %1</source><translation>автор: %1</translation></message>\n</context>\n<context><name>RemoteFilterDialog</name>\n  <message><source>Any</source><translation>Любое</translation></message>\n  <message><source>Filters</source><translation>Фильтры</translation></message>\n  <message><source>Select values</source><translation>Выбор значений</translation></message>\n</context>\n<context><name>RemoteInfoPage</name>\n  <message><source>Subscribed</source><translation>Вы подписаны</translation></message>\n  <message><source>Unknown</source><translation>Неизвестно</translation></message>\n  <message><source>Unsubscribed</source><translation>Подписка отменена</translation></message>\n  <message><source>Updating</source><translation>Обновляется</translation></message>\n</context>\n<context><name>RemoteManagePage</name>\n  <message><source>Couldn't save remote settings</source><translation>Не удалось сохранить настройки каталога</translation></message>\n  <message><source>General</source><translation>Основное</translation></message>\n  <message><source>Login</source><translation>Вход</translation></message>\n  <message><source>Login action failed</source><translation>Войти не удалось</translation></message>\n  <message><source>Manage %1</source><translation>Управление: %1</translation></message>\n  <message><source>Saving…</source><translation>Сохранение…</translation></message>\n  <message><source>This remote has no login or settings to manage.</source><translation>У этого каталога нет ни входа, ни настроек.</translation></message>\n</context>\n<context><name>RuntimeConditionTag</name>\n  <message><source>Display release state could not be recovered</source><translation>Не удалось восстановить состояние монитора</translation></message>\n  <message><source>Hang</source><translation>Завис</translation></message>\n  <message><source>Issue</source><translation>Неполадка</translation></message>\n  <message><source>Loading</source><translation>Загрузка</translation></message>\n  <message><source>Renderer stopped producing frames</source><translation>Рендер перестал выдавать кадры</translation></message>\n  <message><source>Runtime issue</source><translation>Неполадка на ходу</translation></message>\n  <message><source>Runtime issue: %1</source><translation>Неполадка на ходу: %1</translation></message>\n  <message><source>Waiting</source><translation>Ожидание</translation></message>\n  <message><source>Waiting for a display to release a frame</source><translation>Ждём, пока монитор освободит кадр</translation></message>\n  <message><source>Waiting for the first frame</source><translation>Ждём первый кадр</translation></message>\n</context>\n<context><name>SettingsPage</name>\n  <message><source>General</source><translation>Основное</translation></message>\n  <message><source>Random</source><translation>Случайно</translation></message>\n  <message><source>Rotation interval</source><translation>Сменить обои</translation></message>\n  <message><source>Sequential</source><translation>По порядку</translation></message>\n  <message><source>Shuffle</source><translation>Вперемешку</translation></message>\n</context>\n<context><name>TweakSheet</name>\n  <message><source>Size</source><translation>Размер</translation></message>\n</context>\n<context><name>WallpaperDetailPanel</name>\n  <message><source>Unsubscribe</source><translation>Отписаться</translation></message>\n  <message><source>Unsubscribed</source><translation>Подписка отменена</translation></message>\n</context>\n<context><name>WallpaperFilter</name>\n  <message><source>Name</source><translation>Название</translation></message>\n  <message><source>Size</source><translation>Размер</translation></message>\n</context>\n<context><name>WallpaperFilterDialog</name>\n  <message><source>Filters</source><translation>Фильтры</translation></message>\n</context>\n<context><name>WallpaperPage</name>\n  <message><source>Display</source><translation>Монитор</translation></message>\n  <message><source>Display %1</source><translation>Монитор %1</translation></message>\n  <message><source>Name</source><translation>Название</translation></message>\n  <message><source>New playlist</source><translation>Новый плейлист</translation></message>\n  <message><source>Playlist deleted</source><translation>Плейлист удалён</translation></message>\n  <message><source>Playlist playback failed</source><translation>Не удалось включить плейлист</translation></message>\n  <message><source>Playlist update failed</source><translation>Не удалось изменить плейлист</translation></message>\n  <message><source>Playlist updated</source><translation>Плейлист изменён</translation></message>\n  <message><source>Playlists</source><translation>Плейлисты</translation></message>\n  <message><source>Search</source><translation>Поиск</translation></message>\n  <message><source>Size</source><translation>Размер</translation></message>\n</context>\n</TS>\n",
+  "build_qm_return": "waywallen_ru.qm",
+  "build_qm_ts_synthetic": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n<TS version=\"2.1\" language=\"ru_RU\">\n<context><name>Alpha</name>\n  <message><source>Any</source><translation>Любое</translation></message>\n  <message><source>Close</source><translation>Закрыть</translation></message>\n  <message><source>Download failed: </source><translation>Не удалось скачать: </translation></message>\n  <message><source>Log in to %1</source><translation>Вход: %1</translation></message>\n  <message><source>Search</source><translation>Поиск</translation></message>\n  <message><source>by %1</source><translation>автор: %1</translation></message>\n</context>\n<context><name>Alpha copy</name>\n  <message><source>Cancel</source><translation>Отмена</translation></message>\n</context>\n<context><name>Tricky</name>\n  <message><source>Manage %1</source><translation>Управление: %1</translation></message>\n</context>\n<context><name>Zeta</name>\n  <message><source>Close</source><translation>Закрыть</translation></message>\n  <message><source>Search</source><translation>Поиск</translation></message>\n</context>\n</TS>\n",
+  "build_qm_synthetic_files": {
+    "Zeta.qml": "Text { text: qsTr(\"Search\") } Button { text: qsTr(\"Close\") }",
+    "page/Alpha.qml": "qsTr(\"Search\")\nqsTr(\"Log in to %1\")\nqsTr(\"by %1\")\nqsTr(\"Не в словаре\")\nqsTr(\"Download failed: \")",
+    "page/Alpha copy.qml": "qsTr(\"Cancel\")",
+    "component/Alpha.qml": "qsTr(\"Close\")\nqsTr(\"Any\")",
+    "component/Empty.qml": "// qsTr нет вовсе",
+    "component/Tricky.qml": "qsTr('Search')\nqsTr(\"Manage %1\")"
+  },
+  "build_qm_ts_escape": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n<TS version=\"2.1\" language=\"ru_RU\">\n<context><name>A&amp;B&lt;C&gt;</name>\n  <message><source>Close</source><translation>Закрыть</translation></message>\n  <message><source>Search</source><translation>Поиск</translation></message>\n</context>\n</TS>\n",
+  "build_qm_escape_files": {
+    "A&B<C>.qml": "qsTr(\"Search\")\nqsTr(\"Close\")"
+  },
+  "qm_path_rel": "waywallen_ru.qm",
+  "default_qml_dir_rel": "waywallen/ui/qml",
+  "default_lrelease": "/usr/lib/qt6/bin/lrelease",
+  "ts_path_rel": "waywallen_ru.ts",
+  "errors": {
+    "translate_source_none": [
+      "TypeError",
+      "'NoneType' object is not iterable"
+    ],
+    "translate_source_list": [
+      "TypeError",
+      "object is not iterable"
+    ],
+    "tag_labels_int": [
+      "TypeError",
+      "'int' object is not iterable"
+    ],
+    "build_qm_missing_lrelease": [
+      "FileNotFoundError",
+      "[Errno 2] No such file or directory: '/нет/такого/lrelease'"
+    ]
+  }
+}

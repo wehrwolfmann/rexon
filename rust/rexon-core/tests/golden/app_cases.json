@@ -1,0 +1,154 @@
+{
+  "font_keys": [
+    "font",
+    "fixed",
+    "smallestReadableFont",
+    "toolBarFont",
+    "menuFont",
+    "activeFont"
+  ],
+  "fork_token": {
+    "": false,
+    "AeroThemePlasma": true,
+    "SEVENSTART": true,
+    "WackyIdeas": true,
+    "aero": false,
+    "aeroshell": true,
+    "io.gitgud.wackyideas.SevenStart": true,
+    "org.kde.plasma.kickoff": false,
+    "se7enaero": true,
+    "seven": false,
+    "win7os": true,
+    "плагин-с-кириллицей": false
+  },
+  "kvantum_aero": {
+    "": false,
+    "Aero": true,
+    "Dracula": false,
+    "KvAero": true,
+    "KvGnome": false,
+    "SevenBlack": true,
+    "Windows7": true,
+    "seven": true,
+    "win7": true,
+    "windows7-basic": true
+  },
+  "kwin_effects": [
+    "aeroglassblur",
+    "aeroglide",
+    "dimscreenaero",
+    "smod",
+    "smodglow",
+    "smodanimations",
+    "aerosnap"
+  ],
+  "single_tab_flags": {
+    "--appearance-qt": "rexon.appearance_page",
+    "--compare-qt": "rexon.qt_compare.app",
+    "--desktops-qt": "rexon.qt_desktops.app",
+    "--extensions-qt": "rexon.qt_extensions.app",
+    "--settings-qt": "rexon.qt_settings.app"
+  },
+  "strip_empty": {
+    "in": "",
+    "out": "",
+    "removed": []
+  },
+  "strip_full": {
+    "in": "[ActionPlugins][0]\nRightButton;NoModifier=org.kde.contextmenu\n\n[Containments][1]\nactivityId=abc\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.image\n\n[Containments][1][Applets][5]\nimmutability=1\nplugin=io.gitgud.wackyideas.SevenStart\n\n[Containments][1][Applets][5][Configuration]\nPreloadWeight=100\n\n[Containments][1][Applets][5][Configuration][General]\nfavoritesPortedToKAstats=true\n\n[Containments][1][Applets][6]\nplugin=org.kde.plasma.systemtray\n\n[Containments][1][Applets][6][Configuration][General]\nextraItems=org.kde.plasma.battery,org.kde.plasma.volume\n\n[Containments][1][Applets][7]\nplugin=org.kde.plasma.aeroshell.taskbar\n\n[Containments][2]\nplugin=org.kde.panel\n\n[Containments][2][Applets][9]\nplugin=org.kde.plasma.kickoff\n",
+    "out": "[ActionPlugins][0]\nRightButton;NoModifier=org.kde.contextmenu\n\n[Containments][1]\nactivityId=abc\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.image\n\n[Containments][1][Applets][6]\nplugin=org.kde.plasma.systemtray\n\n[Containments][1][Applets][6][Configuration][General]\nextraItems=org.kde.plasma.battery,org.kde.plasma.volume\n\n[Containments][2]\nplugin=org.kde.panel\n\n[Containments][2][Applets][9]\nplugin=org.kde.plasma.kickoff\n",
+    "removed": [
+      "io.gitgud.wackyideas.SevenStart",
+      "org.kde.plasma.aeroshell.taskbar"
+    ]
+  },
+  "strip_none": {
+    "in": "[Containments][1]\nplugin=org.kde.plasma.folder\n\n[Containments][1][Applets][5]\nplugin=org.kde.plasma.kickoff\n",
+    "out": "[Containments][1]\nplugin=org.kde.plasma.folder\n\n[Containments][1][Applets][5]\nplugin=org.kde.plasma.kickoff\n",
+    "removed": []
+  },
+  "strip_preamble": {
+    "in": "someKey=value\n[Containments][1][Applets][3]\nplugin=se7enaero.something\n",
+    "out": "someKey=value\n",
+    "removed": [
+      "se7enaero.something"
+    ]
+  },
+  "wallpaper_recover": {
+    "appletsrc": "[ActionPlugins][0]\nRightButton;NoModifier=org.kde.contextmenu\n\n[Containments][1]\nItemGeometries-1920x1080=\nactivityId=abc\nformfactor=0\nimmutability=1\nlastScreen=0\nlocation=0\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.image\n\n[Containments][1][Wallpaper][org.kde.image][General]\nImage=file:///usr/share/wallpapers/Old/\n\n[Containments][2]\nformfactor=2\nlocation=4\nplugin=org.kde.panel\n\n[Containments][2][Applets][5]\nimmutability=1\nplugin=org.kde.plasma.folder\n\n[Containments][2][Applets][5][Configuration]\nPreloadWeight=42\n\n[Containments][3]\nplugin=org.kde.desktopcontainment\n\n[Containments][10]\nplugin=org.kde.panel\n",
+    "containments_python_buggy": [
+      "1",
+      "2",
+      "3"
+    ],
+    "containments_fixed": [
+      "1",
+      "3"
+    ],
+    "appletsrc_simple": "[Containments][128]\nplugin=org.kde.desktopcontainment\n",
+    "containments_simple": [
+      "128"
+    ],
+    "appletsrc_no_desktop": "[Containments][7]\nplugin=org.kde.panel\n",
+    "containments_no_desktop": [],
+    "wallpaper_plugin_argv": [
+      "/usr/bin/kwriteconfig6",
+      "--file",
+      "plasma-org.kde.plasma.desktop-appletsrc",
+      "--group",
+      "Containments",
+      "--group",
+      "1",
+      "--key",
+      "wallpaperplugin",
+      "org.kde.image"
+    ],
+    "wallpaper_image_argv": [
+      "/usr/bin/kwriteconfig6",
+      "--file",
+      "plasma-org.kde.plasma.desktop-appletsrc",
+      "--group",
+      "Containments",
+      "--group",
+      "1",
+      "--group",
+      "Wallpaper",
+      "--group",
+      "org.kde.image",
+      "--group",
+      "General",
+      "--key",
+      "Image",
+      "/usr/share/wallpapers/Next/"
+    ],
+    "plasmashell_restart_argv": [
+      [
+        "systemctl",
+        "--user",
+        "reset-failed",
+        "plasma-plasmashell.service"
+      ],
+      [
+        "systemctl",
+        "--user",
+        "restart",
+        "plasma-plasmashell.service"
+      ]
+    ],
+    "default_wallpaper_dirs": [
+      "/usr/share/wallpapers/Next",
+      "/usr/share/wallpapers/cachyos-wallpapers",
+      "/usr/share/wallpapers/Cachy"
+    ],
+    "fallback_containment": "128",
+    "pyside6_hint": [
+      "Arch:   sudo pacman -S pyside6",
+      "Debian: sudo apt install python3-pyside6",
+      "Fedora: sudo dnf install python3-pyside6"
+    ],
+    "toast_qss": {
+      "dark": "QLabel { background-color: rgba(30,30,30,0.94); color: rgba(255,255,255,0.92); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 10px 14px; }",
+      "light": "QLabel { background-color: rgba(250,250,250,0.96); color: rgba(0,0,0,0.88); border: 1px solid rgba(0,0,0,0.18); border-radius: 8px; padding: 10px 14px; }"
+    }
+  }
+}

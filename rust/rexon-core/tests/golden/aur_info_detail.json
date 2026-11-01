@@ -1,0 +1,208 @@
+{
+ "resultcount": 4,
+ "results": [
+  {
+   "Conflicts": [
+    "aerothemeplasma-desktop"
+   ],
+   "Depends": [
+    "gcc-libs",
+    "bash",
+    "glibc",
+    "aeroshell-libplasma",
+    "aeroshell-workspace",
+    "aeroshell-kwin-components",
+    "aerothemeplasma-sounds",
+    "aerothemeplasma-icons",
+    "aeroshell-smod",
+    "qt6-virtualkeyboard",
+    "qt6-multimedia",
+    "qt6-5compat",
+    "qt6-wayland",
+    "qt6-declarative",
+    "kconfigwidgets",
+    "ksvg",
+    "wayland",
+    "kiconthemes",
+    "plasma-activities",
+    "kjobwidgets",
+    "kio",
+    "kglobalaccel",
+    "kpipewire",
+    "ki18n",
+    "kwin",
+    "plasma-workspace",
+    "powerdevil",
+    "kauth",
+    "kcmutils",
+    "networkmanager-qt",
+    "kconfig",
+    "kquickcharts",
+    "prison",
+    "knewstuff",
+    "kdeclarative",
+    "kirigami-addons",
+    "kcoreaddons",
+    "kservice",
+    "kxmlgui",
+    "plasma5support",
+    "kvantum",
+    "sddm",
+    "sddm-kcm",
+    "plasma-nm",
+    "plasma-pa",
+    "kwindowsystem",
+    "knotifications",
+    "knotifyconfig",
+    "kmenuedit",
+    "kirigami",
+    "kitemmodels",
+    "kpackage",
+    "kwidgetsaddons",
+    "plasma-desktop",
+    "qt6-base"
+   ],
+   "Description": "An alternative shell for KDE Plasma that aims to replicate the look and feel of Windows 7",
+   "FirstSubmitted": 1772325181,
+   "Groups": [
+    "aerothemeplasma"
+   ],
+   "ID": 2204425,
+   "Keywords": [],
+   "LastModified": 1787168871,
+   "License": [
+    "AGPL-3.0-or-later"
+   ],
+   "Maintainer": "WackyIdeas",
+   "MakeDepends": [
+    "git",
+    "extra-cmake-modules",
+    "plasma-wayland-protocols"
+   ],
+   "Name": "aerothemeplasma-desktop-git",
+   "NumVotes": 3,
+   "OptDepends": [
+    "uac-polkit-agent",
+    "qrca"
+   ],
+   "OutOfDate": null,
+   "PackageBase": "aerothemeplasma-desktop-git",
+   "PackageBaseID": 230281,
+   "Popularity": 0.208632,
+   "Provides": [
+    "aerothemeplasma-desktop"
+   ],
+   "Submitter": "WackyIdeas",
+   "URL": "https://github.com/aeroshell-desktop/aerothemeplasma",
+   "URLPath": "/cgit/aur.git/snapshot/aerothemeplasma-desktop-git.tar.gz",
+   "Version": "6.7.4_735.rc9afeb7-1"
+  },
+  {
+   "Conflicts": [
+    "zukitwo-themes-git"
+   ],
+   "Depends": [
+    "gtk-engine-murrine",
+    "gtk-engines"
+   ],
+   "Description": "Zuki themes for GNOME, Xfce and more.",
+   "FirstSubmitted": 1463937017,
+   "ID": 1035321,
+   "Keywords": [
+    "GTK",
+    "theme"
+   ],
+   "LastModified": 1644596786,
+   "License": [
+    "GPL3"
+   ],
+   "Maintainer": "m8D2",
+   "MakeDepends": [
+    "ninja",
+    "meson",
+    "sassc"
+   ],
+   "Name": "zuki-themes",
+   "NumVotes": 483,
+   "OptDepends": [
+    "ttf-roboto"
+   ],
+   "OutOfDate": null,
+   "PackageBase": "zuki-themes",
+   "PackageBaseID": 111557,
+   "Popularity": 0.001035,
+   "Submitter": "OmeGa",
+   "URL": "https://github.com/lassekongo83/zuki-themes",
+   "URLPath": "/cgit/aur.git/snapshot/zuki-themes.tar.gz",
+   "Version": "4.0-1"
+  },
+  {
+   "Description": "Material Based Cursor Theme",
+   "FirstSubmitted": 1513729951,
+   "ID": 2231402,
+   "Keywords": [],
+   "LastModified": 1788819224,
+   "License": [
+    "GPL-3.0-or-later"
+   ],
+   "Maintainer": "yochananmarqos",
+   "MakeDepends": [
+    "python-clickgen>=2.0.0"
+   ],
+   "Name": "bibata-cursor-theme",
+   "NumVotes": 88,
+   "OutOfDate": null,
+   "PackageBase": "bibata-cursor-theme",
+   "PackageBaseID": 128063,
+   "Popularity": 0.588555,
+   "Submitter": "Shatur",
+   "URL": "https://github.com/ful1e5/Bibata_Cursor",
+   "URLPath": "/cgit/aur.git/snapshot/bibata-cursor-theme.tar.gz",
+   "Version": "2.0.7-1"
+  },
+  {
+   "CoMaintainers": [
+    "Antiz"
+   ],
+   "Depends": [
+    "alsa-lib>=1.0.14",
+    "gtk3",
+    "libxss",
+    "desktop-file-utils",
+    "openssl",
+    "nss",
+    "at-spi2-atk",
+    "libcurl-gnutls",
+    "libsm",
+    "libayatana-appindicator",
+    "libayatana-indicator"
+   ],
+   "Description": "A proprietary music streaming service",
+   "FirstSubmitted": 1675983116,
+   "ID": 2214081,
+   "Keywords": [],
+   "LastModified": 1787766034,
+   "License": [
+    "custom"
+   ],
+   "Maintainer": "gromit",
+   "Name": "spotify",
+   "NumVotes": 276,
+   "OptDepends": [
+    "ffmpeg4.4",
+    "zenity",
+    "libnotify"
+   ],
+   "OutOfDate": null,
+   "PackageBase": "spotify",
+   "PackageBaseID": 190271,
+   "Popularity": 5.800308,
+   "Submitter": "Foxboron",
+   "URL": "https://www.spotify.com",
+   "URLPath": "/cgit/aur.git/snapshot/spotify.tar.gz",
+   "Version": "1:1.2.96.518-2"
+  }
+ ],
+ "type": "multiinfo",
+ "version": 5
+}

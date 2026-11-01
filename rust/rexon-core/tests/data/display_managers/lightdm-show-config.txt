@@ -1,0 +1,8 @@
+   [LightDM]
+A  run-directory=/run/lightdm
+
+   [Seat:*]
+A  session-wrapper=/etc/lightdm/Xsession
+
+Sources:
+A  /etc/lightdm/lightdm.conf

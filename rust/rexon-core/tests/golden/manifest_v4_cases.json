@@ -1,0 +1,438 @@
+[
+ {
+  "name": "valid_minimal",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": true,
+  "msg": ""
+ },
+ {
+  "name": "valid_full",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": {
+    "en": "a.mp3",
+    "ru": "b.mp3"
+   },
+   "audio_volume_default": 50,
+   "loop": true,
+   "tags": [
+    "x",
+    "y"
+   ]
+  },
+  "ok": true,
+  "msg": ""
+ },
+ {
+  "name": "not_dict",
+  "meta": [
+   "nope"
+  ],
+  "ok": false,
+  "msg": "manifest должен быть JSON-объектом (dict)"
+ },
+ {
+  "name": "no_format_version",
+  "meta": {
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "format_version=None, ожидается 4"
+ },
+ {
+  "name": "bad_format_version_int",
+  "meta": {
+   "format_version": 3,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "format_version=3, ожидается 4"
+ },
+ {
+  "name": "bad_format_version_str",
+  "meta": {
+   "format_version": "4",
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "format_version='4', ожидается 4"
+ },
+ {
+  "name": "bad_type",
+  "meta": {
+   "format_version": 4,
+   "type": "other",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "type='other', ожидается 'wallpaper-video-adaptive'"
+ },
+ {
+  "name": "no_type",
+  "meta": {
+   "format_version": 4,
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "type=None, ожидается 'wallpaper-video-adaptive'"
+ },
+ {
+  "name": "blank_title",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "   ",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "title должен быть непустой строкой"
+ },
+ {
+  "name": "no_title",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "title должен быть непустой строкой"
+ },
+ {
+  "name": "empty_videos",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {},
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "videos должен быть непустым словарём"
+ },
+ {
+  "name": "videos_not_dict",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": "x",
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "videos должен быть непустым словарём"
+ },
+ {
+  "name": "bad_resolution",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "480p": "v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "videos: неподдерживаемое разрешение '480p' (допустимо: ['1080p', '1440p', '2160p', '720p'])"
+ },
+ {
+  "name": "blank_video_path",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "  "
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "videos['1080p'] должен быть непустой строкой-путём"
+ },
+ {
+  "name": "audio_none_ok",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": null
+  },
+  "ok": true,
+  "msg": ""
+ },
+ {
+  "name": "audio_not_dict",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": "x"
+  },
+  "ok": false,
+  "msg": "audio_tracks должен быть словарём (или отсутствовать)"
+ },
+ {
+  "name": "bad_lang_upper",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": {
+    "EN": "a.mp3"
+   }
+  },
+  "ok": false,
+  "msg": "audio_tracks: некорректный код языка 'EN' (ожидается ISO 639-1, lower-case, 2 символа)"
+ },
+ {
+  "name": "bad_lang_digit",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": {
+    "e1": "a.mp3"
+   }
+  },
+  "ok": false,
+  "msg": "audio_tracks: некорректный код языка 'e1' (ожидается ISO 639-1, lower-case, 2 символа)"
+ },
+ {
+  "name": "bad_lang_len",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": {
+    "eng": "a.mp3"
+   }
+  },
+  "ok": false,
+  "msg": "audio_tracks: некорректный код языка 'eng' (ожидается ISO 639-1, lower-case, 2 символа)"
+ },
+ {
+  "name": "blank_audio_path",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_tracks": {
+    "en": ""
+   }
+  },
+  "ok": false,
+  "msg": "audio_tracks['en'] должен быть непустой строкой-путём"
+ },
+ {
+  "name": "no_fallback",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "default_locale": "en"
+  },
+  "ok": false,
+  "msg": "fallback_video должен быть непустой строкой-путём"
+ },
+ {
+  "name": "bad_default_locale",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "EN"
+  },
+  "ok": false,
+  "msg": "default_locale='EN', ожидается ISO 639-1 (lower-case, 2 символа)"
+ },
+ {
+  "name": "no_default_locale",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4"
+  },
+  "ok": false,
+  "msg": "default_locale=None, ожидается ISO 639-1 (lower-case, 2 символа)"
+ },
+ {
+  "name": "bad_volume_high",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_volume_default": 150
+  },
+  "ok": false,
+  "msg": "audio_volume_default=150, ожидается int 0..100"
+ },
+ {
+  "name": "bad_volume_type",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "audio_volume_default": "x"
+  },
+  "ok": false,
+  "msg": "audio_volume_default='x', ожидается int 0..100"
+ },
+ {
+  "name": "bad_loop",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "loop": "yes"
+  },
+  "ok": false,
+  "msg": "loop должен быть bool"
+ },
+ {
+  "name": "bad_tags_nonstr",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "tags": [
+    1,
+    2
+   ]
+  },
+  "ok": false,
+  "msg": "tags должен быть списком строк"
+ },
+ {
+  "name": "bad_tags_notlist",
+  "meta": {
+   "format_version": 4,
+   "type": "wallpaper-video-adaptive",
+   "title": "T",
+   "videos": {
+    "1080p": "data/v.mp4"
+   },
+   "fallback_video": "data/v.mp4",
+   "default_locale": "en",
+   "tags": "x"
+  },
+  "ok": false,
+  "msg": "tags должен быть списком строк"
+ }
+]

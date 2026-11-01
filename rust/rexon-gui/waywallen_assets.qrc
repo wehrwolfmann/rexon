@@ -1,0 +1,13 @@
+<!--
+  Логотип и журнал выпусков waywallen по тому же адресу, по какому их ищет
+  разметка апстрима: qrc:/waywallen/ui/assets/… (у апстрима — ресурсы его
+  бинаря). Файлы — вендорные, того же тега (MIT, см. ATTRIBUTION.md вендора).
+  Подключается в build.rs (`.qrc`); проверка — случаи «логотип»/«журнал
+  выпусков» в src/qml_int64_probe.rs.
+-->
+<RCC>
+    <qresource prefix="/waywallen/ui">
+        <file alias="assets/waywallen-ui.svg">../../data/qt_wallpaper_engine/qml_ui/waywallen/ui/assets/waywallen-ui.svg</file>
+        <file alias="assets/waywallen-ui.releases.xml">../../data/qt_wallpaper_engine/qml_ui/waywallen/ui/assets/waywallen-ui.releases.xml</file>
+    </qresource>
+</RCC>

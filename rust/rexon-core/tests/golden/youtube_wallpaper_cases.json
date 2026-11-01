@@ -1,0 +1,646 @@
+{
+  "cache_dir": "/HOME/.cache/rexon/youtube",
+  "meta_dir": "/HOME/.cache/rexon/youtube/meta",
+  "home": "/HOME",
+  "max_cache_mb": 2048,
+  "max_duration_sec": 3600,
+  "max_download_timeout": 600,
+  "stream_format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+  "quality_map": {
+    "4k": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
+    "1440p": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440]",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+    "unknown": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]"
+  },
+  "download_format": {
+    "4k": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
+    "1440p": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440]",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+    "unknown": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]"
+  },
+  "is_supported": {
+    "https://youtu.be/dQw4w9WgXcQ": true,
+    "http://youtube.com/watch?v=abc": true,
+    "  https://youtu.be/x  ": true,
+    "ftp://example.com/v": false,
+    "youtube.com/watch?v=abc": false,
+    "": false,
+    "not a url": false,
+    "https://vimeo.com/12345": true
+  },
+  "is_youtube": {
+    "https://youtu.be/dQw4w9WgXcQ": true,
+    "https://www.youtube.com/watch?v=abc": true,
+    "https://m.youtube.com/watch?v=abc": true,
+    "https://youtube.com/shorts/xyz": true,
+    "https://youtube.com/live/xyz": true,
+    "https://youtube.com/embed/xyz": true,
+    "https://youtube.com/v/xyz": true,
+    "https://youtube.com/playlist?list=PL123": true,
+    "https://music.youtube.com/watch?v=abc": true,
+    "https://YOUTUBE.com/WATCH?v=abc": true,
+    "https://vimeo.com/12345": false,
+    "https://youtube.com/channel/UC123": false,
+    "https://youtube.com/watch?feature=share&v=abc": true,
+    "youtu.be/abc": true,
+    "": false
+  },
+  "is_playlist": {
+    "https://youtube.com/playlist?list=PL123": true,
+    "https://youtube.com/watch?v=abc&list=PL123": false,
+    "https://youtu.be/abc": false,
+    "": false
+  },
+  "video_id_hash": {
+    "https://youtu.be/dQw4w9WgXcQ": "61e610a9d7fd37bc",
+    "https://www.youtube.com/watch?v=abc123": "28191ec6b0c29ddf",
+    "https://vimeo.com/12345": "0da2f356152819e1"
+  },
+  "url": "https://youtu.be/dQw4w9WgXcQ",
+  "url_spaced": "  https://youtu.be/dQw4w9WgXcQ  ",
+  "vid_hash": "61e610a9d7fd37bc",
+  "meta_path": "/HOME/.cache/rexon/youtube/meta/61e610a9d7fd37bc.json",
+  "output_template": "/HOME/.cache/rexon/youtube/61e610a9d7fd37bc.%(ext)s",
+  "info_cmd": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "--dump-json",
+    "--no-download",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "stream_cmd_1080p": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "--get-url",
+    "-f",
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "stream_cmd_best": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "--get-url",
+    "-f",
+    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "stream_cmd_unknown": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "--get-url",
+    "-f",
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "download_cmd_1080p": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "-f",
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "--merge-output-format",
+    "mp4",
+    "--socket-timeout",
+    "15",
+    "--no-part",
+    "--newline",
+    "-o",
+    "/HOME/.cache/rexon/youtube/61e610a9d7fd37bc.%(ext)s",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "download_cmd_4k": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "-f",
+    "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
+    "--merge-output-format",
+    "mp4",
+    "--socket-timeout",
+    "15",
+    "--no-part",
+    "--newline",
+    "-o",
+    "/HOME/.cache/rexon/youtube/61e610a9d7fd37bc.%(ext)s",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "download_cmd_unknown": [
+    "yt-dlp",
+    "--no-warnings",
+    "--no-playlist",
+    "-f",
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "--merge-output-format",
+    "mp4",
+    "--socket-timeout",
+    "15",
+    "--no-part",
+    "--newline",
+    "-o",
+    "/HOME/.cache/rexon/youtube/61e610a9d7fd37bc.%(ext)s",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "playlist_cmd_50": [
+    "yt-dlp",
+    "--no-warnings",
+    "--flat-playlist",
+    "--dump-json",
+    "--playlist-end",
+    "50",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "playlist_cmd_10": [
+    "yt-dlp",
+    "--no-warnings",
+    "--flat-playlist",
+    "--dump-json",
+    "--playlist-end",
+    "10",
+    "--socket-timeout",
+    "15",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ],
+  "install_pacman": [
+    "pkexec",
+    "pacman",
+    "-S",
+    "--noconfirm",
+    "yt-dlp"
+  ],
+  "install_apt": [
+    "pkexec",
+    "apt",
+    "install",
+    "-y",
+    "yt-dlp"
+  ],
+  "install_dnf": [
+    "pkexec",
+    "dnf",
+    "install",
+    "-y",
+    "yt-dlp"
+  ],
+  "install_pip": [
+    "pip",
+    "install",
+    "--user",
+    "--break-system-packages",
+    "yt-dlp"
+  ],
+  "update_self": [
+    "yt-dlp",
+    "--update"
+  ],
+  "update_pip": [
+    "pip",
+    "install",
+    "--user",
+    "--break-system-packages",
+    "--upgrade",
+    "yt-dlp"
+  ],
+  "version_cmd": [
+    "yt-dlp",
+    "--version"
+  ],
+  "stream_out": [
+    {
+      "stdout": "https://r1.googlevideo.com/video\nhttps://r1.googlevideo.com/audio\n",
+      "result": "https://r1.googlevideo.com/video"
+    },
+    {
+      "stdout": "  https://cdn.example/stream  \n",
+      "result": "https://cdn.example/stream"
+    },
+    {
+      "stdout": "not-a-url\n",
+      "result": null
+    },
+    {
+      "stdout": "",
+      "result": null
+    },
+    {
+      "stdout": "   \n  \n",
+      "result": null
+    },
+    {
+      "stdout": "http://plain\n",
+      "result": "http://plain"
+    }
+  ],
+  "progress": [
+    {
+      "line": "[download]  42.3% of ~15.67MiB at  2.34MiB/s ETA 00:04",
+      "pct": 42.3
+    },
+    {
+      "line": "[download] 100% of 15.67MiB in 00:06",
+      "pct": 100.0
+    },
+    {
+      "line": "[download]   0.0% of ~15.67MiB",
+      "pct": 0.0
+    },
+    {
+      "line": "[download] Destination: /tmp/x.mp4",
+      "pct": null
+    },
+    {
+      "line": "[Merger] Merging formats into \"x.mp4\"",
+      "pct": 99.0
+    },
+    {
+      "line": "[ExtractAudio] Destination: x.m4a",
+      "pct": 99.0
+    },
+    {
+      "line": "some unrelated line",
+      "pct": null
+    },
+    {
+      "line": "[download] 5.5%",
+      "pct": 5.5
+    }
+  ],
+  "extract_formats": [
+    {
+      "resolution": "2160p",
+      "height": 2160,
+      "fps": 30,
+      "vcodec": "vp9",
+      "filesize": 99
+    },
+    {
+      "resolution": "1080p",
+      "height": 1080,
+      "fps": 30,
+      "vcodec": "avc1",
+      "filesize": 50000000
+    },
+    {
+      "resolution": "720p",
+      "height": 720,
+      "fps": 30,
+      "vcodec": "avc1",
+      "filesize": 20000000
+    },
+    {
+      "resolution": "480p",
+      "height": 480,
+      "fps": 30,
+      "vcodec": "avc1",
+      "filesize": 0
+    }
+  ],
+  "build_info": {
+    "id": "dQw4w9WgXcQ",
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "duration": 213,
+    "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq.jpg",
+    "uploader": "Rick Astley",
+    "view_count": 1600000000,
+    "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "is_live": false,
+    "description": "The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. ",
+    "formats": [
+      {
+        "resolution": "2160p",
+        "height": 2160,
+        "fps": 30,
+        "vcodec": "vp9",
+        "filesize": 99
+      },
+      {
+        "resolution": "1080p",
+        "height": 1080,
+        "fps": 30,
+        "vcodec": "avc1",
+        "filesize": 50000000
+      },
+      {
+        "resolution": "720p",
+        "height": 720,
+        "fps": 30,
+        "vcodec": "avc1",
+        "filesize": 20000000
+      },
+      {
+        "resolution": "480p",
+        "height": 480,
+        "fps": 30,
+        "vcodec": "avc1",
+        "filesize": 0
+      }
+    ],
+    "_hash": "61e610a9d7fd37bc",
+    "_fetched_at": 1234567890.5
+  },
+  "info_text": [
+    {
+      "label": "normal",
+      "info": {
+        "id": "dQw4w9WgXcQ",
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "duration": 213,
+        "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq.jpg",
+        "uploader": "Rick Astley",
+        "view_count": 1600000000,
+        "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "is_live": false,
+        "description": "The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. The official video. ",
+        "formats": [
+          {
+            "resolution": "2160p",
+            "height": 2160,
+            "fps": 30,
+            "vcodec": "vp9",
+            "filesize": 99
+          },
+          {
+            "resolution": "1080p",
+            "height": 1080,
+            "fps": 30,
+            "vcodec": "avc1",
+            "filesize": 50000000
+          },
+          {
+            "resolution": "720p",
+            "height": 720,
+            "fps": 30,
+            "vcodec": "avc1",
+            "filesize": 20000000
+          },
+          {
+            "resolution": "480p",
+            "height": 480,
+            "fps": 30,
+            "vcodec": "avc1",
+            "filesize": 0
+          }
+        ],
+        "_hash": "61e610a9d7fd37bc",
+        "_fetched_at": 1234567890.5
+      },
+      "text": "Rick Astley - Never Gonna Give You Up  •  Rick Astley  •  3:33  •  до 2160p"
+    },
+    {
+      "label": "long_title",
+      "info": {
+        "title": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "uploader": "U",
+        "duration": 3661,
+        "formats": [
+          {
+            "resolution": "1080p"
+          }
+        ]
+      },
+      "text": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX…  •  U  •  1:01:01  •  до 1080p"
+    },
+    {
+      "label": "live",
+      "info": {
+        "title": "Live Stream",
+        "uploader": "Ch",
+        "duration": 0,
+        "is_live": true,
+        "formats": []
+      },
+      "text": "Live Stream  •  Ch  •  ♾️ live  •  до ?"
+    },
+    {
+      "label": "no_dur",
+      "info": {
+        "title": "T",
+        "uploader": "U",
+        "duration": 0,
+        "formats": []
+      },
+      "text": "T  •  U  •  ?  •  до ?"
+    },
+    {
+      "label": "short_dur",
+      "info": {
+        "title": "T",
+        "uploader": "U",
+        "duration": 65,
+        "formats": [
+          {
+            "resolution": "720p"
+          }
+        ]
+      },
+      "text": "T  •  U  •  1:05  •  до 720p"
+    },
+    {
+      "label": "empty",
+      "info": {},
+      "text": "  •    •  ?  •  до ?"
+    }
+  ],
+  "playlist_stdout": "{\"id\": \"v1\", \"title\": \"First\", \"duration\": 100, \"url\": \"https://youtu.be/v1\", \"thumbnails\": [{\"url\": \"t1a\"}, {\"url\": \"t1b\"}]}\n{\"id\": \"v2\", \"title\": \"Second\", \"duration\": 200, \"webpage_url\": \"https://youtu.be/v2\"}\nnot json\n{\"id\": \"v3\"}\n{\"id\": \"v4\", \"title\": \"Fourth\", \"thumbnails\": []}\n",
+  "playlist_entries": [
+    {
+      "id": "v1",
+      "title": "First",
+      "duration": 100,
+      "url": "https://youtu.be/v1",
+      "thumbnail": "t1b"
+    },
+    {
+      "id": "v2",
+      "title": "Second",
+      "duration": 200,
+      "url": "https://youtu.be/v2",
+      "thumbnail": ""
+    },
+    {
+      "id": "v3",
+      "title": "Без названия",
+      "duration": 0,
+      "url": "",
+      "thumbnail": ""
+    },
+    {
+      "id": "v4",
+      "title": "Fourth",
+      "duration": 0,
+      "url": "",
+      "thumbnail": ""
+    }
+  ],
+  "evict_files": [
+    {
+      "path": "/HOME/.cache/rexon/youtube/aaa.mp4",
+      "mtime": 100.0,
+      "size": 524288000
+    },
+    {
+      "path": "/HOME/.cache/rexon/youtube/bbb.mp4",
+      "mtime": 50.0,
+      "size": 838860800
+    },
+    {
+      "path": "/HOME/.cache/rexon/youtube/ccc.mp4",
+      "mtime": 200.0,
+      "size": 734003200
+    },
+    {
+      "path": "/HOME/.cache/rexon/youtube/ddd.mp4",
+      "mtime": 150.0,
+      "size": 629145600
+    }
+  ],
+  "evict_size_mb": 2600.0,
+  "evictions": [
+    "/HOME/.cache/rexon/youtube/bbb.mp4",
+    "/HOME/.cache/rexon/youtube/aaa.mp4"
+  ],
+  "evict_under_limit": [],
+  "cached_name": [
+    {
+      "name": "61e610a9d7fd37bc.mp4",
+      "cached": true
+    },
+    {
+      "name": "61e610a9d7fd37bc.webm",
+      "cached": true
+    },
+    {
+      "name": "61e610a9d7fd37bc.part",
+      "cached": false
+    },
+    {
+      "name": "61e610a9d7fd37bc.temp",
+      "cached": false
+    },
+    {
+      "name": "61e610a9d7fd37bc.ytdl",
+      "cached": false
+    },
+    {
+      "name": "other.mp4",
+      "cached": false
+    }
+  ],
+  "precheck": [
+    {
+      "duration": 100,
+      "is_live": false,
+      "reason": null
+    },
+    {
+      "duration": 3600,
+      "is_live": false,
+      "reason": null
+    },
+    {
+      "duration": 3601,
+      "is_live": false,
+      "reason": "Видео > 60 мин"
+    },
+    {
+      "duration": 100,
+      "is_live": true,
+      "reason": "Live — используйте стриминг"
+    },
+    {
+      "duration": 5000,
+      "is_live": true,
+      "reason": "Видео > 60 мин"
+    }
+  ],
+  "meta_fresh": [
+    {
+      "age": 0,
+      "fresh": true
+    },
+    {
+      "age": 3599,
+      "fresh": true
+    },
+    {
+      "age": 3600,
+      "fresh": false
+    },
+    {
+      "age": 7200,
+      "fresh": false
+    }
+  ],
+  "pip_argv": {
+    "binaries": [
+      "pip3",
+      "pip"
+    ],
+    "plain": [
+      "pip3",
+      "install",
+      "--user",
+      "yt-dlp"
+    ],
+    "break": [
+      "pip3",
+      "install",
+      "--user",
+      "--break-system-packages",
+      "yt-dlp"
+    ],
+    "upgrade": [
+      "pip3",
+      "install",
+      "--user",
+      "--upgrade",
+      "yt-dlp"
+    ],
+    "upgrade_break": [
+      "pip",
+      "install",
+      "--user",
+      "--break-system-packages",
+      "--upgrade",
+      "yt-dlp"
+    ]
+  },
+  "pip_pep668": {
+    "yes": [
+      "error: externally-managed-environment",
+      "This environment is externally managed"
+    ],
+    "no": [
+      "ERROR: Could not find a version that satisfies the requirement yt-dlp",
+      ""
+    ]
+  },
+  "install_messages": {
+    "via_pacman": "yt-dlp установлен через pacman",
+    "via_zypper": "yt-dlp установлен через zypper",
+    "via_pip": "yt-dlp установлен через pip3 (--user)",
+    "updated_pip": "yt-dlp обновлён через pip3",
+    "failed": "Не удалось установить yt-dlp автоматически. Установите вручную: pip install yt-dlp"
+  }
+}

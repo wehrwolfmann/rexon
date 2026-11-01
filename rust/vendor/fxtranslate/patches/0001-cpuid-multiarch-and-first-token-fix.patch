@@ -1,0 +1,1027 @@
+Тема: выбор набора инструкций по CPUID, починка первого токена и скорость
+
+НАША ПРАВКА (у апстрима такого нет). Один файл на всю серию — это условие
+MPL-2.0: копилефт у него пофайловый, и обязанность «выложить исходники
+изменённых файлов» закрывается публикацией ЭТОГО файла, а не раскрытием
+кода Rexon. Размазав правки по вендорному дереву, мы бы каждый раз искали,
+что именно опубликовать. Замеры и разбор — ниже, по пунктам.
+
+Тронуто шесть файлов: build.rs, src/engine.rs, src/gemm.rs,
+src/gemmology_shim.cpp, src/ops.rs, src/shortlist.rs.
+
+1. ВЫБОР НАБОРА ИНСТРУКЦИЙ ПО CPUID (build.rs, gemm.rs, gemmology_shim.cpp).
+   В 0.4.2 build.rs жёстко пишет `-mavx2`, а проверки CPUID в крейте нет
+   нигде. На x86-64 без AVX2 (Intel до Haswell, AMD до Zen, младшие
+   Celeron/Pentium/Atom) это SIGILL — и падает не на старте, а ПОСЛЕ
+   успешной загрузки модели, на первом умножении матриц: программа
+   показала окно и рухнула на первом переводе. Проверено живьём на стенде:
+   сборка под `avxvnni` (этого набора у машины нет) — код возврата 132 =
+   128 + 4 = SIGILL сразу после «загрузка модели: 0.031 с».
+   Лечение: поверхность шима — семь функций с C-ABI, их имена проходят
+   через макрос `FXT_SYM(...)` с суффиксом из `FXT_SYM_SUFFIX` и помечены
+   `FXT_EXPORT` (видимость default). При `FXT_GEMM_X86_MULTI=1` build.rs
+   компилирует шим ЧЕТЫРЕ раза — avx2, avxvnni, avx512bw, avx512vnni —
+   каждый со своим суффиксом, `-fvisibility=hidden` плюс
+   `-fvisibility-inlines-hidden`, и прогоняет каждый объектный файл через
+   `objcopy --localize-hidden`, складывая в свою `.a`; выдаётся
+   `--cfg fxt_multiarch`. gemm.rs держит таблицу указателей на каждый
+   набор и выбирает набор ОДИН раз через `OnceLock` по
+   `is_x86_feature_detected!` (порядок: AVX512-VNNI → AVX512-BW →
+   AVX-VNNI → AVX2).
+   ⚠️`objcopy --localize-hidden` здесь не украшение: без него компоновщик
+   вправе слить одинаково названные шаблонные копии из разных единиц
+   трансляции и подсунуть ветке AVX2 тело, собранное под AVX-512, — то
+   есть SIGILL там, где мы его лечим. Изоляция проверена по результату:
+   вывод многоарочной сборки при `FXT_GEMM_X86_ARCH=avx2` бит-в-бит
+   совпал с отдельной одноарочной сборкой под AVX2, при `avx512bw` и
+   `avx512vnni` — с их одноарочными, и все три вывода разные.
+   На процессоре без AVX2 таблицы нет вовсе: `PreparedB::new` отдаёт
+   `None` и движок уходит на скалярное ядро крейта — замедление в 9 раз
+   вместо падения. Аварийный выход для поддержки — `FXT_GEMM_FORCE_SCALAR=1`.
+   ⚠️Многоарочная ветка написана под x86-64 и GNU binutils (`objcopy`,
+   `ar`); aarch64 идёт прежним одноарочным путём (i8mm), MSVC не
+   поддержан. Для Rexon это не важно.
+
+2. ПОЧИНКА ПЕРВОГО ТОКЕНА (src/engine.rs). Крейт на нулевом шаге
+   декодирования систематически выбирает пьесу-ПРОДОЛЖЕНИЕ слова, и начало
+   слова пропадает: «ховая группа по Ираку» вместо «исследовательская»,
+   «ная глобальная тема» вместо «эта». На FLORES-200 devtest это 16,0 %
+   строк (162 из 1012) — не «редко», как значилось в отчётах. Лечение:
+   на нулевом шаге argmax берётся по полному словарю, но только среди
+   пьес, которыми перевод вообще может начинаться — с ведущим U+2581 либо
+   знаком, которым фраза может открываться; пьесы-продолжения и знаки
+   `,.;:!?%-–—)]}/\&*+=` запрещены, короткий список на нулевом шаге не
+   применяется (`начала_слов()`, `первый_токен()`, `argmax_начала()`).
+   Порча 16,0 % → 0,0 %, chrF++ 55,23 → 55,33 (и 55,71 → 55,85 с
+   приведением первой буквы к заглавной, которое остаётся за кодом
+   Rexon). Цена — одна полная проекция по словарю на предложение,
+   +1,5 % времени. Выключатель `FXT_FIRST_TOKEN=0` возвращает поведение
+   0.4.2. Собственный тест апстрима
+   `near_tie_casing_matches_apart_from_case` при правке продолжает
+   проходить — правка годится и наверх (наверх НЕ отправлялась).
+
+3. СКОРОСТЬ И КАЧЕСТВО ПО МЕЛОЧАМ (src/ops.rs, src/shortlist.rs):
+   округление активаций при квантовании (забирает почти весь выигрыш
+   `-C target-cpu=native`, так что привязывать сборку к машине
+   разработчика больше не нужно) и короткий список по БЛОКУ вместо
+   предложения (лечит порчу слов вида «дружескые» на пакетном пути).
+   Короткий список в поставку не берём, так что пункт про него —
+   страховка, а не рабочий путь.
+
+Годится ли наверх: пункт 2 — да, хороший кандидат. Пункт 1 — тоже, но
+он крупнее и требует ветки под MSVC. Наверх ничего не отправлялось.
+
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/build.rs fxtranslate-patched/build.rs
+--- a/build.rs	2026-09-20 17:34:31.864098520 +0200
++++ b/build.rs	2026-09-20 14:53:49.876629364 +0200
+@@ -23,6 +23,9 @@
+     // one cfg means the call sites don't fork per-backend.
+     println!("cargo::rustc-check-cfg=cfg(fast_gemm)");
+     println!("cargo:rerun-if-env-changed=FXTRANSLATE_REQUIRE_SIMD");
++    println!("cargo:rerun-if-env-changed=FXT_GEMM_X86_ARCH");
++    println!("cargo:rerun-if-env-changed=FXT_GEMM_X86_MULTI");
++    println!("cargo::rustc-check-cfg=cfg(fxt_multiarch)");
+ 
+     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+ 
+@@ -64,13 +67,126 @@
+         "aarch64" => ("FXT_GEMM_I8MM", "-march=armv8.4-a+i8mm"),
+         // AVX2 baseline: runs on every x86-64-v2+ CPU. The exact VNNI kernels
+         // behind CPUID dispatch are a possible follow-up.
+-        "x86_64" => ("FXT_GEMM_AVX2", "-mavx2"),
++        // FXT_GEMM_X86_ARCH (опыт замера): avx2 | avxvnni | avx512bw | avx512vnni
++        "x86_64" => match std::env::var("FXT_GEMM_X86_ARCH").unwrap_or_default().as_str() {
++            "avxvnni" => ("FXT_GEMM_AVXVNNI", "-mavx2 -mavxvnni"),
++            "avx512bw" => ("FXT_GEMM_AVX512BW", "-mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl"),
++            "avx512vnni" => (
++                "FXT_GEMM_AVX512VNNI",
++                "-mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512vnni",
++            ),
++            _ => ("FXT_GEMM_AVX2", "-mavx2"),
++        },
+         _ => {
+             bail(format!("no SIMD kernel wired for `{arch}` yet"));
+             return;
+         }
+     };
+ 
++    // ── Сборка под несколько наборов инструкций с выбором по CPUID ───────────
++    // FXT_GEMM_X86_MULTI=1: шим компилируется по разу на каждый набор из списка,
++    // имена функций получают суффикс (FXT_SYM_SUFFIX), а диспетчер в gemm.rs
++    // выбирает набор во время работы. Каждая единица трансляции собирается с
++    // `-fvisibility=hidden`, после чего objcopy --localize-hidden делает все её
++    // прочие символы локальными: иначе компоновщик мог бы слить одинаково
++    // названные шаблонные копии из разных наборов и подсунуть сборке под AVX2
++    // тело, скомпилированное под AVX-512.
++    let multi = arch == "x86_64" && std::env::var_os("FXT_GEMM_X86_MULTI").is_some();
++    if multi {
++        let vendor = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("vendor");
++        let gemmology = std::env::var_os("GEMMOLOGY_DIR")
++            .map(PathBuf::from)
++            .unwrap_or_else(|| vendor.join("gemmology"));
++        let xsimd = std::env::var_os("XSIMD_INCLUDE_DIR")
++            .map(PathBuf::from)
++            .unwrap_or_else(|| vendor.join("xsimd/include"));
++        if !gemmology.join("gemmology.h").exists() {
++            bail("gemmology headers not found".into());
++            return;
++        }
++        println!("cargo:rerun-if-changed=src/gemmology_shim.cpp");
++        let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
++        let targets: [(&str, &str, &str); 4] = [
++            ("avx2", "FXT_GEMM_AVX2", "-mavx2"),
++            ("avxvnni", "FXT_GEMM_AVXVNNI", "-mavx2 -mavxvnni"),
++            (
++                "avx512bw",
++                "FXT_GEMM_AVX512BW",
++                "-mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl",
++            ),
++            (
++                "avx512vnni",
++                "FXT_GEMM_AVX512VNNI",
++                "-mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512vnni",
++            ),
++        ];
++        for (name, define, flags) in targets {
++            let mut build = cc::Build::new();
++            build
++                .cpp(true)
++                .std("c++17")
++                .flags(flags.split(' '))
++                .flag("-fvisibility=hidden")
++                .flag("-fvisibility-inlines-hidden")
++                .define(define, None)
++                .define("FXT_SYM_SUFFIX", format!("_{name}").as_str())
++                .opt_level(3)
++                .include(&gemmology)
++                .include(&xsimd)
++                .out_dir(out_dir.join(format!("shim-{name}")))
++                .file("src/gemmology_shim.cpp");
++            if std::env::var_os("CARGO_FEATURE_GEMM_THREADS").is_some() {
++                build.define("FXT_GEMM_THREADS", None);
++            }
++            let objs = match build.try_compile_intermediates() {
++                Ok(o) => o,
++                Err(e) => {
++                    bail(format!("сборка шима под {name} не удалась ({e})"));
++                    return;
++                }
++            };
++            // Сделать локальными все скрытые символы: только 7 точек входа с
++            // суффиксом остаются глобальными, шаблонные копии — нет.
++            for o in &objs {
++                let st = std::process::Command::new("objcopy")
++                    .arg("--localize-hidden")
++                    .arg(o)
++                    .status();
++                match st {
++                    Ok(s) if s.success() => {}
++                    _ => {
++                        bail(format!("objcopy --localize-hidden не сработал на {}", o.display()));
++                        return;
++                    }
++                }
++            }
++            // Заархивировать в свою статическую библиотеку и слинковать.
++            let lib = out_dir.join(format!("libgemmology_shim_{name}.a"));
++            let _ = std::fs::remove_file(&lib);
++            let ar = std::env::var("AR").unwrap_or_else(|_| "ar".into());
++            let mut cmd = std::process::Command::new(&ar);
++            cmd.arg("crs").arg(&lib);
++            for o in &objs {
++                cmd.arg(o);
++            }
++            match cmd.status() {
++                Ok(s) if s.success() => {}
++                _ => {
++                    bail(format!("ar не собрал библиотеку под {name}"));
++                    return;
++                }
++            }
++            println!("cargo:rustc-link-lib=static=gemmology_shim_{name}");
++        }
++        println!("cargo:rustc-link-search=native={}", out_dir.display());
++        // Стандартная библиотека C++ нужна один раз на всех.
++        println!("cargo:rustc-link-lib=dylib=stdc++");
++        println!("cargo::rustc-cfg=gemmology_simd");
++        println!("cargo::rustc-cfg=fast_gemm");
++        println!("cargo::rustc-cfg=fxt_multiarch");
++        return;
++    }
++
+     let vendor = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("vendor");
+     let gemmology = std::env::var_os("GEMMOLOGY_DIR")
+         .map(PathBuf::from)
+@@ -97,7 +213,7 @@
+     build
+         .cpp(true)
+         .std("c++17")
+-        .flag(arch_flag)
++        .flags(arch_flag.split(' '))
+         .define(arch_define, None)
+         .opt_level(3)
+         .include(&gemmology)
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/src/engine.rs fxtranslate-patched/src/engine.rs
+--- a/src/engine.rs	2026-09-20 17:34:31.865291590 +0200
++++ b/src/engine.rs	2026-09-20 17:19:41.077503757 +0200
+@@ -27,6 +27,8 @@
+     weights: Weights,
+     src_vocab: SpmVocab,
+     trg_vocab: SpmVocab,
++    /// Ленивая маска «пьеса может начинать перевод» (см. `начала_слов`).
++    начала: std::sync::OnceLock<Vec<bool>>,
+     config: Config,
+     /// Sinusoidal positional-encoding frequencies and offsets, length `dim`.
+     pe_freq: Vec<f32>,
+@@ -145,6 +147,45 @@
+     }
+ }
+ 
++/// The tied output projection restricted to one *block's* shared shortlist,
++/// prepared once per block: candidate rows gathered, prepared bias computed and
++/// (with the SIMD kernel) the weight packed. The per-token path rebuilt all of
++/// this on every decode step, which is why a shortlist never paid for itself.
++struct BlockProj {
++    ids: Vec<u32>,
++    bias: Vec<f32>,
++    qa: f32,
++    unquant: f32,
++    b_raw: Vec<i8>,
++    #[cfg(fast_gemm)]
++    pb: Option<crate::gemm::PreparedB>,
++}
++
++impl BlockProj {
++    /// `logits[m, n]` over the candidate columns.
++    fn logits(&self, a: &[u8], m: usize, d: usize) -> Vec<f32> {
++        #[cfg(fast_gemm)]
++        if let Some(pb) = self.pb.as_ref() {
++            return pb.matmul(a, m, self.unquant, &self.bias);
++        }
++        ops::intgemm_affine(a, m, d, &self.b_raw, self.ids.len(), self.unquant, &self.bias)
++    }
++}
++
++/// Лечить ли первый токен (маска «начала слов» на нулевом шаге).
++/// `FXT_FIRST_TOKEN=0` возвращает поведение 0.4.2 для сверки. По умолчанию включено.
++fn первый_токен_лечить() -> bool {
++    static M: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *M.get_or_init(|| std::env::var("FXT_FIRST_TOKEN").map(|v| v != "0").unwrap_or(true))
++}
++
++/// Whether the shortlist is applied per block (marian's `CorpusBatch` behaviour)
++/// or per sentence (0.4.2). Read once from `FXT_SL_BATCH`; default on.
++fn sl_batch_mode() -> bool {
++    static M: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *M.get_or_init(|| std::env::var("FXT_SL_BATCH").map(|v| v != "0").unwrap_or(true))
++}
++
+ impl Engine {
+     /// Build from a model file and the source/target `.spm` vocabularies. For
+     /// most pairs the two vocab paths are identical; for CJK they differ.
+@@ -227,6 +268,7 @@
+             weights,
+             src_vocab,
+             trg_vocab,
++            начала: std::sync::OnceLock::new(),
+             config,
+             pe_freq,
+             pe_offs,
+@@ -356,9 +398,14 @@
+         let mut first_token_ms = 0.0;
+         let mut out = Vec::new();
+         let mut prev = eos;
++        let лечить = первый_токен_лечить();
+         for step in 0..max_len {
+             let top = self.decode_step(prev, step, &context, seq, &mut cells);
+-            let next = self.project_argmax(&top, candidates.as_deref());
++            let next = if step == 0 && лечить {
++                self.первый_токен(&top)
++            } else {
++                self.project_argmax(&top, candidates.as_deref())
++            };
+             if step == 0 {
+                 first_token_ms = t_dec.elapsed().as_secs_f64() * 1e3;
+             }
+@@ -402,9 +449,14 @@
+ 
+         let mut out = Vec::new();
+         let mut prev = eos; // decoder is seeded with EOS
++        let лечить = первый_токен_лечить();
+         for step in 0..max_len {
+             let top = self.decode_step(prev, step, &context, seq, &mut cells);
+-            let next = self.project_argmax(&top, candidates.as_deref());
++            let next = if step == 0 && лечить {
++                self.первый_токен(&top)
++            } else {
++                self.project_argmax(&top, candidates.as_deref())
++            };
+             if next == eos {
+                 break;
+             }
+@@ -414,6 +466,58 @@
+         out
+     }
+ 
++    /// Идентификаторы пьес, которыми ВООБЩЕ может начинаться перевод: начала слов
++    /// (ведущий U+2581) плюс всё, что не является продолжением слова —
++    /// пунктуация, цифры, латиница без буквенного продолжения. Считается один раз.
++    ///
++    /// Нужно потому, что крейт на нулевом шаге систематически выбирает пьесу-
++    /// продолжение («ная», «ховая», «лубная»): на FLORES-200 это 16 % строк с
++    /// испорченным первым словом и 88 % строк со строчной первой буквы.
++    fn начала_слов(&self) -> &[bool] {
++        self.начала.get_or_init(|| {
++            (0..self.weights.output_vocab() as u32)
++                .map(|id| {
++                    let п = self.trg_vocab.piece(id);
++                    if п.is_empty() {
++                        return true; // служебные пьесы (в т.ч. EOS) не запрещаем
++                    }
++                    if п.starts_with('\u{2581}') {
++                        return true;
++                    }
++                    // Пьеса без ведущего пробела — либо продолжение слова (буква
++                    // или цифра), либо знак, которым фраза не начинается: запятая,
++                    // точка, тире, закрывающая скобка. Открывающие кавычки и
++                    // скобки началом быть могут.
++                    let c = п.chars().next().unwrap();
++                    !(c.is_alphanumeric() || ",.;:!?%-–—)]}/\\&*+=".contains(c))
++                })
++                .collect()
++        })
++    }
++
++    /// Первый токен перевода: argmax по полному словарю, но только среди пьес,
++    /// которыми перевод может начинаться (см. `начала_слов`). Короткий список на
++    /// нулевом шаге не применяется — цена одна полная проекция на предложение.
++    fn первый_токен(&self, top: &[f32]) -> u32 {
++        self.argmax_начала(&self.project(top))
++    }
++
++    /// argmax по готовым логитам, но только среди пьес-начал (см. `начала_слов`).
++    fn argmax_начала(&self, logits: &[f32]) -> u32 {
++        let маска = self.начала_слов();
++        let mut best = usize::MAX;
++        for (i, &l) in logits.iter().enumerate() {
++            if маска.get(i).copied().unwrap_or(true) && (best == usize::MAX || l > logits[best]) {
++                best = i;
++            }
++        }
++        if best == usize::MAX {
++            argmax(logits)
++        } else {
++            best as u32
++        }
++    }
++
+     /// Pick the next token for each active row of one decode step, updating
+     /// `done`/`out`/`prev`. `tops` is `[active.len(), dim]` — already compacted to
+     /// the rows still decoding (the decoder body no longer computes finished
+@@ -422,8 +526,96 @@
+     /// active rows in one GEMM (streaming the vocab weight once per batch); with a
+     /// shortlist, candidate sets differ per row, so it projects per row. Rows are
+     /// independent, so the tokens are identical either way.
++    /// Build the block-level shortlist projection (see [`BlockProj`]). `None`
++    /// when no shortlist is attached or the embedding is not int8.
++    fn block_proj(&self, sentences: &[Vec<u32>]) -> Option<BlockProj> {
++        let sl = self.shortlist.as_ref()?;
++        if !sl_batch_mode() {
++            return None;
++        }
++        let qwemb = self.weights.output_wemb_qmult()?;
++        let d = self.config.dim_emb;
++        let ids = sl.candidates_batch(sentences, self.shared_vocab);
++        let n = ids.len();
++        let qa = self.weights.output_qa();
++        let unquant = 1.0 / (qa * qwemb);
++        let bias_full = self
++            .weights
++            .f32("decoder_ff_logit_out_b")
++            .unwrap_or_else(|| vec![0.0; self.weights.output_vocab()]);
++        let mut b_raw = vec![0i8; n * d];
++        let mut raw_bias = vec![0.0f32; n];
++        for (j, &c) in ids.iter().enumerate() {
++            self.weights
++                .output_wemb_int8_row(c, &mut b_raw[j * d..(j + 1) * d]);
++            raw_bias[j] = bias_full[c as usize];
++        }
++        let bias = ops::prepare_bias(&b_raw, n, d, &raw_bias, unquant);
++        #[cfg(fast_gemm)]
++        let pb = crate::gemm::PreparedB::new(&b_raw, n, d);
++        Some(BlockProj {
++            ids,
++            bias,
++            qa,
++            unquant,
++            b_raw,
++            #[cfg(fast_gemm)]
++            pb,
++        })
++    }
++
++    /// [`select_active`] over a block-level shortlist: one GEMM for all active
++    /// rows over the shared candidate columns.
++    fn select_active_block(
++        &self,
++        первый_шаг: bool,
++        active: &[usize],
++        tops: &[f32],
++        bp: &BlockProj,
++        eos: u32,
++        prev: &mut [u32],
++        out: &mut [Vec<u32>],
++        done: &mut [bool],
++    ) {
++        let d = self.config.dim_emb;
++        let m = active.len();
++        let n = bp.ids.len();
++        if первый_шаг && первый_токен_лечить() {
++            // Нулевой шаг: полный словарь с маской начал слов, не короткий список.
++            for (i, &b) in active.iter().enumerate() {
++                let next = self.первый_токен(&tops[i * d..(i + 1) * d]);
++                if next == eos {
++                    done[b] = true;
++                } else {
++                    out[b].push(next);
++                    prev[b] = next;
++                }
++            }
++            return;
++        }
++        let a = ops::prepare_a(tops, bp.qa);
++        let logits = bp.logits(&a, m, d);
++        for (i, &b) in active.iter().enumerate() {
++            let row = &logits[i * n..(i + 1) * n];
++            let mut best = 0usize;
++            for j in 1..n {
++                if row[j] > row[best] {
++                    best = j;
++                }
++            }
++            let next = bp.ids[best];
++            if next == eos {
++                done[b] = true;
++            } else {
++                out[b].push(next);
++                prev[b] = next;
++            }
++        }
++    }
++
+     fn select_active(
+         &self,
++        первый_шаг: bool,
+         active: &[usize],
+         tops: &[f32],
+         cands: &[Option<Vec<u32>>],
+@@ -439,8 +631,14 @@
+             let vocab = self.weights.output_vocab();
+             LOGITS_SCRATCH.with_borrow_mut(|logits| {
+                 self.weights.full_logits_batch_into(tops, n, logits);
++                let лечить = первый_шаг && первый_токен_лечить();
+                 for (i, &b) in active.iter().enumerate() {
+-                    let next = argmax(&logits[i * vocab..(i + 1) * vocab]);
++                    let строка = &logits[i * vocab..(i + 1) * vocab];
++                    let next = if лечить {
++                        self.argmax_начала(строка)
++                    } else {
++                        argmax(строка)
++                    };
+                     if next == eos {
+                         done[b] = true;
+                     } else {
+@@ -451,7 +649,12 @@
+             });
+         } else {
+             for (i, &b) in active.iter().enumerate() {
+-                let next = self.project_argmax(&tops[i * d..(i + 1) * d], cands[b].as_deref());
++                let срез = &tops[i * d..(i + 1) * d];
++                let next = if первый_шаг && первый_токен_лечить() {
++                    self.первый_токен(срез)
++                } else {
++                    self.project_argmax(срез, cands[b].as_deref())
++                };
+                 if next == eos {
+                     done[b] = true;
+                 } else {
+@@ -800,14 +1003,19 @@
+             .collect();
+         let cap = max_len.iter().copied().max().unwrap_or(0);
+         // Per-sentence shortlist candidate sets (None when no shortlist attached).
+-        let cands: Vec<Option<Vec<u32>>> = sentences
+-            .iter()
+-            .map(|s| {
+-                self.shortlist
+-                    .as_ref()
+-                    .map(|sl| sl.candidates(s, self.shared_vocab))
+-            })
+-            .collect();
++        let bproj = self.block_proj(&sentences[..]);
++        let cands: Vec<Option<Vec<u32>>> = if bproj.is_some() {
++            vec![None; sentences.len()]
++        } else {
++            sentences
++                .iter()
++                .map(|s| {
++                    self.shortlist
++                        .as_ref()
++                        .map(|sl| sl.candidates(s, self.shared_vocab))
++                })
++                .collect()
++        };
+ 
+         let mut cells = vec![vec![0.0f32; batch * d]; self.config.dec_depth + 1];
+         let mut prev = vec![eos; batch];
+@@ -821,7 +1029,14 @@
+                 break;
+             }
+             let tops = self.decode_step_batch(&active, &prev, step, &ctx, &cross_kv, &mut cells);
+-            self.select_active(&active, &tops, &cands, eos, &mut prev, &mut out, &mut done);
++            match bproj.as_ref() {
++                Some(bp) => self.select_active_block(
++                    step == 0, &active, &tops, bp, eos, &mut prev, &mut out, &mut done,
++                ),
++                None => self.select_active(
++                    step == 0, &active, &tops, &cands, eos, &mut prev, &mut out, &mut done,
++                ),
++            }
+         }
+         out
+     }
+@@ -860,14 +1075,19 @@
+             .map(|s| ((2.0 * s.len() as f32).ceil() as usize + 4).min(256))
+             .collect();
+         let cap = max_len.iter().copied().max().unwrap_or(0);
+-        let cands: Vec<Option<Vec<u32>>> = sentences
+-            .iter()
+-            .map(|s| {
+-                self.shortlist
+-                    .as_ref()
+-                    .map(|sl| sl.candidates(s, self.shared_vocab))
+-            })
+-            .collect();
++        let bproj = self.block_proj(&sentences[..]);
++        let cands: Vec<Option<Vec<u32>>> = if bproj.is_some() {
++            vec![None; sentences.len()]
++        } else {
++            sentences
++                .iter()
++                .map(|s| {
++                    self.shortlist
++                        .as_ref()
++                        .map(|sl| sl.candidates(s, self.shared_vocab))
++                })
++                .collect()
++        };
+ 
+         let mut cells = vec![vec![0.0f32; batch * d]; self.config.dec_depth + 1];
+         let mut prev = vec![eos; batch];
+@@ -887,7 +1107,14 @@
+             if step == 0 {
+                 first_token_ms = t_dec.elapsed().as_secs_f64() * 1e3;
+             }
+-            self.select_active(&active, &tops, &cands, eos, &mut prev, &mut out, &mut done);
++            match bproj.as_ref() {
++                Some(bp) => self.select_active_block(
++                    step == 0, &active, &tops, bp, eos, &mut prev, &mut out, &mut done,
++                ),
++                None => self.select_active(
++                    step == 0, &active, &tops, &cands, eos, &mut prev, &mut out, &mut done,
++                ),
++            }
+         }
+         let decode_ms = t_dec.elapsed().as_secs_f64() * 1e3;
+         let timing = BlockTiming {
+@@ -936,14 +1163,19 @@
+             .map(|s| ((2.0 * s.len() as f32).ceil() as usize + 4).min(256))
+             .collect();
+         let cap = max_len.iter().copied().max().unwrap_or(0);
+-        let cands: Vec<Option<Vec<u32>>> = sentences
+-            .iter()
+-            .map(|s| {
+-                self.shortlist
+-                    .as_ref()
+-                    .map(|sl| sl.candidates(s, self.shared_vocab))
+-            })
+-            .collect();
++        let bproj = self.block_proj(&sentences[..]);
++        let cands: Vec<Option<Vec<u32>>> = if bproj.is_some() {
++            vec![None; sentences.len()]
++        } else {
++            sentences
++                .iter()
++                .map(|s| {
++                    self.shortlist
++                        .as_ref()
++                        .map(|sl| sl.candidates(s, self.shared_vocab))
++                })
++                .collect()
++        };
+ 
+         let mut cells = vec![vec![0.0f32; batch * d]; self.config.dec_depth + 1];
+         let mut prev = vec![eos; batch];
+@@ -962,7 +1194,14 @@
+             if step == 0 {
+                 on_phase(Phase::FirstToken);
+             }
+-            self.select_active(&active, &tops, &cands, eos, &mut prev, &mut out, &mut done);
++            match bproj.as_ref() {
++                Some(bp) => self.select_active_block(
++                    step == 0, &active, &tops, bp, eos, &mut prev, &mut out, &mut done,
++                ),
++                None => self.select_active(
++                    step == 0, &active, &tops, &cands, eos, &mut prev, &mut out, &mut done,
++                ),
++            }
+         }
+         on_phase(Phase::DecodeEnd);
+ 
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/src/gemmology_shim.cpp fxtranslate-patched/src/gemmology_shim.cpp
+--- a/src/gemmology_shim.cpp	2026-09-20 17:34:31.865291590 +0200
++++ b/src/gemmology_shim.cpp	2026-09-20 14:56:08.265589526 +0200
+@@ -49,6 +49,12 @@
+ // to the scalar kernel), so the #error only fires on a build.rs/arch mismatch.
+ #if defined(FXT_GEMM_I8MM)
+ using Arch = xsimd::i8mm<xsimd::neon64>;
++#elif defined(FXT_GEMM_AVX512VNNI)
++using Arch = xsimd::avx512vnni<xsimd::avx512bw>;
++#elif defined(FXT_GEMM_AVX512BW)
++using Arch = xsimd::avx512bw;
++#elif defined(FXT_GEMM_AVXVNNI)
++using Arch = xsimd::avxvnni;
+ #elif defined(FXT_GEMM_AVX2)
+ using Arch = xsimd::avx2;
+ #else
+@@ -209,11 +215,25 @@
+ 
+ }  // namespace
+ 
++// Суффикс к именам экспортируемых функций: одна и та же единица трансляции
++// компилируется по разу на набор инструкций, и каждая получает свои имена
++// (`gemmology_multiply_avx2`, `..._avx512vnni`, …), чтобы диспетчер во время
++// работы выбирал нужный набор. Без суффикса имена прежние.
++#ifndef FXT_SYM_SUFFIX
++#define FXT_SYM_SUFFIX
++#endif
++#define FXT_CAT_(a, b) a##b
++#define FXT_CAT(a, b) FXT_CAT_(a, b)
++#define FXT_SYM(n) FXT_CAT(n, FXT_SYM_SUFFIX)
++// Точки входа остаются видимыми снаружи даже при -fvisibility=hidden: скрытыми
++// должны стать только шаблонные копии внутри, чтобы компоновщик их не сливал.
++#define FXT_EXPORT __attribute__((visibility("default")))
++
+ extern "C" {
+ 
+ // Prepare a logical transposed int8 weight [n, k] (w[col*k + kk]) into
+ // gemmology's layout. Returns null if k is not a multiple of 16.
+-void *gemmology_prepare_b(const int8_t *b_transposed, size_t n, size_t k) {
++FXT_EXPORT void *FXT_SYM(gemmology_prepare_b)(const int8_t *b_transposed, size_t n, size_t k) {
+   if (k % kRegElems != 0) return nullptr;
+   const size_t n_pad = round_up(n, kColStride);
+ 
+@@ -232,7 +252,7 @@
+   return new PreparedB{packed, n, n_pad, k};
+ }
+ 
+-void gemmology_free_b(void *handle) {
++FXT_EXPORT void FXT_SYM(gemmology_free_b)(void *handle) {
+   if (!handle) return;
+   PreparedB *h = static_cast<PreparedB *>(handle);
+   g_prepared_bytes.fetch_sub(h->n_pad * h->k, std::memory_order_relaxed);
+@@ -241,14 +261,14 @@
+ }
+ 
+ // Total retained bytes of prepared-B weight buffers (persistent C++ allocations).
+-size_t gemmology_prepared_bytes() {
++FXT_EXPORT size_t FXT_SYM(gemmology_prepared_bytes)() {
+   return g_prepared_bytes.load(std::memory_order_relaxed);
+ }
+ 
+ // Number of cores the intra-op GEMM pool will use (feature `gemm-threads` +
+ // FXT_GEMM_THREADS). 1 means the pool is inert (sequential); 0 means the feature
+ // wasn't compiled in. Lets the harness report which mode is live.
+-size_t gemmology_gemm_threads() {
++FXT_EXPORT size_t FXT_SYM(gemmology_gemm_threads)() {
+ #ifdef FXT_GEMM_THREADS
+   return GemmPool::instance().size();
+ #else
+@@ -260,7 +280,7 @@
+ // from the arch actually instantiated above, so the Rust side (and CI) can prove
+ // which SIMD kernel is live rather than trusting it didn't silently fall back to
+ // scalar. Returns a static string; never null.
+-const char *gemmology_backend_name() { return Arch::name(); }
++FXT_EXPORT const char *FXT_SYM(gemmology_backend_name)() { return Arch::name(); }
+ 
+ // Read logical row `id` (0 <= id < n) of the packed weight back into `out`
+ // (length k), inverting PrepareBQuantizedTransposed. That pack is a pure
+@@ -270,7 +290,7 @@
+ // and each register is kRegElems contiguous channels — so a row is k/kRegElems
+ // contiguous kRegElems-byte copies. Lets the caller drop the raw int8 copy and
+ // serve embedding lookups out of this one packed buffer.
+-void gemmology_read_row(const void *handle, size_t id, int8_t *out) {
++FXT_EXPORT void FXT_SYM(gemmology_read_row)(const void *handle, size_t id, int8_t *out) {
+   const PreparedB *h = static_cast<const PreparedB *>(handle);
+   const size_t kblocks = h->k / kRegElems;
+   const size_t row_block = id / kColStride;
+@@ -285,7 +305,7 @@
+ // (row-major), `bias` is the prepared bias of length n, `out` is [m, n]
+ // row-major. All caller buffers may be unaligned; the shim stages aligned
+ // copies as gemmology requires aligned SIMD access.
+-void gemmology_multiply(void *handle, const uint8_t *a, size_t m, float unquant,
++FXT_EXPORT void FXT_SYM(gemmology_multiply)(void *handle, const uint8_t *a, size_t m, float unquant,
+                         const float *bias, float *out) {
+   const PreparedB *h = static_cast<const PreparedB *>(handle);
+   const size_t k = h->k, n = h->n, n_pad = h->n_pad;
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/src/gemm.rs fxtranslate-patched/src/gemm.rs
+--- a/src/gemm.rs	2026-09-20 17:34:31.865291590 +0200
++++ b/src/gemm.rs	2026-09-20 17:32:35.324354034 +0200
+@@ -18,8 +18,11 @@
+ 
+ #[cfg(gemmology_simd)]
+ mod imp {
+-    use std::os::raw::{c_char, c_void};
++    #[cfg(not(fxt_multiarch))]
++    use std::os::raw::c_char;
++    use std::os::raw::c_void;
+ 
++    #[cfg(not(fxt_multiarch))]
+     extern "C" {
+         fn gemmology_prepare_b(b_transposed: *const i8, n: usize, k: usize) -> *mut c_void;
+         fn gemmology_free_b(handle: *mut c_void);
+@@ -37,6 +40,174 @@
+         fn gemmology_gemm_threads() -> usize;
+     }
+ 
++    // ── Выбор набора инструкций во время работы ──────────────────────────────
++    // Сборка под несколько наборов (FXT_GEMM_X86_MULTI): в двоичном файле лежит
++    // по копии ядра на каждый набор, а какой звать — решается один раз при первом
++    // обращении по флагам процессора. На процессоре без AVX2 таблицы нет вовсе:
++    // `PreparedB::new` отдаёт `None`, и движок уходит на скалярное ядро — вместо
++    // SIGILL, которым кончается сборка под набор, которого у процессора нет.
++    #[cfg(fxt_multiarch)]
++    mod dispatch {
++        use std::os::raw::{c_char, c_void};
++
++        /// Таблица точек входа одного набора инструкций.
++        pub struct Table {
++            pub prepare_b: unsafe extern "C" fn(*const i8, usize, usize) -> *mut c_void,
++            pub free_b: unsafe extern "C" fn(*mut c_void),
++            pub multiply:
++                unsafe extern "C" fn(*mut c_void, *const u8, usize, f32, *const f32, *mut f32),
++            pub prepared_bytes: unsafe extern "C" fn() -> usize,
++            pub read_row: unsafe extern "C" fn(*const c_void, usize, *mut i8),
++            pub backend_name: unsafe extern "C" fn() -> *const c_char,
++            pub gemm_threads: unsafe extern "C" fn() -> usize,
++        }
++
++        macro_rules! арка {
++            ($имя:ident, $суф:literal) => {
++                pub mod $имя {
++                    use super::Table;
++                    use std::os::raw::{c_char, c_void};
++                    extern "C" {
++                        #[link_name = concat!("gemmology_prepare_b", $суф)]
++                        fn prepare_b(b: *const i8, n: usize, k: usize) -> *mut c_void;
++                        #[link_name = concat!("gemmology_free_b", $суф)]
++                        fn free_b(h: *mut c_void);
++                        #[link_name = concat!("gemmology_multiply", $суф)]
++                        fn multiply(
++                            h: *mut c_void,
++                            a: *const u8,
++                            m: usize,
++                            unquant: f32,
++                            bias: *const f32,
++                            out: *mut f32,
++                        );
++                        #[link_name = concat!("gemmology_prepared_bytes", $суф)]
++                        fn prepared_bytes() -> usize;
++                        #[link_name = concat!("gemmology_read_row", $суф)]
++                        fn read_row(h: *const c_void, id: usize, out: *mut i8);
++                        #[link_name = concat!("gemmology_backend_name", $суф)]
++                        fn backend_name() -> *const c_char;
++                        #[link_name = concat!("gemmology_gemm_threads", $суф)]
++                        fn gemm_threads() -> usize;
++                    }
++                    pub static TABLE: Table = Table {
++                        prepare_b,
++                        free_b,
++                        multiply,
++                        prepared_bytes,
++                        read_row,
++                        backend_name,
++                        gemm_threads,
++                    };
++                }
++            };
++        }
++        арка!(avx2, "_avx2");
++        арка!(avxvnni, "_avxvnni");
++        арка!(avx512bw, "_avx512bw");
++        арка!(avx512vnni, "_avx512vnni");
++
++        /// Лучший набор, который умеет этот процессор. `None` — нет даже AVX2.
++        /// Порядок: AVX512-VNNI → AVX512-BW → AVX-VNNI → AVX2.
++        /// Переменная `FXT_GEMM_X86_ARCH` задаёт набор принудительно (для сверок);
++        /// набор, которого процессор не умеет, она навязать не может.
++        fn выбрать() -> Option<&'static Table> {
++            // Аварийный выход для поддержки: принудительно скалярное ядро, если
++            // на машине покупателя SIMD-путь повёл себя не так.
++            if std::env::var("FXT_GEMM_FORCE_SCALAR").as_deref() == Ok("1") {
++                return None;
++            }
++            let принудительно = std::env::var("FXT_GEMM_X86_ARCH").unwrap_or_default();
++            let умеет = |н: &str| match н {
++                "avx512vnni" => {
++                    is_x86_feature_detected!("avx512vnni")
++                        && is_x86_feature_detected!("avx512bw")
++                        && is_x86_feature_detected!("avx512vl")
++                        && is_x86_feature_detected!("avx512dq")
++                }
++                "avx512bw" => {
++                    is_x86_feature_detected!("avx512bw")
++                        && is_x86_feature_detected!("avx512vl")
++                        && is_x86_feature_detected!("avx512dq")
++                }
++                "avxvnni" => is_x86_feature_detected!("avxvnni") && is_x86_feature_detected!("avx2"),
++                "avx2" => is_x86_feature_detected!("avx2"),
++                _ => false,
++            };
++            let таблица = |н: &str| match н {
++                "avx512vnni" => Some(&avx512vnni::TABLE),
++                "avx512bw" => Some(&avx512bw::TABLE),
++                "avxvnni" => Some(&avxvnni::TABLE),
++                "avx2" => Some(&avx2::TABLE),
++                _ => None,
++            };
++            if !принудительно.is_empty() && умеет(&принудительно) {
++                return таблица(&принудительно);
++            }
++            ["avx512vnni", "avx512bw", "avxvnni", "avx2"]
++                .into_iter()
++                .find(|н| умеет(н))
++                .and_then(таблица)
++        }
++
++        pub fn table() -> Option<&'static Table> {
++            static T: std::sync::OnceLock<Option<&'static Table>> = std::sync::OnceLock::new();
++            *T.get_or_init(выбрать)
++        }
++    }
++
++    // Обёртки под тем же именем, что и прямые внешние функции: остальной модуль
++    // не знает, одноядерная сборка или многоядерная.
++    #[cfg(fxt_multiarch)]
++    #[allow(non_snake_case)]
++    mod многоарочные {
++        use super::dispatch::table;
++        use std::os::raw::{c_char, c_void};
++        pub unsafe fn gemmology_prepare_b(b: *const i8, n: usize, k: usize) -> *mut c_void {
++            match table() {
++                Some(t) => (t.prepare_b)(b, n, k),
++                // Нет AVX2 — ядра нет, вызывающий уходит на скалярный путь.
++                None => std::ptr::null_mut(),
++            }
++        }
++        pub unsafe fn gemmology_free_b(h: *mut c_void) {
++            if let Some(t) = table() {
++                (t.free_b)(h)
++            }
++        }
++        pub unsafe fn gemmology_multiply(
++            h: *mut c_void,
++            a: *const u8,
++            m: usize,
++            unquant: f32,
++            bias: *const f32,
++            out: *mut f32,
++        ) {
++            if let Some(t) = table() {
++                (t.multiply)(h, a, m, unquant, bias, out)
++            }
++        }
++        pub unsafe fn gemmology_prepared_bytes() -> usize {
++            table().map(|t| (t.prepared_bytes)()).unwrap_or(0)
++        }
++        pub unsafe fn gemmology_read_row(h: *const c_void, id: usize, out: *mut i8) {
++            if let Some(t) = table() {
++                (t.read_row)(h, id, out)
++            }
++        }
++        pub unsafe fn gemmology_backend_name() -> *const c_char {
++            match table() {
++                Some(t) => (t.backend_name)(),
++                None => c"scalar (нет AVX2)".as_ptr(),
++            }
++        }
++        pub unsafe fn gemmology_gemm_threads() -> usize {
++            table().map(|t| (t.gemm_threads)()).unwrap_or(0)
++        }
++    }
++    #[cfg(fxt_multiarch)]
++    use многоарочные::*;
++
+     /// Cores the intra-op GEMM pool will use (feature `gemm-threads` +
+     /// `FXT_GEMM_THREADS`): `1` = inert (sequential), `0` = feature not compiled.
+     pub fn gemm_threads() -> usize {
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/src/ops.rs fxtranslate-patched/src/ops.rs
+--- a/src/ops.rs	2026-09-20 17:34:31.865291590 +0200
++++ b/src/ops.rs	2026-09-20 14:41:14.192603315 +0200
+@@ -464,10 +464,18 @@
+ pub fn prepare_a_into(input: &[f32], quant_mult: f32, out: &mut Vec<u8>) {
+     out.clear();
+     out.reserve(input.len());
++    // `f32::round_ties_even` lowers to a libm `rintf` *call* unless the target has
++    // SSE4.1 `roundps` — and the x86-64 baseline does not, so a stock
++    // `cargo build` on x86 pays one call per activation element. The magic-number
++    // add/sub below is the same round-half-to-even for |v| < 2^22 (which
++    // `clamp(-127, 127)` guarantees) using only add/sub/and/or, so it vectorizes
++    // on the plain baseline. `abs`/`copysign` are bit operations, so the sign is
++    // handled without a branch.
++    const MAGIC: f32 = 12_582_912.0; // 1.5 * 2^23
+     out.extend(input.iter().map(|&x| {
+-        let q = (x * quant_mult).round_ties_even();
+-        let clamped = q.clamp(-127.0, 127.0);
+-        (clamped as i32 + 127) as u8
++        let v = (x * quant_mult).clamp(-127.0, 127.0);
++        let q = ((v.abs() + MAGIC) - MAGIC).copysign(v);
++        (q as i32 + 127) as u8
+     }));
+ }
+ 
+@@ -818,3 +826,32 @@
+         assert_eq!(out, vec![4.0, 6.0, 4.0, 6.0, 40.0, 60.0, 40.0, 60.0]);
+     }
+ }
++
++#[cfg(test)]
++mod prepare_a_rounding_tests {
++    /// The branch-free magic-number rounding in `prepare_a_into` must agree with
++    /// `round_ties_even` + `clamp` on every value the affine can see, including the
++    /// exact .5 ties and the saturating tails.
++    #[test]
++    fn matches_round_ties_even() {
++        let reference = |x: f32, qm: f32| -> u8 {
++            let q = (x * qm).round_ties_even();
++            (q.clamp(-127.0, 127.0) as i32 + 127) as u8
++        };
++        let mut xs: Vec<f32> = Vec::new();
++        // every half-integer and integer in range, both signs, plus the tails
++        for i in -600i32..=600 {
++            xs.push(i as f32 * 0.5);
++            xs.push(i as f32 * 0.5 + 0.25);
++            xs.push(i as f32 * 0.5 - 0.25);
++        }
++        xs.extend([0.0, -0.0, 1e-9, -1e-9, 1e6, -1e6]);
++        for qm in [1.0f32, 0.5, 2.0, 63.7, 0.017] {
++            let mut got = Vec::new();
++            super::prepare_a_into(&xs, qm, &mut got);
++            for (i, &x) in xs.iter().enumerate() {
++                assert_eq!(got[i], reference(x, qm), "x={x} qm={qm}");
++            }
++        }
++    }
++}
+diff --color -ruN --no-dereference -x vendor -x tests -x Cargo.lock эталон/src/shortlist.rs fxtranslate-patched/src/shortlist.rs
+--- a/src/shortlist.rs	2026-09-20 17:34:31.865291590 +0200
++++ b/src/shortlist.rs	2026-09-20 14:41:14.193028155 +0200
+@@ -65,6 +65,39 @@
+         }
+     }
+ 
++    /// Candidates for a whole *batch* of sentences, matching marian's
++    /// `BinaryShortlistGenerator::generate`, which walks `CorpusBatch::data()` —
++    /// every token of the mini-batch — and returns one candidate set shared by
++    /// all rows. The per-sentence [`candidates`] is a strictly narrower set.
++    pub fn candidates_batch(&self, batch: &[Vec<u32>], shared: bool) -> Vec<u32> {
++        use std::collections::BTreeSet;
++        let mut set: BTreeSet<u32> = BTreeSet::new();
++        for i in 0..self.first_num {
++            set.insert(i);
++        }
++        for s in batch {
++            for &w in s {
++                if shared {
++                    set.insert(w);
++                }
++                let w = w as usize;
++                if w + 1 < self.word_to_offset.len() {
++                    let start = self.word_to_offset[w] as usize;
++                    let end = self.word_to_offset[w + 1] as usize;
++                    for &cand in &self.short_lists[start..end] {
++                        set.insert(cand);
++                    }
++                }
++            }
++        }
++        let mut i = self.first_num;
++        while set.len() % 8 != 0 {
++            set.insert(i);
++            i += 1;
++        }
++        set.into_iter().collect()
++    }
++
+     /// The candidate target ids for a source sentence, sorted. `shared` is true
+     /// when source and target share a vocabulary (then source tokens are also
+     /// candidates). Mirrors `LexicalShortlistGenerator::getShortlist`.

@@ -1,0 +1,11 @@
+{
+  "profile_background": {
+    "communityitemid": "999",
+    "name": "Анимированный фон",
+    "item_title": "Animated BG",
+    "movie_webm": "movies/anim.webm",
+    "movie_mp4": "movies/anim.mp4",
+    "image_large": "images/anim_frame.jpg",
+    "image_small": "images/anim_small.jpg"
+  }
+}

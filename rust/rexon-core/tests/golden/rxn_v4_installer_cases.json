@@ -1,0 +1,344 @@
+{
+  "slugify": [
+    {
+      "title": "The Witcher 3 — Geralt Theme",
+      "slug": "the-witcher-3-geralt-theme"
+    },
+    {
+      "title": "  Ведьмак 3  ",
+      "slug": "3"
+    },
+    {
+      "title": "Neon 2077!!!",
+      "slug": "neon-2077"
+    },
+    {
+      "title": "___",
+      "slug": "wallpaper"
+    },
+    {
+      "title": "",
+      "slug": "wallpaper"
+    },
+    {
+      "title": "Hello",
+      "slug": "hello"
+    },
+    {
+      "title": "MiXeD CaSe 42",
+      "slug": "mixed-case-42"
+    },
+    {
+      "title": "a.b.c",
+      "slug": "a-b-c"
+    },
+    {
+      "title": "многоъ---дефисов",
+      "slug": "wallpaper"
+    },
+    {
+      "title": "under_score name",
+      "slug": "under-score-name"
+    },
+    {
+      "title": "trailing---",
+      "slug": "trailing"
+    },
+    {
+      "title": "---leading",
+      "slug": "leading"
+    }
+  ],
+  "short_hash": {
+    "file": "sample.rxn",
+    "hash": "5623f3d7"
+  },
+  "collect": [
+    {
+      "manifest": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "X",
+        "videos": {
+          "1080p": "data/video/1080p.mp4",
+          "2160p": "data/video/2160p.mp4"
+        },
+        "audio_tracks": {
+          "ru": "data/audio/ru.mp3",
+          "en": "data/audio/en.mp3"
+        },
+        "fallback_video": "data/video/1080p.mp4",
+        "fallback_audio": "data/audio/ru.mp3",
+        "preview": "preview.png",
+        "default_locale": "ru"
+      },
+      "paths": [
+        "data/video/1080p.mp4",
+        "data/video/2160p.mp4",
+        "data/audio/ru.mp3",
+        "data/audio/en.mp3",
+        "data/video/1080p.mp4",
+        "data/audio/ru.mp3",
+        "preview.png"
+      ]
+    },
+    {
+      "manifest": {
+        "videos": {
+          "720p": "v.mp4"
+        },
+        "audio_tracks": {},
+        "fallback_video": "v.mp4"
+      },
+      "paths": [
+        "v.mp4",
+        "v.mp4"
+      ]
+    },
+    {
+      "manifest": {
+        "videos": {
+          "1080p": "a.mp4"
+        },
+        "fallback_video": "a.mp4",
+        "preview": "",
+        "fallback_audio": null
+      },
+      "paths": [
+        "a.mp4",
+        "a.mp4"
+      ]
+    }
+  ],
+  "verify": [
+    {
+      "ok": true,
+      "err": "",
+      "names": [
+        "manifest.json",
+        "data/video/1080p.mp4",
+        "preview.png"
+      ],
+      "paths": [
+        "data/video/1080p.mp4",
+        "preview.png"
+      ]
+    },
+    {
+      "ok": false,
+      "err": "Объявленный в manifest файл отсутствует в архиве: 'data/audio/ru.mp3'",
+      "names": [
+        "manifest.json",
+        "data/video/1080p.mp4",
+        "preview.png"
+      ],
+      "paths": [
+        "data/video/1080p.mp4",
+        "data/audio/ru.mp3"
+      ]
+    },
+    {
+      "ok": true,
+      "err": "",
+      "names": [
+        "manifest.json",
+        "data/video/1080p.mp4",
+        "preview.png"
+      ],
+      "paths": [
+        "",
+        "preview.png"
+      ]
+    },
+    {
+      "ok": false,
+      "err": "Объявленный в manifest файл отсутствует в архиве: 'missing.mp4'",
+      "names": [
+        "manifest.json",
+        "data/video/1080p.mp4",
+        "preview.png"
+      ],
+      "paths": [
+        "missing.mp4"
+      ]
+    }
+  ],
+  "validate_msg": [
+    {
+      "manifest": {
+        "format_version": 3,
+        "type": "wallpaper-video-adaptive",
+        "title": "T",
+        "videos": {
+          "1080p": "v.mp4"
+        },
+        "fallback_video": "v.mp4",
+        "default_locale": "ru"
+      },
+      "ok": false,
+      "message": "Неверный manifest: format_version=3, ожидается 4"
+    },
+    {
+      "manifest": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "",
+        "videos": {
+          "1080p": "v.mp4"
+        },
+        "fallback_video": "v.mp4",
+        "default_locale": "ru"
+      },
+      "ok": false,
+      "message": "Неверный manifest: title должен быть непустой строкой"
+    },
+    {
+      "manifest": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "T",
+        "videos": {},
+        "fallback_video": "v.mp4",
+        "default_locale": "ru"
+      },
+      "ok": false,
+      "message": "Неверный manifest: videos должен быть непустым словарём"
+    }
+  ],
+  "remove_slug": [
+    {
+      "slug": "",
+      "error": "Некорректный slug: ''"
+    },
+    {
+      "slug": "a/b",
+      "error": "Некорректный slug: 'a/b'"
+    },
+    {
+      "slug": "a\\b",
+      "error": "Некорректный slug: 'a\\\\b'"
+    },
+    {
+      "slug": ".hidden",
+      "error": "Некорректный slug: '.hidden'"
+    },
+    {
+      "slug": "..",
+      "error": "Некорректный slug: '..'"
+    },
+    {
+      "slug": "./x",
+      "error": "Некорректный slug: './x'"
+    },
+    {
+      "slug": "\\",
+      "error": "Некорректный slug: '\\\\'"
+    },
+    {
+      "slug": "normal-name",
+      "error": null
+    }
+  ],
+  "list_entries": [
+    {
+      "sub": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4",
+      "manifest": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "Demo A",
+        "videos": {
+          "1080p": "data/video/1080p.mp4",
+          "2160p": "data/video/2160p.mp4"
+        },
+        "audio_tracks": {
+          "ru": "data/audio/ru.mp3",
+          "en": "data/audio/en.mp3"
+        },
+        "fallback_video": "data/video/1080p.mp4",
+        "fallback_audio": "data/audio/ru.mp3",
+        "preview": "preview.png",
+        "default_locale": "ru",
+        "loop": true,
+        "tags": [
+          "neon",
+          "city"
+        ]
+      },
+      "preview_exists": true,
+      "fallback_video_exists": true,
+      "fallback_audio_exists": true,
+      "expected": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "Demo A",
+        "videos": {
+          "1080p": "data/video/1080p.mp4",
+          "2160p": "data/video/2160p.mp4"
+        },
+        "audio_tracks": {
+          "ru": "data/audio/ru.mp3",
+          "en": "data/audio/en.mp3"
+        },
+        "fallback_video": "data/video/1080p.mp4",
+        "fallback_audio": "data/audio/ru.mp3",
+        "preview": "preview.png",
+        "default_locale": "ru",
+        "loop": true,
+        "tags": [
+          "neon",
+          "city"
+        ],
+        "_install_dir": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4",
+        "_manifest_path": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/manifest.json",
+        "_preview_path": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/preview.png",
+        "_videos_abs": {
+          "1080p": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/video/1080p.mp4",
+          "2160p": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/video/2160p.mp4"
+        },
+        "_audio_abs": {
+          "ru": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/audio/ru.mp3",
+          "en": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/audio/en.mp3"
+        },
+        "_fallback_video_abs": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/video/1080p.mp4",
+        "_fallback_audio_abs": "/tmp/rexon-golden/wallpapers/demo-a1b2c3d4/data/audio/ru.mp3",
+        "_slug": "demo-a1b2c3d4"
+      }
+    },
+    {
+      "sub": "/tmp/rexon-golden/wallpapers/second-99887766",
+      "manifest": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "Second",
+        "videos": {
+          "720p": "data/video/720p.mp4"
+        },
+        "fallback_video": "data/video/720p.mp4",
+        "default_locale": "en"
+      },
+      "preview_exists": false,
+      "fallback_video_exists": true,
+      "fallback_audio_exists": false,
+      "expected": {
+        "format_version": 4,
+        "type": "wallpaper-video-adaptive",
+        "title": "Second",
+        "videos": {
+          "720p": "data/video/720p.mp4"
+        },
+        "fallback_video": "data/video/720p.mp4",
+        "default_locale": "en",
+        "_install_dir": "/tmp/rexon-golden/wallpapers/second-99887766",
+        "_manifest_path": "/tmp/rexon-golden/wallpapers/second-99887766/manifest.json",
+        "_preview_path": null,
+        "_videos_abs": {
+          "720p": "/tmp/rexon-golden/wallpapers/second-99887766/data/video/720p.mp4"
+        },
+        "_audio_abs": {},
+        "_fallback_video_abs": "/tmp/rexon-golden/wallpapers/second-99887766/data/video/720p.mp4",
+        "_fallback_audio_abs": null,
+        "_slug": "second-99887766"
+      }
+    }
+  ]
+}

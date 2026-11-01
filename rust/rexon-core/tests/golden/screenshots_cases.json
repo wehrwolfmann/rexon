@@ -1,0 +1,1039 @@
+{
+ "screenshot_dir": "/home/user/.config/rexon/screenshots",
+ "de_colors": {
+  "cinnamon-mint": [
+   "#4CAF50",
+   "#2E7D32"
+  ],
+  "cinnamon": [
+   "#8BC34A",
+   "#558B2F"
+  ],
+  "xfce": [
+   "#2196F3",
+   "#1565C0"
+  ],
+  "mate": [
+   "#4CAF50",
+   "#1B5E20"
+  ],
+  "gnome": [
+   "#3F51B5",
+   "#1A237E"
+  ],
+  "kde": [
+   "#1565C0",
+   "#0D47A1"
+  ],
+  "budgie": [
+   "#5E35B1",
+   "#311B92"
+  ],
+  "pantheon": [
+   "#3689E6",
+   "#0D52BF"
+  ],
+  "deepin": [
+   "#0081FF",
+   "#0050A0"
+  ],
+  "cosmic": [
+   "#E64A19",
+   "#BF360C"
+  ],
+  "hyprland": [
+   "#00BCD4",
+   "#006064"
+  ],
+  "lxqt": [
+   "#03A9F4",
+   "#01579B"
+  ],
+  "niri": [
+   "#EC407A",
+   "#AD1457"
+  ],
+  "sway": [
+   "#26A69A",
+   "#00695C"
+  ],
+  "river": [
+   "#5C6BC0",
+   "#283593"
+  ],
+  "wayfire": [
+   "#FF7043",
+   "#BF360C"
+  ]
+ },
+ "de_display_names": {
+  "cinnamon-mint": "Cinnamon Mint",
+  "cinnamon": "Cinnamon",
+  "xfce": "XFCE",
+  "mate": "MATE",
+  "gnome": "GNOME",
+  "kde": "KDE Plasma",
+  "budgie": "Budgie",
+  "pantheon": "Pantheon",
+  "deepin": "Deepin",
+  "cosmic": "COSMIC",
+  "hyprland": "Hyprland",
+  "lxqt": "LXQt",
+  "niri": "niri",
+  "sway": "Sway",
+  "river": "River",
+  "wayfire": "Wayfire"
+ },
+ "svgs": {
+  "cinnamon-mint": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#4CAF50\"/>\n      <stop offset=\"100%\" style=\"stop-color:#2E7D32\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Cinnamon Mint</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "cinnamon": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#8BC34A\"/>\n      <stop offset=\"100%\" style=\"stop-color:#558B2F\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Cinnamon</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "xfce": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#2196F3\"/>\n      <stop offset=\"100%\" style=\"stop-color:#1565C0\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">XFCE</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "mate": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#4CAF50\"/>\n      <stop offset=\"100%\" style=\"stop-color:#1B5E20\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">MATE</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "gnome": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#3F51B5\"/>\n      <stop offset=\"100%\" style=\"stop-color:#1A237E\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">GNOME</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "kde": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#1565C0\"/>\n      <stop offset=\"100%\" style=\"stop-color:#0D47A1\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">KDE Plasma</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "budgie": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#5E35B1\"/>\n      <stop offset=\"100%\" style=\"stop-color:#311B92\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Budgie</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "pantheon": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#3689E6\"/>\n      <stop offset=\"100%\" style=\"stop-color:#0D52BF\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Pantheon</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "deepin": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#0081FF\"/>\n      <stop offset=\"100%\" style=\"stop-color:#0050A0\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Deepin</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "cosmic": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#E64A19\"/>\n      <stop offset=\"100%\" style=\"stop-color:#BF360C\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">COSMIC</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "hyprland": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#00BCD4\"/>\n      <stop offset=\"100%\" style=\"stop-color:#006064\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Hyprland</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "lxqt": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#03A9F4\"/>\n      <stop offset=\"100%\" style=\"stop-color:#01579B\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">LXQt</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "niri": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#EC407A\"/>\n      <stop offset=\"100%\" style=\"stop-color:#AD1457\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">niri</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "sway": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#26A69A\"/>\n      <stop offset=\"100%\" style=\"stop-color:#00695C\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Sway</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "river": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#5C6BC0\"/>\n      <stop offset=\"100%\" style=\"stop-color:#283593\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">River</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "wayfire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#FF7043\"/>\n      <stop offset=\"100%\" style=\"stop-color:#BF360C\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">Wayfire</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "foo": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#607D8B\"/>\n      <stop offset=\"100%\" style=\"stop-color:#37474F\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">FOO</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "bar-baz": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#607D8B\"/>\n      <stop offset=\"100%\" style=\"stop-color:#37474F\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">BAR-BAZ</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "GNOME": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#607D8B\"/>\n      <stop offset=\"100%\" style=\"stop-color:#37474F\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\">GNOME</text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>",
+  "": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"480\" height=\"160\" viewBox=\"0 0 480 160\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n      <stop offset=\"0%\" style=\"stop-color:#607D8B\"/>\n      <stop offset=\"100%\" style=\"stop-color:#37474F\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"480\" height=\"160\" rx=\"10\" fill=\"url(#bg)\"/>\n  <rect y=\"0\" width=\"480\" height=\"24\" fill=\"rgba(0,0,0,0.25)\"/>\n  <rect x=\"8\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FF5F56\"/>\n  <rect x=\"26\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#FFBD2E\"/>\n  <rect x=\"44\" y=\"6\" width=\"10\" height=\"10\" rx=\"5\" fill=\"#27C93F\"/>\n  <rect x=\"60\" y=\"42\" width=\"360\" height=\"98\" rx=\"8\" fill=\"rgba(255,255,255,0.10)\" stroke=\"rgba(255,255,255,0.18)\" stroke-width=\"1\"/>\n  <text x=\"240\" y=\"98\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\"></text>\n  <text x=\"240\" y=\"148\" font-family=\"sans-serif\" font-size=\"11\" fill=\"rgba(255,255,255,0.45)\" text-anchor=\"middle\">Скриншот загружается…</text>\n</svg>"
+ },
+ "tool_argv": {
+  "kde": [
+   [
+    "grim",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ],
+   [
+    "spectacle",
+    "--nonotify",
+    "-b",
+    "-o",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ],
+   [
+    "gnome-screenshot",
+    "-f",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ],
+   [
+    "scrot",
+    "-z",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ],
+   [
+    "maim",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ],
+   [
+    "import",
+    "-window",
+    "root",
+    "/home/user/.config/rexon/screenshots/kde_auto.png"
+   ]
+  ],
+  "gnome": [
+   [
+    "grim",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ],
+   [
+    "spectacle",
+    "--nonotify",
+    "-b",
+    "-o",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ],
+   [
+    "gnome-screenshot",
+    "-f",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ],
+   [
+    "scrot",
+    "-z",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ],
+   [
+    "maim",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ],
+   [
+    "import",
+    "-window",
+    "root",
+    "/home/user/.config/rexon/screenshots/gnome_auto.png"
+   ]
+  ],
+  "foo": [
+   [
+    "grim",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ],
+   [
+    "spectacle",
+    "--nonotify",
+    "-b",
+    "-o",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ],
+   [
+    "gnome-screenshot",
+    "-f",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ],
+   [
+    "scrot",
+    "-z",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ],
+   [
+    "maim",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ],
+   [
+    "import",
+    "-window",
+    "root",
+    "/home/user/.config/rexon/screenshots/foo_auto.png"
+   ]
+  ]
+ },
+ "names": {
+  "cinnamon-mint": {
+   "auto": "cinnamon-mint_auto.png",
+   "custom": "cinnamon-mint.png",
+   "placeholder": "cinnamon-mint_placeholder.svg"
+  },
+  "cinnamon": {
+   "auto": "cinnamon_auto.png",
+   "custom": "cinnamon.png",
+   "placeholder": "cinnamon_placeholder.svg"
+  },
+  "xfce": {
+   "auto": "xfce_auto.png",
+   "custom": "xfce.png",
+   "placeholder": "xfce_placeholder.svg"
+  },
+  "mate": {
+   "auto": "mate_auto.png",
+   "custom": "mate.png",
+   "placeholder": "mate_placeholder.svg"
+  },
+  "gnome": {
+   "auto": "gnome_auto.png",
+   "custom": "gnome.png",
+   "placeholder": "gnome_placeholder.svg"
+  },
+  "kde": {
+   "auto": "kde_auto.png",
+   "custom": "kde.png",
+   "placeholder": "kde_placeholder.svg"
+  },
+  "budgie": {
+   "auto": "budgie_auto.png",
+   "custom": "budgie.png",
+   "placeholder": "budgie_placeholder.svg"
+  },
+  "cosmic": {
+   "auto": "cosmic_auto.png",
+   "custom": "cosmic.png",
+   "placeholder": "cosmic_placeholder.svg"
+  },
+  "hyprland": {
+   "auto": "hyprland_auto.png",
+   "custom": "hyprland.png",
+   "placeholder": "hyprland_placeholder.svg"
+  },
+  "lxqt": {
+   "auto": "lxqt_auto.png",
+   "custom": "lxqt.png",
+   "placeholder": "lxqt_placeholder.svg"
+  },
+  "niri": {
+   "auto": "niri_auto.png",
+   "custom": "niri.png",
+   "placeholder": "niri_placeholder.svg"
+  },
+  "sway": {
+   "auto": "sway_auto.png",
+   "custom": "sway.png",
+   "placeholder": "sway_placeholder.svg"
+  },
+  "foo": {
+   "auto": "foo_auto.png",
+   "custom": "foo.png",
+   "placeholder": "foo_placeholder.svg"
+  },
+  "bar-baz": {
+   "auto": "bar-baz_auto.png",
+   "custom": "bar-baz.png",
+   "placeholder": "bar-baz_placeholder.svg"
+  },
+  "GNOME": {
+   "auto": "GNOME_auto.png",
+   "custom": "GNOME.png",
+   "placeholder": "GNOME_placeholder.svg"
+  },
+  "": {
+   "auto": "_auto.png",
+   "custom": ".png",
+   "placeholder": "_placeholder.svg"
+  }
+ },
+ "path_candidates": {
+  "kde": [
+   "/home/user/.config/rexon/screenshots/kde.png",
+   "/home/user/.config/rexon/screenshots/kde.jpg",
+   "/home/user/.config/rexon/screenshots/kde.webp",
+   "/home/user/.config/rexon/screenshots/kde_auto.png",
+   "/home/user/.config/rexon/screenshots/kde_auto.jpg",
+   "/home/user/.config/rexon/screenshots/kde_auto.webp"
+  ],
+  "foo": [
+   "/home/user/.config/rexon/screenshots/foo.png",
+   "/home/user/.config/rexon/screenshots/foo.jpg",
+   "/home/user/.config/rexon/screenshots/foo.webp",
+   "/home/user/.config/rexon/screenshots/foo_auto.png",
+   "/home/user/.config/rexon/screenshots/foo_auto.jpg",
+   "/home/user/.config/rexon/screenshots/foo_auto.webp"
+  ]
+ },
+ "extra_candidates": {
+  "kde": [
+   "/home/user/.config/rexon/screenshots/kde_1.png",
+   "/home/user/.config/rexon/screenshots/kde_1.jpg",
+   "/home/user/.config/rexon/screenshots/kde_1.webp",
+   "/home/user/.config/rexon/screenshots/kde_2.png",
+   "/home/user/.config/rexon/screenshots/kde_2.jpg",
+   "/home/user/.config/rexon/screenshots/kde_2.webp",
+   "/home/user/.config/rexon/screenshots/kde_3.png",
+   "/home/user/.config/rexon/screenshots/kde_3.jpg",
+   "/home/user/.config/rexon/screenshots/kde_3.webp",
+   "/home/user/.config/rexon/screenshots/kde_4.png",
+   "/home/user/.config/rexon/screenshots/kde_4.jpg",
+   "/home/user/.config/rexon/screenshots/kde_4.webp",
+   "/home/user/.config/rexon/screenshots/kde_5.png",
+   "/home/user/.config/rexon/screenshots/kde_5.jpg",
+   "/home/user/.config/rexon/screenshots/kde_5.webp"
+  ]
+ },
+ "delete_candidates": {
+  "kde": [
+   "/home/user/.config/rexon/screenshots/kde.png",
+   "/home/user/.config/rexon/screenshots/kde.jpg",
+   "/home/user/.config/rexon/screenshots/kde.webp",
+   "/home/user/.config/rexon/screenshots/kde_auto.png",
+   "/home/user/.config/rexon/screenshots/kde_auto.jpg",
+   "/home/user/.config/rexon/screenshots/kde_auto.webp"
+  ],
+  "foo": [
+   "/home/user/.config/rexon/screenshots/foo.png",
+   "/home/user/.config/rexon/screenshots/foo.jpg",
+   "/home/user/.config/rexon/screenshots/foo.webp",
+   "/home/user/.config/rexon/screenshots/foo_auto.png",
+   "/home/user/.config/rexon/screenshots/foo_auto.jpg",
+   "/home/user/.config/rexon/screenshots/foo_auto.webp"
+  ]
+ },
+ "save_cases": {
+  "image/png": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  },
+  "image/webp": {
+   "ext": ".webp",
+   "dest": "/home/user/.config/rexon/screenshots/kde.webp"
+  },
+  "image/jpeg": {
+   "ext": ".jpg",
+   "dest": "/home/user/.config/rexon/screenshots/kde.jpg"
+  },
+  "image/jpg": {
+   "ext": ".jpg",
+   "dest": "/home/user/.config/rexon/screenshots/kde.jpg"
+  },
+  "": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  },
+  "image/gif": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  },
+  "text/html": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  },
+  "None": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  },
+  "application/octet-stream": {
+   "ext": ".png",
+   "dest": "/home/user/.config/rexon/screenshots/kde.png"
+  }
+ },
+ "filename_for_de": {
+  "cinnamon-mint": "LinuxMint22-Wilma-English.png",
+  "cinnamon": null,
+  "xfce": "Xfce_4.18_in_Arch_Linux.png",
+  "mate": "Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
+  "gnome": "Fedora_Workstation_39_Desktop_English.png",
+  "kde": "KDE_neon_6_Breeze_Desktop_English.png",
+  "budgie": "Ubuntu_Budgie_22.04_Desktop.png",
+  "cosmic": "Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
+  "hyprland": "Hyprland_screen.png",
+  "lxqt": "Lubuntu_24.04_LTS_default_desktop_-_English.jpg",
+  "niri": "Screenshot_LXQt-Niri_2025-06-11.png",
+  "sway": "Sway_1.4_Window_Manager.png",
+  "foo": null,
+  "bar-baz": null,
+  "GNOME": null,
+  "": null
+ },
+ "screenshot_urls": {
+  "cinnamon-mint": [
+   "https://www.linuxmint.com/web/img/screenshots/c1.jpg",
+   "https://www.linuxmint.com/web/img/screenshots/c2.jpg",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/LinuxMint22-Wilma-English.png"
+  ],
+  "xfce": [
+   "https://cdn.xfce.org/about/screenshots/4.20-1.png",
+   "https://cdn.xfce.org/about/screenshots/4.18-1.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+  ],
+  "mate": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_menu_-_English.png",
+   "https://mate-desktop.org/screens/screenshot.jpg"
+  ],
+  "gnome": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_Workstation_39_Desktop_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_35_GNOME_Activities_Menu_en.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_41_With_Gnome_47.png"
+  ],
+  "kde": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/KDE_neon_6_Breeze_Desktop_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Arco_Linux_24.05.11_Plasma_menu_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Arco_Linux_24.05.11_Plasma_Dolphin_24.02.2_Breeze_-_English.png"
+  ],
+  "budgie": [
+   "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg",
+   "https://buddiesofbudgie.org/images/blog/2023/01/BudgieMenu.png",
+   "https://buddiesofbudgie.org/images/blog/2023/01/Raven-WidgetView.jpg"
+  ],
+  "pantheon": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_default_desktop_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_menu_1_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_Settings_-_English.png"
+  ],
+  "deepin": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_23.1_default_desktop_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_25_Alpha_default_desktop_-_English.png"
+  ],
+  "cosmic": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
+   "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/cosmic-screensr20.png",
+   "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png"
+  ],
+  "hyprland": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+   "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png",
+   "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png"
+  ],
+  "lxqt": [
+   "https://lxqt-project.org/images/screenshots/light.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Lubuntu_24.04_LTS_default_desktop_-_English.jpg",
+   "https://lxqt-project.org/images/screenshots/pcmanfm-qt.png"
+  ],
+  "niri": [
+   "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Screenshot_LXQt-Niri_2025-06-11.png?width=1200"
+  ],
+  "sway": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_window_manager_on_two_displays.jpg?width=1200"
+  ],
+  "wayfire": [
+   "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/default.png",
+   "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/legacy.png",
+   "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/cube-normal.png",
+   "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/switcher.png"
+  ]
+ },
+ "official_screenshot_urls": {
+  "cinnamon-mint": "https://www.linuxmint.com/web/img/screenshots/c1.jpg",
+  "xfce": "https://cdn.xfce.org/about/screenshots/4.20-1.png",
+  "mate": "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
+  "gnome": "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_Workstation_39_Desktop_English.png",
+  "kde": "https://commons.wikimedia.org/wiki/Special:FilePath/KDE_neon_6_Breeze_Desktop_English.png",
+  "budgie": "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg",
+  "pantheon": "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_default_desktop_-_English.png",
+  "deepin": "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_23.1_default_desktop_-_English.png",
+  "cosmic": "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
+  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+  "lxqt": "https://lxqt-project.org/images/screenshots/light.png",
+  "niri": "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
+  "sway": "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
+  "wayfire": "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/default.png"
+ },
+ "online_url": {
+  "cinnamon-mint": "https://www.linuxmint.com/web/img/screenshots/c1.jpg",
+  "cinnamon": "",
+  "xfce": "https://cdn.xfce.org/about/screenshots/4.20-1.png",
+  "mate": "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
+  "gnome": "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_Workstation_39_Desktop_English.png",
+  "kde": "https://commons.wikimedia.org/wiki/Special:FilePath/KDE_neon_6_Breeze_Desktop_English.png",
+  "budgie": "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg",
+  "cosmic": "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
+  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+  "lxqt": "https://lxqt-project.org/images/screenshots/light.png",
+  "niri": "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
+  "sway": "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
+  "river": "",
+  "wayfire": "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/default.png",
+  "foo": "",
+  "bar-baz": "",
+  "GNOME": "",
+  "": ""
+ },
+ "online_urls": {
+  "cinnamon-mint": [
+   "https://www.linuxmint.com/web/img/screenshots/c1.jpg",
+   "https://www.linuxmint.com/web/img/screenshots/c2.jpg",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/LinuxMint22-Wilma-English.png"
+  ],
+  "cinnamon": [],
+  "xfce": [
+   "https://cdn.xfce.org/about/screenshots/4.20-1.png",
+   "https://cdn.xfce.org/about/screenshots/4.18-1.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+  ],
+  "mate": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_menu_-_English.png",
+   "https://mate-desktop.org/screens/screenshot.jpg"
+  ],
+  "gnome": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_Workstation_39_Desktop_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_35_GNOME_Activities_Menu_en.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_41_With_Gnome_47.png"
+  ],
+  "kde": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/KDE_neon_6_Breeze_Desktop_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Arco_Linux_24.05.11_Plasma_menu_-_English.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Arco_Linux_24.05.11_Plasma_Dolphin_24.02.2_Breeze_-_English.png"
+  ],
+  "budgie": [
+   "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg",
+   "https://buddiesofbudgie.org/images/blog/2023/01/BudgieMenu.png",
+   "https://buddiesofbudgie.org/images/blog/2023/01/Raven-WidgetView.jpg"
+  ],
+  "cosmic": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
+   "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/cosmic-screensr20.png",
+   "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png"
+  ],
+  "hyprland": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+   "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png",
+   "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png"
+  ],
+  "lxqt": [
+   "https://lxqt-project.org/images/screenshots/light.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Lubuntu_24.04_LTS_default_desktop_-_English.jpg",
+   "https://lxqt-project.org/images/screenshots/pcmanfm-qt.png"
+  ],
+  "niri": [
+   "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Screenshot_LXQt-Niri_2025-06-11.png?width=1200"
+  ],
+  "sway": [
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_window_manager_on_two_displays.jpg?width=1200"
+  ],
+  "river": [],
+  "wayfire": [
+   "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/default.png",
+   "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/legacy.png",
+   "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/cube-normal.png",
+   "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/switcher.png"
+  ],
+  "foo": [],
+  "bar-baz": [],
+  "GNOME": [],
+  "": []
+ },
+ "no_tools_msg": "Не найдено программы для снимка экрана (grim, spectacle, gnome-screenshot, scrot, maim)",
+ "wikimedia_api_url": {
+  "KDE_neon_6_Breeze_Desktop_English.png": "https://commons.wikimedia.org/w/api.php?action=query&titles=File:KDE_neon_6_Breeze_Desktop_English.png&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json&formatversion=2",
+  "Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png": "https://commons.wikimedia.org/w/api.php?action=query&titles=File:Pop%21_OS_24.04_Alpha_7_default_desktop_-_English.png&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json&formatversion=2",
+  "Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png": "https://commons.wikimedia.org/w/api.php?action=query&titles=File:Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json&formatversion=2",
+  "Файл с пробелами и #якорем.png": "https://commons.wikimedia.org/w/api.php?action=query&titles=File:%D0%A4%D0%B0%D0%B9%D0%BB%20%D1%81%20%D0%BF%D1%80%D0%BE%D0%B1%D0%B5%D0%BB%D0%B0%D0%BC%D0%B8%20%D0%B8%20%23%D1%8F%D0%BA%D0%BE%D1%80%D0%B5%D0%BC.png&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json&formatversion=2"
+ },
+ "imageinfo": [
+  {
+   "name": "live_ok",
+   "data": {
+    "continue": {
+     "iistart": "2024-02-29T21:18:40Z",
+     "continue": "||"
+    },
+    "query": {
+     "normalized": [
+      {
+       "fromencoded": false,
+       "from": "File:KDE_neon_6_Breeze_Desktop_English.png",
+       "to": "File:KDE neon 6 Breeze Desktop English.png"
+      }
+     ],
+     "pages": [
+      {
+       "pageid": 145962246,
+       "ns": 6,
+       "title": "File:KDE neon 6 Breeze Desktop English.png",
+       "imagerepository": "local",
+       "imageinfo": [
+        {
+         "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/KDE_neon_6_Breeze_Desktop_English.png/960px-KDE_neon_6_Breeze_Desktop_English.png",
+         "thumbwidth": 800,
+         "thumbheight": 500,
+         "responsiveUrls": {
+          "2": "https://upload.wikimedia.org/wikipedia/commons/5/50/KDE_neon_6_Breeze_Desktop_English.png"
+         },
+         "url": "https://upload.wikimedia.org/wikipedia/commons/5/50/KDE_neon_6_Breeze_Desktop_English.png",
+         "descriptionurl": "https://commons.wikimedia.org/wiki/File:KDE_neon_6_Breeze_Desktop_English.png",
+         "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=145962246"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "expected": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/KDE_neon_6_Breeze_Desktop_English.png/960px-KDE_neon_6_Breeze_Desktop_English.png"
+  },
+  {
+   "name": "live_missing",
+   "data": {
+    "batchcomplete": true,
+    "query": {
+     "normalized": [
+      {
+       "fromencoded": false,
+       "from": "File:Rexon_Nonexistent_File_QQQ_2026.png",
+       "to": "File:Rexon Nonexistent File QQQ 2026.png"
+      }
+     ],
+     "pages": [
+      {
+       "ns": 6,
+       "title": "File:Rexon Nonexistent File QQQ 2026.png",
+       "missing": true,
+       "imagerepository": ""
+      }
+     ]
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "empty",
+   "data": {},
+   "expected": null
+  },
+  {
+   "name": "no_query",
+   "data": {
+    "batchcomplete": true
+   },
+   "expected": null
+  },
+  {
+   "name": "pages_empty",
+   "data": {
+    "query": {
+     "pages": []
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "pages_null",
+   "data": {
+    "query": {
+     "pages": null
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "imageinfo_empty",
+   "data": {
+    "query": {
+     "pages": [
+      {
+       "title": "x",
+       "imageinfo": []
+      }
+     ]
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "imageinfo_absent",
+   "data": {
+    "query": {
+     "pages": [
+      {
+       "title": "x"
+      }
+     ]
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "only_url",
+   "data": {
+    "query": {
+     "pages": [
+      {
+       "imageinfo": [
+        {
+         "url": "https://u/o.png"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "expected": "https://u/o.png"
+  },
+  {
+   "name": "thumb_wins",
+   "data": {
+    "query": {
+     "pages": [
+      {
+       "imageinfo": [
+        {
+         "thumburl": "https://u/t.png",
+         "url": "https://u/o.png"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "expected": "https://u/t.png"
+  },
+  {
+   "name": "formatversion1",
+   "data": {
+    "query": {
+     "pages": {
+      "123": {
+       "imageinfo": [
+        {
+         "thumburl": "https://u/fv1.png"
+        }
+       ]
+      }
+     }
+    }
+   },
+   "expected": "https://u/fv1.png"
+  },
+  {
+   "name": "missing_false",
+   "data": {
+    "query": {
+     "pages": [
+      {
+       "missing": false,
+       "imageinfo": [
+        {
+         "url": "https://u/present.png"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "expected": "https://u/present.png"
+  },
+  {
+   "name": "page_not_dict",
+   "data": {
+    "query": {
+     "pages": [
+      "nope"
+     ]
+    }
+   },
+   "expected": null
+  },
+  {
+   "name": "not_dict",
+   "data": [
+    "array",
+    "instead",
+    "of",
+    "object"
+   ],
+   "expected": null
+  }
+ ],
+ "validate_image": [
+  {
+   "content_type": "image/png",
+   "len": 4096,
+   "error": null
+  },
+  {
+   "content_type": "image/jpeg",
+   "len": 512,
+   "error": null
+  },
+  {
+   "content_type": "image/webp",
+   "len": 511,
+   "error": "Файл слишком мал"
+  },
+  {
+   "content_type": "text/html; charset=UTF-8",
+   "len": 34646,
+   "error": "Не изображение: text/html; charset=UTF-8"
+  },
+  {
+   "content_type": "",
+   "len": 0,
+   "error": "Не изображение: "
+  },
+  {
+   "content_type": "application/json",
+   "len": 900,
+   "error": "Не изображение: application/json"
+  },
+  {
+   "content_type": "image/svg+xml",
+   "len": 512,
+   "error": null
+  },
+  {
+   "content_type": "IMAGE/PNG",
+   "len": 1000,
+   "error": "Не изображение: IMAGE/PNG"
+  }
+ ],
+ "retry_wait": {
+  "0": 3,
+  "1": 6,
+  "2": 9,
+  "5": 18
+ },
+ "auto_download_plan": {
+  "existing_counts": {
+   "cinnamon-mint": 0,
+   "xfce": 1,
+   "mate": 0,
+   "gnome": 1,
+   "kde": 3,
+   "budgie": 0,
+   "cosmic": 0,
+   "hyprland": 0,
+   "lxqt": 0,
+   "niri": 2,
+   "sway": 1
+  },
+  "tag_exists": {
+   "cinnamon-mint": false,
+   "cinnamon-mint_1": false,
+   "cinnamon-mint_2": false,
+   "xfce": true,
+   "xfce_1": false,
+   "xfce_2": false,
+   "mate": false,
+   "mate_1": false,
+   "mate_2": false,
+   "gnome": true,
+   "gnome_1": false,
+   "gnome_2": false,
+   "kde": true,
+   "kde_1": true,
+   "kde_2": true,
+   "budgie": false,
+   "budgie_1": false,
+   "budgie_2": false,
+   "cosmic": false,
+   "cosmic_1": false,
+   "cosmic_2": false,
+   "hyprland": false,
+   "hyprland_1": false,
+   "hyprland_2": false,
+   "lxqt": false,
+   "lxqt_1": false,
+   "lxqt_2": false,
+   "niri": true,
+   "niri_1": true,
+   "sway": false,
+   "sway_1": true
+  },
+  "tasks": [
+   [
+    "budgie",
+    "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg"
+   ],
+   [
+    "budgie_1",
+    "https://buddiesofbudgie.org/images/blog/2023/01/BudgieMenu.png"
+   ],
+   [
+    "budgie_2",
+    "https://buddiesofbudgie.org/images/blog/2023/01/Raven-WidgetView.jpg"
+   ],
+   [
+    "pantheon",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_default_desktop_-_English.png"
+   ],
+   [
+    "pantheon_1",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_menu_1_-_English.png"
+   ],
+   [
+    "pantheon_2",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_Settings_-_English.png"
+   ],
+   [
+    "deepin",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_23.1_default_desktop_-_English.png"
+   ],
+   [
+    "deepin_1",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_25_Alpha_default_desktop_-_English.png"
+   ],
+   [
+    "cinnamon-mint",
+    "https://www.linuxmint.com/web/img/screenshots/c1.jpg"
+   ],
+   [
+    "cinnamon-mint_1",
+    "https://www.linuxmint.com/web/img/screenshots/c2.jpg"
+   ],
+   [
+    "cinnamon-mint_2",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/LinuxMint22-Wilma-English.png"
+   ],
+   [
+    "cosmic",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png"
+   ],
+   [
+    "cosmic_1",
+    "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/cosmic-screensr20.png"
+   ],
+   [
+    "cosmic_2",
+    "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png"
+   ],
+   [
+    "gnome_1",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_35_GNOME_Activities_Menu_en.png"
+   ],
+   [
+    "gnome_2",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Fedora_41_With_Gnome_47.png"
+   ],
+   [
+    "hyprland",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png"
+   ],
+   [
+    "hyprland_1",
+    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png"
+   ],
+   [
+    "hyprland_2",
+    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png"
+   ],
+   [
+    "lxqt",
+    "https://lxqt-project.org/images/screenshots/light.png"
+   ],
+   [
+    "lxqt_1",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Lubuntu_24.04_LTS_default_desktop_-_English.jpg"
+   ],
+   [
+    "lxqt_2",
+    "https://lxqt-project.org/images/screenshots/pcmanfm-qt.png"
+   ],
+   [
+    "mate",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png"
+   ],
+   [
+    "mate_1",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_menu_-_English.png"
+   ],
+   [
+    "mate_2",
+    "https://mate-desktop.org/screens/screenshot.jpg"
+   ],
+   [
+    "sway",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200"
+   ],
+   [
+    "xfce_1",
+    "https://cdn.xfce.org/about/screenshots/4.18-1.png"
+   ],
+   [
+    "xfce_2",
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+   ],
+   [
+    "wayfire",
+    "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/default.png"
+   ],
+   [
+    "wayfire_1",
+    "https://raw.githubusercontent.com/WayfireWM/wf-shell/master/gallery/legacy.png"
+   ],
+   [
+    "wayfire_2",
+    "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/cube-normal.png"
+   ],
+   [
+    "wayfire_3",
+    "https://raw.githubusercontent.com/WayfireWM/wayfire-wiki/master/images/switcher.png"
+   ]
+  ],
+  "already": [
+   [
+    "kde",
+    "уже есть (3 шт.)"
+   ],
+   [
+    "niri",
+    "уже есть (2 шт.)"
+   ]
+  ]
+ },
+ "auto_download_tags": {
+  "kde:0": "kde",
+  "kde:1": "kde_1",
+  "kde:2": "kde_2",
+  "kde:3": "kde_3"
+ }
+}

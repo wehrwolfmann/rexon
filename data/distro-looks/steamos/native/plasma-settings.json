@@ -1,0 +1,68 @@
+{
+  "schema": "kde-settings/1",
+  "about": "Rexon's own description of what to apply in Plasma for this look: only keys and declared edits, no code. ${prop.variant} picks one of the variants below. Only the look is taken from Valve's package: no autostart of Steam, no screen locker, kwallet, network or login screen settings.",
+  "copy_only": [
+    "sources/valve/usr/share/plasma/look-and-feel/com.valve.vapor.desktop",
+    "sources/valve/usr/share/plasma/look-and-feel/com.valve.vgui.desktop",
+    "sources/valve/usr/share/color-schemes/Vapor.colors",
+    "sources/valve/usr/share/color-schemes/VGUI.colors",
+    "sources/valve/usr/share/plasma/desktoptheme/Vapor",
+    "sources/valve/usr/share/themes/Vapor"
+  ],
+  "exclude": [
+    "sources/valve/usr/share/plasma/look-and-feel/com.valve.vapor.deck.desktop",
+    "sources/valve/usr/share/plasma/look-and-feel/com.valve.vgui.desktop/contents/splash",
+    "sources/valve/usr/share/plasma/look-and-feel/com.valve.vgui.desktop/contents/icons",
+    "sources/valve/usr/share/wallpapers",
+    "sources/valve/usr/share/icons",
+    "sources/valve/etc",
+    "sources/valve/usr/lib",
+    "sources/valve/usr/bin"
+  ],
+  "variants": {
+    "vapor": {
+      "lookandfeel": "com.valve.vapor.desktop",
+      "colorscheme": "Vapor",
+      "desktoptheme": "Vapor",
+      "cursortheme": "breeze_cursors",
+      "gtk": {"theme": "Vapor", "icons": "breeze-dark", "cursor": "breeze_cursors"}
+    },
+    "vgui": {
+      "lookandfeel": "com.valve.vgui.desktop",
+      "colorscheme": "VGUI",
+      "desktoptheme": "default",
+      "cursortheme": "KDE_Classic",
+      "needs_role": "cursors-kde-classic",
+      "gtk": {"theme": "Vapor", "icons": "breeze-dark", "cursor": "KDE_Classic"}
+    }
+  },
+  "apply": [
+    {"lookandfeel": "${prop.variant}", "reset_layout": false},
+    {"colorscheme": "${prop.variant}"},
+    {"desktoptheme": "${prop.variant}"},
+    {"cursortheme": "${prop.variant}"},
+    {"gtk": "${prop.variant}"},
+    {"kwin_reconfigure": true}
+  ],
+  "kconfig": [
+    {"file": "ksplashrc", "group": ["KSplash"], "key": "Theme", "value": "org.kde.breeze.desktop"},
+    {"file": "ksplashrc", "group": ["KSplash"], "key": "Engine", "value": "KSplashQML"}
+  ],
+  "backup_extra": [
+    "${CONFIG}/gtk-3.0/settings.ini",
+    "${CONFIG}/gtk-4.0/settings.ini",
+    "${CONFIG}/ksplashrc",
+    "${HOME}/.gtkrc-2.0"
+  ],
+  "not_taken": [
+    "etc/xdg/autostart/steam.desktop", "etc/xdg/kdeglobals", "etc/xdg/kscreenlockerrc",
+    "plasma-nm", "kwalletd", "steamos-set-plasma-theme.service", "usr/local/share/applications",
+    "autologin", "jupiter-hw-support"
+  ],
+  "game_session": {
+    "session_file": "gamescope-session-steam.desktop",
+    "autologin": false,
+    "autostart_steam": false,
+    "verify_absent_after_install": ["jupiter-hw-support", "gamescope-session-cachyos"]
+  }
+}

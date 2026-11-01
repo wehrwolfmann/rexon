@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# Очередь сборок для параллельной работы в одном дереве.
+#
+# ЗАЧЕМ. Когда несколько человек (или фоновых помощников) правят одно дерево
+# и каждый собирает в свой каталог target, одна и та же программа собирается
+# несколько раз одновременно. 09.10.2026 шесть таких сборок заняли всю память
+# и сжатую подкачку (zram 30,2 из 30,6 ГБ): видео в браузере и звук
+# захлёбывались, каждая сборка шла 20 минут вместо трёх.
+#
+# Что делает:
+#   * один общий каталог сборки (target-shared) — повторная сборка после
+#     чужой берёт готовое, а не начинает с нуля;
+#   * четыре места (с 10.10.2026, решение Wehrwolfmann): одновременно идут
+#     до ЧЕТЫРЁХ команд cargo, пятая ждёт, пока освободится место. У места 0
+#     каталог target-shared, у мест 1–3 — свои target-slotN: в одном каталоге
+#     cargo всё равно пускает по одному. Новый target-slotN — копия
+#     target-shared через reflink (Btrfs делит блоки, места почти не берёт);
+#   * честная очередь (с 01.11.2026): кто встал раньше, тот раньше и получает
+#     место. Раньше место доставалось тому, кто первым успел его схватить, и
+#     короткий прогон тестов подолгу ждал, пока вперёд влезали новые сборки;
+#   * все сборки — в одном срезе systemd rexon-build.slice с общим потолком
+#     памяти, чтобы четыре разом не задавили рабочий стол;
+#   * низший приоритет по процессору и диску (nice 19, ionice idle) и
+#     отдельная группа systemd с потолком памяти — рабочему столу всегда
+#     достаётся первым;
+#   * 4 потока на сборку (4 × 4 = 16), общий потолок памяти среза.
+#
+# Использование (из любого каталога, аргументы — как у cargo в rust/):
+#   scripts/build-queue check -p rexon-core       # быстрая проверка без сборки
+#   scripts/build-queue build-app                 # приложение целиком
+#   scripts/build-queue test-core --no-fail-fast
+#   scripts/build-queue test -p rexon-gui
+# Пока идёт работа, хватает `check`; build/test — когда нужно запустить или
+# снять снимок.
+#
+# Переменные (необязательно): BUILD_QUEUE_SLOTS (1), BUILD_QUEUE_JOBS (2),
+# BUILD_QUEUE_MEM_HIGH (8G) и BUILD_QUEUE_MEM_MAX (12G) на одну сборку,
+# BUILD_QUEUE_SLICE_HIGH (18G) и BUILD_QUEUE_SLICE_MAX (22G) на все разом,
+# BUILD_QUEUE_TARGET (свой каталог сборки; место всё равно занимается).
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Одно место, пока стоит Crucial P2: 24–25.10 четыре сборки разом доводили
+# давление ввода-вывода до 82 % (24.10 — жёсткие сбросы). После замены диска
+# можно вернуть 4.
+SLOTS="${BUILD_QUEUE_SLOTS:-1}"
+# Две задачи: 25.10 даже одна сборка с -j4 линковала тесты тремя mold разом
+# (~30 МБ/с) и держала давление ввода-вывода на 82 %.
+JOBS="${BUILD_QUEUE_JOBS:-2}"
+MEM_HIGH="${BUILD_QUEUE_MEM_HIGH:-8G}"
+MEM_MAX="${BUILD_QUEUE_MEM_MAX:-12G}"
+SLICE_HIGH="${BUILD_QUEUE_SLICE_HIGH:-18G}"
+SLICE_MAX="${BUILD_QUEUE_SLICE_MAX:-22G}"
+
+[ $# -gt 0 ] || { awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+# `--exec <команда…>` — не cargo, а любая тяжёлая работа вне дерева (make,
+# cmake, ninja, ctest, wine…): та же честная очередь и то же место, но без
+# каталогов сборки Rexon и с DISPLAY вызывающего. Так её зовёт
+# ~/.local/bin/heavy-run, чтобы не обгонять очередь своим flock.
+RAW=0
+if [ "$1" = "--exec" ]; then
+    RAW=1; shift
+    [ $# -gt 0 ] || { echo "использование: build-queue --exec <команда…>" >&2; exit 2; }
+fi
+
+# Место 0 — прежний замок .build-queue.lock: старые запуски и чужие flock
+# на него (~/.local/bin/heavy-run) по-прежнему считаются занятым местом.
+# Само место держит замок flock на дескрипторе 9; он переходит к cargo и
+# снимается ядром, когда сборка кончилась или умерла.
+lock_of() { if [ "$1" -eq 0 ]; then echo "$ROOT/.build-queue.lock"; else echo "$ROOT/.build-queue.lock.$1"; fi; }
+
+# Очередь — билеты в .build-queue.d: номер берётся под замком из счётчика,
+# каждый ждущий держит flock на своём билете (дескриптор 8). Билет живого
+# ждущего занят; билет умершего (kill -9, обрыв) свободен — его пропускают и
+# стирают. Пробовать места может только первый живой билет, поэтому места
+# раздаются строго по порядку прихода; при нескольких местах первый, получив
+# место, уходит из очереди, и следующий сразу пробует свободное.
+QDIR="$ROOT/.build-queue.d"
+mkdir -p "$QDIR"
+ticket_file=""
+drop_ticket() { if [ -n "$ticket_file" ]; then rm -f "$ticket_file"; ticket_file=""; fi; }
+trap drop_ticket EXIT
+for sig in INT TERM HUP; do
+    # Убрать билет и умереть тем же сигналом — код возврата как у прежней версии.
+    trap "drop_ticket; trap - $sig EXIT; kill -$sig \$\$" "$sig"
+done
+
+exec 7>"$QDIR/lock"
+flock 7
+ticket=0
+[ ! -s "$QDIR/next" ] || read -r ticket <"$QDIR/next" || true
+[[ "$ticket" =~ ^[0-9]+$ ]] || ticket=0
+echo $((ticket + 1)) >"$QDIR/next.tmp"
+mv -f "$QDIR/next.tmp" "$QDIR/next"
+# Сначала замок, потом имя: в очереди не бывает билета без хозяина.
+exec 8>"$QDIR/new.$$"
+flock -n 8
+mv -f "$QDIR/new.$$" "$QDIR/t$ticket"
+ticket_file="$QDIR/t$ticket"
+exec 7>&-
+
+# Сколько живых билетов впереди и сколько всего; мёртвые стираются.
+ahead=0
+total=0
+scan_queue() {
+    ahead=0
+    total=0
+    local f n fd
+    for f in "$QDIR"/t*; do
+        n="${f##*/t}"
+        [[ "$n" =~ ^[0-9]+$ ]] || continue
+        if [ "$n" -ne "$ticket" ]; then
+            { exec {fd}<"$f"; } 2>/dev/null || continue    # уже ушёл
+            if flock -n -x "$fd"; then
+                rm -f "$f"                                 # хозяин умер
+                exec {fd}<&-
+                continue
+            fi
+            exec {fd}<&-
+        fi
+        total=$((total + 1))
+        [ "$n" -ge "$ticket" ] || ahead=$((ahead + 1))
+    done
+}
+
+slot=""
+waited=0
+shown=""
+while :; do
+    scan_queue
+    if [ "$ahead" -eq 0 ]; then
+        if [ "$SLOTS" -eq 1 ]; then
+            # Одно место: ждём замок до секунды — освободившееся место
+            # достаётся сразу, а сигналы (Ctrl+C, timeout) не застревают.
+            exec 9>"$(lock_of 0)"
+            if flock -w 1 9 8>&-; then slot=0; break; fi
+            exec 9>&-
+        else
+            for ((i = 0; i < SLOTS; i++)); do
+                exec 9>"$(lock_of "$i")"
+                if flock -n 9; then slot=$i; break; fi
+                exec 9>&-
+            done
+            [ -z "$slot" ] || break
+        fi
+    fi
+    pos="$((ahead + 1)) из $total"
+    if [ "$waited" -eq 0 ]; then
+        echo "build-queue: все $SLOTS места заняты, жду… (в очереди: $pos)" >&2
+        waited=1
+    elif [ "$pos" != "$shown" ]; then
+        echo "build-queue: в очереди: $pos" >&2
+    fi
+    shown="$pos"
+    if [ "$ahead" -eq 0 ] && [ "$SLOTS" -eq 1 ]; then continue; fi
+    if [ "$ahead" -eq 0 ]; then sleep 0.5 8>&-; else sleep 1 8>&-; fi
+done
+# Место взято: билет больше не нужен, следующий в очереди может пробовать.
+drop_ticket
+exec 8>&-
+trap - EXIT INT TERM HUP
+[ "$waited" -eq 0 ] || echo "build-queue: место $slot освободилось" >&2
+
+if [ "$RAW" -eq 1 ]; then
+    if command -v systemd-run >/dev/null && systemd-run --user --scope --quiet true 2>/dev/null; then
+        exec systemd-run --user --scope --quiet --collect --slice=rexon-build.slice nice -n 15 "$@"
+    fi
+    exec nice -n 15 ionice -c 3 "$@"
+fi
+
+if [ -n "${BUILD_QUEUE_TARGET:-}" ]; then
+    TARGET="$BUILD_QUEUE_TARGET"
+elif [ "$slot" -eq 0 ]; then
+    TARGET="$ROOT/target-shared"
+else
+    TARGET="$ROOT/target-slot$slot"
+    if [ ! -d "$TARGET" ] && [ -d "$ROOT/target-shared" ]; then
+        # cxx-qt кладёт в out/ АБСОЛЮТНЫЕ ссылки на свой каталог сборки:
+        # в копии они смотрели бы в target-shared, и build-app падал бы с
+        # «Conflicting include_prefixes for cxx-qt» (10.10.2026, места 2 и 3).
+        # Поэтому после копии ссылки перенаправляем в новый каталог.
+        if cp -a --reflink=always "$ROOT/target-shared" "$TARGET.tmp" 2>/dev/null; then
+            find "$TARGET.tmp" -type l -lname "$ROOT/target-shared/*" -print0 |
+                while IFS= read -r -d '' l; do
+                    dst=$(readlink "$l")
+                    ln -sfn "$TARGET${dst#"$ROOT/target-shared"}" "$l"
+                done
+            mv "$TARGET.tmp" "$TARGET"
+        else
+            rm -rf "$TARGET.tmp"
+        fi
+    fi
+fi
+mkdir -p "$TARGET"
+
+export CARGO_TARGET_DIR="$TARGET" CARGO_BUILD_JOBS="$JOBS"
+# Сборкам и тестам живой экран не нужен (окна для снимков — xvfb-run со своим
+# DISPLAY). 25.10.2026 тест запустил `cinnamon --replace` на живом экране MATE
+# и уронил машину — без DISPLAY такая программа до стола не дотянется.
+unset DISPLAY WAYLAND_DISPLAY
+cd "$ROOT/rust"
+
+runner=(nice -n 19 ionice -c 3)
+if command -v systemd-run >/dev/null && systemd-run --user --scope --quiet true 2>/dev/null; then
+    systemctl --user set-property --runtime rexon-build.slice \
+        MemoryHigh="$SLICE_HIGH" MemoryMax="$SLICE_MAX" CPUWeight=10 IOWeight=10 2>/dev/null || true
+    runner=(systemd-run --user --scope --quiet --collect --slice=rexon-build.slice
+            -p MemoryHigh="$MEM_HIGH" -p MemoryMax="$MEM_MAX"
+            "${runner[@]}")
+fi
+
+exec "${runner[@]}" cargo "$@"

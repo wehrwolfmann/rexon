@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xml:lang="en" lang="en" >
+    <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/archweb.css">
+    <link rel="stylesheet" href="/static/css/aurweb.css">
+
+    <!-- Resources -->
+    <link rel="shortcut icon" href="/static/images/favicon.ico">
+
+    <!-- Alternate resources -->
+    <link rel="alternate" type="application/rss+xml"
+          title="Newest Packages RSS" href="/rss">
+    <link rel="search" type="application/opensearchdescription+xml"
+          href="/static/opensearch.xml"
+          title="Arch Linux User Repository (AUR) Package Search">
+
+    <!-- Include local typeahead -->
+    <script type="text/javascript" src="/static/js/typeahead.js"></script>
+
+    <title>AUR (en) - spotify</title>
+</head>
+
+    <body>
+        <div id="archnavbar" class="anb-aur">
+    <div id="archnavbarlogo">
+        <h1>
+            <a href="/" title="Return to the main page">Arch Linux User Repository</a>
+        </h1>
+    </div>
+    <div id="archnavbarmenu">
+        <ul id="archnavbarlist">
+            <li id="anb-home"><a href="https://www.archlinux.org/" title="Arch news, packages, projects and more">Home</a></li>
+            <li id="anb-packages"><a href="https://www.archlinux.org/packages/" title="Arch Package Database">Packages</a></li>
+            <li id="anb-forums"><a href="https://bbs.archlinux.org/" title="Community forums">Forums</a></li>
+            <li id="anb-wiki"><a href="https://wiki.archlinux.org/" title="Community documentation">Wiki</a></li>
+            <li id="anb-gitlab"><a href="https://gitlab.archlinux.org/archlinux" title="GitLab">GitLab</a></li>
+            <li id="anb-security"><a href="https://security.archlinux.org/" title="Arch Linux Security Tracker">Security</a></li>
+            <li id="anb-aur"><a href="/" title="Arch Linux User Repository">AUR</a></li>
+            <li id="anb-download"><a href="https://www.archlinux.org/download/" title="Get Arch Linux">Download</a></li>
+        </ul>
+    </div>
+</div>
+        <div id="content">
+    <div id="lang_sub">
+    <form method="post" action="/language">
+        <fieldset>
+            <div>
+                <select id="id_setlang" name="set_lang">
+                    
+                    <option
+                        value="ar"
+                        
+                    >
+                        العربية
+                    </option>
+                    
+                    <option
+                        value="ast"
+                        
+                    >
+                        Asturianu
+                    </option>
+                    
+                    <option
+                        value="ca"
+                        
+                    >
+                        Català
+                    </option>
+                    
+                    <option
+                        value="cs"
+                        
+                    >
+                        Český
+                    </option>
+                    
+                    <option
+                        value="da"
+                        
+                    >
+                        Dansk
+                    </option>
+                    
+                    <option
+                        value="de"
+                        
+                    >
+                        Deutsch
+                    </option>
+                    
+                    <option
+                        value="el"
+                        
+                    >
+                        Ελληνικά
+                    </option>
+                    
+                    <option
+                        value="en"
+                        
+                        selected="selected"
+                        
+                    >
+                        English
+                    </option>
+                    
+                    <option
+                        value="es"
+                        
+                    >
+                        Español
+                    </option>
+                    
+                    <option
+                        value="es_419"
+                        
+                    >
+                        Español (Latinoamérica)
+                    </option>
+                    
+                    <option
+                        value="fi"
+                        
+                    >
+                        Suomi
+                    </option>
+                    
+                    <option
+                        value="fr"
+                        
+                    >
+                        Français
+                    </option>
+                    
+                    <option
+                        value="he"
+                        
+                    >
+                        עברית
+                    </option>
+                    
+                    <option
+                        value="hr"
+                        
+                    >
+                        Hrvatski
+                    </option>
+                    
+                    <option
+                        value="hu"
+                        
+                    >
+                        Magyar
+                    </option>
+                    
+                    <option
+                        value="it"
+                        
+                    >
+                        Italiano
+                    </option>
+                    
+                    <option
+                        value="ja"
+                        
+                    >
+                        日本語
+                    </option>
+                    
+                    <option
+                        value="nb"
+                        
+                    >
+                        Norsk
+                    </option>
+                    
+                    <option
+                        value="nl"
+                        
+                    >
+                        Nederlands
+                    </option>
+                    
+                    <option
+                        value="pl"
+                        
+                    >
+                        Polski
+                    </option>
+                    
+                    <option
+                        value="pt_BR"
+                        
+                    >
+                        Português (Brasil)
+                    </option>
+                    
+                    <option
+                        value="pt_PT"
+                        
+                    >
+                        Português (Portugal)
+                    </option>
+                    
+                    <option
+                        value="ro"
+                        
+                    >
+                        Română
+                    </option>
+                    
+                    <option
+                        value="ru"
+                        
+                    >
+                        Русский
+                    </option>
+                    
+                    <option
+                        value="sk"
+                        
+                    >
+                        Slovenčina
+                    </option>
+                    
+                    <option
+                        value="sr"
+                        
+                    >
+                        Srpski
+                    </option>
+                    
+                    <option
+                        value="tr"
+                        
+                    >
+                        Türkçe
+                    </option>
+                    
+                    <option
+                        value="uk"
+                        
+                    >
+                        Українська
+                    </option>
+                    
+                    <option
+                        value="zh_CN"
+                        
+                    >
+                        简体中文
+                    </option>
+                    
+                    <option
+                        value="zh_TW"
+                        
+                    >
+                        正體中文
+                    </option>
+                    
+                </select>
+
+                <!-- Pass our current url path as next. -->
+                <input type="hidden" name="next" value="/packages/spotify">
+
+                <!-- Pass query_params over to /language via POST. -->
+                <input type="hidden" name="q" value="">
+
+                <input type="submit" value="Go">
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="archdev-navbar">
+    <ul>
+        
+            
+            <li><a href="/">AUR Home</a></li>
+        
+
+        
+        <li><a href="/packages">Packages</a></li>
+
+        
+            
+            <li><a href="/register">Register</a></li>
+
+            
+            <li><a href="/login?next=/packages/spotify">Login</a></li>
+        
+    </ul>
+</div>
+
+    
+    <div id="pkglist-search" class="box filter-criteria">
+    <h2>Search Criteria</h2>
+    <form action='/packages' method='get'>
+        <p><input type='hidden' name='O' value='0'/></p>
+
+        <fieldset>
+            <legend>Enter search criteria</legend>
+            <div>
+                <label for="id_method">Search by</label>
+                <select name='SeB'>
+                    <option value="nd" >Name, Description</option>
+                    <option value="n" >Name Only</option>
+                    <option value="b" >Package Base</option>
+                    <option value="N" >Exact Name</option>
+                    <option value="B" >Exact Package Base</option>
+                    <option value="k" >Keywords</option>
+                    <option value="m" >Maintainer</option>
+                    <option value="c" >Co-maintainer</option>
+                    <option value="M" >Maintainer, Co-maintainer</option>
+                    <option value="s" >Submitter</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_q">Keywords</label>
+                <input type='text' name='K' size='30' value="" maxlength='35'/>
+            </div>
+            <div>
+                <label for="id_out_of_date">Out of Date</label>
+                <select name='outdated'>
+                    <option value=''>All</option>
+                    <option value='on' >Flagged</option>
+                    <option value='off' >Not Flagged</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_sort_by">Sort by</label>
+                
+                    
+                
+                <select name='SB'>
+                    <option value='n' >Name</option>
+                    <option value='v' >Votes</option>
+                    <option value='p' selected>Popularity</option>
+                    <option value='w' >Voted</option>
+                    <option value='o' >Notify</option>
+                    <option value='m' >Maintainer</option>
+                    <option value='l' >Last modified</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_order_by">Sort order</label>
+                
+                    
+                
+                <select name='SO'>
+                    <option value='a' >Ascending</option>
+                    <option value='d' selected>Descending</option>
+                </select>
+            </div>
+            <div>
+                <label for="id_per_page">Per page</label>
+                <select name='PP'>
+                    <option value="50" >50</option>
+                    <option value="100" >100</option>
+                    <option value="250" >250</option>
+                </select>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type='submit' class='button' name='submit' value='Go'>
+                    Go
+                </button>
+                <button type='submit' class='button' name='submit' value='Orphans'>
+                    Orphans
+                </button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+    <div id="pkgdetails" class="box">
+        <h2>Package Details: spotify 1:1.2.96.518-2</h2>
+
+        <!--
+    This partial requires pkgbase.Name to render
+-->
+<div id="detailslinks" class="listing">
+    <div id="actionlist">
+        <h4>Package Actions</h4>
+        <ul class="small">
+            <li>
+                <a href="/cgit/aur.git/tree/PKGBUILD?h=spotify">
+                    View PKGBUILD
+                </a>
+                /
+                <a href="/cgit/aur.git/log/?h=spotify">
+                    View Changes
+                </a>
+            </li>
+            <li>
+                <a href="/cgit/aur.git/snapshot/spotify.tar.gz">
+                    Download snapshot
+                </a>
+            </li>
+            <li>
+                <a href="https://wiki.archlinux.org/title/Special:Search?search=spotify">
+                    Search wiki
+                </a>
+            </li>
+			
+			
+            
+            
+            
+            
+            
+            
+        </ul>
+    </div>
+</div>
+
+        
+        <table id="pkginfo">
+    <tr>
+        <th>Git Clone URL:</th>
+        <td>
+            <a class="copy" href="https://aur.archlinux.org/spotify.git">https://aur.archlinux.org/spotify.git</a> (read-only, click to copy)
+            
+        </td>
+    </tr>
+    
+        <tr>
+            <th>Package Base:</th>
+            <td class="wrap">
+                <a href="/pkgbase/spotify">
+                    spotify
+                </a>
+            </td>
+        </tr>
+        <tr id="pkg-description">
+            <th>Description:</th>
+            <td class="wrap">A proprietary music streaming service</td>
+        </tr>
+        <tr>
+            <th>Upstream URL:</th>
+            <td class="wrap">
+                
+                    <a href="https://www.spotify.com">https://www.spotify.com</a>
+                
+            </td>
+        </tr>
+    
+    
+    
+      
+        <tr id="licenses">
+            <th>Licenses:</th>
+            <td>custom </td>
+        </tr>
+      
+      
+      
+      
+      
+    
+    <tr>
+        <th>Submitter:</th>
+        <td>
+            
+                Foxboron
+            
+        </td>
+    </tr>
+    <tr class="pkgmaint">
+        <th>Maintainer:</th>
+        <td>
+            
+                gromit
+                
+		     (Antiz)
+                
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Last Packager:</th>
+        <td>
+            
+                Antiz
+            
+        </td>
+    </tr>
+    <tr>
+        <th>Votes:</th>
+        
+            <td>276</td>
+        
+    </tr>
+    <tr>
+        <th>Popularity:</th>
+        <td>5.68</td>
+    </tr>
+    <tr>
+        <th>First Submitted:</th>
+        <td>2023-02-09 22:51 (UTC)</td>
+    </tr>
+    <tr>
+        <th>Last Updated:</th>
+        <td>2026-08-26 17:40 (UTC)</td>
+    </tr>
+</table>
+
+<script type="text/javascript" src="/static/js/copy.js"></script>
+
+        <div id="metadata">
+            <div id="pkgdeps" class="listing">
+    <h3>Dependencies (14)</h3>
+    <ul id="pkgdepslist">
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=alsa-lib">
+                
+                    alsa-lib</a>
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    
+                
+                    at-spi2-atk
+                    
+                
+
+                
+                    <em>(<a href="/packages/at-spi2-core-git">at-spi2-core-git</a><sup><small>AUR</small></sup>, <a href="https://archlinux.org/packages/?q=at-spi2-core">at-spi2-core</a>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=desktop-file-utils">
+                
+                    desktop-file-utils</a>
+                
+
+                
+                    <em>(<a href="/packages/desktop-file-utils-git">desktop-file-utils-git</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=gtk3">
+                
+                    gtk3</a>
+                
+
+                
+                    <em>(<a href="/packages/gtk3-no_deadkeys_underline">gtk3-no_deadkeys_underline</a><sup><small>AUR</small></sup>, <a href="/packages/gtk3-patched-filechooser-icon-view">gtk3-patched-filechooser-icon-view</a><sup><small>AUR</small></sup>, <a href="/packages/gtk3-classic-xfce">gtk3-classic-xfce</a><sup><small>AUR</small></sup>, <a href="/packages/gtk3-classic">gtk3-classic</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libayatana-appindicator">
+                
+                    libayatana-appindicator</a>
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libayatana-indicator">
+                
+                    libayatana-indicator</a>
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libcurl-gnutls">
+                
+                    libcurl-gnutls</a>
+                
+
+                
+                    <em>(<a href="/packages/libcurl-gnutls-git">libcurl-gnutls-git</a><sup><small>AUR</small></sup>, <a href="/packages/libcurl3-gnutls">libcurl3-gnutls</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libsm">
+                
+                    libsm</a>
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libxss">
+                
+                    libxss</a>
+                
+
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=nss">
+                
+                    nss</a>
+                
+
+                
+                    <em>(<a href="/packages/nss-hg">nss-hg</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=openssl">
+                
+                    openssl</a>
+                
+
+                
+                    <em>(<a href="/packages/openssl-git">openssl-git</a><sup><small>AUR</small></sup>, <a href="/packages/openssl-aegis">openssl-aegis</a><sup><small>AUR</small></sup>, <a href="/packages/openssl-static">openssl-static</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    <em></em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=ffmpeg4.4">
+                
+                    ffmpeg4.4</a>
+                
+
+                
+
+                
+                    
+                    <em>(optional) – Adds support for playback of local files</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=libnotify">
+                
+                    libnotify</a>
+                
+
+                
+                    <em>(<a href="/packages/libnotify-git">libnotify-git</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    
+                    <em>(optional) – Desktop notifications</em>
+                
+            </li>
+        
+            
+            <li>
+                
+                
+                    <a href="https://archlinux.org/packages/?q=zenity">
+                
+                    zenity</a>
+                
+
+                
+                    <em>(<a href="/packages/zenity-gtk3">zenity-gtk3</a><sup><small>AUR</small></sup>, <a href="/packages/zenity-git">zenity-git</a><sup><small>AUR</small></sup>, <a href="/packages/qarma-git">qarma-git</a><sup><small>AUR</small></sup>, <a href="/packages/zenity-rs-bin">zenity-rs-bin</a><sup><small>AUR</small></sup>)</em>
+                
+
+                
+                    
+                    <em>(optional) – Adds support for importing local files</em>
+                
+            </li>
+        
+        
+    </ul>
+</div>
+
+<div id="pkgreqs" class="listing">
+    <h3>Required by (24)</h3>
+    <ul id="pkgreqslist">
+        
+            <li>
+                <a href="/packages/blockify-git">
+                    blockify-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/i3blocks-contrib">
+                    i3blocks-contrib
+                </a>
+
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/i3blocks-contrib-git">
+                    i3blocks-contrib-git
+                </a>
+
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/mustream-git">
+                    mustream-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/noon-optional">
+                    noon-optional
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/polland-de-full">
+                    polland-de-full
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/polybar-spotify">
+                    polybar-spotify
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/polybar-spotify-module">
+                    polybar-spotify-module
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/sp">
+                    sp
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-adblock">
+                    spotify-adblock
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-adblock-git">
+                    spotify-adblock-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-adkiller-dns-block-git">
+                    spotify-adkiller-dns-block-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-adkiller-git">
+                    spotify-adkiller-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-control">
+                    spotify-control
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-fixer">
+                    spotify-fixer
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-remove-ad-banner">
+                    spotify-remove-ad-banner
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-tray-git">
+                    spotify-tray-git
+                </a>
+
+                
+
+                <em></em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-tray-wayland-bin">
+                    spotify-tray-wayland-bin
+                </a>
+
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotify-tray-wayland-git">
+                    spotify-tray-wayland-git
+                </a>
+
+                
+
+                <em>(optional)</em>
+            </li>
+        
+            <li>
+                <a href="/packages/spotifywm-git">
+                    spotifywm-git
+                </a>
+
+                
+
+                <em>(optional)</em>
+            </li>
+        
+        
+            <li>
+                <a href="/packages/spotify?all_reqs=1#pkgreqs">
+                    Show 4 more...
+                </a>
+            </li>
+        
+    </ul>
+</div>
+
+<div id="pkgfiles" class="listing">
+    <h3>Sources (7)</h3>
+</div>
+
+<div>
+    <ul id="pkgsrcslist">
+        
+            
+            <li>
+                <a href="/cgit/aur.git/tree/LICENSE?h=spotify">LICENSE</a>
+            </li>
+        
+            
+            <li>
+                <a href="http://repository.spotify.com/dists/testing/Release.gpg">spotify-1.2.96.518-2-Release.sig</a>
+            </li>
+        
+            
+            <li>
+                <a href="http://repository.spotify.com/dists/testing/Release">spotify-1.2.96.518-2-Release</a>
+            </li>
+        
+            
+            <li>
+                <a href="http://repository.spotify.com/dists/testing/non-free/binary-amd64/Packages">spotify-1.2.96.518-2-x86_64-Packages</a>
+            </li>
+        
+            
+            <li>
+                <a href="http://repository.spotify.com/pool/non-free/s/spotify-client/spotify-client_1.2.96.518.g366879e1_amd64.deb">spotify-1.2.96.518-g366879e1-x86_64.deb</a>
+            </li>
+        
+            
+            <li>
+                <a href="/cgit/aur.git/tree/spotify.protocol?h=spotify">spotify.protocol</a>
+            </li>
+        
+            
+            <li>
+                <a href="/cgit/aur.git/tree/spotify.sh?h=spotify">spotify.sh</a>
+            </li>
+        
+    </ul>
+</div>
+        </div>
+    </div>
+
+    <!-- On-the-fly comment editing functions -->
+    <script type="text/javascript" src="/static/js/comment-edit.js"></script>
+
+    
+    
+    <!--
+    This partial requires the following  to render properly
+    - pkgname
+    - pkgbase-id
+    - comments (list)
+-->
+
+
+
+
+    <div class="comments package-comments">
+        <div class="comments-header">
+            <h3>
+                <span class="text">Pinned Comments</span>
+                <span class="arrow"></span>
+            </h3>
+        </div>
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1048914" class="comment-header">
+		
+		
+		Antiz commented on <a href="#comment-1048914" class="date">2025-11-23 18:37 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2025-11-23 18:41 (UTC) by <a href="/account/Antiz">Antiz</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1048914-content" class="article-content">
+    <div>
+        
+            <p>Please make sure to import the correct OpenPGP key first:</p>
+<pre><code>$ curl -sS https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.gpg | gpg --import -
+</code></pre>
+<p>And always <a href="https://wiki.archlinux.org/title/DeveloperWiki:Building_in_a_clean_chroot">build in a clean chroot</a>. It is as easy as:</p>
+<pre><code>pacman -S devtools
+git clone https://aur.archlinux.org/spotify.git
+cd spotify
+pkgctl build
+pacman -U &lt;path-to-spotify-package&gt;
+</code></pre>
+<p>It is expected that the package will break now and then, as spotify continuously changes download binaries, OpenPGP keys, etc (which is not appropriate, but we cannot change this). Please be patient if an update does not occur the next day, you can still use an existing spotify install or update the version yourself.</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-933620" class="comment-header">
+		
+		
+		Antiz commented on <a href="#comment-933620" class="date">2023-09-13 13:21 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-933620-content" class="article-content">
+    <div>
+        
+            <p>@lightofpast Just pushed <code>v1:1.2.20.1210-2</code> that now <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=spotify&amp;id=d956b55f8893a3af7de150299f8bc7ccc5f8f2a2">allows you to set custom launch flags in a <code>spotify-flags.conf</code> file</a> under <code>$XDG_CONFIG_HOME</code> or <code>~/.config</code> :)</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+	
+	
+
+
+
+        
+    </div>
+
+
+
+    <div class="comments package-comments">
+        <div class="comments-header">
+            <h3>
+                <span class="text">Latest Comments</span>
+                <span class="arrow"></span>
+            </h3>
+            
+            
+
+            
+            <p class="comments-header-nav">
+                  <span class="page">1</span>&nbsp<a class="page" href="?O=10">2</a>&nbsp<a class="page" href="?O=20">3</a>&nbsp<a class="page" href="?O=30">4</a>&nbsp<a class="page" href="?O=40">5</a>&nbsp<a class="page" href="?O=50">6</a>&nbsp..&nbsp<a class="page" href="?O=270">28</a> <a class="page" href="?O=10">Next ›</a> <a class="page" href="?O=270">Last »</a>
+            </p>
+            
+        </div>
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1083404" class="comment-header">
+		
+		
+		inky commented on <a href="#comment-1083404" class="date">2026-08-29 12:28 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1083404-content" class="article-content">
+    <div>
+        
+            <p>couldn't autobuild 1.2.96.518-2 with paru.
+cloned, tried it manually in clean chroot - the error is that I can't download the .sig file</p>
+<p>Had to change all http:// schema to https:// in .SRCINFO and PKGBUILD - clean chroot build succeeds, the package can be built.</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1083140" class="comment-header">
+		
+		
+		Antiz commented on <a href="#comment-1083140" class="date">2026-08-26 17:40 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1083140-content" class="article-content">
+    <div>
+        
+            <p>@ggdG @agarof, this should be fixed now. Thanks for the heads up :)</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1083130" class="comment-header">
+		
+		
+		agarof commented on <a href="#comment-1083130" class="date">2026-08-26 16:38 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1083130-content" class="article-content">
+    <div>
+        
+            <p>To add to the previous comment, spotify needs both <code>libayatana-appindicator</code> and <code>libayatana-indicator</code>.
+<code>libayatana-appindicator</code>'s dependency on <code>libayatana-indicator</code> was recently removed in <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libayatana-appindicator/-/commit/08993c539154a5c3f7fe3d2670b5fbc3d0b7fcac">this commit</a>.</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1083107" class="comment-header">
+		
+		
+		ggdG commented on <a href="#comment-1083107" class="date">2026-08-26 13:06 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2026-08-26 13:08 (UTC) by <a href="/account/ggdG">ggdG</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1083107-content" class="article-content">
+    <div>
+        
+            <p>Spotify cannot start correctly.</p>
+<pre><code>spotify[18277]: /opt/spotify/spotify: error while loading shared libraries: libayatana-indicator3.so.7: cannot open shared object file: No such file or directory
+</code></pre>
+<p>libayatana-appindicator doesn't have libayatana-indicator3.so.7. While libayatana-indicator has.</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1082172" class="comment-header">
+		
+		
+		naxels commented on <a href="#comment-1082172" class="date">2026-08-17 13:03 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2026-08-17 13:08 (UTC) by <a href="/account/naxels">naxels</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1082172-content" class="article-content">
+    <div>
+        
+            <p>Unfortunately the source= <code>"${pkgname}-${pkgver}-${pkgrel}-x86_64-Packages::http://repository.spotify.com/dists/testing/non-free/binary-amd64/Packages"</code> is broken for 1.2.95..</p>
+<p><a href="https://repository.spotify.com/dists/testing/non-free/binary-amd64/Packages">https://repository.spotify.com/dists/testing/non-free/binary-amd64/Packages</a></p>
+<p>returns a newer version: Version: 1:1.2.96.518.g366879e1</p>
+<p>and therefor upon install i receive this error:</p>
+<pre><code>==&gt; Extracting sources...
+  -&gt; Extracting spotify-1.2.95.453-g0eeebbed-x86_64.deb with bsdtar
+==&gt; Starting prepare()...
+spotify-1.2.95.453-1-x86_64-Packages: OK
+spotify-1.2.95.453-g0eeebbed-x86_64.deb: FAILED
+sha512sum: WARNING: 1 computed checksum did NOT match
+==&gt; ERROR: A failure occurred in prepare().
+    Aborting...
+Failed to build package
+</code></pre>
+<p>Also it seems that starting today the listing on
+<a href="https://repository-origin.spotify.com/pool/non-free/s/spotify-client/">https://repository-origin.spotify.com/pool/non-free/s/spotify-client/</a></p>
+<p>also has the newer <code>spotify-client_1.2.96.518.g366879e1_amd64.deb</code> listed</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1081315" class="comment-header">
+		
+		
+		pika commented on <a href="#comment-1081315" class="date">2026-08-10 01:57 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2026-08-10 01:58 (UTC) by <a href="/account/pika">pika</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1081315-content" class="article-content">
+    <div>
+        
+            <p>Looks like the underlying Packages file changed -- the following patch builds for me (making the PKGBUILD reflect the actual Packages file):</p>
+<pre><code>diff --git a/PKGBUILD b/PKGBUILD
+index 4333fe7..7c2cc03 100644
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -6,9 +6,9 @@
+ # Contributor: Eothred &lt;yngve.levinsen@gmail.com&gt;
+
+ pkgname=spotify
+-pkgver='1.2.92.147'
++pkgver='1.2.95.453'
+ epoch=1
+-_commit=g5b8f9367
++_commit=g0eeebbed
+ pkgrel=1
+ pkgdesc='A proprietary music streaming service'
+ arch=('x86_64')
+@@ -34,7 +34,7 @@ source=(&quot;${pkgname}-${pkgver}-${_commit}-x86_64.deb::http://repository.spotify.c
+         &quot;${pkgname}-${pkgver}-${pkgrel}-Release::http://repository.spotify.com/dists/testing/Release&quot;
+         &quot;${pkgname}-${pkgver}-${pkgrel}-Release.sig::http://repository.spotify.com/dists/testing/Release.gpg&quot;
+         &quot;${pkgname}-${pkgver}-${pkgrel}-x86_64-Packages::http://repository.spotify.com/dists/testing/non-free/binary-amd64/Packages&quot;)
+-sha512sums=('e84afeaa3c011c7e06cffa31d0a0113f8851bad57fc26317c2eef74b89985848bdd25b72e4f9a9e55948b8b927f3205a8b9c1047e2f28eec500ac7a2d4913cad'
++sha512sums=('902d9b8200d67e10a19ce5e34316ea14ed05e935fe5493c21f7a8db31b2ffc91375dd18a68734e781b815d57ac9e3aff36da79bce9ff6882a1f247542caab451'
+             'da48b628a4ea925dd8521133ebf364b261b11aed252d264dde6605d915cdb631919ffe672c58534bcdb60869e5d87a49a60a8198780b99517123f0031e83fdb1'
+             '999abe46766a4101e27477f5c9f69394a4bb5c097e2e048ec2c6cb93dfa1743eb436bde3768af6ba1b90eaac78ea8589d82e621f9cbe7d9ab3f41acee6e8ca20'
+             '2e16f7c7b09e9ecefaa11ab38eb7a792c62ae6f33d95ab1ff46d68995316324d8c5287b0d9ce142d1cf15158e61f594e930260abb8155467af8bc25779960615'
+</code></pre>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1081178" class="comment-header">
+		
+		
+		avenita commented on <a href="#comment-1081178" class="date">2026-08-08 20:48 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1081178-content" class="article-content">
+    <div>
+        
+            <p>we have a checksum fail yet again. </p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1079721" class="comment-header">
+		
+		
+		larsrh commented on <a href="#comment-1079721" class="date">2026-07-25 12:15 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2026-07-25 12:16 (UTC) by <a href="/account/larsrh">larsrh</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1079721-content" class="article-content">
+    <div>
+        
+            <p>The following worked for me:</p>
+<pre><code>$ cat .config/spotify-flags.conf
+--audio-api=pulseaudio
+</code></pre>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1078091" class="comment-header">
+		
+		
+		dboneham commented on <a href="#comment-1078091" class="date">2026-07-10 11:55 (UTC)</a>
+		
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1078091-content" class="article-content">
+    <div>
+        
+            <p>Per almond.flour4's comment, I got rid of the error by using an alias for "spotify", this being "spotify --audio-api=pulseaudio". I think you could alternatively do this by including the above in spotify webplayer flags as an environment setting in your .bashrc/.zshrc or .profile file.</p>
+        
+    </div>
+</div>
+
+
+        
+            
+
+
+
+
+
+
+
+	<h4 id="comment-1073184" class="comment-header">
+		
+		
+		almond.flour4 commented on <a href="#comment-1073184" class="date">2026-05-29 03:06 (UTC)</a>
+		
+			
+			<span class="edited">
+				(edited on 2026-05-29 03:06 (UTC) by <a href="/account/almond.flour4">almond.flour4</a>)
+			</span>
+        
+
+        
+
+
+    
+
+    
+
+    
+
+    </h4>
+
+    
+
+
+
+<div id="comment-1073184-content" class="article-content">
+    <div>
+        
+            <p>For the current version of the Spotify package with the "Cannot Play Current Song" error, it looks like it's from a pipewire permissions error. See <a href="https://community.spotify.com/t5/Desktop-Linux/latest-edge-1-2-86-502-g8cd7fb22-cannot-play-audio-on-Ubuntu-24/td-p/7400080">https://community.spotify.com/t5/Desktop-Linux/latest-edge-1-2-86-502-g8cd7fb22-cannot-play-audio-on-Ubuntu-24/td-p/7400080</a></p>
+<p>You can either manually link pipewire permissions via <code>snap connect spotify:pipewire</code> or just run spotify with an alternate audio api flag that you have installed (such as <code>spotify --audio-api=pulseaudio</code>)</p>
+        
+    </div>
+</div>
+
+
+        
+        <div class="comments-footer">
+            
+            <p class="comments-footer-nav">
+                  <span class="page">1</span>&nbsp<a class="page" href="?O=10">2</a>&nbsp<a class="page" href="?O=20">3</a>&nbsp<a class="page" href="?O=30">4</a>&nbsp<a class="page" href="?O=40">5</a>&nbsp<a class="page" href="?O=50">6</a>&nbsp..&nbsp<a class="page" href="?O=270">28</a> <a class="page" href="?O=10">Next ›</a> <a class="page" href="?O=270">Last »</a>
+            </p>
+            
+        </div>
+    </div>
+
+
+
+    <div id="footer">
+    <p>
+        aurweb <a href="https://gitlab.archlinux.org/archlinux/aurweb/-/commits/v6.5.1">v6.5.1</a>
+        
+    </p>
+    <p>Report issues <a href="https://gitlab.archlinux.org/archlinux/aurweb/-/issues/new?issuable_template=Bug">here</a>.</p>
+    <p>Copyright &copy; 2004-2026 aurweb Development Team.</p>
+    <p>AUR packages are user produced content. Any use of the provided files is at your own risk.</p>
+</div>
+</div>

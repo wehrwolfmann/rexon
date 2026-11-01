@@ -1,0 +1,29 @@
+Тема: миниатюры обоев видны на программной отрисовке Qt
+
+СВОЯ ПРАВКА, КАНДИДАТ В АПСТРИМ. `ThumbnailImage` скругляет углы превью
+слоем с эффектом `MD.RoundClip`, а это `ShaderEffect`. Программный граф
+сцены Qt Quick (`QT_QUICK_BACKEND=software`: машины без OpenGL —
+виртуальные машины, старое железо, удалённый рабочий стол) шейдерных
+эффектов не исполняет, и слой с таким эффектом не рисует ничего: на
+вкладке обоев все превью пустые, видны одни названия. Пустеют и
+настоящий плагин QExtra, и наша QML-подмена — дело не в них, а в слое.
+
+Замер 16.10.2026 (Qt 6.12, Xvfb): одна картинка со слоем `RoundClip` и
+без него. На OpenGL обе видны, у первой скруглены углы; на программной
+отрисовке первая пуста, вторая видна.
+
+Правка: слой с эффектом включается, только когда граф сцены не
+программный (`GraphicsInfo.api`). На программной отрисовке превью
+рисуются с прямыми углами; на OpenGL/Vulkan всё как у автора.
+---
+diff --git a/ui/qml/component/ThumbnailImage.qml b/ui/qml/component/ThumbnailImage.qml
+index 064bfc2f..34a8137e 100644
+--- a/ui/qml/component/ThumbnailImage.qml
++++ b/ui/qml/component/ThumbnailImage.qml
+@@ -49,5 +49,5 @@ Item {
+         anchors.fill: parent
+         sourceComponent: root._useQExtra ? qextraImage : nativeImage
+-        layer.enabled: true
++        layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
+         layer.effect: MD.RoundClip {
+             corners: MD.Util.corners(root.radius)

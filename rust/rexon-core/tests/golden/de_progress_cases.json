@@ -1,0 +1,476 @@
+{
+ "initial": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "stage_titles": {
+  "snapshot": "Запоминаем приложения по умолчанию...",
+  "plasma_backup": "Сохраняем копию панели KDE Plasma...",
+  "config_backup": "Сохраняем копию настроек рабочего стола...",
+  "wait_lock": "Ждём, пока освободится установщик пакетов...",
+  "install": "Установка пакетов...",
+  "done_main": "Основные пакеты установлены",
+  "aur": "Установка пакетов из AUR...",
+  "aur_done": "Пакеты из AUR установлены",
+  "aur_warn": "Часть пакетов из AUR не установилась",
+  "post_install": "Настройка после установки...",
+  "dm_enable": "Настройка экрана входа...",
+  "switcher": "Настройка приложений по умолчанию...",
+  "restore": "Возвращаем ваши приложения по умолчанию...",
+  "mime": "Настраиваем, чем открывать файлы...",
+  "remove": "Удаление пакетов...",
+  "done": "Завершено",
+  "error": "Ошибка"
+ },
+ "install_frac": {
+  "bar": 250,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "ставим",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "install_no_frac": {
+  "bar": 0,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "ставим",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_zero": {
+  "bar": 0,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_one": {
+  "bar": 1000,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_truncates": {
+  "bar": 987,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_negative": {
+  "bar": 0,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_over_one": {
+  "bar": 0,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_nan": {
+  "bar": 0,
+  "status": "Установка пакетов...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "pkg_install": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "plasma-desktop",
+  "log": "plasma-desktop",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "pkg_install_empty": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "download": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "качаем 1/10",
+  "log": "качаем 1/10",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "download_empty": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "check": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "проверяем",
+  "log": "проверяем",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "raw_padded": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "строка вывода",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "raw_blank": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "raw_empty": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "error": {
+  "bar": 0,
+  "status": "Ошибка",
+  "current": "",
+  "log": "❌ всё сломалось",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "warning": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "⚠️ будь осторожен",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "unknown_stage": {
+  "bar": 0,
+  "status": "Подготовка...",
+  "current": "",
+  "log": "просто текст",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "known_stage_no_msg": {
+  "bar": 0,
+  "status": "Основные пакеты установлены",
+  "current": "",
+  "log": "",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "aur_warn": {
+  "bar": 500,
+  "status": "Часть пакетов из AUR не установилась",
+  "current": "",
+  "log": "часть не встала",
+  "close_text": "Подождите...",
+  "close_enabled": false
+ },
+ "frac_inf": {
+  "raised": "OverflowError: cannot convert float infinity to integer"
+ },
+ "sequence": {
+  "input": [
+   [
+    "snapshot",
+    "сохраняю",
+    0.05
+   ],
+   [
+    "raw",
+    "  :: Синхронизация БД  ",
+    null
+   ],
+   [
+    "pkg_install",
+    "plasma-desktop",
+    0.4
+   ],
+   [
+    "warning",
+    "AUR помечен",
+    null
+   ],
+   [
+    "error",
+    "пакет не найден",
+    null
+   ],
+   [
+    "done",
+    "всё",
+    1.0
+   ]
+  ],
+  "steps": [
+   {
+    "bar": 50,
+    "status": "Запоминаем приложения по умолчанию...",
+    "current": "",
+    "log": "сохраняю",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 50,
+    "status": "Запоминаем приложения по умолчанию...",
+    "current": "",
+    "log": "сохраняю\n:: Синхронизация БД",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 400,
+    "status": "Запоминаем приложения по умолчанию...",
+    "current": "plasma-desktop",
+    "log": "сохраняю\n:: Синхронизация БД\nplasma-desktop",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 400,
+    "status": "Запоминаем приложения по умолчанию...",
+    "current": "plasma-desktop",
+    "log": "сохраняю\n:: Синхронизация БД\nplasma-desktop\n⚠️ AUR помечен",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 400,
+    "status": "Ошибка",
+    "current": "plasma-desktop",
+    "log": "сохраняю\n:: Синхронизация БД\nplasma-desktop\n⚠️ AUR помечен\n❌ пакет не найден",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 1000,
+    "status": "Завершено",
+    "current": "plasma-desktop",
+    "log": "сохраняю\n:: Синхронизация БД\nplasma-desktop\n⚠️ AUR помечен\n❌ пакет не найден\nвсё",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   }
+  ]
+ },
+ "current_overwrite": {
+  "input": [
+   [
+    "pkg_install",
+    "plasma-desktop",
+    null
+   ],
+   [
+    "download",
+    "",
+    null
+   ],
+   [
+    "check",
+    "",
+    null
+   ],
+   [
+    "pkg_install",
+    "",
+    null
+   ]
+  ],
+  "steps": [
+   {
+    "bar": 0,
+    "status": "Подготовка...",
+    "current": "plasma-desktop",
+    "log": "plasma-desktop",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 0,
+    "status": "Подготовка...",
+    "current": "plasma-desktop",
+    "log": "plasma-desktop",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 0,
+    "status": "Подготовка...",
+    "current": "plasma-desktop",
+    "log": "plasma-desktop",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   },
+   {
+    "bar": 0,
+    "status": "Подготовка...",
+    "current": "",
+    "log": "plasma-desktop",
+    "close_text": "Подождите...",
+    "close_enabled": false
+   }
+  ]
+ },
+ "done_ok_msg": {
+  "bar": 1000,
+  "status": "Завершено ✅",
+  "current": "",
+  "log": "\n✅ поставлено 42 пакета",
+  "close_text": "Закрыть",
+  "close_enabled": true,
+  "succeeded": true,
+  "final_message": "поставлено 42 пакета"
+ },
+ "done_ok_literal_ok": {
+  "bar": 1000,
+  "status": "Завершено ✅",
+  "current": "",
+  "log": "\n✅ Готово",
+  "close_text": "Закрыть",
+  "close_enabled": true,
+  "succeeded": true,
+  "final_message": "ok"
+ },
+ "done_ok_empty": {
+  "bar": 1000,
+  "status": "Завершено ✅",
+  "current": "",
+  "log": "\n✅ Готово",
+  "close_text": "Закрыть",
+  "close_enabled": true,
+  "succeeded": true,
+  "final_message": ""
+ },
+ "done_fail": {
+  "bar": 0,
+  "status": "Ошибка ❌",
+  "current": "",
+  "log": "",
+  "close_text": "Закрыть",
+  "close_enabled": true,
+  "succeeded": false,
+  "final_message": "не вышло"
+ },
+ "done_fail_empty": {
+  "bar": 0,
+  "status": "Ошибка ❌",
+  "current": "",
+  "log": "",
+  "close_text": "Закрыть",
+  "close_enabled": true,
+  "succeeded": false,
+  "final_message": ""
+ },
+ "done_fail_after_error": {
+  "bar": 0,
+  "status": "Ошибка ❌",
+  "current": "",
+  "log": "❌ первая беда",
+  "close_text": "Закрыть",
+  "close_enabled": true
+ },
+ "done_fail_after_pkg": {
+  "bar": 400,
+  "status": "Ошибка ❌",
+  "current": "",
+  "log": "plasma-desktop\n❌ пакет не найден",
+  "close_text": "Закрыть",
+  "close_enabled": true
+ },
+ "done_ok_after_pkg": {
+  "bar": 1000,
+  "status": "Завершено ✅",
+  "current": "",
+  "log": "plasma-desktop\n\n✅ готово",
+  "close_text": "Закрыть",
+  "close_enabled": true
+ },
+ "worker_fail_silent": {
+  "progress": [
+   [
+    "error",
+    "тихий отказ"
+   ]
+  ],
+  "finished": [
+   [
+    false,
+    "тихий отказ"
+   ]
+  ]
+ },
+ "worker_fail_after_error": {
+  "progress": [
+   [
+    "error",
+    "своя ошибка"
+   ]
+  ],
+  "finished": [
+   [
+    false,
+    "громкий отказ"
+   ]
+  ]
+ },
+ "worker_ok": {
+  "progress": [],
+  "finished": [
+   [
+    true,
+    "ок"
+   ]
+  ]
+ },
+ "worker_fail_no_msg": {
+  "progress": [],
+  "finished": [
+   [
+    false,
+    ""
+   ]
+  ]
+ },
+ "worker_raises": {
+  "progress": [
+   [
+    "error",
+    "бум"
+   ]
+  ],
+  "finished": [
+   [
+    false,
+    "бум"
+   ]
+  ]
+ }
+}

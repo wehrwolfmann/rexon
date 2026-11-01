@@ -1,0 +1,203 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Like SteamOS”?",
+      "text": "The look <b>Like SteamOS</b> will be applied to your desktop.<br><br>What will change: global theme, colours, desktop shell theme, GTK theme, icons, cursors, desktop behaviour.<br><br>Rexon will install the programs it needs: breeze-icons. Your system will ask for your password.<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [
+        {
+          "name": "variant",
+          "label": "Style",
+          "options": [
+            {
+              "value": "vapor",
+              "label": "Vapor (Steam Deck)"
+            },
+            {
+              "value": "vgui",
+              "label": "VGUI2 (classic Steam)"
+            }
+          ],
+          "current": "vapor"
+        }
+      ],
+      "option": {
+        "text": "Also turn on game mode",
+        "hint": "Game mode adds a “Steam Big Picture” session to the login screen; choose it there yourself. On a laptop with two graphics cards the screen may stay black if Steam starts on the card the screen is not connected to. If that happens, restart the computer and choose your usual session on the login screen."
+      }
+    }
+  },
+  "plan": {
+    "id": "steamos",
+    "name": "Like SteamOS",
+    "items": [
+      {
+        "index": 0,
+        "kind": "global-look",
+        "consumer": "kde-lnf",
+        "path": "sources/valve/usr/share/plasma/look-and-feel",
+        "choice": {
+          "choice": "native",
+          "consumer": "kde-lnf",
+          "path": "sources/valve/usr/share/plasma/look-and-feel"
+        }
+      },
+      {
+        "index": 1,
+        "kind": "palette",
+        "consumer": "kde-colors",
+        "path": "sources/valve/usr/share/color-schemes",
+        "choice": {
+          "choice": "native",
+          "consumer": "kde-colors",
+          "path": "sources/valve/usr/share/color-schemes"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "shell-theme",
+        "consumer": "plasma",
+        "path": "sources/valve/usr/share/plasma/desktoptheme/Vapor",
+        "choice": {
+          "choice": "native",
+          "consumer": "plasma",
+          "path": "sources/valve/usr/share/plasma/desktoptheme/Vapor"
+        }
+      },
+      {
+        "index": 3,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/valve/usr/share/themes/Vapor",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/valve/usr/share/themes/Vapor"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/breeze-icons/usr/share/icons/breeze-dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/breeze-icons/usr/share/icons/breeze-dark"
+        }
+      },
+      {
+        "index": 5,
+        "kind": "cursors",
+        "consumer": "freedesktop",
+        "path": "sources/breeze-cursors/usr/share/icons/breeze_cursors",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/breeze-cursors/usr/share/icons/breeze_cursors"
+        }
+      },
+      {
+        "index": 6,
+        "kind": "behaviour",
+        "consumer": "kconfig",
+        "path": "native/plasma-settings.json",
+        "choice": {
+          "choice": "native",
+          "consumer": "kconfig",
+          "path": "native/plasma-settings.json"
+        }
+      }
+    ],
+    "skipped": [
+      {
+        "kind": "game-session",
+        "reason": "not chosen"
+      }
+    ],
+    "install": [
+      {
+        "role": "icons-breeze",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "breeze-icons"
+          ]
+        }
+      }
+    ],
+    "aur": [],
+    "roles": [
+      "cursors-breeze",
+      "icons-breeze"
+    ],
+    "fetch": [
+      {
+        "id": "valve",
+        "url": "https://steamdeck-packages.steamos.cloud/archlinux-mirror/jupiter-main/os/x86_64/steamdeck-kde-presets-3.9.4-2-any.pkg.tar.zst",
+        "pin": {
+          "pin": "sha256",
+          "value": "b593a4a7617b3c5e37f5b3fde440d17ff928db5dcbaadf391827e506e2582f72"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/valve-b593a4a7617b"
+      }
+    ],
+    "uses_settings": true,
+    "values": {}
+  },
+  "calls": [
+    "plasma-apply-lookandfeel -a com.valve.vapor.desktop",
+    "plasma-apply-colorscheme Vapor",
+    "plasma-apply-desktoptheme Vapor",
+    "plasma-apply-cursortheme breeze_cursors",
+    "kwriteconfig6 --file $HOME/.config/ksplashrc --group KSplash --key Theme org.kde.breeze.desktop",
+    "kwriteconfig6 --file $HOME/.config/ksplashrc --group KSplash --key Engine KSplashQML",
+    "qdbus org.kde.KWin /KWin org.kde.KWin.reconfigure"
+  ],
+  "missing": [],
+  "message": "“Like SteamOS” applied.\nSkipped: game mode — not chosen",
+  "installed": [
+    "breeze-icons"
+  ],
+  "profile": {
+    ".config/": "",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Vapor\ngtk-icon-theme-name=breeze-dark\ngtk-cursor-theme-name=breeze_cursors\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Vapor\ngtk-icon-theme-name=breeze-dark\ngtk-cursor-theme-name=breeze_cursors\n",
+    ".config/kcminputrc": "[Mouse]\ncursorTheme=breeze_cursors\n",
+    ".config/kdeglobals": "[General]\nColorScheme=BreezeDark\n[KDE]\nLookAndFeelPackage=com.valve.vapor.desktop\n[General]\nColorScheme=Vapor\n",
+    ".config/ksplashrc": "[KSplash]\nTheme=org.kde.breeze.desktop\n[KSplash]\nEngine=KSplashQML\n",
+    ".config/kwinrc": "[Plugins]\nblurEnabled=true\n",
+    ".config/plasmarc": "[Theme]\nname=Vapor\n",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/color-schemes/": "",
+    ".local/share/color-schemes/VGUI.colors": "[General]\nName=VGUI\n",
+    ".local/share/color-schemes/Vapor.colors": "[General]\nName=Vapor\n",
+    ".local/share/plasma/": "",
+    ".local/share/plasma/desktoptheme/": "",
+    ".local/share/plasma/desktoptheme/Vapor/": "",
+    ".local/share/plasma/desktoptheme/Vapor/.rexon-owner": "look:steamos\n",
+    ".local/share/plasma/desktoptheme/Vapor/metadata.json": "{}",
+    ".local/share/plasma/look-and-feel/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/.rexon-owner": "look:steamos\n",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/contents/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/contents/defaults": "[kdeglobals][General]\nColorScheme=Vapor\n",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/contents/splash/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/contents/splash/Splash.qml": "import QtQuick\n",
+    ".local/share/plasma/look-and-feel/com.valve.vapor.desktop/metadata.json": "{}",
+    ".local/share/plasma/look-and-feel/com.valve.vgui.desktop/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vgui.desktop/.rexon-owner": "look:steamos\n",
+    ".local/share/plasma/look-and-feel/com.valve.vgui.desktop/contents/": "",
+    ".local/share/plasma/look-and-feel/com.valve.vgui.desktop/contents/defaults": "[kdeglobals][General]\nColorScheme=Vapor\n",
+    ".local/share/plasma/look-and-feel/com.valve.vgui.desktop/metadata.json": "{}",
+    ".local/share/themes/": "",
+    ".local/share/themes/Vapor/": "",
+    ".local/share/themes/Vapor/.rexon-owner": "look:steamos\n",
+    ".local/share/themes/Vapor/gtk-3.0/": "",
+    ".local/share/themes/Vapor/gtk-3.0/gtk.css": "* {}\n"
+  }
+}

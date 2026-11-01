@@ -1,0 +1,1634 @@
+{
+ "local_exe": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+ "min_desktop_width": 1024,
+ "min_desktop_height": 768,
+ "suggest_scale": [
+  [
+   0,
+   1,
+   8
+  ],
+  [
+   0,
+   100,
+   8
+  ],
+  [
+   0,
+   500,
+   4
+  ],
+  [
+   0,
+   2560,
+   1
+  ],
+  [
+   1,
+   1,
+   8
+  ],
+  [
+   1,
+   100,
+   8
+  ],
+  [
+   1,
+   500,
+   4
+  ],
+  [
+   1,
+   2560,
+   1
+  ],
+  [
+   240,
+   1,
+   8
+  ],
+  [
+   240,
+   100,
+   8
+  ],
+  [
+   240,
+   500,
+   4
+  ],
+  [
+   240,
+   2560,
+   1
+  ],
+  [
+   479,
+   1,
+   8
+  ],
+  [
+   479,
+   100,
+   8
+  ],
+  [
+   479,
+   500,
+   4
+  ],
+  [
+   479,
+   2560,
+   1
+  ],
+  [
+   480,
+   1,
+   4
+  ],
+  [
+   480,
+   100,
+   4
+  ],
+  [
+   480,
+   500,
+   4
+  ],
+  [
+   480,
+   2560,
+   1
+  ],
+  [
+   481,
+   1,
+   4
+  ],
+  [
+   481,
+   100,
+   4
+  ],
+  [
+   481,
+   500,
+   4
+  ],
+  [
+   481,
+   2560,
+   1
+  ],
+  [
+   640,
+   1,
+   4
+  ],
+  [
+   640,
+   100,
+   4
+  ],
+  [
+   640,
+   500,
+   4
+  ],
+  [
+   640,
+   2560,
+   1
+  ],
+  [
+   799,
+   1,
+   4
+  ],
+  [
+   799,
+   100,
+   4
+  ],
+  [
+   799,
+   500,
+   4
+  ],
+  [
+   799,
+   2560,
+   1
+  ],
+  [
+   800,
+   1,
+   4
+  ],
+  [
+   800,
+   100,
+   4
+  ],
+  [
+   800,
+   500,
+   4
+  ],
+  [
+   800,
+   2560,
+   1
+  ],
+  [
+   801,
+   1,
+   4
+  ],
+  [
+   801,
+   100,
+   4
+  ],
+  [
+   801,
+   500,
+   4
+  ],
+  [
+   801,
+   2560,
+   1
+  ],
+  [
+   1000,
+   1,
+   4
+  ],
+  [
+   1000,
+   100,
+   4
+  ],
+  [
+   1000,
+   500,
+   4
+  ],
+  [
+   1000,
+   2560,
+   1
+  ],
+  [
+   1023,
+   1,
+   4
+  ],
+  [
+   1023,
+   100,
+   4
+  ],
+  [
+   1023,
+   500,
+   4
+  ],
+  [
+   1023,
+   2560,
+   1
+  ],
+  [
+   1024,
+   1,
+   2
+  ],
+  [
+   1024,
+   100,
+   2
+  ],
+  [
+   1024,
+   500,
+   2
+  ],
+  [
+   1024,
+   2560,
+   1
+  ],
+  [
+   1025,
+   1,
+   2
+  ],
+  [
+   1025,
+   100,
+   2
+  ],
+  [
+   1025,
+   500,
+   2
+  ],
+  [
+   1025,
+   2560,
+   1
+  ],
+  [
+   1500,
+   1,
+   2
+  ],
+  [
+   1500,
+   100,
+   2
+  ],
+  [
+   1500,
+   500,
+   2
+  ],
+  [
+   1500,
+   2560,
+   1
+  ],
+  [
+   1919,
+   1,
+   2
+  ],
+  [
+   1919,
+   100,
+   2
+  ],
+  [
+   1919,
+   500,
+   2
+  ],
+  [
+   1919,
+   2560,
+   1
+  ],
+  [
+   1920,
+   1,
+   1
+  ],
+  [
+   1920,
+   100,
+   1
+  ],
+  [
+   1920,
+   500,
+   1
+  ],
+  [
+   1920,
+   2560,
+   1
+  ],
+  [
+   1921,
+   1,
+   1
+  ],
+  [
+   1921,
+   100,
+   1
+  ],
+  [
+   1921,
+   500,
+   1
+  ],
+  [
+   1921,
+   2560,
+   1
+  ],
+  [
+   3000,
+   1,
+   1
+  ],
+  [
+   3000,
+   100,
+   1
+  ],
+  [
+   3000,
+   500,
+   1
+  ],
+  [
+   3000,
+   2560,
+   1
+  ]
+ ],
+ "needs_upscale_size": [
+  [
+   0,
+   0,
+   false
+  ],
+  [
+   0,
+   500,
+   false
+  ],
+  [
+   500,
+   0,
+   false
+  ],
+  [
+   800,
+   600,
+   true
+  ],
+  [
+   1023,
+   1023,
+   true
+  ],
+  [
+   1024,
+   1,
+   false
+  ],
+  [
+   1,
+   1024,
+   false
+  ],
+  [
+   1920,
+   1080,
+   false
+  ],
+  [
+   100,
+   200,
+   true
+  ]
+ ],
+ "scenarios": [
+  {
+   "name": "auto_realesrgan_hi_success",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/small.png",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/small.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MjQwIDMyMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/small.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MjQwIDMyMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": "/usr/bin/realesrgan-ncnn-vulkan"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/realesrgan-ncnn-vulkan",
+      "-i",
+      "/w/small.png",
+      "-o",
+      "/w/small_upscaled.png.tmp.png",
+      "-s",
+      "4",
+      "-n",
+      "realesrgan-x4plus"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/realesrgan-ncnn-vulkan",
+      "-i",
+      "/w/small_upscaled.png.tmp.png",
+      "-o",
+      "/w/small_upscaled.png",
+      "-s",
+      "2",
+      "-n",
+      "realesrgan-x4plus"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "remove_file",
+     "path": "/w/small_upscaled.png.tmp.png"
+    },
+    {
+     "op": "exists",
+     "path": "/w/small_upscaled.png",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/w/small_upscaled.png",
+     "result": true
+    }
+   ],
+   "result": "/w/small_upscaled.png"
+  },
+  {
+   "name": "auto_realesrgan_x4_success",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/xp.bmp",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/xp.bmp"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NjQwIDQ4MA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/xp.bmp"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NjQwIDQ4MA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": "/usr/bin/realesrgan-ncnn-vulkan"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/realesrgan-ncnn-vulkan",
+      "-i",
+      "/w/xp.bmp",
+      "-o",
+      "/w/xp_upscaled.bmp",
+      "-s",
+      "4",
+      "-n",
+      "realesrgan-x4plus"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/xp_upscaled.bmp",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/w/xp_upscaled.bmp",
+     "result": true
+    }
+   ],
+   "result": "/w/xp_upscaled.bmp"
+  },
+  {
+   "name": "auto_waifu2x_success",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/anime.png",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/anime.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NTAwIDUwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/anime.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NTAwIDUwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": false
+    },
+    {
+     "op": "download_realesrgan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/anime.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NTAwIDUwMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": "/usr/bin/waifu2x-ncnn-vulkan"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/waifu2x-ncnn-vulkan",
+      "-i",
+      "/w/anime.png",
+      "-o",
+      "/w/anime_upscaled.png",
+      "-s",
+      "4",
+      "-n",
+      "2"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/anime_upscaled.png",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/w/anime_upscaled.png",
+     "result": true
+    }
+   ],
+   "result": "/w/anime_upscaled.png"
+  },
+  {
+   "name": "auto_center_success",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/tiny.jpg",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/tiny.jpg"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/tiny.jpg"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": false
+    },
+    {
+     "op": "download_realesrgan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/tiny.jpg"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/tiny.jpg"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/w/tiny.jpg",
+      "(",
+      "+clone",
+      "-resize",
+      "1920x1080!",
+      "-blur",
+      "0x30",
+      "-brightness-contrast",
+      "-20x-10",
+      ")",
+      "+swap",
+      "-gravity",
+      "center",
+      "-composite",
+      "-resize",
+      "1920x1080",
+      "/w/tiny_upscaled.jpg"
+     ],
+     "timeout": 30,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/tiny_upscaled.jpg",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/w/tiny_upscaled.jpg",
+     "result": true
+    }
+   ],
+   "result": "/w/tiny_upscaled.jpg"
+  },
+  {
+   "name": "auto_all_fail",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/none.png",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/none.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/none.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": false
+    },
+    {
+     "op": "download_realesrgan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/none.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/none.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/w/none.png",
+      "(",
+      "+clone",
+      "-resize",
+      "1920x1080!",
+      "-blur",
+      "0x30",
+      "-brightness-contrast",
+      "-20x-10",
+      ")",
+      "+swap",
+      "-gravity",
+      "center",
+      "-composite",
+      "-resize",
+      "1920x1080",
+      "/w/none_upscaled.png"
+     ],
+     "timeout": 30,
+     "ok": false,
+     "stdout_b64": ""
+    }
+   ],
+   "result": "/w/none.png"
+  },
+  {
+   "name": "realesrgan_local_exe",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/loc.png",
+    "dest": "/w/out.png",
+    "scale": 4,
+    "method": "realesrgan"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/loc.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NzAwIDcwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": true
+    },
+    {
+     "op": "access_x",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": true
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+      "-i",
+      "/w/loc.png",
+      "-o",
+      "/w/out.png",
+      "-s",
+      "4",
+      "-n",
+      "realesrgan-x4plus"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/out.png",
+     "result": true
+    }
+   ],
+   "result": "/w/out.png"
+  },
+  {
+   "name": "realesrgan_twopass_first_fail",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/hi.png",
+    "dest": "/w/hi_out.png",
+    "scale": 8,
+    "method": "realesrgan"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/hi.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MjQwIDMyMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": "/usr/bin/realesrgan-ncnn-vulkan"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/realesrgan-ncnn-vulkan",
+      "-i",
+      "/w/hi.png",
+      "-o",
+      "/w/hi_out.png.tmp.png",
+      "-s",
+      "4",
+      "-n",
+      "realesrgan-x4plus"
+     ],
+     "timeout": 300,
+     "ok": false,
+     "stdout_b64": ""
+    }
+   ],
+   "result": "/w/hi.png"
+  },
+  {
+   "name": "waifu2x_explicit_clamp",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/a.png",
+    "dest": "/w/a_out.png",
+    "scale": 8,
+    "method": "waifu2x"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MjQwIDMyMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": "/usr/bin/waifu2x-ncnn-vulkan"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "/usr/bin/waifu2x-ncnn-vulkan",
+      "-i",
+      "/w/a.png",
+      "-o",
+      "/w/a_out.png",
+      "-s",
+      "4",
+      "-n",
+      "2"
+     ],
+     "timeout": 300,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/a_out.png",
+     "result": true
+    }
+   ],
+   "result": "/w/a_out.png"
+  },
+  {
+   "name": "imagemagick_explicit",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/im.png",
+    "dest": "/w/im_out.png",
+    "scale": 4,
+    "method": "imagemagick"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/im.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MTAwIDI1MA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/im.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MTAwIDI1MA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/w/im.png",
+      "-resize",
+      "400x1000",
+      "-filter",
+      "Lanczos",
+      "/w/im_out.png"
+     ],
+     "timeout": 30,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/im_out.png",
+     "result": true
+    }
+   ],
+   "result": "/w/im_out.png"
+  },
+  {
+   "name": "center_explicit",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/c.png",
+    "dest": "/w/c_out.png",
+    "scale": 2,
+    "method": "center"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/c.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NDAwIDMwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/w/c.png",
+      "(",
+      "+clone",
+      "-resize",
+      "1920x1080!",
+      "-blur",
+      "0x30",
+      "-brightness-contrast",
+      "-20x-10",
+      ")",
+      "+swap",
+      "-gravity",
+      "center",
+      "-composite",
+      "-resize",
+      "1920x1080",
+      "/w/c_out.png"
+     ],
+     "timeout": 30,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/w/c_out.png",
+     "result": true
+    }
+   ],
+   "result": "/w/c_out.png"
+  },
+  {
+   "name": "identify_fail_returns_src",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/broken.png",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/broken.png"
+     ],
+     "timeout": 10,
+     "ok": false,
+     "stdout_b64": ""
+    }
+   ],
+   "result": "/w/broken.png"
+  },
+  {
+   "name": "already_big_no_upscale",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/big.png",
+    "dest": null,
+    "scale": 0,
+    "method": "auto"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/big.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MTkyMCAxMDgw"
+    }
+   ],
+   "result": "/w/big.png"
+  },
+  {
+   "name": "unknown_method_returns_src",
+   "call": {
+    "fn": "upscale",
+    "src": "/w/u.png",
+    "dest": "/w/u_out.png",
+    "scale": 4,
+    "method": "bogus"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/u.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "NDAwIDQwMA=="
+    }
+   ],
+   "result": "/w/u.png"
+  },
+  {
+   "name": "needs_upscale_small_true",
+   "call": {
+    "fn": "needs_upscale",
+    "path": "/w/s.png"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/s.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "ODAwIDYwMA=="
+    }
+   ],
+   "result": true
+  },
+  {
+   "name": "needs_upscale_big_false",
+   "call": {
+    "fn": "needs_upscale",
+    "path": "/w/b.png"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/b.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MTAyNCAxMDA="
+    }
+   ],
+   "result": false
+  },
+  {
+   "name": "needs_upscale_broken_false",
+   "call": {
+    "fn": "needs_upscale",
+    "path": "/w/x.png"
+   },
+   "journal": [
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/w/x.png"
+     ],
+     "timeout": 10,
+     "ok": false,
+     "stdout_b64": ""
+    }
+   ],
+   "result": false
+  },
+  {
+   "name": "process_dir_mixed",
+   "call": {
+    "fn": "process_dir",
+    "data_dir": "/wp"
+   },
+   "journal": [
+    {
+     "op": "listdir",
+     "path": "/wp",
+     "result": [
+      "a.png",
+      "b.txt",
+      "c.png"
+     ]
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": false
+    },
+    {
+     "op": "download_realesrgan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/wp/a.png",
+      "(",
+      "+clone",
+      "-resize",
+      "1920x1080!",
+      "-blur",
+      "0x30",
+      "-brightness-contrast",
+      "-20x-10",
+      ")",
+      "+swap",
+      "-gravity",
+      "center",
+      "-composite",
+      "-resize",
+      "1920x1080",
+      "/wp/a.png.upscaled.png"
+     ],
+     "timeout": 30,
+     "ok": true,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/wp/a.png.upscaled.png",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/wp/a.png.upscaled.png",
+     "result": true
+    },
+    {
+     "op": "exists",
+     "path": "/wp/a.png.upscaled.png",
+     "result": true
+    },
+    {
+     "op": "replace",
+     "src": "/wp/a.png.upscaled.png",
+     "dst": "/wp/a.png"
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp/c.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MjAwMCAxMDAw"
+    }
+   ],
+   "result": 1
+  },
+  {
+   "name": "process_dir_all_fail",
+   "call": {
+    "fn": "process_dir",
+    "data_dir": "/wp2"
+   },
+   "journal": [
+    {
+     "op": "listdir",
+     "path": "/wp2",
+     "result": [
+      "a.png"
+     ]
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "realesrgan-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "is_file",
+     "path": "/home/user/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan",
+     "result": false
+    },
+    {
+     "op": "download_realesrgan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "which",
+     "name": "waifu2x-ncnn-vulkan",
+     "result": null
+    },
+    {
+     "op": "run",
+     "argv": [
+      "identify",
+      "-format",
+      "%w %h",
+      "/wp2/a.png"
+     ],
+     "timeout": 10,
+     "ok": true,
+     "stdout_b64": "MzAwIDIwMA=="
+    },
+    {
+     "op": "run",
+     "argv": [
+      "convert",
+      "/wp2/a.png",
+      "(",
+      "+clone",
+      "-resize",
+      "1920x1080!",
+      "-blur",
+      "0x30",
+      "-brightness-contrast",
+      "-20x-10",
+      ")",
+      "+swap",
+      "-gravity",
+      "center",
+      "-composite",
+      "-resize",
+      "1920x1080",
+      "/wp2/a.png.upscaled.png"
+     ],
+     "timeout": 30,
+     "ok": false,
+     "stdout_b64": ""
+    },
+    {
+     "op": "exists",
+     "path": "/wp2/a.png.upscaled.png",
+     "result": false
+    }
+   ],
+   "result": 0
+  }
+ ]
+}

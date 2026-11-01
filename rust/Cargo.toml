@@ -1,0 +1,39 @@
+# Rexon — Rust workspace (миграция с Python).
+#
+# rexon-core — ядро без Qt (DE-логика, парсеры, API-клиенты, настройки).
+# Прежний PyO3-мост rexon-py ушёл в архив вместе с Python (_archived/rexon-py,
+# 02.10.2026): Python в проекте — только архив, не эталон и не мост.
+[workspace]
+resolver = "2"
+members = ["rexon-core", "rexon-gui", "rexon-qt-filter", "rexon-splash-overlay", "rexon-swf"]
+
+# Вендорный крейт движка перевода (`vendor/fxtranslate/`) — ЗАВИСИМОСТЬ, а
+# не участник мастерской. Cargo делает участником любую зависимость-путь,
+# лежащую внутри каталога мастерской, а участнику он записывает в замок ВСЕ
+# необязательные зависимости, включённых фич не разбирая: молча приехало 330
+# строк в `Cargo.lock` — ureq, rustls, ring, icu_segmenter, dirs,
+# wasm-bindgen-test. Ни одна из них не собирается (фичи `net`/`discovery`/
+# `icu-segmenter` мы намеренно НЕ включаем, см. rexon-core/Cargo.toml), но в
+# замке они выглядят как состав продукта — а по нему сверяют лицензии.
+# С `exclude` замок прирастает ровно одной записью: самим крейтом.
+exclude = ["vendor/fxtranslate/crate"]
+# rexon-qt-filter и rexon-gui (cxx-qt, требуют Qt6) собираются только явно
+# (-p) — чтобы голый `cargo test` ядра оставался независимым от Qt.
+#
+# ⚠️ ОБРАТНАЯ СТОРОНА, НЕ НАСТУПИ: из-за этой строки голый
+# `cargo build --release` собирает ОДНО ядро и рапортует «Finished» за
+# считанные секунды, а окно `rexon-main-window` с вкладками на QML —
+# остаётся СТАРЫМ. Замер после такой «сборки» показывает
+# вчерашний день. Собирать приложение — `cargo build-app`, заставку входа —
+# `cargo build-splash` (псевдонимы в rust/.cargo/config.toml, там же
+# объяснено, почему это две разные команды; список — `cargo --list`).
+default-members = ["rexon-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[profile.release]
+opt-level = 3
+lto = true

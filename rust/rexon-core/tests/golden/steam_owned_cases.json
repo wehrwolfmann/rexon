@@ -1,0 +1,206 @@
+{
+ "parsed": [
+  {
+   "id": "1001",
+   "name": "Amber Waves",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/abc.webm",
+   "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/abc_large.jpg",
+   "animated": true
+  },
+  {
+   "id": "1002",
+   "name": "Coral Wave",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/coral.jpg",
+   "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/coral.jpg",
+   "animated": false
+  },
+  {
+   "id": "1003",
+   "name": "Фон профиля",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/small.jpg",
+   "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/items/300/small.jpg",
+   "animated": false
+  },
+  {
+   "id": "No ID BG",
+   "name": "No ID BG",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/x.jpg",
+   "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/x.jpg",
+   "animated": false
+  },
+  {
+   "id": "images/y.mp4",
+   "name": "Фон профиля",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/y.mp4",
+   "preview": "",
+   "animated": true
+  },
+  {
+   "id": "1006",
+   "name": "Empty webm falls to mp4",
+   "game": "",
+   "url": "https://shared.fastly.steamstatic.com/community_assets/images/images/z.mp4",
+   "preview": "https://shared.fastly.steamstatic.com/community_assets/images/images/z.jpg",
+   "animated": true
+  }
+ ],
+ "broken": [
+  {
+   "name": "empty_object",
+   "data": {},
+   "expected": []
+  },
+  {
+   "name": "response_null",
+   "data": {
+    "response": null
+   },
+   "expected": []
+  },
+  {
+   "name": "response_array",
+   "data": {
+    "response": []
+   },
+   "expected": []
+  },
+  {
+   "name": "response_string",
+   "data": {
+    "response": "nope"
+   },
+   "expected": []
+  },
+  {
+   "name": "data_array",
+   "data": [
+    "not",
+    "an",
+    "object"
+   ],
+   "expected": []
+  },
+  {
+   "name": "data_string",
+   "data": "totally wrong",
+   "expected": []
+  },
+  {
+   "name": "bg_not_list",
+   "data": {
+    "response": {
+     "profile_backgrounds": {
+      "a": 1
+     }
+    }
+   },
+   "expected": []
+  },
+  {
+   "name": "bg_null",
+   "data": {
+    "response": {
+     "profile_backgrounds": null
+    }
+   },
+   "expected": []
+  },
+  {
+   "name": "entries_not_objects",
+   "data": {
+    "response": {
+     "profile_backgrounds": [
+      null,
+      5,
+      "x",
+      []
+     ]
+    }
+   },
+   "expected": []
+  },
+  {
+   "name": "numeric_fields",
+   "data": {
+    "response": {
+     "profile_backgrounds": [
+      {
+       "communityitemid": 12345,
+       "name": 777,
+       "image_large": 42
+      },
+      {
+       "communityitemid": "1",
+       "image_large": "/a/b.jpg",
+       "movie_webm": 9
+      },
+      {
+       "communityitemid": null,
+       "item_title": "Тайтл",
+       "image_small": "s.jpg"
+      },
+      {
+       "communityitemid": 0,
+       "movie_mp4": "m.mp4"
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "id": "1",
+     "name": "Фон профиля",
+     "game": "",
+     "url": "https://shared.fastly.steamstatic.com/community_assets/images/a/b.jpg",
+     "preview": "https://shared.fastly.steamstatic.com/community_assets/images/a/b.jpg",
+     "animated": false
+    },
+    {
+     "id": "s.jpg",
+     "name": "Тайтл",
+     "game": "",
+     "url": "https://shared.fastly.steamstatic.com/community_assets/images/s.jpg",
+     "preview": "https://shared.fastly.steamstatic.com/community_assets/images/s.jpg",
+     "animated": false
+    },
+    {
+     "id": "m.mp4",
+     "name": "Фон профиля",
+     "game": "",
+     "url": "https://shared.fastly.steamstatic.com/community_assets/images/m.mp4",
+     "preview": "",
+     "animated": true
+    }
+   ]
+  },
+  {
+   "name": "no_links",
+   "data": {
+    "response": {
+     "profile_backgrounds": [
+      {
+       "communityitemid": "7",
+       "name": "Без ссылки"
+      }
+     ]
+    }
+   },
+   "expected": []
+  },
+  {
+   "name": "truncated_json",
+   "data": null,
+   "expected": []
+  },
+  {
+   "name": "html_instead_of_json",
+   "data": null,
+   "expected": []
+  }
+ ]
+}

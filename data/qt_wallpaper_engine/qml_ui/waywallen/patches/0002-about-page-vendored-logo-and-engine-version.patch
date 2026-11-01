@@ -1,0 +1,53 @@
+Тема: «О программе» — версия вендорного интерфейса, а не приложения
+
+Починка переноса, не доработка.
+
+`Qt.application.version` у апстрима — версия ЕГО приложения, то есть
+интерфейса waywallen. Страницу у нас показывает чужое приложение со своей
+версией (и `Qt.application.version` там пуст, отчего строка читалась как
+«Версия»). Берём версию вендорного интерфейса — тег `ui/UPSTREAM_TAG`,
+который Rexon выставляет на `W.App.uiVersion` (`rust/rexon-gui/src/we_app.rs`,
+разбор тега — `rexon_core::qml_modules::ui_version`); общее свойство
+приложения не подменяем.
+
+v0.5.0: апстрим добавил вторую строку «Daemon version %1» — видна, когда
+версия демона отличается от `Qt.application.version`. Прежний вид патча
+(строка 1 = версия демона) показал бы версию дважды, поэтому обе ссылки на
+`Qt.application.version` заменены одним свойством: строка 1 — интерфейс,
+строка 2 — демон при расхождении (у Rexon реальный случай: системный демон
+старее или новее вшитого QML).
+
+Логотип: с 19.10.2026 Rexon кладёт его в свои ресурсы по адресу апстрима
+(`rust/rexon-gui/waywallen_assets.qrc`), правка разметки для него не нужна.
+Имя файла патча оставлено прежним.
+---
+diff --git a/ui/qml/page/AboutPage.qml b/ui/qml/page/AboutPage.qml
+index 2a01c6f..adbc7be 100644
+--- a/ui/qml/page/AboutPage.qml
++++ b/ui/qml/page/AboutPage.qml
+@@ -44,7 +44,15 @@ MD.Page {
+ 
+         MD.Text {
+             Layout.alignment: Qt.AlignHCenter
+-            text: qsTr("Version %1").arg(Qt.application.version)
++            // ПРАВКА REXON (починка при переносе, не доработка): у апстрима
++            // здесь `Qt.application.version` — версия ПРИЛОЖЕНИЯ, то есть его
++            // интерфейса. Внутри Rexon страницу показывает чужое приложение
++            // со своей версией (`Qt.application.version` у нас пуст), поэтому
++            // берём версию ВЕНДОРНОГО интерфейса — тег из `ui/UPSTREAM_TAG`,
++            // который Rexon выставляет на `W.App.uiVersion`. Смысл тот же,
++            // что у апстрима: строка 1 — интерфейс, строка 2 — демон, если
++            // его версия другая.
++            text: qsTr("Version %1").arg(W.App.uiVersion)
+             typescale: MD.Token.typescale.body_medium
+             color: MD.Token.color.on_surface_variant
+         }
+@@ -54,7 +62,7 @@ MD.Page {
+ 
+             Layout.alignment: Qt.AlignHCenter
+             Layout.topMargin: -12
+-            visible: daemonVersion.length > 0 && daemonVersion !== Qt.application.version
++            visible: daemonVersion.length > 0 && daemonVersion !== W.App.uiVersion
+             text: qsTr("Daemon version %1").arg(daemonVersion)
+             typescale: MD.Token.typescale.body_medium
+             color: MD.Token.color.on_surface_variant

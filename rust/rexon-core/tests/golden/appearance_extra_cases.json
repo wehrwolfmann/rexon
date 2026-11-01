@@ -1,0 +1,498 @@
+{
+ "actual_maps": {
+  "ACTUAL_TYPE_DIR": {
+   "aurorae": "/home/user/.local/share/aurorae/themes",
+   "color-scheme": "/home/user/.local/share/color-schemes",
+   "icons": "/home/user/.local/share/icons",
+   "kvantum": "/home/user/.config/Kvantum",
+   "look-and-feel": "/home/user/.local/share/plasma/look-and-feel",
+   "plasma-theme": "/home/user/.local/share/plasma/desktoptheme"
+  },
+  "actual_to_kind": {
+   "": "none",
+   "aurorae": "aurorae",
+   "color-scheme": "colors",
+   "cursor": "none",
+   "icons": "icons",
+   "kvantum": "kvantum",
+   "look-and-feel": "global",
+   "plasma-theme": "plasma",
+   "unknown": "none"
+  }
+ },
+ "api_base": "https://api.opendesktop.org/ocs/v1",
+ "cache_paths": {
+  "cache_dir": "/home/user/.cache/rexon",
+  "db_path": "/home/user/.cache/rexon/ocs_cache.db",
+  "home": "/home/user",
+  "preview_dir": "/home/user/.cache/rexon/ocs_previews"
+ },
+ "comments_urls": [
+  {
+   "content_id": "1294729",
+   "page": 0,
+   "pagesize": 10,
+   "url": "https://api.opendesktop.org/ocs/v1/comments/data/1/1294729/0?page=0&pagesize=10"
+  },
+  {
+   "content_id": "2358391",
+   "page": 3,
+   "pagesize": 25,
+   "url": "https://api.opendesktop.org/ocs/v1/comments/data/1/2358391/0?page=3&pagesize=25"
+  }
+ ],
+ "full_preview": [
+  {
+   "full": "https://images.pling.com/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233f50cb71637814cf8c24fbf173d66f43ef.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233f50cb71637814cf8c24fbf173d66f43ef.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233ff7c5f86249b6d78f7754cb49ba1f8932.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233ff7c5f86249b6d78f7754cb49ba1f8932.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/80/78/1352754/7a352a7819d6c60a5b709e7a3c489dcd9dde6b93647a6081eea92e8f2e39cf012385.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/7a352a7819d6c60a5b709e7a3c489dcd9dde6b93647a6081eea92e8f2e39cf012385.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/screenshot-20211218-162026.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-162026.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/palsma.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/palsma.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/eb7d3d42c60bdda5b426e76836f78b7b82091.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/eb7d3d42c60bdda5b426e76836f78b7b82091.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/screenshot-20211218-163845.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-163845.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/5b8050884b522fad2cbf3cc5c3e527653b301.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/5b8050884b522fad2cbf3cc5c3e527653b301.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/36/61/48/1294174/5fc1fca90b357262e97b13bcde5f2cb9e7032.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/5fc1fca90b357262e97b13bcde5f2cb9e7032.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/10/87/77/1226329/c3d1bd8909c4f08eae98c68c05ad83c01444.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/c3d1bd8909c4f08eae98c68c05ad83c01444.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/10/87/77/1226329/1.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/1.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/10/87/77/1226329/2.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/2.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/10/87/77/1226329/3.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/10/87/77/1226329/3.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/moe-moedark.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moe-moedark.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/moe-moedark-redond2.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moe-moedark-redond2.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/screenshot-20220514-211308.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220514-211308.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/screenshot-20220518-0007232.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220518-0007232.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/screenshot-20220518-0007443.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/screenshot-20220518-0007443.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1284575/moeventana.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1284575/moeventana.jpg"
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/73/13/1358262/plasma-logo.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/73/13/1358262/plasma-logo.jpg"
+  },
+  {
+   "full": "",
+   "url": ""
+  },
+  {
+   "full": "https://images.pling.com/img/00/00/43/80/78/1352754/1.png",
+   "url": "https://images.pling.com/img/00/00/43/80/78/1352754/1.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/1.png",
+   "url": "https://images.pling.com/cache/770x540/img/00/1.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/2.jpg",
+   "url": "https://images.pling.com/cache/100x100-2-cropped/img/00/2.jpg"
+  },
+  {
+   "full": "https://images.pling.com/cache/abcxdef/img/00/3.png",
+   "url": "https://images.pling.com/cache/abcxdef/img/00/3.png"
+  },
+  {
+   "full": "https://images.pling.com/cache/770x540-4/thumb/00/4.png",
+   "url": "https://images.pling.com/cache/770x540-4/thumb/00/4.png"
+  },
+  {
+   "full": "https://cdn.example.org/img/x/cache/1x1/img/y.png",
+   "url": "https://cdn.example.org/cache/770x540-4/img/x/cache/1x1/img/y.png"
+  },
+  {
+   "full": "https://images.pling.com/img/00/5.png",
+   "url": "https://images.pling.com/cache/12x34x56/img/00/5.png"
+  },
+  {
+   "full": "https://images.pling.com/cache//img/00/6.png",
+   "url": "https://images.pling.com/cache//img/00/6.png"
+  },
+  {
+   "full": "https://images.pling.com/img/",
+   "url": "https://images.pling.com/cache/770x540-4/img/"
+  },
+  {
+   "full": "/img/relative.png",
+   "url": "/cache/770x540-4/img/relative.png"
+  },
+  {
+   "full": "https://images.pling.com/img/Обои Плазмы.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/Обои Плазмы.png"
+  },
+  {
+   "full": "https://images.pling.com/img/a b c.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/a b c.png"
+  }
+ ],
+ "item_urls": [
+  {
+   "content_id": "1294729",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data/1294729"
+  },
+  {
+   "content_id": "2358391",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data/2358391"
+  },
+  {
+   "content_id": "id with space",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data/id with space"
+  },
+  {
+   "content_id": "штука",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data/штука"
+  }
+ ],
+ "list_keys": [
+  {
+   "category_id": 722,
+   "key": "cat722:p0:snew:q",
+   "page": 0,
+   "search": "",
+   "sort": "new",
+   "sortmode": "new"
+  },
+  {
+   "category_id": 104,
+   "key": "cat104:p3:shigh:qsweet",
+   "page": 3,
+   "search": "  Sweet  ",
+   "sort": "high",
+   "sortmode": "high"
+  },
+  {
+   "category_id": 112,
+   "key": "cat112:p1:sdown:qтёмная тема",
+   "page": 1,
+   "search": "Тёмная Тема",
+   "sort": "down",
+   "sortmode": "down"
+  },
+  {
+   "category_id": 132,
+   "key": "cat132:p0:salpha:qwhitesur",
+   "page": 0,
+   "search": "WhiteSur",
+   "sort": "alpha",
+   "sortmode": "alpha"
+  },
+  {
+   "category_id": 107,
+   "key": "cat107:p7:snew:qmixed case",
+   "page": 7,
+   "search": "MiXeD CaSe",
+   "sort": "unknown-sort",
+   "sortmode": "new"
+  },
+  {
+   "category_id": 0,
+   "key": "cat0:p0:snew:q",
+   "page": 0,
+   "search": "",
+   "sort": "",
+   "sortmode": "new"
+  },
+  {
+   "category_id": 299,
+   "key": "cat299:p2:snew:q",
+   "page": 2,
+   "search": "  ",
+   "sort": "new",
+   "sortmode": "new"
+  },
+  {
+   "category_id": 903,
+   "key": "cat903:p0:shigh:qa\tb",
+   "page": 0,
+   "search": "a\tb",
+   "sort": "high",
+   "sortmode": "high"
+  }
+ ],
+ "ocs_preview_dests": [
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.local/share/icons/Bibata-Modern-Ice/.rexon-preview.png",
+   "item_name": "Тема Bibata-Modern-Ice",
+   "theme_dir": "/home/user/.local/share/icons/Bibata-Modern-Ice",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/usr/share/icons/Adwaita/.rexon-preview.png",
+   "item_name": "Тема Adwaita",
+   "theme_dir": "/usr/share/icons/Adwaita",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.local/share/themes/WhiteSur-Dark-nord/.rexon-preview.png",
+   "item_name": "Тема WhiteSur-Dark-nord",
+   "theme_dir": "/home/user/.local/share/themes/WhiteSur-Dark-nord",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/usr/share/themes/Atlanta/.rexon-preview.png",
+   "item_name": "Тема Atlanta",
+   "theme_dir": "/usr/share/themes/Atlanta",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.local/share/plasma/desktoptheme/expose/.rexon-preview.png",
+   "item_name": "Тема expose",
+   "theme_dir": "/home/user/.local/share/plasma/desktoptheme/expose",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/usr/share/plasma/desktoptheme/CachyOS-Nord-round/.rexon-preview.png",
+   "item_name": "Тема CachyOS-Nord-round",
+   "theme_dir": "/usr/share/plasma/desktoptheme/CachyOS-Nord-round",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.local/share/fonts/razer/.rexon-preview.png",
+   "item_name": "Тема razer",
+   "theme_dir": "/home/user/.local/share/fonts/razer",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/usr/share/fonts/Adwaita/.rexon-preview.png",
+   "item_name": "Тема Adwaita",
+   "theme_dir": "/usr/share/fonts/Adwaita",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "colors",
+   "dest": "/home/user/.cache/rexon/local_previews/colors__BreezeDark.png",
+   "item_name": "BreezeDark",
+   "theme_dir": "/home/user/.local/share/icons/Bibata-Modern-Ice",
+   "theme_dir_is_dir": true
+  },
+  {
+   "apply_kind": "colors",
+   "dest": "/home/user/.cache/rexon/local_previews/colors__Моя_схема.png",
+   "item_name": "Моя схема",
+   "theme_dir": "/home/user/.local/share/color-schemes/X.colors",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.cache/rexon/local_previews/icons__Papirus.png",
+   "item_name": "Papirus",
+   "theme_dir": "/nonexistent/dir/Papirus",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.cache/rexon/local_previews/icons__Papirus.png",
+   "item_name": "",
+   "theme_dir": "/nonexistent/dir/Papirus",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "icons",
+   "dest": "/home/user/.cache/rexon/local_previews/icons__Papirus.png",
+   "item_name": "",
+   "theme_dir": "/nonexistent/dir/Papirus/",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "global",
+   "dest": null,
+   "item_name": "",
+   "theme_dir": "",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "global",
+   "dest": "/home/user/.cache/rexon/local_previews/global__Sweet.png",
+   "item_name": "Sweet",
+   "theme_dir": "",
+   "theme_dir_is_dir": false
+  },
+  {
+   "apply_kind": "cursor",
+   "dest": "/home/user/.cache/rexon/local_previews/cursor__Bibata_Modern_Ice.png",
+   "item_name": "Bibata Modern Ice",
+   "theme_dir": "",
+   "theme_dir_is_dir": false
+  }
+ ],
+ "preview_cache_names": [
+  {
+   "name": "bd4c8a2c1e049d48016edc123051297b23ebfc95.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233f50cb71637814cf8c24fbf173d66f43ef.png"
+  },
+  {
+   "name": "7bb43a8b4da37ec2ac9cee2ba0600b8fec7252df.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/c00042154918fe9f9f8a485f33f4e1a6233ff7c5f86249b6d78f7754cb49ba1f8932.png"
+  },
+  {
+   "name": "2c5ef725f9ffd7046ebe1cf78c823eb64788af4a.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/43/80/78/1352754/7a352a7819d6c60a5b709e7a3c489dcd9dde6b93647a6081eea92e8f2e39cf012385.png"
+  },
+  {
+   "name": "6be3e5a39e89728ae07ca16d6270f65cd578de91.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/screenshot-20211218-162026.png"
+  },
+  {
+   "name": "6ec2d651b9da387a68a57f486f12a89ad42f6aee.jpg",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/palsma.jpg"
+  },
+  {
+   "name": "6ba074c3c4030729a56f0578e1eef2cb4b2ea2cc.png",
+   "url": "https://images.pling.com/cache/770x540-4/img/00/00/36/61/48/1294174/eb7d3d42c60bdda5b426e76836f78b7b82091.png"
+  },
+  {
+   "name": "d9efc6de909b2fb10cc028214d0faab6b5ad99f9.jpg",
+   "url": "https://images.pling.com/img/00/1"
+  },
+  {
+   "name": "c1928b50c5b492d467ca00c3d81fb270f8978408.gz",
+   "url": "https://images.pling.com/img/00/archive.tar.gz"
+  },
+  {
+   "name": "e89c55b08ad93b195b71d6f9fa02edbba8e6357e.jpeg",
+   "url": "https://images.pling.com/img/00/файл.jpeg"
+  },
+  {
+   "name": "57feef729767d952ac33c37ba1d6b4d6fc842986.jpg",
+   "url": "https://images.pling.com/img/00/x.verylongext"
+  },
+  {
+   "name": "e5d2d90dc44e64c1c97ff390bb92b71781a38600.jpg",
+   "url": "https://images.pling.com/img/00/.hidden"
+  },
+  {
+   "name": "a9897510c76caefe874a8aaa66af2f7f35bc2e9d.jpg",
+   "url": "https://images.pling.com/img/00/dir.d/file"
+  },
+  {
+   "name": "f62df1761e99bcfd3c34fc20a94d8c4accc2c327.PNG",
+   "url": "https://images.pling.com/img/00/pic.PNG?size=1"
+  },
+  {
+   "name": "c79b3514f0dfdeb4259f5529ccc6833bef73f678.png",
+   "url": "https://images.pling.com/img/00/pic.png#frag"
+  },
+  {
+   "name": "da39a3ee5e6b4b0d3255bfef95601890afd80709.jpg",
+   "url": ""
+  },
+  {
+   "name": "5c17ece1776f9b4d64b66a4c9ab6ee86d5be16fe.png",
+   "url": "https://images.pling.com/img/00/a b.png"
+  }
+ ],
+ "search_urls": [
+  {
+   "category_id": "722",
+   "page": 0,
+   "pagesize": 20,
+   "search": "",
+   "sortmode": "new",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=722&page=0&pagesize=20&sortmode=new"
+  },
+  {
+   "category_id": "104",
+   "page": 2,
+   "pagesize": 40,
+   "search": "Sweet KDE",
+   "sortmode": "high",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=104&page=2&pagesize=40&sortmode=high&search=Sweet+KDE"
+  },
+  {
+   "category_id": "112",
+   "page": 0,
+   "pagesize": 20,
+   "search": "  Тёмная схема  ",
+   "sortmode": "down",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=112&page=0&pagesize=20&sortmode=down&search=%D0%A2%D1%91%D0%BC%D0%BD%D0%B0%D1%8F+%D1%81%D1%85%D0%B5%D0%BC%D0%B0"
+  },
+  {
+   "category_id": "132",
+   "page": 1,
+   "pagesize": 20,
+   "search": "a+b&c=d",
+   "sortmode": "alpha",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=132&page=1&pagesize=20&sortmode=alpha&search=a%2Bb%26c%3Dd"
+  },
+  {
+   "category_id": "716,488",
+   "page": 0,
+   "pagesize": 20,
+   "search": "",
+   "sortmode": "new",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=716%2C488&page=0&pagesize=20&sortmode=new"
+  },
+  {
+   "category_id": "299",
+   "page": 0,
+   "pagesize": 20,
+   "search": "100% чистый/слэш",
+   "sortmode": "new",
+   "url": "https://api.opendesktop.org/ocs/v1/content/data?categories=299&page=0&pagesize=20&sortmode=new&search=100%25+%D1%87%D0%B8%D1%81%D1%82%D1%8B%D0%B9%2F%D1%81%D0%BB%D1%8D%D1%88"
+  }
+ ],
+ "sort_map": {
+  "alpha": "alpha",
+  "down": "down",
+  "high": "high",
+  "new": "new"
+ }
+}

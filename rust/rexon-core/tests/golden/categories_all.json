@@ -1,0 +1,688 @@
+{
+ "categories": [
+  {
+   "id": 722,
+   "key": "global",
+   "name": "Global Themes",
+   "icon": "💎",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "global",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     722
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 104,
+   "key": "plasma",
+   "name": "Plasma Styles",
+   "icon": "🖥️",
+   "install_dir": "/home/tester/.local/share/plasma/desktoptheme",
+   "apply_kind": "plasma",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     104
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 112,
+   "key": "colors",
+   "name": "Цветовые схемы",
+   "icon": "🌈",
+   "install_dir": "/home/tester/.local/share/color-schemes",
+   "apply_kind": "colors",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     112
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 114,
+   "key": "aurorae",
+   "name": "Окна (Aurorae)",
+   "icon": "🪟",
+   "install_dir": "/home/tester/.local/share/aurorae/themes",
+   "apply_kind": "aurorae",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     114
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 132,
+   "key": "icons",
+   "name": "Иконки",
+   "icon": "📁",
+   "install_dir": "/home/tester/.local/share/icons",
+   "apply_kind": "icons",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     132
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 107,
+   "key": "cursor",
+   "name": "Курсоры",
+   "icon": "🖱️",
+   "install_dir": "/home/tester/.local/share/icons",
+   "apply_kind": "cursor",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     107
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 123,
+   "key": "kvantum",
+   "name": "Kvantum",
+   "icon": "🔲",
+   "install_dir": "/home/tester/.config/Kvantum",
+   "apply_kind": "kvantum",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     123
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 135,
+   "key": "gtk",
+   "name": "GTK-темы",
+   "icon": "🎨",
+   "install_dir": "/home/tester/.local/share/themes",
+   "apply_kind": "gtk",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     135
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 299,
+   "key": "wallpapers",
+   "name": "Обои HD",
+   "icon": "🖼️",
+   "install_dir": "/home/tester/.local/share/wallpapers",
+   "apply_kind": "wallpapers",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     299
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 715,
+   "key": "wallpaper_plugins",
+   "name": "Обои-плагины",
+   "icon": "🎞️",
+   "install_dir": "/home/tester/.local/share/plasma/wallpapers",
+   "apply_kind": "wallpaper_plugins",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     715
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 103,
+   "key": "fonts",
+   "name": "Шрифты",
+   "icon": "🔤",
+   "install_dir": "/home/tester/.local/share/fonts",
+   "apply_kind": "fonts",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     103
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 316,
+   "key": "sounds",
+   "name": "Звуки",
+   "icon": "🔔",
+   "install_dir": "/home/tester/.local/share/sounds",
+   "apply_kind": "sounds",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     316
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 705,
+   "key": "plasmoids",
+   "name": "Виджеты",
+   "icon": "🧊",
+   "install_dir": "/home/tester/.local/share/plasma/plasmoids",
+   "apply_kind": "plasmoids",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     705
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 101,
+   "key": "sddm",
+   "name": "SDDM (вход)",
+   "icon": "🔐",
+   "install_dir": "/usr/share/sddm/themes",
+   "apply_kind": "sddm",
+   "requires_root": true,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     101
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 108,
+   "key": "plymouth",
+   "name": "Plymouth",
+   "icon": "⚡",
+   "install_dir": "/usr/share/plymouth/themes",
+   "apply_kind": "plymouth",
+   "requires_root": true,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     108
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 901,
+   "key": "widgetstyle",
+   "name": "Стиль приложений",
+   "icon": "🎛️",
+   "install_dir": "",
+   "apply_kind": "widgetstyle",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     123
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 902,
+   "key": "splash",
+   "name": "Сплэш-экран KDE",
+   "icon": "🌅",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "splash",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     716,
+     488
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 903,
+   "key": "lockscreen",
+   "name": "Экран блокировки",
+   "icon": "🔒",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "lockscreen",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     722
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 904,
+   "key": "lockwallpaper",
+   "name": "Обои блокировки",
+   "icon": "🔒",
+   "install_dir": "/home/tester/.local/share/wallpapers",
+   "apply_kind": "lockwallpaper",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     904
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 716,
+   "key": "splash",
+   "name": "Plasma 6 Splashscreens",
+   "icon": "🌅",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "splash",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     716
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 488,
+   "key": "splash",
+   "name": "Plasma Splashscreens",
+   "icon": "🌅",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "splash",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     488
+    ]
+   },
+   "default_sort": "new"
+  }
+ ],
+ "sidebar": [
+  {
+   "id": 0,
+   "key": "active",
+   "name": "Активные",
+   "icon": "✅",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "none",
+   "default_sort": "new"
+  },
+  {
+   "id": 0,
+   "key": "downloaded",
+   "name": "Загруженные",
+   "icon": "📥",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "none",
+   "default_sort": "new"
+  },
+  {
+   "id": 0,
+   "key": "system",
+   "name": "Системные",
+   "icon": "🖥️",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "none",
+   "default_sort": "new"
+  },
+  {
+   "id": 0,
+   "key": "favorites",
+   "name": "Избранное",
+   "icon": "⭐",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "none",
+   "default_sort": "new"
+  },
+  {
+   "id": 0,
+   "key": "popular",
+   "name": "Популярные",
+   "icon": "⭐",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "ocs_showcase",
+   "default_sort": "high"
+  },
+  {
+   "id": 0,
+   "key": "new",
+   "name": "Новые",
+   "icon": "🆕",
+   "install_dir": "",
+   "apply_kind": "",
+   "requires_root": false,
+   "virtual": true,
+   "store": "ocs_showcase",
+   "default_sort": "new"
+  },
+  {
+   "id": 722,
+   "key": "global",
+   "name": "Global Themes",
+   "icon": "💎",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "global",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     722
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 104,
+   "key": "plasma",
+   "name": "Plasma Styles",
+   "icon": "🖥️",
+   "install_dir": "/home/tester/.local/share/plasma/desktoptheme",
+   "apply_kind": "plasma",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     104
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 112,
+   "key": "colors",
+   "name": "Цветовые схемы",
+   "icon": "🌈",
+   "install_dir": "/home/tester/.local/share/color-schemes",
+   "apply_kind": "colors",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     112
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 114,
+   "key": "aurorae",
+   "name": "Окна (Aurorae)",
+   "icon": "🪟",
+   "install_dir": "/home/tester/.local/share/aurorae/themes",
+   "apply_kind": "aurorae",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     114
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 132,
+   "key": "icons",
+   "name": "Иконки",
+   "icon": "📁",
+   "install_dir": "/home/tester/.local/share/icons",
+   "apply_kind": "icons",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     132
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 107,
+   "key": "cursor",
+   "name": "Курсоры",
+   "icon": "🖱️",
+   "install_dir": "/home/tester/.local/share/icons",
+   "apply_kind": "cursor",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     107
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 135,
+   "key": "gtk",
+   "name": "GTK-темы",
+   "icon": "🎨",
+   "install_dir": "/home/tester/.local/share/themes",
+   "apply_kind": "gtk",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     135
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 901,
+   "key": "widgetstyle",
+   "name": "Стиль приложений",
+   "icon": "🎛️",
+   "install_dir": "",
+   "apply_kind": "widgetstyle",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     123
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 299,
+   "key": "wallpapers",
+   "name": "Обои HD",
+   "icon": "🖼️",
+   "install_dir": "/home/tester/.local/share/wallpapers",
+   "apply_kind": "wallpapers",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     299
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 715,
+   "key": "wallpaper_plugins",
+   "name": "Обои-плагины",
+   "icon": "🎞️",
+   "install_dir": "/home/tester/.local/share/plasma/wallpapers",
+   "apply_kind": "wallpaper_plugins",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     715
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 103,
+   "key": "fonts",
+   "name": "Шрифты",
+   "icon": "🔤",
+   "install_dir": "/home/tester/.local/share/fonts",
+   "apply_kind": "fonts",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     103
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 316,
+   "key": "sounds",
+   "name": "Звуки",
+   "icon": "🔔",
+   "install_dir": "/home/tester/.local/share/sounds",
+   "apply_kind": "sounds",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     316
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 705,
+   "key": "plasmoids",
+   "name": "Виджеты",
+   "icon": "🧊",
+   "install_dir": "/home/tester/.local/share/plasma/plasmoids",
+   "apply_kind": "plasmoids",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     705
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 101,
+   "key": "sddm",
+   "name": "SDDM (вход)",
+   "icon": "🔐",
+   "install_dir": "/usr/share/sddm/themes",
+   "apply_kind": "sddm",
+   "requires_root": true,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     101
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 902,
+   "key": "splash",
+   "name": "Сплэш-экран KDE",
+   "icon": "🌅",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "splash",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     716,
+     488
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 903,
+   "key": "lockscreen",
+   "name": "Экран блокировки",
+   "icon": "🔒",
+   "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
+   "apply_kind": "lockscreen",
+   "requires_root": false,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     722
+    ]
+   },
+   "default_sort": "new"
+  },
+  {
+   "id": 108,
+   "key": "plymouth",
+   "name": "Plymouth",
+   "icon": "⚡",
+   "install_dir": "/usr/share/plymouth/themes",
+   "apply_kind": "plymouth",
+   "requires_root": true,
+   "virtual": false,
+   "store": {
+    "ocs": [
+     108
+    ]
+   },
+   "default_sort": "new"
+  }
+ ]
+}

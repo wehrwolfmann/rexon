@@ -1,0 +1,386 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Like Garuda Linux (Dr460nized)”?",
+      "text": "The look <b>Like Garuda Linux (Dr460nized)</b> will be applied to your desktop.<br><br>What will change: global theme, colours, window frames, desktop shell theme, Qt application style, GTK theme, icons, cursors, fonts, wallpaper, panel layout, desktop behaviour.<br><br>Rexon will install the programs it needs: kvantum, beautyline, ttf-fira-sans, ttf-firacode-nerd, plasma-applet-window-buttons, kdeplasma-addons. Your system will ask for your password.<br><br>Rexon does not build AUR packages by itself. If you want the missing parts, install them yourself and apply the look again: aur/plasma6-wallpapers-blurredwallpaper aur/plasma6-applets-panel-colorizer aur/plasma6-applets-window-title<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "garuda-dr460nized",
+    "name": "Like Garuda Linux (Dr460nized)",
+    "items": [
+      {
+        "index": 0,
+        "kind": "global-look",
+        "consumer": "kde-lnf",
+        "path": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized",
+        "choice": {
+          "choice": "native",
+          "consumer": "kde-lnf",
+          "path": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized"
+        }
+      },
+      {
+        "index": 1,
+        "kind": "palette",
+        "consumer": "kde-colors",
+        "path": "sources/sweet/kde/colorschemes/Sweet.colors",
+        "choice": {
+          "choice": "native",
+          "consumer": "kde-colors",
+          "path": "sources/sweet/kde/colorschemes/Sweet.colors"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "window-decoration",
+        "consumer": "aurorae",
+        "path": "sources/sweet/kde/aurorae/Sweet-Dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "aurorae",
+          "path": "sources/sweet/kde/aurorae/Sweet-Dark"
+        }
+      },
+      {
+        "index": 3,
+        "kind": "shell-theme",
+        "consumer": "plasma",
+        "path": "sources/garuda/usr/share/plasma/desktoptheme/Dr460nized",
+        "choice": {
+          "choice": "native",
+          "consumer": "plasma",
+          "path": "sources/garuda/usr/share/plasma/desktoptheme/Dr460nized"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "qt-style",
+        "consumer": "kvantum",
+        "path": "sources/garuda/usr/share/Kvantum/Dr460nized",
+        "choice": {
+          "choice": "native",
+          "consumer": "kvantum",
+          "path": "sources/garuda/usr/share/Kvantum/Dr460nized"
+        }
+      },
+      {
+        "index": 5,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/sweet-gtk/Sweet-Dark",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/sweet-gtk/Sweet-Dark"
+        }
+      },
+      {
+        "index": 6,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/beautyline/usr/share/icons/BeautyLine",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/beautyline/usr/share/icons/BeautyLine"
+        }
+      },
+      {
+        "index": 7,
+        "kind": "cursors",
+        "consumer": "freedesktop",
+        "path": "sources/sweet/kde/cursors/Sweet-cursors",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/sweet/kde/cursors/Sweet-cursors"
+        }
+      },
+      {
+        "index": 8,
+        "kind": "fonts",
+        "consumer": "freedesktop",
+        "path": "sources/fira/usr/share/fonts",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/fira/usr/share/fonts"
+        }
+      },
+      {
+        "index": 9,
+        "kind": "wallpaper",
+        "consumer": "any",
+        "path": "sources/garuda/usr/share/wallpapers/Maldrakor",
+        "choice": {
+          "choice": "native",
+          "consumer": "any",
+          "path": "sources/garuda/usr/share/wallpapers/Maldrakor"
+        }
+      },
+      {
+        "index": 10,
+        "kind": "panel-layout",
+        "consumer": "kde-layout",
+        "path": "sources/garuda/usr/share/plasma/layout-templates",
+        "choice": {
+          "choice": "native",
+          "consumer": "kde-layout",
+          "path": "sources/garuda/usr/share/plasma/layout-templates"
+        }
+      },
+      {
+        "index": 11,
+        "kind": "behaviour",
+        "consumer": "kconfig",
+        "path": "native/plasma-settings.json",
+        "choice": {
+          "choice": "native",
+          "consumer": "kconfig",
+          "path": "native/plasma-settings.json"
+        }
+      }
+    ],
+    "skipped": [],
+    "install": [
+      {
+        "role": "kvantum",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "kvantum"
+          ]
+        }
+      },
+      {
+        "role": "icons-beautyline",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "beautyline"
+          ]
+        }
+      },
+      {
+        "role": "fonts-fira",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "ttf-fira-sans",
+            "ttf-firacode-nerd"
+          ]
+        }
+      },
+      {
+        "role": "window-buttons",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "plasma-applet-window-buttons"
+          ]
+        }
+      },
+      {
+        "role": "cover-switch",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "kdeplasma-addons"
+          ]
+        }
+      }
+    ],
+    "aur": [
+      {
+        "role": "blurred-wallpaper",
+        "packages": [
+          "aur/plasma6-wallpapers-blurredwallpaper"
+        ],
+        "kinds": [
+          "global-look"
+        ],
+        "needed": false
+      },
+      {
+        "role": "panel-colorizer",
+        "packages": [
+          "aur/plasma6-applets-panel-colorizer"
+        ],
+        "kinds": [
+          "panel-layout"
+        ],
+        "needed": false
+      },
+      {
+        "role": "window-title",
+        "packages": [
+          "aur/plasma6-applets-window-title"
+        ],
+        "kinds": [
+          "panel-layout"
+        ],
+        "needed": false
+      }
+    ],
+    "roles": [
+      "cover-switch",
+      "fonts-fira",
+      "icons-beautyline",
+      "kvantum",
+      "window-buttons"
+    ],
+    "fetch": [
+      {
+        "id": "garuda",
+        "url": "https://gitlab.com/garuda-linux/themes-and-settings/settings/garuda-dr460nized.git",
+        "pin": {
+          "pin": "git",
+          "value": "1280f411dc307847332ecab2f578ed984d33498c"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/garuda-1280f411dc30"
+      },
+      {
+        "id": "sweet",
+        "url": "https://github.com/EliverLara/Sweet.git",
+        "pin": {
+          "pin": "git",
+          "value": "46e3802d3f4d9e992f94264f1d834f5f9621c03b"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-46e3802d3f4d"
+      },
+      {
+        "id": "sweet-gtk",
+        "url": "https://github.com/EliverLara/Sweet/releases/download/v6.0/Sweet-Dark.tar.xz",
+        "pin": {
+          "pin": "sha256",
+          "value": "123f69effb71acc846502c834c01101c84bfa62f76a5f2eb095d4be07c567599"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/sweet-gtk-123f69effb71"
+      }
+    ],
+    "uses_settings": true,
+    "values": {}
+  },
+  "calls": [
+    "plasma-apply-lookandfeel -a Dr460nized --resetLayout",
+    "plasma-apply-colorscheme Sweet",
+    "plasma-apply-desktoptheme Dr460nized",
+    "plasma-apply-cursortheme Sweet-cursors",
+    "qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript var all = desktops(); for (var i = 0; i < all.length; i++) { var d = all[i]; d.wallpaperPlugin = \"org.kde.image\"; d.currentConfigGroup = [\"Wallpaper\", \"org.kde.image\", \"General\"]; d.writeConfig(\"Image\", \"file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg\"); }",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group General --key font Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group General --key menuFont Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group General --key toolBarFont Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group General --key smallestReadableFont Fira Sans,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group General --key fixed FiraCode Nerd Font Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+    "kwriteconfig6 --file $HOME/.config/kdeglobals --group WM --key activeFont Fira Sans,10,-1,5,75,0,0,0,0,0,Bold",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key wobblywindowsEnabled true",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key magiclampEnabled true",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key fadeEnabled true",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key desktopchangeosdEnabled true",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key squashEnabled false",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Plugins --key scaleEnabled false",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Effect-wobblywindows --key Drag 85",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Effect-wobblywindows --key Stiffness 10",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Effect-wobblywindows --key WobblynessLevel 1",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Script-desktopchangeosd --key PopupHideDelay 2000",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group TabBox --key LayoutName coverswitch",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group Windows --key BorderlessMaximizedWindows true",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft XAI",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight ",
+    "kwriteconfig6 --file $HOME/.config/kwinrc --group org.kde.kdecoration2 --key BorderSizeAuto false",
+    "kwriteconfig6 --file $HOME/.config/kcminputrc --group Mouse --key cursorTheme Sweet-cursors",
+    "kwriteconfig6 --file $HOME/.config/kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key Image file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg",
+    "kwriteconfig6 --file $HOME/.config/kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key PreviewImage file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg",
+    "kwriteconfig6 --file $HOME/.config/krunnerrc --group General --key FreeFloating true",
+    "qdbus org.kde.KWin /KWin org.kde.KWin.reconfigure"
+  ],
+  "missing": [],
+  "message": "“Like Garuda Linux (Dr460nized)” applied.\nRexon does not build AUR packages by itself. If you want the missing parts, install them yourself and apply the look again: aur/plasma6-wallpapers-blurredwallpaper aur/plasma6-applets-panel-colorizer aur/plasma6-applets-window-title\nSome parts (menu fonts, KRunner in the middle of the screen) take effect after you log in again.",
+  "installed": [
+    "kvantum",
+    "beautyline",
+    "ttf-fira-sans",
+    "ttf-firacode-nerd",
+    "plasma-applet-window-buttons",
+    "kdeplasma-addons"
+  ],
+  "profile": {
+    ".config/": "",
+    ".config/Kvantum/": "",
+    ".config/Kvantum/Dr460nized/": "",
+    ".config/Kvantum/Dr460nized/.rexon-owner": "look:garuda-dr460nized\n",
+    ".config/Kvantum/Dr460nized/Dr460nized.kvconfig": "[%General]\n",
+    ".config/Kvantum/kvantum.kvconfig": "\n[General]\ntheme=Dr460nized\n",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Sweet-Dark\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\ngtk-font-name=Fira Sans 10\ngtk-application-prefer-dark-theme=1\ngtk-decoration-layout=close,maximize,minimize:\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-theme-name=Sweet-Dark\ngtk-icon-theme-name=BeautyLine\ngtk-cursor-theme-name=Sweet-cursors\ngtk-font-name=Fira Sans 10\ngtk-application-prefer-dark-theme=1\ngtk-decoration-layout=close,maximize,minimize:\n",
+    ".config/kcminputrc": "[Mouse]\ncursorTheme=Sweet-cursors\n[Mouse]\ncursorTheme=Sweet-cursors\n",
+    ".config/kdeglobals": "[General]\nColorScheme=BreezeDark\n[KDE]\nLookAndFeelPackage=Dr460nized\n[General]\nColorScheme=Sweet\n[General]\nfont=Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n[General]\nmenuFont=Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n[General]\ntoolBarFont=Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n[General]\nsmallestReadableFont=Fira Sans,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n[General]\nfixed=FiraCode Nerd Font Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\n[WM]\nactiveFont=Fira Sans,10,-1,5,75,0,0,0,0,0,Bold\n",
+    ".config/krunnerrc": "[General]\nFreeFloating=true\n",
+    ".config/kscreenlockerrc": "[Greeter][Wallpaper][org.kde.image][General]\nImage=file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg\n[Greeter][Wallpaper][org.kde.image][General]\nPreviewImage=file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg\n",
+    ".config/kwinrc": "[Plugins]\nblurEnabled=true\n[Plugins]\nwobblywindowsEnabled=true\n[Plugins]\nmagiclampEnabled=true\n[Plugins]\nfadeEnabled=true\n[Plugins]\ndesktopchangeosdEnabled=true\n[Plugins]\nsquashEnabled=false\n[Plugins]\nscaleEnabled=false\n[Effect-wobblywindows]\nDrag=85\n[Effect-wobblywindows]\nStiffness=10\n[Effect-wobblywindows]\nWobblynessLevel=1\n[Script-desktopchangeosd]\nPopupHideDelay=2000\n[TabBox]\nLayoutName=coverswitch\n[Windows]\nBorderlessMaximizedWindows=true\n[org.kde.kdecoration2]\nButtonsOnLeft=XAI\n[org.kde.kdecoration2]\nButtonsOnRight=\n[org.kde.kdecoration2]\nBorderSizeAuto=false\n",
+    ".config/plasma-org.kde.plasma.desktop-appletsrc": "layout\n",
+    ".config/plasmarc": "[Theme]\nname=Dr460nized\n",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/aurorae/": "",
+    ".local/share/aurorae/themes/": "",
+    ".local/share/aurorae/themes/Sweet-Dark/": "",
+    ".local/share/aurorae/themes/Sweet-Dark/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/aurorae/themes/Sweet-Dark/Sweet-Darkrc": "[General]\nGaruda=1\n",
+    ".local/share/color-schemes/": "",
+    ".local/share/color-schemes/Sweet.colors": "[General]\n",
+    ".local/share/icons/": "",
+    ".local/share/icons/Sweet-cursors/": "",
+    ".local/share/icons/Sweet-cursors/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/icons/Sweet-cursors/cursors/": "",
+    ".local/share/icons/Sweet-cursors/cursors/default": "left_ptr",
+    ".local/share/icons/Sweet-cursors/cursors/left_ptr": "cur",
+    ".local/share/icons/Sweet-cursors/index.theme": "[Icon Theme]\nName=Sweet-cursors\n",
+    ".local/share/plasma/": "",
+    ".local/share/plasma/desktoptheme/": "",
+    ".local/share/plasma/desktoptheme/Dr460nized/": "",
+    ".local/share/plasma/desktoptheme/Dr460nized/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/plasma/desktoptheme/Dr460nized/metadata.json": "{}",
+    ".local/share/plasma/layout-templates/": "",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultDock/": "",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultDock/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultDock/contents/": "",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultDock/contents/layout.js": "tasks.writeConfig(\"launchers\", \"preferred://browser\")\n",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultDock/metadata.json": "{}",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/": "",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/contents/": "",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/contents/layout.js": "panel.addWidget(\"org.kde.plasma.kickoff\");\n",
+    ".local/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/metadata.json": "{}",
+    ".local/share/plasma/look-and-feel/": "",
+    ".local/share/plasma/look-and-feel/Dr460nized/": "",
+    ".local/share/plasma/look-and-feel/Dr460nized/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/plasma/look-and-feel/Dr460nized/contents/": "",
+    ".local/share/plasma/look-and-feel/Dr460nized/contents/defaults": "[kdeglobals][General]\nColorScheme=Sweet\n\n[Greeter][Wallpaper][org.kde.image][General]\nImage=file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg\nPreviewImage=file://$HOME/.local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg\n",
+    ".local/share/plasma/look-and-feel/Dr460nized/contents/layouts/": "",
+    ".local/share/plasma/look-and-feel/Dr460nized/contents/layouts/org.kde.plasma.desktop-layout.js": "loadTemplate(\"org.garuda.desktop.defaultPanel\")\n",
+    ".local/share/plasma/look-and-feel/Dr460nized/metadata.json": "{}",
+    ".local/share/themes/": "",
+    ".local/share/themes/Sweet-Dark/": "",
+    ".local/share/themes/Sweet-Dark/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/": "",
+    ".local/share/themes/Sweet-Dark/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Sweet-Dark/index.theme": "[Desktop Entry]\nName=Sweet-Dark\n",
+    ".local/share/themes/Sweet-Dark/xfwm4/": "",
+    ".local/share/themes/Sweet-Dark/xfwm4/themerc": "x=1\n",
+    ".local/share/wallpapers/": "",
+    ".local/share/wallpapers/Maldrakor/": "",
+    ".local/share/wallpapers/Maldrakor/.rexon-owner": "look:garuda-dr460nized\n",
+    ".local/share/wallpapers/Maldrakor/contents/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/": "",
+    ".local/share/wallpapers/Maldrakor/contents/images/3840x1920.jpg": "jpg",
+    ".local/share/wallpapers/Maldrakor/metadata.json": "{}"
+  }
+}

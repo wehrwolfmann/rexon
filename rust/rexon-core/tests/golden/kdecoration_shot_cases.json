@@ -1,0 +1,43 @@
+{
+ "_comment": "Сверка kdecoration_shot.rs: снимок рамки KDE для плитки «Оформления окон» — чем снимать, что снимать, размер рамки, аргументы процесса, ключ кеша. Правится руками вместе с поведением; ключи kwinrc и номера размеров — kwindecorationsettings.kcfg и utils.cpp модуля KWin 6.8.",
+ "runner": [
+  {"name": "arch_qt6_and_kwin", "files": ["/usr/lib/qt6/bin/qml", "/usr/bin/qml", "/usr/lib/qt6/qml/org/kde/kwin/private/kdecoration/qmldir"], "want": "/usr/lib/qt6/bin/qml"},
+  {"name": "fedora_lib64", "files": ["/usr/lib64/qt6/bin/qml", "/usr/lib64/qt6/qml/org/kde/kwin/private/kdecoration/qmldir"], "want": "/usr/lib64/qt6/bin/qml"},
+  {"name": "debian_multiarch", "files": ["/usr/lib/x86_64-linux-gnu/qt6/bin/qml", "/usr/lib/x86_64-linux-gnu/qt6/qml/org/kde/kwin/private/kdecoration/qmldir"], "want": "/usr/lib/x86_64-linux-gnu/qt6/bin/qml"},
+  {"name": "only_qt5_qml_is_not_taken", "files": ["/usr/bin/qml", "/usr/lib/qt6/qml/org/kde/kwin/private/kdecoration/qmldir"], "want": null},
+  {"name": "no_kwin_module", "files": ["/usr/lib/qt6/bin/qml"], "want": null},
+  {"name": "qml6_wrapper", "files": ["/usr/bin/qml6", "/usr/lib/qt6/qml/org/kde/kwin/private/kdecoration/qmldir"], "want": "/usr/bin/qml6"}
+ ],
+ "border": [
+  {"name": "nothing_written", "size": null, "auto": null, "want": 3},
+  {"name": "auto_true_ignores_size", "size": "Huge", "auto": "true", "want": 3},
+  {"name": "explicit_huge", "size": "Huge", "auto": "false", "want": 6},
+  {"name": "explicit_none", "size": "None", "auto": "false", "want": 0},
+  {"name": "explicit_oversized", "size": "Oversized", "auto": "false", "want": 8},
+  {"name": "explicit_without_size_is_normal", "size": null, "auto": "false", "want": 3},
+  {"name": "unknown_name_is_normal", "size": "Gigantic", "auto": "false", "want": 3}
+ ],
+ "request": [
+  {"name": "breeze", "id": "local:aurorae:org.kde.breeze/Breeze", "caption": "Breeze", "svg_library": "org.kde.kwin.aurorae.v2", "border": 3,
+   "want": {"library": "org.kde.breeze", "theme": "Breeze", "caption": "Breeze", "border_index": 3}},
+  {"name": "oxygen_localized_theme", "id": "local:aurorae:org.kde.oxygen/Кислород", "caption": "Кислород", "svg_library": "org.kde.kwin.aurorae.v2", "border": 4,
+   "want": {"library": "org.kde.oxygen", "theme": "Кислород", "caption": "Кислород", "border_index": 4}},
+  {"name": "qml_theme_plastik", "id": "local:aurorae:org.kde.kwin.aurorae/kwin4_decoration_qml_plastik", "caption": "Plastik", "svg_library": "org.kde.kwin.aurorae.v2", "border": 3,
+   "want": {"library": "org.kde.kwin.aurorae", "theme": "kwin4_decoration_qml_plastik", "caption": "Plastik", "border_index": 3}},
+  {"name": "svg_theme_plasma68", "id": "local:aurorae:Sweet-Dark", "caption": "Sweet Dark", "svg_library": "org.kde.kwin.aurorae.v2", "border": 3,
+   "want": {"library": "org.kde.kwin.aurorae.v2", "theme": "__aurorae__svg__Sweet-Dark", "caption": "Sweet Dark", "border_index": 3}},
+  {"name": "svg_theme_before_68", "id": "local:aurorae:Sweet-Dark", "caption": "Sweet Dark", "svg_library": "org.kde.kwin.aurorae", "border": 3,
+   "want": {"library": "org.kde.kwin.aurorae", "theme": "__aurorae__svg__Sweet-Dark", "caption": "Sweet Dark", "border_index": 3}},
+  {"name": "other_kind_is_not_shot", "id": "local:xfwm4:Greybird", "caption": "Greybird", "svg_library": "org.kde.kwin.aurorae.v2", "border": 3, "want": null},
+  {"name": "empty_entry_is_not_shot", "id": "local:aurorae:", "caption": "", "svg_library": "org.kde.kwin.aurorae.v2", "border": 3, "want": null}
+ ],
+ "argv": [
+  {"name": "breeze", "runner": "/usr/lib/qt6/bin/qml", "script": "/home/u/.cache/rexon/kdecoration-preview.qml",
+   "request": {"library": "org.kde.breeze", "theme": "Breeze", "caption": "Breeze", "border_index": 3}, "out": "/home/u/.cache/rexon/x.shot.png",
+   "want": ["/usr/lib/qt6/bin/qml", "/home/u/.cache/rexon/kdecoration-preview.qml", "--", "org.kde.breeze", "Breeze", "Breeze", "3", "/home/u/.cache/rexon/x.shot.png"]}
+ ],
+ "tag": [
+  {"name": "with_runner", "runner": "/usr/lib/qt6/bin/qml", "border": 6, "stamp": 1761900000, "want": "shot\u00006\u00001761900000"},
+  {"name": "without_runner", "runner": null, "border": 6, "stamp": 1761900000, "want": "noshot"}
+ ]
+}

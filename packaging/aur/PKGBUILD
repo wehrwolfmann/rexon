@@ -1,0 +1,1143 @@
+# Maintainer: Wehrwolfmann <256216494+wehrwolfmann@users.noreply.github.com>
+#
+# Rexon — универсальный менеджер рабочих столов для Linux.
+# Лицензия: Apache-2.0, включая формат .rxn (см. LICENSE и NOTICE в корне
+# репозитория → /usr/share/licenses/rexon-git/).
+#
+# Источник — публичный репозиторий (_giturl ниже). Для сборки из локального
+#   клона: REXON_GITURL="git+file://<путь к клону>" makepkg (см. README.md).
+
+pkgname=rexon-git
+pkgver=0.1.0.r1999.g990766e
+pkgrel=1
+pkgdesc="Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers (git version)"
+url="https://github.com/wehrwolfmann/rexon"
+# Пакет вёз один Python (arch=any); теперь в нём собранные бинари:
+# Rust-окно, хост обоев, заставка входа и привилегированные помощники.
+# Интерпретатора в пакете нет вовсе — вход /usr/bin/rexon ведёт на Rust-окно.
+arch=('x86_64')
+# Вариант сборки движка обоев. По умолчанию (0) движок — отдельные пакеты
+# дистрибутива waywallen и open-wallpaper-engine (так собирается пакет AUR
+# и CachyOS, и только этот вариант описан в .SRCINFO). 1 — движок ВШИТ:
+# AppImage waywallen, плагин OWE и архив его GPL-исходников едут в самом
+# пакете, в /usr/lib/rexon/engine — для поставки Steam, ручной установки и
+# машин без пакетов движка. Включается из окружения, как REXON_GITURL:
+#   REXON_BUNDLED_ENGINE=1 makepkg
+# Подробности — блок «Движок обоев» после options и README.md.
+case "${REXON_BUNDLED_ENGINE:-0}" in
+  1) _bundled_engine=1 ;;
+  0) _bundled_engine=0 ;;
+  *) echo "ERROR: REXON_BUNDLED_ENGINE=${REXON_BUNDLED_ENGINE} — допустимо 0 или 1" >&2
+     _bundled_engine=invalid ;;   # prepare() остановит сборку
+esac
+# Нижние границы пакетов движка обоев (depends ниже); почему именно они —
+# блок «Движок обоев» после options.
+_ww_min=0.5.0
+_owe_min=0.3.2
+# Своё — Apache-2.0 (LICENSE + NOTICE), но в пакете едет и чужое: движок автоперевода
+# (fxtranslate, MPL-2.0) с вкомпилированными gemmology (MIT) и xsimd
+# (BSD-3-Clause), файлы модели Mozilla (MPL-2.0) и Plasma-плагин обоев
+# org.waywallen.kde (официальный архив выпуска без изменений). Лицензия
+# плазмоида у апстрима записана двояко: extensions/kde/LICENSE — MIT, а
+# metadata.json — GPL-2.0-or-later; вопрос задан автору
+# (waywallen/waywallen-display#70), до ответа в поле стоят обе и ставятся
+# оба текста. Вложенная в него libwaywallen-display-qml.so — MIT (сборка их
+# библиотеки waywallen-display, линкуется только с Qt6).
+# QML-плагин QExtra (собирается из исходников автора без изменений) и
+# статически вошедшие в него wavsen, ncrequest, rstd, vvk, lihttpto — MIT
+# (у всех, кроме ncrequest, на выбор «MIT OR Apache-2.0»; берём MIT).
+# Поле обязано перечислять лицензии ВСЕГО, что лежит в пакете, иначе оно
+# врёт покупателю и сопровождающим; тексты всех ставятся в
+# /usr/share/licenses.
+#
+# Движок обоев по умолчанию в пакете НЕ лежит (с 30.10.2026): демон
+# waywallen и плагин Open Wallpaper Engine — отдельные пакеты дистрибутива,
+# ниже в depends. Их файлы, лицензии и исходники — забота их пакетов; с кодом
+# Rexon они не линкуются (демон — отдельный процесс, Rexon говорит с ним по
+# D-Bus и WebSocket, рисовальщики OWE запускает сам демон).
+# Вариант с вшитым движком (REXON_BUNDLED_ENGINE=1) везёт их сам: AppImage
+# waywallen (MIT; внутри — чужие библиотеки со своими лицензиями, см.
+# NOTICE) и плагин OWE — GPL-2.0-only, с полным исходником того же тега в
+# /usr/share/rexon/sources (GPL-2 §3(a)); внутри плагина — CEF
+# (BSD-3-Clause, уведомление отдельным файлом). GPL-код и тут за границей
+# процесса — «простое объединение» (GPL-2 §2).
+license=('Apache-2.0' 'MPL-2.0' 'MIT' 'BSD-3-Clause'
+         'GPL-2.0-or-later')
+if [[ $_bundled_engine == 1 ]]; then license+=('GPL-2.0-only'); fi
+depends=(
+  glibc
+  gcc-libs
+  bash                 # помощники polkit — bash-скрипты, и лаунчер /usr/bin/rexon
+  qt6-base             # Core/Gui/Widgets/DBus/Network/WaylandClient
+  qt6-declarative      # QML / QtQuick / Controls / Layouts
+  qt6-webengine        # web-обои: rexon-wallpaper-host --mode web (dlopen + QML-импорт)
+  qt6-multimedia       # звук scene-обоев: QML-импорт QtMultimedia
+  qt6-websockets       # вкладка Wallpaper Engine (QtWebSockets)
+  layer-shell-qt       # wlr-layer-shell BACKGROUND под Wayland
+  vulkan-icd-loader    # Flash-обои: rexon-wallpaper-host --mode swf рисует через Vulkan (wgpu)
+  alsa-lib             # звук Flash-обоев: cpal ходит в libasound (PipeWire отдаёт его своим плагином)
+  mpv                  # rexon-splash-overlay линкуется с libmpv (заставка входа)
+  wayland
+  libglvnd             # EGL заставки входа
+  dbus
+  openssl
+  polkit               # pkexec + named-действия org.rexon.* (пароль реже: auth_admin_keep)
+  pacman-contrib       # checkupdates: что придёт с обновлением — без прав и не трогая
+                       # базу системы; на нём предупреждение «обновление поставит
+                       # набор пакетов вразнобой» (update_guard) и AeroThemePlasma
+  qt6ct                # выбор стиля Qt вне KDE и LXQt (темы Kvantum:
+                       # стиль, шрифты и значки Qt-программ). 180 КиБ,
+                       # тянет только qt6-base/qt6-svg — они уже здесь
+  hicolor-icon-theme
+  noto-fonts-emoji     # значки вкладок, категорий и кнопок — эмодзи в тексте;
+                       # без цветного шрифта эмодзи на чистой системе квадраты
+                       # (проверка в контейнере с GNOME 51.1, 16.10.2026)
+  qt6-grpc             # waywallen.control: Qt Protobuf + ProtobufQuick
+  libarchive           # bsdtar: распаковка .rar/.7z при импорте курсоров Windows
+                       # (`importers::extract_other_archive`); на Arch уже есть у pacman
+  xorg-server-xvfb     # невидимый X-сервер: снимки виджетов Conky для плиток без
+                       # показа на экране, и в Wayland (`conky_preview`); без него —
+                       # заглушка. На SteamOS — тот же пакет внутри sysext Rexon
+  # QML-плагин QExtra (картинки и анимации вкладки обоев).
+  # ⚠️Со сменой старшей версии ffmpeg в дистрибутиве пакет пересобирается:
+  # в плагине записаны libavcodec.so.N и соседи.
+  ffmpeg               # декодер кадров: libavcodec/avformat/avutil/swscale
+  # С LDFLAGS makepkg (--as-needed) эти две в NEEDED плагина не попадают —
+  # из них нужны только заголовки на сборке; без --as-needed плагин
+  # линкуется и с ними (libva.so.2, libva-drm.so.2, libcurl.so.4).
+  libva
+  curl
+)
+if [[ $_bundled_engine == 1 ]]; then
+  # Движок из комплекта. Пакетов движка не требуем и с ними не конфликтуем:
+  # файлы комплекта лежат в своих каталогах (/usr/lib/rexon/engine,
+  # /usr/share/rexon/sources), а стоят оба — ядро берёт системный.
+  depends+=(
+    fuse3                # рантайм AppImage (type2-runtime) монтирует образ
+                         # через fusermount из PATH
+    at-spi2-core         # плагин OWE: libcef.so веб-рендерера линкуется с
+                         # libatk/libatspi (namcap: E: Dependency at-spi2-core)
+  )
+else
+  # Движок обоев — отдельными пакетами. Нижние границы — версии, под которые
+  # сверены вендорный интерфейс и протокол (см. блок «Движок обоев» ниже):
+  # демон старше 0.5.0 не знает полей control.proto, которые шлёт ядро.
+  depends+=(
+    "waywallen>=${_ww_min}"                 # демон /usr/bin/waywallen
+    "open-wallpaper-engine>=${_owe_min}"    # scene- и web-обои Wallpaper Engine
+  )
+fi
+makedepends=(git glib2 rust
+             cmake ninja protobuf qt6-shadertools
+             # QML-плагин QExtra собирает сборщик lito (C++23 с модулями —
+             # только clang, связывает lld). В официальных репозиториях lito
+             # нет: пакет из AUR, `lito` (из исходников) или `lito-bin`
+             # (готовая сборка автора, provides=lito). Младше 0.8.7 не годится —
+             # манифест wavsen 7564374 (QExtra b3fd790, waywallen 0.5.0) несёт
+             # поле `condition` у зависимости, которое 0.8.5 не разбирает;
+             # tools/build_qml_qextra.sh такой lito отвергает сам. Другой бинарь
+             # подаётся переменной LITO.
+             'lito>=0.8.7' clang lld llvm
+             glslang vulkan-headers libpulse   # wavsen внутри QExtra
+             alsa-lib    # заголовки libasound для cpal (звук Flash-обоев)
+             # Flash-обои: build.rs крейта ruffle_core собирает встроенные
+             # классы ActionScript 3 (playerglobal) компилятором на Java и
+             # без `java` в PATH падает: «Java could not be found on your
+             # computer». Нужна только на сборке, в пакет Java не едет.
+             java-runtime-headless
+             gettext)    # msgfmt: po/*.po → .mo переводов интерфейса (build.rs
+                         # rexon-gui); его же читает QML — отдельного .qm нет
+checkdepends=(desktop-file-utils appstream)
+optdepends=(
+  'yt-dlp: YouTube-обои (потоковое видео как обои)'
+  'yay: установка AUR-тем из вкладки «Оформление» (AeroThemePlasma и т.п.)'
+  'xdg-terminal-exec: корректный терминал по умолчанию для GLib-запусков (AUR)'
+  'kvantum: применение тем Kvantum (движок стилей Qt)'
+  'vulkan-driver: Flash-обои (любой Vulkan-драйвер видеокарты: vulkan-radeon, vulkan-intel, nvidia-utils)'
+  '7zip: запасная распаковка архивов курсоров .7z/.rar, которые не берёт bsdtar'
+  'unrar: запасная распаковка RAR-архивов курсоров, которые не открыли bsdtar и 7zip'
+)
+provides=(rexon)
+conflicts=(rexon)
+# C++-части cxx-qt собираются через cc с CFLAGS makepkg: без !lto в
+# статических библиотеках остаётся только GIMPLE, и rustc их не слинкует.
+#
+# !strip: .so плазмоида org.waywallen.kde обязан ехать бит в бит как в
+# выпуске (по его хэшу ядро узнаёт версию, KNOWN_RUNTIME_SHA), а исключить
+# один путь makepkg не умеет — свои бинари package() стрипует сам
+# (_strip_own_binaries). ⛔ С вшитым движком !strip ещё и спасает AppImage:
+# strip видит в нём обычный ELF и отрезает приклеенный squashfs (78 МиБ →
+# <1 МиБ, движок мёртв). !debug — следом: отладочный пакет makepkg собирает
+# только вместе со strip.
+options=('!lto' '!strip' '!debug')
+# post_remove: снять страховку экрана входа из /etc (см. сам файл).
+install=rexon-git.install
+
+# ── Движок обоев: отдельные пакеты дистрибутива ─────────────────────
+# С 30.10.2026 пакет по умолчанию НЕ вшивает движок (AppImage waywallen со
+# статически вшитыми чужими библиотеками, плагин OWE с CEF и архив его
+# GPL-исходников внутри пакета Rexon) — он зависит от пакетов `waywallen` и
+# `open-wallpaper-engine`, которые обновляет пакетный менеджер. Прежний
+# рецепт остался вариантом REXON_BUNDLED_ENGINE=1 (блок «Вшитый движок»
+# ниже). Куда они ставят файлы и как ядро их находит — `we_client::SYSTEM_DAEMON` и
+# `we_client::SYSTEM_ENGINE_DIR` (демон из /usr/bin сам видит
+# /usr/share/waywallen/plugins, флаг --plugin ему не нужен).
+#
+# Нижние границы версий — не формальность, они привязаны к вендорным кускам
+# дерева:
+#   * _ww_min — тег, с которого сняты протокол control plane
+#     (data/qt_wallpaper_engine/proto/UPSTREAM_TAG) и вендорный интерфейс
+#     вкладки; prepare() падает, если они разошлись. С демоном старше ядро
+#     говорило бы полями, которых тот не знает;
+#   * _owe_min — плагин, сверенный с демоном _ww_min: entry_version 4,
+#     spawn_version 10 (договор плагинов SUPPORTED_ENTRY_VERSIONS = [3, 4],
+#     SPAWN_VERSION = 10, мост — протокол 3; сверка по git diff тегов
+#     30.10.2026).
+# Верхних границ нет намеренно: договор плагинов и control.proto у апстрима
+# растут добавлениями, а потолок в depends остановил бы обновление системы
+# целиком. Что демон новее проверенного — видно в Rexon: бейдж сверки
+# протокола (`we_parity`) и таблица протоколов вывода плазмоида
+# (`waywallen_kde_plugin::DAEMON_PROTOCOLS_CHECKED_UP_TO`) — вне таблицы
+# плазмоид не ставится поверх более нового и не угадывает совместимость.
+#
+# Плазмоид org.waywallen.kde едет здесь же, а не зависимостью
+# `plasma-wallpaper-waywallen`: тот тянет libplasma, kirigami и
+# plasma-workspace, то есть Plasma целиком на любой рабочий стол, а Rexon
+# ставит плазмоид только на KDE и только человеку (kpackagetool6 в
+# ~/.local/share). Демон и плазмоид обновляются ТОЛЬКО вместе: 0.4.x —
+# протокол вывода v9; плазмоид 0.4.3 (waywallen-display, сверка 23.10.2026)
+# демону 0.5.0 подходит.
+# ⚠️В базе демона миграции только вперёд: демон, хоть раз запущенный новее,
+# оставляет базу, на которой старший не стартует — откат движка только с
+# базой.
+# (_ww_min и _owe_min заданы выше depends: bash раскрывает массив сразу.)
+# Plasma-плагин обоев org.waywallen.kde — официальный архив выпуска
+# waywallen-display, ставится БЕЗ ИЗМЕНЕНИЙ (наших правок поверх нет). Версия
+# и сумма записаны ещё в data/kpackage/org.waywallen.kde/vendor.toml;
+# `vendor-check` краснеет, если они здесь и там разойдутся или сумма не
+# совпадёт с digest выпуска на GitHub.
+_wwd_ver=0.4.3
+_wwd_zip="waywallen-kde-${_wwd_ver}-x86_64-embed.zip"
+
+# ── Вшитый движок (REXON_BUNDLED_ENGINE=1) ───────────────────────────
+# Рецепт прежней поставки (28.09–30.10.2026), оставлен вариантом: Steam,
+# ручная установка, машина без пакетов waywallen и open-wallpaper-engine.
+# Каталог — `we_client::ENGINE_DIR` ядра: AppImage демона и рядом
+# plugins/<id>/; демону он передаётся флагом --plugin, и плагины демон ищет
+# в <каталог>/plugins/ (сверка app_parity.rs). Ядро берёт эту раскладку,
+# только если системного движка нет (`we_client::engine_layouts`).
+# Версии прибиты: демон и плазмоид org.waywallen.kde обновляются ТОЛЬКО
+# вместе, а плагин OWE обязан подходить демону (entry_version 4,
+# spawn_version 10 — сверка по git diff тегов, см. блок выше). AppImage —
+# ровно тот тег, с которого сняты протокол и вендорный интерфейс
+# (_ww_ver = proto/UPSTREAM_TAG, prepare() сверяет), плагин — не младше
+# _owe_min. Меняя одну из версий, сверять две другие.
+_ww_ver=0.5.0
+_ww_appimage="waywallen-${_ww_ver}-x86_64.AppImage"
+_owe_ver=0.3.2
+_owe_commit=dd07afa79d3e8c34daa61391cc641954d3d01fe0   # тег v0.3.2
+_owe_id=org.waywallen.open-wallpaper-engine
+_owe_zip="${_owe_id}-${_owe_ver}-linux-x86_64.zip"
+
+# Полный исходник OWE (GPL-2.0-only §3(a)). Подмодулей git у тега нет, но
+# сборка тянет зависимости своим сборщиком lito: их список, ревизии и
+# суммы — lito.lock тега, выгруженный `lito lock export --format
+# flatpak-sources`. Всё, что компилируется в бинари плагина, едет в архиве
+# исходников: git-зависимости по коммиту и пакеты реестра lito по сумме из
+# lito.lock. Раскладка внутри архива — та же, что у переносимого набора
+# исходников lito (.lito/source-bundle/v1/).
+# git: имя|адрес|коммит|каталог набора lito
+_owe_git=(
+  'glslang|https://github.com/KhronosGroup/glslang.git|275822a6261ee689aadb1da5f09a0ec2f058685c|c395e2aaa9cb8d8fb93b07b4c4d577edfa6e698ecff8b9495da8e176be545138'
+  'wavsen|https://github.com/hypengw/wavsen.git|756437443d84905a027f115c75ec6ae6b19692e7|ae428a7b7cbbfb5d3e52828e69bd383980b4062df55286ee89687319a05eccb9'
+  'quickjs|https://github.com/quickjs-ng/quickjs.git|3c051980ab7e783dfbfb1c70c014ce5e05ecf24c|331b9bd81fcec183b71723ba4f8b3c47ed128fe90f9e2095beff407999fe4283'
+  'vectext|https://github.com/vecren/vectext.git|d918972da5c08b5afc73b812062e855fce2d847d|58b71a442d23e9c30c7ad7e559f8235bf4041fd325ca85c431b49aae79adea5a'
+  'vrento|https://github.com/vecren/vrento.git|5cc289e6511d86cf6207a4677b22da88a3592505|1e02a493890947348849132f7d6d9766059f7eeee5fac408f5a5aac8bc7c74b6'
+  'eigen|https://chromium.googlesource.com/external/gitlab.com/libeigen/eigen.git|bc3b39870ecb690a623a3f49149a358b95c5781d|b8200cc545ec10dd9086947f174b97b20d038960af0922e188a78f5b750992ef'
+)
+# реестр lito: имя|версия|sha256 архива (= checksum в lito.lock)
+_owe_reg=(
+  'licrypto|0.1.2|0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad'
+  'liffto|0.1.0|d9bf4462318ff04aaf80401c7b02a7116907f1f4d22111ab5eb3d491d1bc94e4'
+  'lito-spirv|0.1.0|feeeeb78f97962e7414f1f9170c8bcabd9396d3c77a416b3962d5a4225b3699d'
+  'liunicode|0.1.0|821677a163b1103e7d8cbed70dbaeb0690047a1e163f6b4f42567db425d26985'
+  'rstd-alloc|0.1.9|635337c8b61ea1831c0be6389b7a1b315fd0bf47286a65f327234eee9587cb72'
+  'rstd-argparse|0.1.9|c9b43c8e568c4a28583a003e48937d8abfc43d31c08d29efea8f5805c246142e'
+  'rstd-basic|0.1.9|b6b976bcc413983344c1e0e1ef7c2ba97afc98bf908bd8e286257e9471096626'
+  'rstd-bench|0.1.9|c1459b3264cf3123b1c300bf3e5385e3ae3d85fb57cce548e3429abf827712f9'
+  'rstd-core|0.1.9|6b25690ae436fe5eb3c85381ee6b97fbd387347bd308495495f5f7142d25beb6'
+  'rstd-cppstd|0.1.9|2e3fd42d5fb41a82f166b212ac61b31d3b53a63dfe22ddba4814c536c5a77ba5'
+  'rstd-dlopn|0.1.9|28d8d0db136fc1e6430d5dbb4e7ba3d60114da81d04e419fa36520257a61e84a'
+  'rstd-json|0.1.9|ddee37fc80bf73466ff19388c2efbfab0c8f80db9958a762e8b2b7a58204337e'
+  'rstd-log|0.1.9|111d55c706af6f34e4b951ccdd51c493d9afe6668b4cedb30b7ca83fca5ee783'
+  'rstd-nostd|0.1.9|f4d0d3105a9f83c9668a81720b4d16b1abd9c4c314e4ceb2b3f77ce59f43719e'
+  'rstd-parse|0.1.9|68fbf350d3dcde887d110bb2e43560d61a8abdfb29bb91ba251aed6da4f3a2c5'
+  'rstd-runtime|0.1.9|885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d'
+  'rstd-serde|0.1.9|2842a0ace60e0f906bf3938c54f0accc5fea5777c1001617044a2f95674710b8'
+  'rstd-std|0.1.9|6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2'
+  'rstd-test|0.1.9|1a8ec426208a2378c9e12c2ef90218470a7bd31ba974255c9cb53be2ba08e5e4'
+  'spirvto|0.1.0|331b447bb6ba8e08d5bdb58958dce5dd894f09d1b99d54276dc5403d44aac324'
+  'vvk|0.1.1|4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f'
+)
+# CEF (BSD-3-Clause) — готовая сборка Spotify, её libcef.so плагин везёт
+# бинарём. В бинарь веб-рендерера статически входит только обёртка
+# libcef_dll_wrapper — её исходники (include/, libcef_dll/, cmake/) берутся из
+# этого архива в архив исходников; бинарная часть (Release/, Resources/,
+# 300 МБ) не берётся: это не GPL-код, и в пакете она уже лежит как есть.
+_cef_archive='cef_binary_149.0.4+g2f1bfd8+chromium-149.0.7827.156_linux64_minimal.tar.bz2'
+_cef_url="https://cef-builds.spotifycdn.com/${_cef_archive//+/%2B}"
+_cef_sha=6d43607675e47ed6bfa40d1cfce136d04e7720529f8f1c4435d4ba1dcd1839b2
+
+# QML-плагин Qcm.Material (QmlMaterial, MIT, hypengw) — оформление вендорных
+# страниц вкладки Wallpaper Engine. Редакция ЕДЕТ ВМЕСТЕ С ВЕНДОРОМ: пин
+# выписывает scripts/sync-waywallen-qml.py в
+# data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN, и prepare()
+# ниже падает, если здешняя копия от него отстала (разъехавшись, они дают
+# самый неприятный класс дефектов: вендорный QML новый, библиотека старая).
+_qm_pin=f1464c52d42732acb1363122b9b1a2360fd505b3
+
+# QML-плагин QExtra (hypengw/QExtra, MIT OR Apache-2.0) — настоящие
+# QE.AnimatedImage и QE.ImageCache вкладки обоев. Собирается из исходников
+# сценарием tools/build_qml_qextra.sh через нашу обёртку tools/qextra_plugin/.
+# Ревизии и суммы — ровно те, что в tools/qextra_plugin/lito.lock (срез
+# lito.lock выпуска waywallen, с которым приехала вендорная разметка);
+# prepare() падает, если списки ниже от него отстали. Сборка идёт без сети:
+# build() складывает эти источники в набор исходников lito
+# (.lito/source-bundle/v1/, раскладку называет сам `lito lock export`).
+# git: имя|адрес|коммит
+_qe_git=(
+  'QExtra|https://github.com/hypengw/QExtra.git|b3fd790bb4a5c5cf7c0cc0384cc140e78e627609'
+  'ncrequest|https://github.com/hypengw/ncrequest.git|2ba60ef6321f5e7f5bccc5fe086d2682bcaccf40'
+  'wavsen|https://github.com/hypengw/wavsen.git|756437443d84905a027f115c75ec6ae6b19692e7'
+)
+# реестр lito: имя|версия|sha256 архива (= checksum в lito.lock)
+_qe_reg=(
+  'licrypto|0.1.2|0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad'
+  'lihttpto|0.1.1|41caed3f900c29d3aa65dfc4bc21fad72bd09575768ce46af68b372c5eb32bef'
+  'lito-qt|0.1.1|dbc4671deb79a843fe48430adc463d4ff5132437949d6c86bf325de97a224409'
+  'liwebsocketo|0.1.0|4b3b5a8a52ecc129b4bc67ef95754d559caf06dce02f5f7380f53e6dcd7ff87b'
+  'rstd-alloc|0.1.9|635337c8b61ea1831c0be6389b7a1b315fd0bf47286a65f327234eee9587cb72'
+  'rstd-basic|0.1.9|b6b976bcc413983344c1e0e1ef7c2ba97afc98bf908bd8e286257e9471096626'
+  'rstd-core|0.1.9|6b25690ae436fe5eb3c85381ee6b97fbd387347bd308495495f5f7142d25beb6'
+  'rstd-cppstd|0.1.9|2e3fd42d5fb41a82f166b212ac61b31d3b53a63dfe22ddba4814c536c5a77ba5'
+  'rstd-dlopn|0.1.9|28d8d0db136fc1e6430d5dbb4e7ba3d60114da81d04e419fa36520257a61e84a'
+  'rstd-log|0.1.9|111d55c706af6f34e4b951ccdd51c493d9afe6668b4cedb30b7ca83fca5ee783'
+  'rstd-parse|0.1.9|68fbf350d3dcde887d110bb2e43560d61a8abdfb29bb91ba251aed6da4f3a2c5'
+  'rstd-runtime|0.1.9|885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d'
+  'rstd-std|0.1.9|6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2'
+  'vvk|0.1.1|4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f'
+)
+
+# Шрифты Material Symbols лежат в репозитории QmlMaterial указателями
+# git-lfs, поэтому настоящие файлы качаются отдельными источниками — сеть
+# только на шаге загрузки, сборка идёт без неё. Суммы — sha256 самих файлов
+# (совпадают с oid из указателей git-lfs).
+_qm_fonts=(MaterialSymbolsRounded.wght_400.opsz_24.fill_0.ttf
+           MaterialSymbolsRounded.wght_400.opsz_24.fill_0.woff2
+           MaterialSymbolsRounded.wght_400.opsz_24.fill_1.ttf
+           MaterialSymbolsRounded.wght_400.opsz_24.fill_1.woff2
+           MaterialSymbolsRounded.wght_400.opsz_24.woff2)
+
+# Модель перевода описаний оформления en→ru — реализация движка переводов
+# Firefox (fxtranslate) грузит её файлы как есть. Владелец решил класть модель
+# В ПАКЕТ, а не качать по требованию: перевод обязан работать сразу после
+# установки и без сети. Цена — 43,9 МБ в поставке при 31 МБ загрузки.
+#
+# Редакция прибита гвоздями: ведро Mozilla, архитектура `base`, статус
+# «Release Desktop» (⛔НЕ `base-memory`/Release Android — она хуже на
+# 0,34 chrF++). Короткий список `lex.50.50.enru.s2t.bin` намеренно НЕ везём:
+# замер 20.09 — минус 0,4 chrF++ и плюс 2,8 МБ за ускорение, которого на
+# коротких описаниях не видно (там же, translator_engine::model_files_in).
+#
+# Суммы: sha256sums ниже — у СКАЧАННЫХ архивов, `_mt_*_sum` — у распакованных
+# файлов (сверены с полем `uncompressedHash` реестра Mozilla `models.json`).
+# Вторая сверка не лишняя: в пакет едет распакованный файл, и порчу на
+# распаковке makepkg уже не поймает.
+_mt_pair=enru
+_mt_tag=AYqN3ysXRp2EGkEqeaA5Rg
+_mt_model="model.${_mt_pair}.intgemm.alphas.bin"
+_mt_vocab="vocab.${_mt_pair}.spm"
+_mt_model_sum=0ef9a209c5edc46692750e7505b3695655b1c7c3ec73058b641201ef18c481ce
+_mt_vocab_sum=56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258
+_mt_base="https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data"
+_mt_url="${_mt_base}/models/en-ru/student_base_${_mt_tag}/exported"
+
+# TODO: сверить с точным адресом репозитория на GitHub после публикации.
+# REXON_GITURL — только для локальной сборки из своего клона.
+_giturl="${REXON_GITURL:-git+https://github.com/wehrwolfmann/rexon.git}"
+_qm_media="https://media.githubusercontent.com/media/hypengw/QmlMaterial/${_qm_pin}/assets"
+source=("rexon::${_giturl}"
+        "QmlMaterial::git+https://github.com/hypengw/QmlMaterial.git#commit=${_qm_pin}"
+        "${_qm_pin:0:12}-${_qm_fonts[0]}::${_qm_media}/${_qm_fonts[0]}"
+        "${_qm_pin:0:12}-${_qm_fonts[1]}::${_qm_media}/${_qm_fonts[1]}"
+        "${_qm_pin:0:12}-${_qm_fonts[2]}::${_qm_media}/${_qm_fonts[2]}"
+        "${_qm_pin:0:12}-${_qm_fonts[3]}::${_qm_media}/${_qm_fonts[3]}"
+        "${_qm_pin:0:12}-${_qm_fonts[4]}::${_qm_media}/${_qm_fonts[4]}"
+        "${_mt_tag:0:8}-${_mt_model}.gz::${_mt_url}/${_mt_model}.gz"
+        "${_mt_tag:0:8}-${_mt_vocab}.gz::${_mt_url}/${_mt_vocab}.gz"
+        "${_wwd_zip}::https://github.com/waywallen/waywallen-display/releases/download/v${_wwd_ver}/${_wwd_zip}")
+_e=
+for _e in "${_qe_git[@]}"; do
+  IFS='|' read -r _n _u _c <<<"$_e"
+  source+=("qextra-src-${_n}::git+${_u}#commit=${_c}")
+done
+for _e in "${_qe_reg[@]}"; do
+  IFS='|' read -r _n _v _ <<<"$_e"
+  source+=("lito-${_n}-${_v}.tar.zst::https://registry.litocpp.org/packages/${_n}/${_n}-${_v}.tar.zst")
+done
+# Распаковывает модель prepare() сам: у makepkg встроенная распаковка .gz
+# кладёт файл рядом с архивом в $srcdir, а ядру нужны имена БЕЗ префикса
+# редакции и в каталоге направления.
+noextract=("${_mt_tag:0:8}-${_mt_model}.gz"
+           "${_mt_tag:0:8}-${_mt_vocab}.gz"
+           "${_wwd_zip}")         # распаковывает package(): прямо в каталог данных
+for _e in "${_qe_reg[@]}"; do
+  IFS='|' read -r _n _v _ <<<"$_e"
+  noextract+=("lito-${_n}-${_v}.tar.zst")   # распаковывает сам lito из набора
+done
+sha256sums=('SKIP'
+            'SKIP'
+            '143e9b3d74c73e856478680149d51015e9cb37263510c6fce9e8c840166fb755'
+            '78edd47b5b770f4c14bafda458214c2ea07bbaf2add54919dbcfcfaf5d2729e5'
+            '7ad2da5886792f7169fa73728e86bf1dc165afd88aa2741d27a4112051b64c72'
+            '72d77058be3c7f5b1a729ac3470daae79efea6a47a04b3a3fd11a76a0d410f62'
+            '22663f2633246da809ba5e3b08161e774117135500c22664a17352c10eb1db34'
+            '3c6e3ffd275c96a220ae28ddb55b8c2b86b44ffecc1eeb6c8195c1536de4ac74'
+            '07ed9055319f2adc50a16bc7e636fe1547ab745eb986e40b6384956dc1fc6cfd'
+            'dd5bb9934e2c0fb0ead14960571cd3fb84b66dbde3266cef81e4ab7ea8e51edb') # плазмоид (= digest выпуска)
+for _e in "${_qe_git[@]}"; do sha256sums+=('SKIP'); done    # прибиты коммитами
+for _e in "${_qe_reg[@]}"; do
+  IFS='|' read -r _ _ _s <<<"$_e"
+  sha256sums+=("$_s")
+done
+
+# Источники вшитого движка — в хвост массивов, чтобы порядок и суммы
+# варианта по умолчанию (и .SRCINFO) не менялись.
+if [[ $_bundled_engine == 1 ]]; then
+  source+=("${_ww_appimage}::https://github.com/waywallen/waywallen/releases/download/v${_ww_ver}/${_ww_appimage}"
+           "waywallen-${_ww_ver}-LICENSE::https://raw.githubusercontent.com/waywallen/waywallen/v${_ww_ver}/LICENSE"
+           "${_owe_zip}::https://github.com/waywallen/open-wallpaper-engine/releases/download/v${_owe_ver}/${_owe_zip}"
+           "open-wallpaper-engine::git+https://github.com/waywallen/open-wallpaper-engine.git#commit=${_owe_commit}"
+           "${_cef_archive}::${_cef_url}")
+  sha256sums+=('e6216c5fffc7056122b105e5745950c9ee77710e294a63b687c4b3871e190083'  # AppImage (= digest выпуска GitHub)
+               '2d1edaf74e77c63e166ed948c2fee17a50dd15f73d8e9db249117e5fde8bef24'  # MIT waywallen
+               '282c97fc67857420135c25faca95eae40ea6a50169adc2671b008622ef126ad0'  # плагин OWE (= digest выпуска)
+               'SKIP'                                                              # git OWE — прибит коммитом
+               "$_cef_sha")
+  noextract+=("${_owe_zip}"          # распаковывает prepare(): в свой каталог
+              "${_cef_archive}")     # из 300 МБ нужны только исходники обёртки
+  for _e in "${_owe_git[@]}"; do
+    IFS='|' read -r _n _u _c _ <<<"$_e"
+    source+=("owe-dep-${_n}::git+${_u}#commit=${_c}")
+    sha256sums+=('SKIP')            # прибиты коммитами
+  done
+  # Архив реестра, который уже едет источником ради QExtra (то же имя и та
+  # же сумма), второй раз не называется: makepkg не принимает два источника
+  # с одним именем файла.
+  for _e in "${_owe_reg[@]}"; do
+    [[ " ${_qe_reg[*]} " == *" ${_e} "* ]] && continue
+    IFS='|' read -r _n _v _s <<<"$_e"
+    source+=("lito-${_n}-${_v}.tar.zst::https://registry.litocpp.org/packages/${_n}/${_n}-${_v}.tar.zst")
+    sha256sums+=("$_s")
+    noextract+=("lito-${_n}-${_v}.tar.zst")   # едут в архив исходников как есть
+  done
+fi
+unset _e _n _u _c _v _s
+
+pkgver() {
+  cd "$srcdir/rexon"
+  local v
+  # Версия продукта — у рабочего пространства Rust: пакет везёт его бинари,
+  # а не интерпретатор. Прежде читалась rexon/__init__.py и вместе с уходом
+  # Python молча отдала бы «0».
+  v=$(grep -m1 -oP '^version = "\K[^"]+' rust/Cargo.toml)
+  printf '%s.r%s.g%s' "${v:-0}" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  if [[ $_bundled_engine != [01] ]]; then
+    echo "ERROR: REXON_BUNDLED_ENGINE=${REXON_BUNDLED_ENGINE} — допустимо 0 (движок из пакетов системы) или 1 (вшитый)" >&2
+    return 1
+  fi
+  # Пакетный режим ядро узнаёт двумя способами: REXON_PACKAGED от лаунчера
+  # /usr/bin/rexon (installer::detect_default_mode) и место своего файла под
+  # /usr — по нему мастер первого запуска молчит и у ярлыка, который зовёт
+  # бинарь окна напрямую (installer::packaged_location).
+  # Пин Qcm.Material обязан совпадать с выписанным рядом с вендором.
+  local pinfile="$srcdir/rexon/data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN"
+  local want
+  want=$(tr -d '[:space:]' < "$pinfile")
+  if [[ "$want" != "$_qm_pin" ]]; then
+    echo "ERROR: _qm_pin=$_qm_pin отстал от вендора ($want) — обновите источник и sha256" >&2
+    return 1
+  fi
+
+  # Источники QExtra обязаны быть ровно теми, что закреплены в lito.lock
+  # обёртки: сборка идёт с --frozen, и лишний или недостающий пакет она
+  # отвергнет уже после получаса сборки Rust — здесь это видно сразу.
+  local lock="$srcdir/rexon/tools/qextra_plugin/lito.lock" e n u c v
+  for e in "${_qe_git[@]}"; do
+    IFS='|' read -r n u c <<<"$e"
+    grep -qxF "source = \"git+${u}#${c}\"" "$lock" || {
+      echo "ERROR: _qe_git: $n@$c нет в tools/qextra_plugin/lito.lock — обновите список и суммы" >&2
+      return 1
+    }
+  done
+  for e in "${_qe_reg[@]}"; do
+    IFS='|' read -r n v c <<<"$e"
+    grep -qxF "checksum = \"$c\"" "$lock" || {
+      echo "ERROR: _qe_reg: $n $v ($c) нет в tools/qextra_plugin/lito.lock — обновите список и суммы" >&2
+      return 1
+    }
+  done
+  if (( $(grep -c '^source = ' "$lock") != ${#_qe_git[@]} + ${#_qe_reg[@]} )); then
+    echo "ERROR: в tools/qextra_plugin/lito.lock другое число источников, чем в _qe_git и _qe_reg" >&2
+    return 1
+  fi
+  # Сценарий сборки QExtra отвергает каталог сборки с путём не из латиницы
+  # (lito на таких падал) — сказать об этом до сборки Rust, а не после.
+  if LC_ALL=C grep -q '[^ -~]' <<<"$srcdir"; then
+    echo "ERROR: каталог сборки должен быть путём из латиницы (BUILDDIR): $srcdir" >&2
+    return 1
+  fi
+
+  # Настоящие шрифты вместо указателей git-lfs: тогда tools/build_qml_material.sh
+  # ничего не качает и собирается без сети.
+  local f
+  for f in "${_qm_fonts[@]}"; do
+    cp "$srcdir/${_qm_pin:0:12}-$f" "$srcdir/QmlMaterial/assets/$f"
+  done
+
+  # Модель перевода: распаковываем В КАТАЛОГ НАПРАВЛЕНИЯ и сверяем сумму
+  # РАСПАКОВАННОГО файла — именно он поедет в пакет.
+  local mt="$srcdir/translate/$_mt_pair"
+  install -d "$mt"
+  gzip -dc "$srcdir/${_mt_tag:0:8}-${_mt_model}.gz" > "$mt/$_mt_model"
+  gzip -dc "$srcdir/${_mt_tag:0:8}-${_mt_vocab}.gz" > "$mt/$_mt_vocab"
+  printf '%s  %s\n%s  %s\n' \
+    "$_mt_model_sum" "$mt/$_mt_model" \
+    "$_mt_vocab_sum" "$mt/$_mt_vocab" | sha256sum --check --quiet || return 1
+
+  # Нижняя граница демона в depends — тег, с которого сняты протокол и
+  # вендорный интерфейс: обновили вендор, а границу забыли — пакет обещал бы
+  # работу с демоном, которого ядро уже не понимает.
+  local tag
+  tag=$(awk 'NR==1{print $1}' "$srcdir/rexon/data/qt_wallpaper_engine/proto/UPSTREAM_TAG")
+  # Сторож один на оба варианта: системный пакет обязан быть не младше
+  # тега, вшитый AppImage — ровно этим тегом.
+  if [[ "$tag" != "v$_ww_min" ]]; then
+    echo "ERROR: _ww_min=$_ww_min, а протокол снят с $tag (proto/UPSTREAM_TAG) — сверьте depends" >&2
+    return 1
+  fi
+  if [[ $_bundled_engine == 1 && "$tag" != "v$_ww_ver" ]]; then
+    echo "ERROR: вшитый AppImage _ww_ver=$_ww_ver, а протокол снят с $tag (proto/UPSTREAM_TAG) — обновите _ww_ver и sha256" >&2
+    return 1
+  fi
+  if [[ $_bundled_engine == 1 ]] && (( $(vercmp "$_owe_ver" "$_owe_min") < 0 )); then
+    echo "ERROR: вшитый плагин OWE $_owe_ver младше _owe_min=$_owe_min" >&2
+    return 1
+  fi
+  if [[ $_bundled_engine == 1 ]]; then
+    _owe_prepare || return 1
+  fi
+
+  # Крейты скачиваются здесь, дальше сборка идёт без сети (--frozen).
+  cd "$srcdir/rexon/rust"
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$srcdir/rexon/rust"
+  export CARGO_TARGET_DIR="$srcdir/rexon/rust/target"
+
+  # ── Сборочные пути наружу не уезжают ────────────────────────────
+  # Без этой карты в готовых бинарях остаются абсолютные пути сборочной
+  # машины, и makepkg ругается «Пакет содержит ссылку на директорию
+  # '$srcdir'». Источников ДВА, и лечатся они разными флагами:
+  #   * rustc печатает путь файла в метаданные паники (`core::panic::
+  #     Location`) — оттуда ~250 строк на бинарь с путями крейтов из
+  #     $CARGO_HOME/registry и путь сгенерированного prost'ом
+  #     `waywallen.control.v1.rs` в OUT_DIR;
+  #   * gcc подставляет __FILE__ в Q_ASSERT заголовков cxx-qt, которые
+  #     cxx-qt-build кладёт в OUT_DIR и подключает абсолютным -I
+  #     (qlist_private.h, qmap_private.h, cxx-qt/thread.h).
+  # Отладочной информации в релизе нет вовсе (`debug` профиля выключен),
+  # так что это НЕ она — строки лежат в .rodata и стрипом не снимаются.
+  #
+  # Штатный `trim-paths` профиля Cargo сюда не годится: в cargo 1.98 он
+  # ещё не стабилизирован («feature `trim-paths` is required … not
+  # stabilized in this version of Cargo», нужен нестабильный
+  # `-Z trim-paths`). Поэтому карту задаём руками обеим половинам —
+  # rustc через --remap-path-prefix, gcc через -ffile-prefix-map (он же
+  # чинит __FILE__, а не только отладочную информацию).
+  #
+  # Профиля dev это не касается: переменные живут только внутри build()
+  # пакета, локальная отладочная сборка исходники по-прежнему находит.
+  local _cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+  local _remap="-ffile-prefix-map=$srcdir=/usr/src/rexon"
+  _remap+=" -ffile-prefix-map=$_cargo_home=/usr/src/cargo"
+  export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$srcdir=/usr/src/rexon --remap-path-prefix=$_cargo_home=/usr/src/cargo"
+  export CFLAGS="$CFLAGS $_remap"
+  export CXXFLAGS="$CXXFLAGS $_remap"
+
+  # Пакеты названы через -p: в rust/Cargo.toml стоит
+  # `default-members = ["rexon-core"]`, и голый `cargo build --release`
+  # собрал бы одно ядро. Набор тот же, что у псевдонима `cargo build-app`.
+  # Flash-обои со звуком (режим хоста --mode swf, Ruffle) — фича `swf-sound`
+  # rexon-gui, она включена по умолчанию: громкость обоев одна на видео и
+  # Flash, и немая сборка означала бы ползунок, который у половины обоев
+  # ничего не делает.
+  cargo build --frozen --release -p rexon-core -p rexon-gui -p rexon-qt-filter
+  # Заставка входа — отдельным прогоном, как `cargo build-splash`: в общем
+  # прогоне сменилось бы объединение фич и rexon-gui собирался бы дважды.
+  cargo build --frozen --release -p rexon-splash-overlay
+
+  # Ярлыки печатает генератор ядра — вход на Rust-окно по пути пакета.
+  # Статичных копий у пакета нет: прежняя отстала от генератора и оставила
+  # ярлык на Python-входе.
+  target/release/desktop-entry --package > "$srcdir/rexon.desktop"
+  target/release/desktop-entry --package --recover > "$srcdir/rexon-recover.desktop"
+
+  # ── QML-плагины вкладки Wallpaper Engine ────────────────────────
+  # Первые два обязательны: без них `qml_modules::qml_plugins_ready` говорит «нет»,
+  # и вендорные страницы не грузятся ни в Rust-окне, ни в классическом.
+  # Собираем теми же tools/-скриптами, что и разработчик (вторая копия
+  # команд cmake разъехалась бы с ними молча), но исходник и шрифты им
+  # подаём из $srcdir, а сборочные каталоги уводим туда же — в сеть и в
+  # $HOME они при этом не ходят.
+  # Потоки C++-сборки — из MAKEFLAGS makepkg.conf (-jN / --jobs=N): `cmake
+  # --build` MAKEFLAGS не читает (генератор Ninja), lito — тоже. Без этого
+  # cmake и lito берут все ядра, а с LTO при 8 ГБ ОЗУ сборку убивал OOM
+  # (cc1plus на control.qpb.cpp). Заданные явно переменные не трогаем.
+  local _jobs
+  _jobs=$(grep -oE '(^|[[:space:]])(-j[[:space:]]*|--jobs[=[:space:]]+)[0-9]+' \
+    <<<"${MAKEFLAGS:-}" | grep -oE '[0-9]+$' | tail -n1 || true)
+  if [[ -n $_jobs ]]; then
+    export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$_jobs}"
+    export QEXTRA_JOBS="${QEXTRA_JOBS:-$_jobs}"
+  fi
+  export CARGO_NET_OFFLINE=true
+  QML_MATERIAL_SRC="$srcdir/QmlMaterial" QML_MATERIAL_PIN="$_qm_pin" \
+    bash "$srcdir/rexon/tools/build_qml_material.sh" "$srcdir/qml_modules"
+  QML_CONTROL_BUILD="$srcdir/qml_control-build" \
+    bash "$srcdir/rexon/tools/build_qml_control.sh" "$srcdir/qml_modules"
+
+  # Третий — настоящий QExtra (без него вкладка идёт на QML-подмене).
+  _qextra_build
+
+  if [[ $_bundled_engine == 1 ]]; then
+    _owe_source_bundle
+  fi
+}
+
+# Вшитый движок: плагин OWE — в свой каталог (в корне zip лежат bin/, lib/,
+# main.lua). Версия внутри обязана совпасть с прибитой: иначе в пакет поехал
+# бы не тот плагин, под который сверена совместимость с демоном.
+_owe_prepare() {
+  rm -rf "$srcdir/owe-plugin"
+  install -d "$srcdir/owe-plugin"
+  bsdtar -xf "$srcdir/$_owe_zip" -C "$srcdir/owe-plugin"
+  grep -qx "id = \"$_owe_id\"" "$srcdir/owe-plugin/plugin.toml" \
+    && grep -qx "version = \"$_owe_ver\"" "$srcdir/owe-plugin/plugin.toml" || {
+    echo "ERROR: в $_owe_zip не $_owe_id $_owe_ver" >&2
+    return 1
+  }
+  # Исходник того же тега: версия workspace в lito.toml — та же, что у плагина.
+  grep -q "^version = \"$_owe_ver\"" "$srcdir/open-wallpaper-engine/lito.toml" || {
+    echo "ERROR: исходник OWE не версии $_owe_ver" >&2
+    return 1
+  }
+}
+
+# Архив полного исходника плагина OWE (GPL-2.0-only §3(a)): тег v${_owe_ver} +
+# всё, что lito подтягивает в сборку, + исходники обёртки CEF. Без .git:
+# ревизии записаны в SOURCES.txt и в lito.lock самого тега. Архив
+# воспроизводим: порядок имён, владелец и время файлов фиксированы.
+_owe_source_bundle() {
+  local top="open-wallpaper-engine-${_owe_ver}"
+  local root="$srcdir/owe-src/$top"
+  local bundle="$root/.lito/source-bundle/v1"
+  local e n u c d v
+  rm -rf "$srcdir/owe-src"
+  install -d "$root" "$bundle/git" "$bundle/registry/source" "$root/third_party-cef"
+  git -C "$srcdir/open-wallpaper-engine" archive --format=tar "$_owe_commit" | tar -x -C "$root"
+  for e in "${_owe_git[@]}"; do
+    IFS='|' read -r n u c d <<<"$e"
+    install -d "$bundle/git/$d"
+    git -C "$srcdir/owe-dep-$n" archive --format=tar "$c" | tar -x -C "$bundle/git/$d"
+  done
+  for e in "${_owe_reg[@]}"; do
+    IFS='|' read -r n v c <<<"$e"
+    install -m644 "$srcdir/lito-$n-$v.tar.zst" \
+      "$bundle/registry/source/$n-$v-${c:0:16}.tar.zst"
+  done
+  bsdtar -xf "$srcdir/$_cef_archive" -C "$root/third_party-cef" \
+    --include '*/include/*' --include '*/libcef_dll/*' --include '*/cmake/*' \
+    --include '*/CMakeLists.txt' --include '*/LICENSE.txt' --include '*/README.txt'
+  {
+    echo "Open Wallpaper Engine ${_owe_ver} — полный исходник к бинарям плагина"
+    echo "${_owe_id} в пакете Rexon (/usr/lib/rexon/engine/plugins/)."
+    echo "Лицензия: GPL-2.0-only (LICENSE в корне)."
+    echo
+    echo "Исходник: https://github.com/waywallen/open-wallpaper-engine коммит ${_owe_commit} (тег v${_owe_ver})."
+    echo "Зависимости сборки (lito.lock тега), раскладка .lito/source-bundle/v1/:"
+    for e in "${_owe_git[@]}"; do
+      IFS='|' read -r n u c d <<<"$e"
+      echo "  git/$d  $u @ $c"
+    done
+    for e in "${_owe_reg[@]}"; do
+      IFS='|' read -r n v c <<<"$e"
+      echo "  registry/source/$n-$v-${c:0:16}.tar.zst  https://registry.litocpp.org/ sha256 $c"
+    done
+    echo "third_party-cef/: исходники обёртки libcef_dll_wrapper и заголовки CEF (BSD-3-Clause)"
+    echo "  из $_cef_url"
+    echo "  sha256 $_cef_sha; бинарная часть CEF (libcef.so и ресурсы) лежит в самом плагине."
+    echo
+    echo "Сборка: см. BUILD.md (сборщик lito, https://github.com/hypengw/lito)."
+  } > "$root/SOURCES.txt"
+  tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
+    -C "$srcdir/owe-src" -cf - "$top" | xz -T0 -9 > "$srcdir/owe-src/$top-src.tar.xz"
+}
+
+# Набор исходников lito для сборки QExtra без сети. Раскладка — та, что lito
+# сам выгружает из lock-файла (`lito lock export --format flatpak-sources`):
+# git-источник — рабочая копия на закреплённом коммите в v1/git/<имя>, архив
+# реестра — v1/registry/source/<пакет>-<версия>-<16 знаков суммы>.tar.zst.
+# Имя git-каталога вычисляет lito, поэтому оно не записано здесь, а
+# спрашивается у него же: выгрузка сети не требует.
+_qextra_source_bundle() {
+  local bundle="$srcdir/qextra-bundle" map="$srcdir/qextra-sources.json"
+  local e n u c v d
+  rm -rf "$bundle"
+  install -d "$bundle/v1/git" "$bundle/v1/registry/source"
+  XDG_DATA_HOME="$srcdir/qextra-data" "${LITO:-lito}" \
+    -C "$srcdir/rexon/tools/qextra_plugin" \
+    lock export --format flatpak-sources --output "$map"
+  for e in "${_qe_git[@]}"; do
+    IFS='|' read -r n u c <<<"$e"
+    d=$(grep -A1 -F "\"commit\": \"$c\"" "$map" | grep -oE 'v1/git/[0-9a-f]{64}' | head -1 || true)
+    [[ -n "$d" ]] || {
+      echo "ERROR: lito не назвал каталог набора исходников для $n@$c ($map)" >&2
+      return 1
+    }
+    cp -a "$srcdir/qextra-src-$n" "$bundle/$d"
+  done
+  for e in "${_qe_reg[@]}"; do
+    IFS='|' read -r n v c <<<"$e"
+    install -m644 "$srcdir/lito-$n-$v.tar.zst" \
+      "$bundle/v1/registry/source/$n-$v-${c:0:16}.tar.zst"
+  done
+}
+
+# Сборка настоящего QExtra тем же сценарием, что у разработчика. Сеть ей не
+# нужна: исходники берутся из набора выше, свой каталог данных lito
+# (распакованные архивы реестра) уведён из $HOME в $srcdir. Флаги makepkg и
+# карта путей из build() доходят до clang через `lito --use-env-flags` — без
+# карты в плагине остаются пути сборочной машины. Ключи, которые lito
+# оставляет профилю release (-O*, -g*, LTO, strip), и _FORTIFY_SOURCE
+# сценарий срезает сам (QEXTRA_ENV_FLAGS=1): иначе с -O2 из makepkg.conf Arch
+# lito отказывает ещё до сборки. Число потоков — из MAKEFLAGS (см. build()),
+# без -jN — 4, как у разработчика; другой lito — переменной LITO.
+_qextra_build() {
+  _qextra_source_bundle
+  QEXTRA_SOURCE_BUNDLE="$srcdir/qextra-bundle" QEXTRA_ENV_FLAGS=1 \
+  QEXTRA_BUILD="$srcdir/qextra-build" XDG_DATA_HOME="$srcdir/qextra-data" \
+    bash "$srcdir/rexon/tools/build_qml_qextra.sh" "$srcdir/qml_modules"
+}
+
+# Свои бинари стрипаем сами: общий strip makepkg выключен ради плазмоида и
+# вшитого AppImage (см. options). Чужие сборки не трогаем: каталог вшитого
+# движка (AppImage и плагин, уже стрипнутые апстримом) и плазмоид
+# org.waywallen.kde — его .so обязан ехать бит в бит как в выпуске апстрима
+# (по хэшу рантайма Rexon узнаёт версию чужой установки, KNOWN_RUNTIME_SHA).
+_strip_own_binaries() {
+  local f
+  while IFS= read -r -d '' f; do
+    # только ELF: сигнатура \x7fELF в первых байтах
+    [[ "$(head -c4 "$f" | od -An -c | tr -d ' ')" == '177ELF' ]] || continue
+    case "$f" in
+      *.so|*.so.*) strip --strip-unneeded "$f" ;;
+      *) strip --strip-all "$f" ;;
+    esac
+  done < <(find "$pkgdir" \( -path "$pkgdir/usr/lib/rexon/engine" \
+                         -o -path "$pkgdir/usr/lib/rexon/rexon/kpackage" \) -prune \
+                         -o -type f -print0)
+}
+
+check() {
+  desktop-file-validate "$srcdir/rexon.desktop" "$srcdir/rexon-recover.desktop"
+  # Карточка для Discover/GNOME Software. Две метки понижены до сведения
+  # намеренно, остальное по-прежнему валит сборку:
+  #  * cid-desktopapp-is-not-rdns — id обязан совпадать с именем ярлыка
+  #    rexon.desktop, а ярлык так зовут и ручная установка, и удаление;
+  #  * url-homepage-missing — сайта у продукта пока нет, выдумывать адрес
+  #    нельзя.
+  appstreamcli validate --no-net \
+    --override=cid-desktopapp-is-not-rdns=info,url-homepage-missing=info \
+    "$srcdir/rexon/packaging/rexon.metainfo.xml"
+}
+
+package() {
+  cd "$srcdir/rexon"
+  local rel=rust/target/release
+  local lib="$pkgdir/usr/lib/rexon"
+
+  # ── Rust-окно — основной вход ярлыка ────────────────────────────
+  # Путь — `installer::PACKAGE_MAIN_WINDOW` ядра: на него ведёт ярлык,
+  # сверка `app_parity.rs` краснеет, если путь здесь разойдётся.
+  # QML окна запечён в сам бинарь (статический модуль org.rexon.gui).
+  install -Dm755 "$rel/rexon-main-window" "$pkgdir/usr/lib/rexon/rexon-main-window"
+  # Помощник плиток «Оформления» (снимок стиля Qt и темы GTK настоящими
+  # виджетами) — рядом с окном: ядро ищет его возле своего бинаря
+  # (`widget_shot::find_helper`, путь пакета `widget_shot::PACKAGE_HELPER`).
+  install -Dm755 "$rel/rexon-theme-shot" "$pkgdir/usr/lib/rexon/rexon-theme-shot"
+
+  # ── Страховка экрана входа: текст на консоли вместо чёрного экрана ──
+  # Программа без Qt (`login_rescue::RESCUE_BIN_PACKAGE`) и её юниты:
+  # служба rexon-login-rescue и drop-in'ы `OnFailure=` у display-manager
+  # и каждого известного экрана входа. Тексты и список печатает ядро —
+  # второй копии в пакете нет. Файлы в учёте пакета: `pacman -R` снимает
+  # их сам.
+  install -Dm755 "$rel/rexon-login-rescue" "$pkgdir/usr/lib/rexon/rexon-login-rescue"
+  local unit
+  for unit in $("$rel/rexon-login-rescue" --list-files); do
+    install -d "$pkgdir$(dirname "$unit")"
+    "$rel/rexon-login-rescue" --file "$unit" > "$pkgdir$unit"
+    chmod 644 "$pkgdir$unit"
+  done
+
+  # ── Хост обоев и заставка входа → PATH ──────────────────────────
+  # Ядро ищет их в дереве разработчика, затем по PATH
+  # (wallpaper_engine::find_wallpaper_host_binary, session_splash).
+  # Хост обоев ОДИН — видео, веб и Flash его режимы (`--mode video|web|swf`).
+  local b
+  for b in rexon-wallpaper-host rexon-splash-overlay; do
+    install -Dm755 "$rel/$b" "$pkgdir/usr/bin/$b"
+  done
+
+  # ── Лаунчер /usr/bin/rexon ──────────────────────────────────────
+  # Вход продукта из командной строки и из чужих ярлыков. Ведёт на
+  # Rust-окно: оно понимает ВСЕ флаги продукта одной дверью ядра
+  # (`cli::run_headless` + `cli::start_section`) — --tray, --page=,
+  # --apply-defaults, --sanitize-gtk, --session-splash, --recover-kde,
+  # пять флагов одиночных вкладок и --selftest. Аргументы едут как есть.
+  # REXON_PACKAGED — признак пакетной установки для ядра
+  # (`installer::detect_default_mode`): предлагать установку поверх
+  # пакета нельзя.
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/rexon" <<'LAUNCHER'
+#!/bin/sh
+# Rexon — лаунчер (пакетная установка: AUR / pacman).
+REXON_PACKAGED=1
+export REXON_PACKAGED
+# `rexon doctor` — без Qt: он нужен, когда Qt мог сломаться.
+if [ "${1:-}" = doctor ]; then
+  exec /usr/lib/rexon/rexon-login-rescue doctor
+fi
+exec /usr/lib/rexon/rexon-main-window "$@"
+LAUNCHER
+  chmod 755 "$pkgdir/usr/bin/rexon"
+
+  # ── Каталог QML-модулей системы ─────────────────────────────────
+  # Ядро ищет его как `qml_modules::SYSTEM_MODULE_DIRS`
+  # (/usr/lib/rexon/qml_modules) и требует в нём ДВА плагина (третий,
+  # QExtra/libqextraplugin.so, берёт, когда он есть и собран под Qt процесса):
+  # Qcm/Material/libqml_materialplugin.so (оформление) и
+  # waywallen/control/libwaywallen-controlplugin.so (value-типы
+  # Qt-Protobuf). Рядом с control лежит наша Rust-сборка
+  # librexon_qt_filter.so (редактор фильтров обоев); типы вкладок вшиты
+  # в rexon-main-window статически, своей .so у них нет.
+  # Путь литералом, а не через $lib: сверка `app_parity.rs` ищет в PKGBUILD
+  # ровно ту строку, которую ядро держит в `qml_modules::SYSTEM_MODULE_DIRS`.
+  local qmod="$pkgdir/usr/lib/rexon/qml_modules"
+  install -d "$qmod"
+  cp -a "$srcdir/qml_modules/." "$qmod/"
+  # Входные файлы rcc этапа сборки: внутри абсолютный путь $srcdir, которого на
+  # машине покупателя нет. Qt их в работе не читает — плагин уже собран.
+  find "$qmod" -name '*_qml_module_dir_map.qrc' -delete
+  # Отметка протокола модуля (её пишет tools/build_qml_control.sh). Без неё
+  # ядро не отличит пакетный waywallen.control от устаревшей сборки в
+  # домашней папке (`qml_modules::stale_control_dirs`), и та заслонит его.
+  [ -s "$qmod/waywallen/control/proto.sha256" ] || {
+    echo "нет отметки протокола waywallen.control (proto.sha256)" >&2
+    return 1
+  }
+  # Настоящий QExtra без отметки версии Qt ядро не берёт
+  # (`qml_modules::choose_qextra`: «рядом с плагином нет отметки») и молча
+  # показывает QML-подмену — пакет вышел бы без того, ради чего плагин в нём.
+  [ -s "$qmod/QExtra/QT_VERSION" ] && [ -s "$qmod/QExtra/libqextraplugin.so" ] || {
+    echo "нет плагина QExtra или его отметки версии Qt (QExtra/QT_VERSION)" >&2
+    return 1
+  }
+  install -Dm755 "$rel/librexon_qt_filter.so" "$qmod/waywallen/control/librexon_qt_filter.so"
+
+  # ── Данные продукта: data/ дерева → /usr/lib/rexon/rexon ────────
+  # Каталог, который ядро ищет как `installer::package_data_dir_candidates`
+  # и признаёт по `installer::PACKAGE_MARKER_REL`. Раньше сюда клали весь
+  # пакет Python; теперь — ТОЛЬКО данные, которые читает Rust-окно:
+  #   * qt_wallpaper_engine/qml_ui — вендорный QML waywallen, PageHost,
+  #     прогревочная сцена и каталог перевода .qm (`remote_l10n`);
+  #   * qt_wallpaper_engine/proto/UPSTREAM_TAG — тег снапшота протокола,
+  #     по нему бейдж сверки видит устаревший протокол (`we_parity`);
+  #   * kpackage/org.waywallen.kde — Plasma-плагин обоев, его ставит
+  #     kpackagetool6 (`waywallen_kde_plugin::bundle_dir`). Из дерева едет
+  #     только vendor.toml (по нему Rexon узнаёт «ставили мы» и версию),
+  #     сам плазмоид — официальный архив выпуска, распакованный как есть;
+  #   * themes.json — встроенная база тем (`themes::builtin_json_path`);
+  #   * assets/fonts — бандл-шрифты заголовков скинов (`ui_base`);
+  #   * assets/screenshots — свои снимки столов, которых нет ни у проекта,
+  #     ни на Commons (River; `screenshots::BUNDLED_SUBDIR`).
+  local data="$lib/rexon"
+  install -d "$data/qt_wallpaper_engine" "$data/kpackage"
+  cp -a data/qt_wallpaper_engine/qml_ui "$data/qt_wallpaper_engine/qml_ui"
+  install -Dm644 data/qt_wallpaper_engine/proto/UPSTREAM_TAG \
+    "$data/qt_wallpaper_engine/proto/UPSTREAM_TAG"
+  # Корень архива — уже каталог org.waywallen.kde/.
+  bsdtar -xf "$srcdir/$_wwd_zip" -C "$data/kpackage"
+  install -m644 data/kpackage/org.waywallen.kde/vendor.toml \
+    "$data/kpackage/org.waywallen.kde/vendor.toml"
+  install -Dm644 data/themes.json "$data/themes.json"
+  cp -a data/assets "$data/assets"
+
+  # ── Модель перевода описаний → <данные>/translate/<пара> ────────
+  # Порядок поиска задаёт ядро: переменная REXON_TRANSLATE_MODEL_DIR (путь
+  # разработчика), затем каталоги поставки + `translate/<пара>`
+  # (`translator_engine::MODEL_DIR_REL`, `model_dir_candidates`). Имена
+  # файлов — те же, что у скачанной модели Firefox
+  # (`translator_engine::model_files_in`): model.<пара>.intgemm.alphas.bin и
+  # vocab.<пара>.spm. Разойдётся путь или имя — движок молча скажет «модели
+  # нет», и описания останутся по-английски; за это краснеет сверка
+  # `tests/translator_engine.rs`.
+  install -Dm644 "$srcdir/translate/$_mt_pair/$_mt_model" \
+    "$data/translate/$_mt_pair/$_mt_model"
+  install -Dm644 "$srcdir/translate/$_mt_pair/$_mt_vocab" \
+    "$data/translate/$_mt_pair/$_mt_vocab"
+
+  # Питоновских исходников в каталоге данных нет (Python — архив с
+  # 02.10.2026); снимаем на всякий случай кэш байт-кода, если он приехал.
+  find "$data" -name '__pycache__' -type d -prune -exec rm -rf {} +
+  find "$data" -name '*.py' -delete
+
+  # ── Переводы интерфейса → /usr/share/locale ──────────────────────
+  # Каталоги собрал build.rs крейта rexon-gui (`scripts/i18n-update.sh
+  # --build`) рядом с бинарями: <язык>/LC_MESSAGES/rexon.mo из
+  # po/<язык>.po — один каталог и для строк Rust, и для строк QML (их
+  # переводчик окна спрашивает то же ядро). Ядро ищет его в
+  # `i18n::SYSTEM_LOCALEDIR` — ровно этот путь. Новый язык = новый .po в
+  # po/LINGUAS, рецепт при этом не меняется.
+  install -d "$pkgdir/usr/share/locale"
+  cp -r "$rel/locale/." "$pkgdir/usr/share/locale/"
+
+  # Значок лотка: `tray::icon_candidates` ищет его по этому пути.
+  install -Dm644 rexon_icon.png "$lib/rexon_icon.png"
+
+  # ── Привилегированные помощники и polkit-политики ───────────────
+  # Без них КАЖДАЯ системная операция спрашивает пароль сырым pkexec, а
+  # темы экрана входа и загрузки из «Оформления» не ставятся вовсе. С ними
+  # пароль спрашивается реже: auth_admin_keep держит его 5 минут для окна
+  # Rexon, и подтверждённое org.rexon.pkg покрывает остальные три действия.
+  # Тексты печатает ядро (`system_plan`, `installer`) — второй копии в
+  # пакете нет, расходятся они молча; список помощников тоже у ядра
+  # (`--list`). Путь у пакета свой, /usr/lib: в /usr/local пакету писать
+  # нельзя (нормы Arch, и pacman -R такие файлы не снял бы), а политика
+  # annotate'ит ровно тот путь, по которому помощник лежит.
+  # ⚠️ Passwordless-правило (/etc/polkit-1/rules.d) пакет НЕ ставит
+  # намеренно: это отдельный выбор человека, а не умолчание пакета.
+  local who path
+  for who in $("$rel/package-polkit" --list); do
+    path=$("$rel/package-polkit" --path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --helper "$who" > "$pkgdir$path"
+    chmod 755 "$pkgdir$path"
+    path=$("$rel/package-polkit" --policy-path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --policy "$who" > "$pkgdir$path"
+    chmod 644 "$pkgdir$path"
+  done
+
+  # ── Помощник сеанса прав («один пароль на запуск») ─────────────
+  # rexon-priv-helper — не скрипт, а бинарь ядра (cargo собрал его вместе с
+  # rexon-core): берём файл из каталога сборки по имени из `--path`, политику
+  # org.rexon.session печатает тот же генератор. Политика спрашивает пароль
+  # на КАЖДЫЙ подъём сеанса (auth_admin без keep) — один пароль держит сам
+  # помощник, пока открыто окно. Права 755 и владелец root обязательны:
+  # окно не поднимет помощника, если файл или каталог над ним доступны на
+  # запись не только root (`privilege::client::check_ownership`).
+  for who in $("$rel/package-polkit" --list-binaries); do
+    path=$("$rel/package-polkit" --path "$who")
+    install -Dm755 "$rel/${path##*/}" "$pkgdir$path"
+    path=$("$rel/package-polkit" --policy-path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --policy "$who" > "$pkgdir$path"
+    chmod 644 "$pkgdir$path"
+  done
+  # «sudo» сборщиков AUR (paru/yay) в окне Rexon — шим сеанса прав: прав не
+  # имеет, строку pacman передаёт окну (`privilege::aur`). Лежит рядом с
+  # помощником сеанса — там его ищет окно.
+  install -Dm755 "$rel/rexon-sudo-shim" "$pkgdir/usr/lib/rexon-sudo-shim"
+
+  # ── .desktop — напечатаны генератором ядра в build() ────────────
+  # Автозапуск пакет НЕ ставит: его пишет трей по выбору человека.
+  install -Dm644 "$srcdir/rexon.desktop" \
+    "$pkgdir/usr/share/applications/rexon.desktop"
+  install -Dm644 "$srcdir/rexon-recover.desktop" \
+    "$pkgdir/usr/share/applications/rexon-recover.desktop"
+
+  # ── AppStream: без карточки центры приложений продукта не видят ─
+  install -Dm644 packaging/rexon.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/rexon.metainfo.xml"
+
+  # ── Иконки: hicolor (8 растровых размеров) + pixmap fallback ────
+  # Вектора нет намеренно: rexon_icon.svg старого рисунка удалён вместе с
+  # приходом нового значка (2a09adc), до 512 px хватает растровых.
+  local size
+  for size in 16 24 32 48 64 128 256 512; do
+    install -Dm644 "rexon_icon_${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/rexon.png"
+  done
+  install -Dm644 rexon_icon_128.png "$pkgdir/usr/share/pixmaps/rexon.png"
+
+  # ── GNOME Shell + Cinnamon extensions (Mutter/Muffin без layer-shell:
+  #    обои через расширение оболочки + mmap frame-streaming) ───────
+  local ext='rexon-wallpaper@rexon.app' d
+  install -d "$pkgdir/usr/share/gnome-shell/extensions" \
+             "$pkgdir/usr/share/cinnamon/extensions"
+  cp -a "data/gnome-extension/$ext" \
+    "$pkgdir/usr/share/gnome-shell/extensions/$ext"
+  cp -a "data/cinnamon-extension/$ext" \
+    "$pkgdir/usr/share/cinnamon/extensions/$ext"
+  for d in "$pkgdir/usr/share/gnome-shell/extensions/$ext/schemas" \
+           "$pkgdir/usr/share/cinnamon/extensions/$ext/schemas"; do
+    [[ -d "$d" ]] && glib-compile-schemas "$d"
+  done
+  # Те же схемы — в общий каталог: без этого `gsettings set` (так Rexon
+  # передаёт расширению обои) отвечает «Схема … не существует». Собирает
+  # общий каталог хук pacman пакета glib2, сами не компилируем. Каталог
+  # расширения выше тоже нужен: getSettings() расширения читает свой.
+  install -Dm644 -t "$pkgdir/usr/share/glib-2.0/schemas" \
+    "data/gnome-extension/$ext/schemas/"*.gschema.xml \
+    "data/cinnamon-extension/$ext/schemas/"*.gschema.xml
+
+  # ── Лицензии ────────────────────────────────────────────────────
+  # Своя (Apache-2.0: LICENSE и NOTICE) — обязательна в /usr/share/licenses; рядом чужие:
+  # MIT плагина Qcm.Material, MIT плагина QExtra с его статическими частями
+  # и OFL-1.1 шрифта Noto Sans, встроенного в хост обоев (Ruffle, фича
+  # default_font).
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE  "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+  install -Dm644 "$srcdir/QmlMaterial/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.QmlMaterial"
+  install -Dm644 "$srcdir/rexon/rust/rexon-swf/NotoSans-OFL-1.1.txt" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.NotoSans-OFL-1.1"
+
+  # QML-плагин QExtra (MIT OR Apache-2.0, берём на условиях MIT) и то, что
+  # вошло в него статически: wavsen, vvk, licrypto (тот же текст и та же
+  # строка © 2026 hypengw, что у QExtra), ncrequest (MIT, © 2024-2025
+  # hypengw), lihttpto, liwebsocketo и rstd (© 2025 hypengw; архивы rstd
+  # своего файла лицензии не несут, текст и строка у них те же, что у
+  # lihttpto). MIT требует везти
+  # уведомление с каждой копией — поэтому три текста, по одному на каждую
+  # строку авторства. Перечень — NOTICE, раздел «QExtra».
+  install -Dm644 "$srcdir/qextra-src-QExtra/LICENSE-MIT" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.QExtra-MIT"
+  install -Dm644 "$srcdir/qextra-src-ncrequest/LICENSE.txt" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ncrequest-MIT"
+  local _e _n _v
+  for _e in "${_qe_reg[@]}"; do
+    IFS='|' read -r _n _v _ <<<"$_e"
+    [[ "$_n" == lihttpto ]] || continue
+    bsdtar -xOf "$srcdir/lito-$_n-$_v.tar.zst" "$_n-$_v/LICENSE-MIT" \
+      > "$pkgdir/usr/share/licenses/$pkgname/LICENSE.lihttpto-MIT"
+  done
+  [ -s "$pkgdir/usr/share/licenses/$pkgname/LICENSE.lihttpto-MIT" ] || {
+    echo "в архиве lihttpto не нашёлся текст лицензии (LICENSE-MIT)" >&2
+    return 1
+  }
+  chmod 644 "$pkgdir/usr/share/licenses/$pkgname/LICENSE.lihttpto-MIT"
+
+  # ⚖️ Plasma-плагин обоев org.waywallen.kde (официальный архив выпуска без
+  # изменений, едет в /usr/lib/rexon/rexon/kpackage/ и ставится
+  # kpackagetool6). Лицензия у апстрима записана двояко: extensions/kde/LICENSE
+  # — MIT © hypengw, metadata.json — GPL-2.0-or-later. Вопрос задан автору
+  # (waywallen/waywallen-display#70); до ответа ставим ОБА текста: его LICENSE
+  # и GPL-2.0, на который ссылается metadata.json. С 0.4.2 LICENSE лежит в
+  # самом архиве выпуска (#71; бит в бит тот же, что extensions/kde/LICENSE
+  # тега) — отдельно его больше не качаем.
+  [ -s "$data/kpackage/org.waywallen.kde/LICENSE" ] || {
+    echo "в архиве плазмоида $_wwd_zip не нашёлся LICENSE" >&2
+    return 1
+  }
+  install -Dm644 "$data/kpackage/org.waywallen.kde/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-MIT"
+  install -Dm644 packaging/licenses/GPL-2.0.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-GPL-2.0"
+
+  # Движок автоперевода описаний: вендорный крейт fxtranslate (MPL-2.0) и
+  # чужие заголовки внутри него — gemmology (MIT) и xsimd (BSD-3-Clause).
+  # BSD-3-Clause прямо требует воспроизвести уведомление в документации,
+  # поэтому оба текста ставятся, а не только MPL.
+  local _fx="$srcdir/rexon/rust/vendor/fxtranslate"
+  install -Dm644 "$_fx/crate/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.fxtranslate-MPL-2.0"
+  install -Dm644 "$_fx/crate/vendor/gemmology/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.gemmology-MIT"
+  install -Dm644 "$_fx/crate/vendor/xsimd/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.xsimd-BSD-3-Clause"
+  # ⭐ MPL-2.0 — копилефт ПОФАЙЛОВЫЙ: обязанность у нас одна — выложить
+  # исходники тех файлов крейта, которые мы изменили. Все правки лежат
+  # одним патчем, поэтому обязанность закрывается установкой ЭТОГО файла
+  # рядом с лицензией — и закрывается целиком, без раскрытия кода Rexon.
+  # Разбор — rust/vendor/fxtranslate/ATTRIBUTION.md.
+  install -Dm644 "$_fx"/patches/0001-*.patch \
+    "$pkgdir/usr/share/licenses/$pkgname/fxtranslate-0.4.2-rexon.patch"
+
+  # Модель перевода en→ru (mozilla/translations) — та же MPL-2.0, что у
+  # крейта: «The model files are distributed under the MPL 2.0 license»
+  # (README апстрима). Своего файла лицензии ведро модели не отдаёт, а текст
+  # MPL-2.0 — один дословный документ, поэтому кладётся текст из вендорного
+  # дерева под своим именем: покупатель видит, чем накрыты 43 МБ рядом с
+  # продуктом, отдельной строкой, а не догадкой.
+  # Раскрывать по модели нечего: файлы едут НЕИЗМЕНЁННЫМИ (менять их нам
+  # нечем), поэтому пофайлового копилефта они не задевают. Уведомление —
+  # в NOTICE выше, раздел «Модель перевода Firefox en→ru».
+  install -Dm644 "$_fx/crate/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.translations-model-MPL-2.0"
+
+  if [[ $_bundled_engine == 1 ]]; then
+    _package_bundled_engine
+  fi
+
+  _strip_own_binaries
+}
+
+# ── Вшитый движок: waywallen + плагин Open Wallpaper Engine ─────────
+# Путь — `we_client::ENGINE_DIR` ядра (сверка app_parity.rs ищет его здесь
+# литералом). Ядро запускает отсюда AppImage, если системного движка нет
+# (`we_client::engine_layouts`) и управляемый ~/.local/share/waywallen не
+# новее, и передаёт демону `--plugin /usr/lib/rexon/engine`: демон ищет
+# плагины в <каталог>/plugins/. Копия плагина у человека в
+# ~/.local/share/waywallen/plugins остаётся его: демон берёт новую из двух,
+# при равенстве — копию человека.
+# ⚠️ Плагин НЕ самодостаточен: libwaywallen-bridge.so и ffmpeg ему подаёт
+# AppImage демона при запуске рендерера (namcap об этом предупреждает).
+# С пакетами waywallen/open-wallpaper-engine файлы не пересекаются: те живут
+# в /usr/bin, /usr/lib и /usr/share/waywallen.
+_package_bundled_engine() {
+  local eng="$pkgdir/usr/lib/rexon/engine"
+  install -Dm755 "$srcdir/$_ww_appimage" "$eng/waywallen.AppImage"
+  install -d "$eng/plugins"
+  cp -a --no-preserve=ownership "$srcdir/owe-plugin" "$eng/plugins/$_owe_id"
+  chmod -R u+rwX,go+rX,go-w "$eng/plugins/$_owe_id"
+
+  # GPL-2.0-only §3(a): полный исходник рядом с бинарём + текст лицензии.
+  install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}-src.tar.xz" \
+    "$pkgdir/usr/share/rexon/sources/open-wallpaper-engine-${_owe_ver}-src.tar.xz"
+  install -Dm644 "$srcdir/open-wallpaper-engine/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.open-wallpaper-engine-GPL-2.0"
+  install -Dm644 "$srcdir/waywallen-${_ww_ver}-LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-MIT"
+  install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}/third_party-cef/"*/LICENSE.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.CEF-BSD-3-Clause"
+}

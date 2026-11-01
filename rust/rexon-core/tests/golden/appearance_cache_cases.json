@@ -1,0 +1,681 @@
+{
+  "list_ttl": 3600,
+  "row_to_item": [
+    {
+      "row": {
+        "id": "x",
+        "category_id": null,
+        "name": null,
+        "author": null,
+        "description": null,
+        "description_ru": null,
+        "rating": null,
+        "downloads": null,
+        "preview_url": null,
+        "preview_urls": null,
+        "download_url": null,
+        "download_name": null,
+        "download_size": null,
+        "version": null,
+        "license": null,
+        "created": null,
+        "updated": null
+      },
+      "expected": {
+        "id": "x",
+        "name": "",
+        "description": "",
+        "description_translated": "",
+        "author": "",
+        "license": "",
+        "version": "",
+        "rating": 0,
+        "downloads": 0,
+        "preview_url": "",
+        "preview_urls": [],
+        "preview_local": "",
+        "download_url": "",
+        "download_name": "",
+        "download_size": 0,
+        "category_id": 0,
+        "created": "",
+        "updated": "",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    },
+    {
+      "row": {
+        "id": "cid-9",
+        "category_id": 100,
+        "name": "Имя",
+        "author": "Авт",
+        "description": "d",
+        "description_ru": "перевод",
+        "rating": 80,
+        "downloads": 42,
+        "preview_url": "http://p/big.png",
+        "preview_urls": "[\"http://p/1.png\", \"скрин\"]",
+        "download_url": "http://d/a.tar",
+        "download_name": "a.tar",
+        "download_size": 1024,
+        "version": "1.0",
+        "license": "MIT",
+        "created": "2020",
+        "updated": "2021"
+      },
+      "expected": {
+        "id": "cid-9",
+        "name": "Имя",
+        "description": "d",
+        "description_translated": "перевод",
+        "author": "Авт",
+        "license": "MIT",
+        "version": "1.0",
+        "rating": 80,
+        "downloads": 42,
+        "preview_url": "http://p/big.png",
+        "preview_urls": [
+          "http://p/1.png",
+          "скрин"
+        ],
+        "preview_local": "",
+        "download_url": "http://d/a.tar",
+        "download_name": "a.tar",
+        "download_size": 1024,
+        "category_id": 100,
+        "created": "2020",
+        "updated": "2021",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    },
+    {
+      "row": {
+        "id": "c2",
+        "category_id": null,
+        "name": null,
+        "author": null,
+        "description": null,
+        "description_ru": null,
+        "rating": null,
+        "downloads": null,
+        "preview_url": null,
+        "preview_urls": null,
+        "download_url": null,
+        "download_name": null,
+        "download_size": null,
+        "version": null,
+        "license": null,
+        "created": null,
+        "updated": null
+      },
+      "expected": {
+        "id": "c2",
+        "name": "",
+        "description": "",
+        "description_translated": "",
+        "author": "",
+        "license": "",
+        "version": "",
+        "rating": 0,
+        "downloads": 0,
+        "preview_url": "",
+        "preview_urls": [],
+        "preview_local": "",
+        "download_url": "",
+        "download_name": "",
+        "download_size": 0,
+        "category_id": 0,
+        "created": "",
+        "updated": "",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    },
+    {
+      "row": {
+        "id": "c3",
+        "category_id": null,
+        "name": null,
+        "author": null,
+        "description": null,
+        "description_ru": null,
+        "rating": null,
+        "downloads": null,
+        "preview_url": null,
+        "preview_urls": "[\"\", null, \"ok\", 7]",
+        "download_url": null,
+        "download_name": null,
+        "download_size": null,
+        "version": null,
+        "license": null,
+        "created": null,
+        "updated": null
+      },
+      "expected": {
+        "id": "c3",
+        "name": "",
+        "description": "",
+        "description_translated": "",
+        "author": "",
+        "license": "",
+        "version": "",
+        "rating": 0,
+        "downloads": 0,
+        "preview_url": "",
+        "preview_urls": [
+          "ok",
+          "7"
+        ],
+        "preview_local": "",
+        "download_url": "",
+        "download_name": "",
+        "download_size": 0,
+        "category_id": 0,
+        "created": "",
+        "updated": "",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    },
+    {
+      "row": {
+        "id": "c4",
+        "category_id": null,
+        "name": null,
+        "author": null,
+        "description": null,
+        "description_ru": null,
+        "rating": null,
+        "downloads": null,
+        "preview_url": null,
+        "preview_urls": "garbage",
+        "download_url": null,
+        "download_name": null,
+        "download_size": null,
+        "version": null,
+        "license": null,
+        "created": null,
+        "updated": null
+      },
+      "expected": {
+        "id": "c4",
+        "name": "",
+        "description": "",
+        "description_translated": "",
+        "author": "",
+        "license": "",
+        "version": "",
+        "rating": 0,
+        "downloads": 0,
+        "preview_url": "",
+        "preview_urls": [],
+        "preview_local": "",
+        "download_url": "",
+        "download_name": "",
+        "download_size": 0,
+        "category_id": 0,
+        "created": "",
+        "updated": "",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    },
+    {
+      "row": {
+        "id": "c5",
+        "category_id": null,
+        "name": null,
+        "author": null,
+        "description": null,
+        "description_ru": null,
+        "rating": null,
+        "downloads": null,
+        "preview_url": null,
+        "preview_urls": "{\"k\":1}",
+        "download_url": null,
+        "download_name": null,
+        "download_size": null,
+        "version": null,
+        "license": null,
+        "created": null,
+        "updated": null
+      },
+      "expected": {
+        "id": "c5",
+        "name": "",
+        "description": "",
+        "description_translated": "",
+        "author": "",
+        "license": "",
+        "version": "",
+        "rating": 0,
+        "downloads": 0,
+        "preview_url": "",
+        "preview_urls": [],
+        "preview_local": "",
+        "download_url": "",
+        "download_name": "",
+        "download_size": 0,
+        "category_id": 0,
+        "created": "",
+        "updated": "",
+        "installed": false,
+        "applied": false,
+        "install_path": "",
+        "download_links": []
+      }
+    }
+  ],
+  "translation_ttl": 2592000,
+  "sql_literals": [
+    "\n                CREATE TABLE IF NOT EXISTS items (\n                    id TEXT PRIMARY KEY,\n                    category_id INTEGER,\n                    name TEXT, author TEXT,\n                    description TEXT, description_ru TEXT,\n                    rating INTEGER, downloads INTEGER,\n                    preview_url TEXT, download_url TEXT,\n                    download_name TEXT, download_size INTEGER,\n                    version TEXT, license TEXT,\n                    created TEXT, updated TEXT,\n                    cached_at REAL\n                );\n                CREATE TABLE IF NOT EXISTS previews (\n                    url TEXT PRIMARY KEY,\n                    local_path TEXT,\n                    cached_at REAL\n                );\n                CREATE TABLE IF NOT EXISTS lists (\n                    key TEXT PRIMARY KEY,\n                    ids TEXT,\n                    total INTEGER,\n                    cached_at REAL\n                );\n                CREATE TABLE IF NOT EXISTS translations (\n                    src_hash TEXT PRIMARY KEY,\n                    translated TEXT,\n                    cached_at REAL\n                );\n                ",
+    "ALTER TABLE items ADD COLUMN preview_urls TEXT",
+    "DELETE FROM lists",
+    "DELETE FROM translations WHERE cached_at < ?",
+    "DELETE FROM translations WHERE src_hash=?",
+    "INSERT OR REPLACE INTO items\n               (id, category_id, name, author, description, description_ru,\n                rating, downloads, preview_url, preview_urls, download_url,\n                download_name, download_size, version, license, created,\n                updated, cached_at)\n               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT OR REPLACE INTO lists (key, ids, total, cached_at) VALUES (?,?,?,?)",
+    "INSERT OR REPLACE INTO previews (url, local_path, cached_at) VALUES (?,?,?)",
+    "INSERT OR REPLACE INTO translations (src_hash, translated, cached_at) VALUES (?,?,?)",
+    "PRAGMA table_info(items)",
+    "SELECT * FROM items WHERE id=?",
+    "SELECT id, name, preview_url FROM items",
+    "SELECT ids, total, cached_at FROM lists WHERE key=?",
+    "SELECT local_path FROM previews WHERE url=?",
+    "SELECT translated, cached_at FROM translations WHERE src_hash=?",
+    "SELECT url, local_path FROM previews"
+  ],
+  "ttl_list": [
+    {
+      "cached_at": 1000.0,
+      "now": 1000.0,
+      "stale": false
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 4600.0,
+      "stale": false
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 4600.001,
+      "stale": true
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 4599.999,
+      "stale": false
+    },
+    {
+      "cached_at": 5000.0,
+      "now": 4000.0,
+      "stale": false
+    },
+    {
+      "cached_at": 0.0,
+      "now": 999999999.0,
+      "stale": true
+    }
+  ],
+  "ttl_translation": [
+    {
+      "cached_at": 1000.0,
+      "now": 1000.0,
+      "stale": false
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 2593000.0,
+      "stale": false
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 2593000.001,
+      "stale": true
+    },
+    {
+      "cached_at": 1000.0,
+      "now": 2592999.999,
+      "stale": false
+    },
+    {
+      "cached_at": null,
+      "now": 1000.0,
+      "stale": false
+    },
+    {
+      "cached_at": null,
+      "now": 2591999,
+      "stale": false
+    },
+    {
+      "cached_at": null,
+      "now": 2592001,
+      "stale": true
+    }
+  ],
+  "purge_threshold": [
+    {
+      "now": 0.0,
+      "threshold": -2592000.0
+    },
+    {
+      "now": 1000.0,
+      "threshold": -2591000.0
+    },
+    {
+      "now": 1234567890.5,
+      "threshold": 1231975890.5
+    },
+    {
+      "now": 2592000.0,
+      "threshold": 0.0
+    }
+  ],
+  "preview_urls_serialize": [
+    {
+      "input": [],
+      "output": "[]"
+    },
+    {
+      "input": [
+        "http://a/1.png"
+      ],
+      "output": "[\"http://a/1.png\"]"
+    },
+    {
+      "input": [
+        "http://a/1.png",
+        "http://b/2.jpg"
+      ],
+      "output": "[\"http://a/1.png\", \"http://b/2.jpg\"]"
+    },
+    {
+      "input": [
+        "ключ",
+        "значение"
+      ],
+      "output": "[\"\\u043a\\u043b\\u044e\\u0447\", \"\\u0437\\u043d\\u0430\\u0447\\u0435\\u043d\\u0438\\u0435\"]"
+    },
+    {
+      "input": [
+        "a \"quoted\" b",
+        "back\\slash"
+      ],
+      "output": "[\"a \\\"quoted\\\" b\", \"back\\\\slash\"]"
+    },
+    {
+      "input": [
+        "tab\tnl\n"
+      ],
+      "output": "[\"tab\\tnl\\n\"]"
+    },
+    {
+      "input": [
+        "emoji 😀 end"
+      ],
+      "output": "[\"emoji \\ud83d\\ude00 end\"]"
+    },
+    {
+      "input": [
+        "fwd/slash"
+      ],
+      "output": "[\"fwd/slash\"]"
+    },
+    {
+      "input": [
+        "\u0001\u001f"
+      ],
+      "output": "[\"\\u0001\\u001f\\u007f\"]"
+    }
+  ],
+  "preview_urls_parse": [
+    {
+      "raw": null,
+      "output": []
+    },
+    {
+      "raw": "[]",
+      "output": []
+    },
+    {
+      "raw": "[\"http://a/1.png\",\"http://b/2.jpg\"]",
+      "output": [
+        "http://a/1.png",
+        "http://b/2.jpg"
+      ]
+    },
+    {
+      "raw": "[\"\", \"x\"]",
+      "output": [
+        "x"
+      ]
+    },
+    {
+      "raw": "[null, \"y\"]",
+      "output": [
+        "y"
+      ]
+    },
+    {
+      "raw": "{\"k\": \"v\"}",
+      "output": []
+    },
+    {
+      "raw": "not json",
+      "output": []
+    },
+    {
+      "raw": "",
+      "output": []
+    },
+    {
+      "raw": "[1, 2]",
+      "output": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "raw": "[0, \"a\"]",
+      "output": [
+        "a"
+      ]
+    },
+    {
+      "raw": "[true, false]",
+      "output": [
+        "True"
+      ]
+    },
+    {
+      "raw": "[\"кир\", \"\\u0041\"]",
+      "output": [
+        "кир",
+        "A"
+      ]
+    }
+  ],
+  "ids_join": [
+    {
+      "ids": [],
+      "output": ""
+    },
+    {
+      "ids": [
+        "a"
+      ],
+      "output": "a"
+    },
+    {
+      "ids": [
+        "a",
+        "b",
+        "c"
+      ],
+      "output": "a,b,c"
+    },
+    {
+      "ids": [
+        "12345",
+        "67890"
+      ],
+      "output": "12345,67890"
+    }
+  ],
+  "ids_split": [
+    {
+      "raw": null,
+      "output": []
+    },
+    {
+      "raw": "",
+      "output": []
+    },
+    {
+      "raw": "a",
+      "output": [
+        "a"
+      ]
+    },
+    {
+      "raw": "a,b,c",
+      "output": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    {
+      "raw": "a,,b",
+      "output": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "raw": ",a,",
+      "output": [
+        "a"
+      ]
+    },
+    {
+      "raw": "12345,67890",
+      "output": [
+        "12345",
+        "67890"
+      ]
+    }
+  ],
+  "item_insert_values": {
+    "now": 1234567890.5,
+    "item": {
+      "id": "cid-42",
+      "category_id": 100,
+      "name": "Тема Name",
+      "author": "Автор",
+      "description": "desc <b>html</b>",
+      "description_translated": "перевод",
+      "rating": 90,
+      "downloads": 1500,
+      "preview_url": "http://prev/big.png",
+      "preview_urls": [
+        "http://prev/1.png",
+        "скрин"
+      ],
+      "download_url": "http://dl/arc.tar.gz",
+      "download_name": "arc.tar.gz",
+      "download_size": 204800,
+      "version": "1.2.3",
+      "license": "GPL",
+      "created": "2020-01-01",
+      "updated": "2021-06-15"
+    },
+    "values": [
+      [
+        "text",
+        "cid-42"
+      ],
+      [
+        "int",
+        100
+      ],
+      [
+        "text",
+        "Тема Name"
+      ],
+      [
+        "text",
+        "Автор"
+      ],
+      [
+        "text",
+        "desc <b>html</b>"
+      ],
+      [
+        "text",
+        "перевод"
+      ],
+      [
+        "int",
+        90
+      ],
+      [
+        "int",
+        1500
+      ],
+      [
+        "text",
+        "http://prev/big.png"
+      ],
+      [
+        "text",
+        "[\"http://prev/1.png\", \"\\u0441\\u043a\\u0440\\u0438\\u043d\"]"
+      ],
+      [
+        "text",
+        "http://dl/arc.tar.gz"
+      ],
+      [
+        "text",
+        "arc.tar.gz"
+      ],
+      [
+        "int",
+        204800
+      ],
+      [
+        "text",
+        "1.2.3"
+      ],
+      [
+        "text",
+        "GPL"
+      ],
+      [
+        "text",
+        "2020-01-01"
+      ],
+      [
+        "text",
+        "2021-06-15"
+      ],
+      [
+        "real",
+        1234567890.5
+      ]
+    ]
+  }
+}

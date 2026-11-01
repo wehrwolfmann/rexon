@@ -1,0 +1,4281 @@
+{
+  "cases": [
+    {
+      "name": "kde_all_ok",
+      "de_id": "kde",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "KDE",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "kreadconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "Icons",
+            "--key",
+            "Theme",
+            "--default",
+            ""
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "breeze-dark"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/breeze-dark/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.local/share/icons/breeze-dark/index.theme",
+          "result": "[Icon Theme]\nName=Breeze\nDirectories=16x16/apps\n"
+        },
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/kdeglobals",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.config/kdeglobals",
+          "result": "[General]\nTerminalApplication=konsole\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "plasma-login-manager"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола kde...",
+        "  🖼️ Проверка темы иконок...",
+        "    ✅ kdeglobals: breeze-dark — валидна",
+        "  🖥️ Проверка терминала KDE...",
+        "    ✅ Терминал: konsole",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ Plasma Login Manager установлен",
+        "✅ Проверка завершена — в порядке: 3, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "kde_icon_theme",
+          "ok"
+        ],
+        [
+          "kde_terminal",
+          "ok"
+        ],
+        [
+          "kde_sddm",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "kde_fix_icon_and_terminal",
+      "de_id": "kde",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "plasma",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "kreadconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "Icons",
+            "--key",
+            "Theme",
+            "--default",
+            ""
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "capitaine-cursors"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Bibata'"
+          }
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/capitaine-cursors/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.local/share/icons/capitaine-cursors/index.theme",
+          "result": "[Icon Theme]\nName=Capitaine\n"
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/usr/share/icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/breeze/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.local/share/icons/breeze/index.theme",
+          "result": "[Icon Theme]\nDirectories=22x22/apps\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "kwriteconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "Icons",
+            "--key",
+            "Theme",
+            "breeze"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "makedirs",
+          "path": "/home/tester/.config/gtk-3.0"
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.config/gtk-3.0/settings.ini",
+          "result": false
+        },
+        {
+          "op": "write_text",
+          "path": "/home/tester/.config/gtk-3.0/settings.ini.tmp",
+          "content": "[Settings]\ngtk-icon-theme-name=breeze\n"
+        },
+        {
+          "op": "replace",
+          "src": "/home/tester/.config/gtk-3.0/settings.ini.tmp",
+          "dst": "/home/tester/.config/gtk-3.0/settings.ini"
+        },
+        {
+          "op": "makedirs",
+          "path": "/home/tester/.config/gtk-4.0"
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.config/gtk-4.0/settings.ini",
+          "result": false
+        },
+        {
+          "op": "write_text",
+          "path": "/home/tester/.config/gtk-4.0/settings.ini.tmp",
+          "content": "[Settings]\ngtk-icon-theme-name=breeze\n"
+        },
+        {
+          "op": "replace",
+          "src": "/home/tester/.config/gtk-4.0/settings.ini.tmp",
+          "dst": "/home/tester/.config/gtk-4.0/settings.ini"
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/Bibata/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.icons/Bibata/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.icons/Bibata/index.theme",
+          "result": "[Icon Theme]\nName=Bibata\n"
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/usr/share/icons/breeze-dark/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/breeze/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.local/share/icons/breeze/index.theme",
+          "result": "[Icon Theme]\nDirectories=22x22/apps\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.interface",
+            "icon-theme",
+            "breeze"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/kdeglobals",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.config/kdeglobals",
+          "result": "[General]\n"
+        },
+        {
+          "op": "which",
+          "name": "konsole",
+          "result": true
+        },
+        {
+          "op": "which",
+          "name": "kwriteconfig6",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "kwriteconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "General",
+            "--key",
+            "TerminalApplication",
+            "konsole"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "kwriteconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "General",
+            "--key",
+            "TerminalService",
+            "org.kde.konsole.desktop"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "plasma-login-manager"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "sddm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола kde...",
+        "  🖼️ Проверка темы иконок...",
+        "    ⚠️ kdeglobals: «capitaine-cursors» невалидна (нет Directories= или темы нет на диске)",
+        "    ✅ kdeglobals: capitaine-cursors → breeze",
+        "    ⚠️ gsettings: «Bibata» невалидна (нет Directories= или темы нет на диске)",
+        "    ✅ gsettings: Bibata → breeze",
+        "  🖥️ Проверка терминала KDE...",
+        "    ✅ Исправлено: терминал → konsole",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ SDDM установлен",
+        "✅ Проверка завершена — в порядке: 1, исправлено: 2, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "kde_icon_theme",
+          "fixed"
+        ],
+        [
+          "kde_terminal",
+          "fixed"
+        ],
+        [
+          "kde_sddm",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "kde_first_run_no_dm",
+      "de_id": "kde",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "KDE",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "kreadconfig6",
+            "--file",
+            "kdeglobals",
+            "--group",
+            "Icons",
+            "--key",
+            "Theme",
+            "--default",
+            ""
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/kdeglobals",
+          "result": false
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "plasma-login-manager"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "sddm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола kde...",
+        "  🖼️ Проверка темы иконок...",
+        "    ℹ️ kdeglobals: тема иконок не задана",
+        "  🖥️ Проверка терминала KDE...",
+        "    ℹ️ kdeglobals не найден (первый запуск?)",
+        "  🔑 Проверка экрана входа...",
+        "    ⚠️ Экран входа (SDDM / Plasma Login Manager) не установлен",
+        "✅ Проверка завершена — в порядке: 2, исправлено: 0, с ошибкой: 1"
+      ],
+      "results": [
+        [
+          "kde_icon_theme",
+          "ok"
+        ],
+        [
+          "kde_terminal",
+          "ok"
+        ],
+        [
+          "kde_sddm",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "gnome_ok",
+      "de_id": "gnome",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "GNOME",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Adwaita'"
+          }
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/Adwaita/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.icons/Adwaita/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/usr/share/icons/Adwaita/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/usr/share/icons/Adwaita/index.theme",
+          "result": "[Icon Theme]\nDirectories=16x16\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'gnome-terminal'"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-tweaks"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола gnome...",
+        "  🖼️ Проверка темы иконок...",
+        "    ✅ gnome: Adwaita — валидна",
+        "  🖥️ Проверка терминала GNOME...",
+        "    ✅ Терминал: gnome-terminal",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ GDM установлен",
+        "  🔧 Проверка gnome-tweaks...",
+        "    ✅ gnome-tweaks установлен",
+        "✅ Проверка завершена — в порядке: 4, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "gnome_icon_theme",
+          "ok"
+        ],
+        [
+          "gnome_terminal",
+          "ok"
+        ],
+        [
+          "gnome_gdm",
+          "ok"
+        ],
+        [
+          "gnome_tweaks",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "gnome_fix_terminal",
+      "de_id": "gnome",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "GNOME",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Adwaita'"
+          }
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.local/share/icons/Adwaita/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/home/tester/.icons/Adwaita/index.theme",
+          "result": false
+        },
+        {
+          "op": "is_file",
+          "path": "/usr/share/icons/Adwaita/index.theme",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/usr/share/icons/Adwaita/index.theme",
+          "result": "[Icon Theme]\nDirectories=16x16\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'xterm'"
+          }
+        },
+        {
+          "op": "which",
+          "name": "gnome-terminal",
+          "result": false
+        },
+        {
+          "op": "which",
+          "name": "kgx",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec",
+            "kgx"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-tweaks"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола gnome...",
+        "  🖼️ Проверка темы иконок...",
+        "    ✅ gnome: Adwaita — валидна",
+        "  🖥️ Проверка терминала GNOME...",
+        "    ✅ Исправлено: xterm → kgx",
+        "  🔑 Проверка экрана входа...",
+        "    ⚠️ GDM не установлен",
+        "  🔧 Проверка gnome-tweaks...",
+        "    ⚠️ gnome-tweaks не установлен",
+        "✅ Проверка завершена — в порядке: 1, исправлено: 1, с ошибкой: 2"
+      ],
+      "results": [
+        [
+          "gnome_icon_theme",
+          "ok"
+        ],
+        [
+          "gnome_terminal",
+          "fixed"
+        ],
+        [
+          "gnome_gdm",
+          "failed"
+        ],
+        [
+          "gnome_tweaks",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "gnome_no_gsettings",
+      "de_id": "gnome",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "GNOME",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.interface",
+            "icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-tweaks"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола gnome...",
+        "  🖼️ Проверка темы иконок...",
+        "    ℹ️ gnome: тема иконок не задана",
+        "  🖥️ Проверка терминала GNOME...",
+        "    ⚠️ gsettings недоступен (не в GNOME?)",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ GDM установлен",
+        "  🔧 Проверка gnome-tweaks...",
+        "    ⚠️ gnome-tweaks не установлен",
+        "✅ Проверка завершена — в порядке: 2, исправлено: 0, с ошибкой: 2"
+      ],
+      "results": [
+        [
+          "gnome_icon_theme",
+          "ok"
+        ],
+        [
+          "gnome_terminal",
+          "failed"
+        ],
+        [
+          "gnome_gdm",
+          "ok"
+        ],
+        [
+          "gnome_tweaks",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "mate_ru_all_ok",
+      "de_id": "mate",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "MATE",
+      "journal": [
+        {
+          "op": "env",
+          "name": "LANG",
+          "result": "ru_RU.UTF-8"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.control-center",
+            "cc-actions-list"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "['Изменить тему;mate-appearance-properties.desktop']"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.applications-terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'mate-terminal'"
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/familiar.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/redmond.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/cupertino.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/mutiny.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/pantheon.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/contemporary.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/netbook.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/traditional.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-tweak"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "brisk-menu"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-indicator-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-mate"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-registrar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-application"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-session"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-datetime"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-sound"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.peripherals-mouse",
+            "cursor-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Yaru'"
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/locale/ru/LC_MESSAGES/mate-utils.mo",
+          "result": true
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола mate...",
+        "  🌐 Проверка локализации Центра управления...",
+        "    ✅ Локализация в порядке",
+        "  🖥️ Проверка терминала по умолчанию...",
+        "    ✅ Терминал: mate-terminal",
+        "  📐 Проверка всех 8 макетов панели Ubuntu MATE...",
+        "    ✅ Все 8 макетов панели на месте (Familiar → Traditional)",
+        "  🎨 Проверка файла стандартных настроек gschema (Yaru-MATE, шрифты Ubuntu)...",
+        "    ✅ Файл стандартных настроек gschema установлен",
+        "  🎨 Проверка Yaru-MATE темы...",
+        "    ✅ Yaru-MATE тема установлена",
+        "  🔤 Проверка шрифтов Ubuntu...",
+        "    ✅ Шрифты Ubuntu установлены",
+        "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
+        "    ✅ Все AUR-пакеты установлены (включая Ayatana-стек)",
+        "  🖱️ Проверка курсора Yaru...",
+        "    ✅ Курсор: Yaru",
+        "  🌐 Проверка локализации mate-utils...",
+        "    ℹ️ Файл перевода mate-utils.mo существует",
+        "    ℹ️ Device Name/Memory/Processor остаются без перевода — это ошибка MATE, а не Rexon",
+        "✅ Проверка завершена — в порядке: 9, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "mate_cc_locale",
+          "ok"
+        ],
+        [
+          "mate_terminal",
+          "ok"
+        ],
+        [
+          "mate_layouts",
+          "ok"
+        ],
+        [
+          "mate_gschema",
+          "ok"
+        ],
+        [
+          "mate_yaru_theme",
+          "ok"
+        ],
+        [
+          "mate_ubuntu_fonts",
+          "ok"
+        ],
+        [
+          "mate_aur_pkgs",
+          "ok"
+        ],
+        [
+          "mate_cursor",
+          "ok"
+        ],
+        [
+          "mate_system_info_locale",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "mate_ru_fix_locale_and_terminal",
+      "de_id": "mate",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "MATE",
+      "journal": [
+        {
+          "op": "env",
+          "name": "LANG",
+          "result": "ru_RU.UTF-8"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.control-center",
+            "cc-actions-list"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "['Change Theme;mate-appearance-properties.desktop']"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.mate.control-center",
+            "cc-actions-list",
+            "['Изменить тему;mate-appearance-properties.desktop', 'Предпочтительные приложения;mate-default-applications-properties.desktop', 'Информация о системе MATE;mate-system-info.desktop']"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.applications-terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'gnome-terminal'"
+          }
+        },
+        {
+          "op": "which",
+          "name": "mate-terminal",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.mate.applications-terminal",
+            "exec",
+            "mate-terminal"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.mate.applications-terminal",
+            "exec-arg",
+            "-x"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/familiar.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/redmond.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/cupertino.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/mutiny.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/pantheon.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/contemporary.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/netbook.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/traditional.layout",
+          "result": true
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-tweak"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "brisk-menu"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-indicator-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-mate"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-registrar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-application"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-session"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-datetime"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-sound"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.peripherals-mouse",
+            "cursor-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'default'"
+          }
+        },
+        {
+          "op": "is_dir",
+          "path": "/usr/share/icons/Yaru/cursors",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "set",
+            "org.mate.peripherals-mouse",
+            "cursor-theme",
+            "Yaru"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/locale/ru/LC_MESSAGES/mate-utils.mo",
+          "result": true
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола mate...",
+        "  🌐 Проверка локализации Центра управления...",
+        "    ✅ Исправлено: «Общие задачи» переведены",
+        "  🖥️ Проверка терминала по умолчанию...",
+        "    ✅ Исправлено: gnome-terminal → mate-terminal",
+        "  📐 Проверка всех 8 макетов панели Ubuntu MATE...",
+        "    ✅ Все 8 макетов панели на месте (Familiar → Traditional)",
+        "  🎨 Проверка файла стандартных настроек gschema (Yaru-MATE, шрифты Ubuntu)...",
+        "    ✅ Файл стандартных настроек gschema установлен",
+        "  🎨 Проверка Yaru-MATE темы...",
+        "    ✅ Yaru-MATE тема установлена",
+        "  🔤 Проверка шрифтов Ubuntu...",
+        "    ✅ Шрифты Ubuntu установлены",
+        "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
+        "    ✅ Все AUR-пакеты установлены (включая Ayatana-стек)",
+        "  🖱️ Проверка курсора Yaru...",
+        "    ✅ Исправлено: default → Yaru",
+        "  🌐 Проверка локализации mate-utils...",
+        "    ℹ️ Файл перевода mate-utils.mo существует",
+        "    ℹ️ Device Name/Memory/Processor остаются без перевода — это ошибка MATE, а не Rexon",
+        "✅ Проверка завершена — в порядке: 6, исправлено: 3, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "mate_cc_locale",
+          "fixed"
+        ],
+        [
+          "mate_terminal",
+          "fixed"
+        ],
+        [
+          "mate_layouts",
+          "ok"
+        ],
+        [
+          "mate_gschema",
+          "ok"
+        ],
+        [
+          "mate_yaru_theme",
+          "ok"
+        ],
+        [
+          "mate_ubuntu_fonts",
+          "ok"
+        ],
+        [
+          "mate_aur_pkgs",
+          "ok"
+        ],
+        [
+          "mate_cursor",
+          "fixed"
+        ],
+        [
+          "mate_system_info_locale",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "mate_nonru_installs_and_failures",
+      "de_id": "mate",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "MATE",
+      "journal": [
+        {
+          "op": "env",
+          "name": "LANG",
+          "result": "C"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.applications-terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/familiar.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/redmond.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/cupertino.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/mutiny.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/pantheon.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/contemporary.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/netbook.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/traditional.layout",
+          "result": false
+        },
+        {
+          "op": "which",
+          "name": "git",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+          "result": false
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "which",
+          "name": "yay",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "yay",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "--answerclean",
+            "None",
+            "--answerdiff",
+            "None",
+            "--answeredit",
+            "None",
+            "--removemake",
+            "--sudo",
+            "pkexec",
+            "--sudoflags",
+            "",
+            "ubuntu-mate-themes",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "pacman",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-tweak"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "brisk-menu"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-indicator-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-mate"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-registrar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-application"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-session"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-datetime"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-sound"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "which",
+          "name": "yay",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "yay",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "--answerclean",
+            "None",
+            "--answerdiff",
+            "None",
+            "--answeredit",
+            "None",
+            "--removemake",
+            "--sudo",
+            "pkexec",
+            "--sudoflags",
+            "",
+            "mate-tweak",
+            "brisk-menu",
+            "mate-indicator-applet",
+            "vala-panel-appmenu-mate",
+            "vala-panel-appmenu-registrar",
+            "ayatana-indicator-application",
+            "ayatana-indicator-session",
+            "ayatana-indicator-datetime",
+            "ayatana-indicator-sound",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.peripherals-mouse",
+            "cursor-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола mate...",
+        "  🖥️ Проверка терминала по умолчанию...",
+        "  📐 Проверка всех 8 макетов панели Ubuntu MATE...",
+        "    ⚠️ Отсутствуют (8): familiar, redmond, cupertino, mutiny, pantheon, contemporary, netbook, traditional",
+        "    ⚠️ git не установлен — пропуск. Установите пакет «git»",
+        "  🎨 Проверка файла стандартных настроек gschema (Yaru-MATE, шрифты Ubuntu)...",
+        "    ⚠️ Файла стандартных настроек gschema нет",
+        "    ℹ️ Переустановите MATE через Rexon для автоматической установки",
+        "  🎨 Проверка Yaru-MATE темы...",
+        "    ⚠️ Не установлены: ubuntu-mate-themes, ubuntu-mate-icon-themes",
+        "    📥 Установка через yay...",
+        "    ⚠️ Не удалось установить (попробуйте вручную)",
+        "  🔤 Проверка шрифтов Ubuntu...",
+        "    ⚠️ Шрифты Ubuntu не установлены",
+        "    ✅ Шрифты Ubuntu установлены",
+        "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
+        "    ⚠️ Не установлены (10): mate-tweak, brisk-menu, mate-indicator-applet, vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
+        "    📥 Установка через yay...",
+        "    ⚠️ Не удалось установить (попробуйте вручную)",
+        "  🖱️ Проверка курсора Yaru...",
+        "✅ Проверка завершена — в порядке: 0, исправлено: 1, с ошибкой: 6"
+      ],
+      "results": [
+        [
+          "mate_terminal",
+          "failed"
+        ],
+        [
+          "mate_layouts",
+          "failed"
+        ],
+        [
+          "mate_gschema",
+          "failed"
+        ],
+        [
+          "mate_yaru_theme",
+          "failed"
+        ],
+        [
+          "mate_ubuntu_fonts",
+          "fixed"
+        ],
+        [
+          "mate_aur_pkgs",
+          "failed"
+        ],
+        [
+          "mate_cursor",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "mate_download_named",
+      "de_id": "mate",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": true,
+      "xdg": "MATE",
+      "journal": [
+        {
+          "op": "env",
+          "name": "LANG",
+          "result": "C"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.applications-terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'mate-terminal'"
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/familiar.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/redmond.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/cupertino.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/mutiny.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/pantheon.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/contemporary.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/netbook.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/traditional.layout",
+          "result": false
+        },
+        {
+          "op": "which",
+          "name": "git",
+          "result": true
+        },
+        {
+          "op": "mkdtemp",
+          "prefix": "rexon_ums_",
+          "dir": null,
+          "result": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0",
+          "result": true
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "https://github.com/ubuntu-mate/ubuntu-mate-settings.git",
+            "/tmpfake/rexon_ums_0"
+          ],
+          "timeout": 120,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts",
+          "result": true
+        },
+        {
+          "op": "listdir",
+          "path": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts",
+          "result": [
+            "redmond.layout",
+            "panel.dock"
+          ]
+        },
+        {
+          "op": "mkdtemp",
+          "prefix": "rexon_layouts_stage_",
+          "dir": "/tmp",
+          "result": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "copy_file",
+          "src": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts/redmond.layout",
+          "dst": "/tmp/rexon_layouts_stage_1/redmond.layout"
+        },
+        {
+          "op": "read_text",
+          "path": "/tmp/rexon_layouts_stage_1/redmond.layout",
+          "result": "[Toplevel]\nobject-0=/var/lib/snapd/desktop/applications/firefox_firefox.desktop\n"
+        },
+        {
+          "op": "write_text",
+          "path": "/tmp/rexon_layouts_stage_1/redmond.layout",
+          "content": "[Toplevel]\nobject-0=/usr/share/applications/firefox.desktop\n"
+        },
+        {
+          "op": "copy_file",
+          "src": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts/panel.dock",
+          "dst": "/tmp/rexon_layouts_stage_1/panel.dock"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmp/rexon_layouts_stage_1",
+          "result": true
+        },
+        {
+          "op": "realpath",
+          "path": "/tmp/rexon_layouts_stage_1",
+          "result": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "/usr/local/lib/rexon-stage-helper",
+            "mate-layouts",
+            "rexon",
+            "/tmp/rexon_layouts_stage_1"
+          ],
+          "timeout": 120,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0",
+          "result": true
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-tweak"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "brisk-menu"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-indicator-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-mate"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-registrar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-application"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-session"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-datetime"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-sound"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.peripherals-mouse",
+            "cursor-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Yaru'"
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола mate...",
+        "  🖥️ Проверка терминала по умолчанию...",
+        "    ✅ Терминал: mate-terminal",
+        "  📐 Проверка всех 8 макетов панели Ubuntu MATE...",
+        "    ⚠️ Отсутствуют (8): familiar, redmond, cupertino, mutiny, pantheon, contemporary, netbook, traditional",
+        "    📥 Загрузка макетов панели из ubuntu-mate-settings...",
+        "    ✅ Скопирован 1 макет панели (пути адаптированы)",
+        "  🎨 Проверка файла стандартных настроек gschema (Yaru-MATE, шрифты Ubuntu)...",
+        "    ✅ Файл стандартных настроек gschema установлен",
+        "  🎨 Проверка Yaru-MATE темы...",
+        "    ✅ Yaru-MATE тема установлена",
+        "  🔤 Проверка шрифтов Ubuntu...",
+        "    ✅ Шрифты Ubuntu установлены",
+        "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
+        "    ✅ Все AUR-пакеты установлены (включая Ayatana-стек)",
+        "  🖱️ Проверка курсора Yaru...",
+        "    ✅ Курсор: Yaru",
+        "✅ Проверка завершена — в порядке: 6, исправлено: 1, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "mate_terminal",
+          "ok"
+        ],
+        [
+          "mate_layouts",
+          "fixed"
+        ],
+        [
+          "mate_gschema",
+          "ok"
+        ],
+        [
+          "mate_yaru_theme",
+          "ok"
+        ],
+        [
+          "mate_ubuntu_fonts",
+          "ok"
+        ],
+        [
+          "mate_aur_pkgs",
+          "ok"
+        ],
+        [
+          "mate_cursor",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "mate_download_raw",
+      "de_id": "mate",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "MATE",
+      "journal": [
+        {
+          "op": "env",
+          "name": "LANG",
+          "result": "C"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.applications-terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'mate-terminal'"
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/familiar.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/redmond.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/cupertino.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/mutiny.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/pantheon.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/contemporary.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/netbook.layout",
+          "result": false
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/mate-panel/layouts/traditional.layout",
+          "result": false
+        },
+        {
+          "op": "which",
+          "name": "git",
+          "result": true
+        },
+        {
+          "op": "mkdtemp",
+          "prefix": "rexon_ums_",
+          "dir": null,
+          "result": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0",
+          "result": true
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "https://github.com/ubuntu-mate/ubuntu-mate-settings.git",
+            "/tmpfake/rexon_ums_0"
+          ],
+          "timeout": 120,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts",
+          "result": true
+        },
+        {
+          "op": "listdir",
+          "path": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts",
+          "result": [
+            "redmond.layout",
+            "panel.dock"
+          ]
+        },
+        {
+          "op": "mkdtemp",
+          "prefix": "rexon_layouts_stage_",
+          "dir": "/tmp",
+          "result": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "copy_file",
+          "src": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts/redmond.layout",
+          "dst": "/tmp/rexon_layouts_stage_1/redmond.layout"
+        },
+        {
+          "op": "read_text",
+          "path": "/tmp/rexon_layouts_stage_1/redmond.layout",
+          "result": "[Toplevel]\nobject-0=/var/lib/snapd/desktop/applications/snap-store_snap-store.desktop\n"
+        },
+        {
+          "op": "write_text",
+          "path": "/tmp/rexon_layouts_stage_1/redmond.layout",
+          "content": "[Toplevel]\nobject-0=/usr/share/applications/org.gnome.Software.desktop\n"
+        },
+        {
+          "op": "copy_file",
+          "src": "/tmpfake/rexon_ums_0/usr/share/mate-panel/layouts/panel.dock",
+          "dst": "/tmp/rexon_layouts_stage_1/panel.dock"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmp/rexon_layouts_stage_1",
+          "result": true
+        },
+        {
+          "op": "realpath",
+          "path": "/tmp/rexon_layouts_stage_1",
+          "result": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "listdir",
+          "path": "/tmp/rexon_layouts_stage_1",
+          "result": [
+            "redmond.layout",
+            "panel.dock"
+          ]
+        },
+        {
+          "op": "mkstemp",
+          "prefix": "rexon_layouts_",
+          "suffix": ".sh",
+          "result": "/tmpfake/rexon_layouts_2.sh"
+        },
+        {
+          "op": "write_text",
+          "path": "/tmpfake/rexon_layouts_2.sh",
+          "content": "#!/bin/bash\nset -e\ninstall -d /usr/share/mate-panel/layouts\ncp -f /tmp/rexon_layouts_stage_1/redmond.layout /usr/share/mate-panel/layouts/\ncp -f /tmp/rexon_layouts_stage_1/panel.dock /usr/share/mate-panel/layouts/\nchmod -R a+rX /usr/share/mate-panel/layouts\n"
+        },
+        {
+          "op": "chmod",
+          "path": "/tmpfake/rexon_layouts_2.sh",
+          "mode": 493
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "bash",
+            "/tmpfake/rexon_layouts_2.sh"
+          ],
+          "timeout": 120,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "remove_file",
+          "path": "/tmpfake/rexon_layouts_2.sh"
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmp/rexon_layouts_stage_1"
+        },
+        {
+          "op": "is_dir",
+          "path": "/tmpfake/rexon_ums_0",
+          "result": true
+        },
+        {
+          "op": "remove_tree",
+          "path": "/tmpfake/rexon_ums_0"
+        },
+        {
+          "op": "exists",
+          "path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ubuntu-mate-icon-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ttf-ubuntu-font-family"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-tweak"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "brisk-menu"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mate-indicator-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-mate"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "vala-panel-appmenu-registrar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-application"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-session"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-datetime"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-sound"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "ayatana-indicator-notifications"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.mate.peripherals-mouse",
+            "cursor-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'Yaru'"
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола mate...",
+        "  🖥️ Проверка терминала по умолчанию...",
+        "    ✅ Терминал: mate-terminal",
+        "  📐 Проверка всех 8 макетов панели Ubuntu MATE...",
+        "    ⚠️ Отсутствуют (8): familiar, redmond, cupertino, mutiny, pantheon, contemporary, netbook, traditional",
+        "    📥 Загрузка макетов панели из ubuntu-mate-settings...",
+        "    ✅ Скопирован 1 макет панели (пути адаптированы)",
+        "  🎨 Проверка файла стандартных настроек gschema (Yaru-MATE, шрифты Ubuntu)...",
+        "    ✅ Файл стандартных настроек gschema установлен",
+        "  🎨 Проверка Yaru-MATE темы...",
+        "    ✅ Yaru-MATE тема установлена",
+        "  🔤 Проверка шрифтов Ubuntu...",
+        "    ✅ Шрифты Ubuntu установлены",
+        "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
+        "    ✅ Все AUR-пакеты установлены (включая Ayatana-стек)",
+        "  🖱️ Проверка курсора Yaru...",
+        "    ✅ Курсор: Yaru",
+        "✅ Проверка завершена — в порядке: 6, исправлено: 1, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "mate_terminal",
+          "ok"
+        ],
+        [
+          "mate_layouts",
+          "fixed"
+        ],
+        [
+          "mate_gschema",
+          "ok"
+        ],
+        [
+          "mate_yaru_theme",
+          "ok"
+        ],
+        [
+          "mate_ubuntu_fonts",
+          "ok"
+        ],
+        [
+          "mate_aur_pkgs",
+          "ok"
+        ],
+        [
+          "mate_cursor",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "cosmic_ok",
+      "de_id": "cosmic",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "COSMIC",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-wallpapers"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-keyring"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола cosmic...",
+        "  🖼️ Проверка обоев COSMIC...",
+        "    ✅ cosmic-wallpapers установлен",
+        "  🎨 Проверка иконок COSMIC...",
+        "    ✅ cosmic-icon-theme установлен",
+        "  🔐 Проверка gnome-keyring...",
+        "    ✅ gnome-keyring установлен",
+        "✅ Проверка завершена — в порядке: 3, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "cosmic_wallpapers",
+          "ok"
+        ],
+        [
+          "cosmic_icons",
+          "ok"
+        ],
+        [
+          "cosmic_keyring",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "cosmic_install",
+      "de_id": "cosmic",
+      "home": "/home/tester",
+      "pkg_helper_available": true,
+      "stage_helper_available": false,
+      "xdg": "COSMIC",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-wallpapers"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "/usr/local/lib/rexon-pkg-helper",
+            "arch",
+            "install",
+            "cosmic-wallpapers"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "/usr/local/lib/rexon-pkg-helper",
+            "arch",
+            "install",
+            "cosmic-icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-keyring"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола cosmic...",
+        "  🖼️ Проверка обоев COSMIC...",
+        "    ⚠️ cosmic-wallpapers не установлен — устанавливаю...",
+        "    ✅ cosmic-wallpapers установлен",
+        "  🎨 Проверка иконок COSMIC...",
+        "    ⚠️ cosmic-icon-theme не установлен",
+        "    ✅ cosmic-icon-theme установлен",
+        "  🔐 Проверка gnome-keyring...",
+        "    ⚠️ gnome-keyring не установлен",
+        "✅ Проверка завершена — в порядке: 0, исправлено: 2, с ошибкой: 1"
+      ],
+      "results": [
+        [
+          "cosmic_wallpapers",
+          "fixed"
+        ],
+        [
+          "cosmic_icons",
+          "fixed"
+        ],
+        [
+          "cosmic_keyring",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "cosmic_install_fail",
+      "de_id": "cosmic",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "COSMIC",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-wallpapers"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "pacman",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "cosmic-wallpapers"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "cosmic-icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "pacman",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "cosmic-icon-theme"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "gnome-keyring"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола cosmic...",
+        "  🖼️ Проверка обоев COSMIC...",
+        "    ⚠️ cosmic-wallpapers не установлен — устанавливаю...",
+        "    ⚠️ Не удалось установить",
+        "  🎨 Проверка иконок COSMIC...",
+        "    ⚠️ cosmic-icon-theme не установлен",
+        "  🔐 Проверка gnome-keyring...",
+        "    ⚠️ gnome-keyring не установлен",
+        "✅ Проверка завершена — в порядке: 0, исправлено: 0, с ошибкой: 3"
+      ],
+      "results": [
+        [
+          "cosmic_wallpapers",
+          "failed"
+        ],
+        [
+          "cosmic_icons",
+          "failed"
+        ],
+        [
+          "cosmic_keyring",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "xfce_configured",
+      "de_id": "xfce",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "XFCE",
+      "journal": [
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/xfce4/helpers.rc",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.config/xfce4/helpers.rc",
+          "result": "[Configuration]\nTerminalEmulator=xfce4-terminal\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "lightdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола xfce...",
+        "  🖥️ Проверка helpers.rc XFCE...",
+        "    ✅ helpers.rc настроен",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ LightDM установлен",
+        "✅ Проверка завершена — в порядке: 2, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "xfce_helpers",
+          "ok"
+        ],
+        [
+          "xfce_lightdm",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "xfce_first_run",
+      "de_id": "xfce",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "XFCE",
+      "journal": [
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/xfce4/helpers.rc",
+          "result": false
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "lightdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола xfce...",
+        "  🖥️ Проверка helpers.rc XFCE...",
+        "    ℹ️ helpers.rc не существует (первый запуск?)",
+        "  🔑 Проверка экрана входа...",
+        "    ⚠️ LightDM не установлен",
+        "✅ Проверка завершена — в порядке: 1, исправлено: 0, с ошибкой: 1"
+      ],
+      "results": [
+        [
+          "xfce_helpers",
+          "ok"
+        ],
+        [
+          "xfce_lightdm",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "xfce_no_terminal_key",
+      "de_id": "xfce",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "XFCE",
+      "journal": [
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/xfce4/helpers.rc",
+          "result": true
+        },
+        {
+          "op": "read_text",
+          "path": "/home/tester/.config/xfce4/helpers.rc",
+          "result": "[Configuration]\n"
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "lightdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола xfce...",
+        "  🖥️ Проверка helpers.rc XFCE...",
+        "    ℹ️ TerminalEmulator не задан",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ LightDM установлен",
+        "✅ Проверка завершена — в порядке: 2, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "xfce_helpers",
+          "ok"
+        ],
+        [
+          "xfce_lightdm",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "cinnamon_ok",
+      "de_id": "cinnamon-mint",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "X-Cinnamon",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "nemo"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mint-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mint-y-icons"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "lightdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола cinnamon-mint...",
+        "  📁 Проверка файлового менеджера Nemo...",
+        "    ✅ Nemo установлен",
+        "  🎨 Проверка тем Linux Mint...",
+        "    ✅ Темы Mint установлены",
+        "  🔑 Проверка экрана входа...",
+        "    ✅ LightDM установлен",
+        "✅ Проверка завершена — в порядке: 3, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "cinnamon_nemo",
+          "ok"
+        ],
+        [
+          "cinnamon_themes",
+          "ok"
+        ],
+        [
+          "cinnamon_lightdm",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "cinnamon_missing_themes",
+      "de_id": "cinnamon-mint",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "X-Cinnamon",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "nemo"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mint-themes"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "mint-y-icons"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "which",
+          "name": "yay",
+          "result": false
+        },
+        {
+          "op": "which",
+          "name": "paru",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "paru",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "--skipreview",
+            "--nosudoloop",
+            "--removemake",
+            "--sudo",
+            "pkexec",
+            "--sudoflags",
+            "",
+            "mint-themes",
+            "mint-y-icons"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "lightdm"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола cinnamon-mint...",
+        "  📁 Проверка файлового менеджера Nemo...",
+        "    ✅ Nemo установлен",
+        "  🎨 Проверка тем Linux Mint...",
+        "    ⚠️ Не установлены: mint-themes, mint-y-icons",
+        "    📥 Установка через paru...",
+        "    ⚠️ Не удалось установить (попробуйте вручную)",
+        "  🔑 Проверка экрана входа...",
+        "    ⚠️ LightDM не установлен",
+        "✅ Проверка завершена — в порядке: 1, исправлено: 0, с ошибкой: 2"
+      ],
+      "results": [
+        [
+          "cinnamon_nemo",
+          "ok"
+        ],
+        [
+          "cinnamon_themes",
+          "failed"
+        ],
+        [
+          "cinnamon_lightdm",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "budgie_ok",
+      "de_id": "budgie",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "Budgie:GNOME",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": "'gnome-terminal'"
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "budgie-extras"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "network-manager-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола budgie...",
+        "  🖥️ Проверка терминала Budgie...",
+        "    ✅ Терминал: gnome-terminal",
+        "  📦 Проверка budgie-extras...",
+        "    ✅ budgie-extras установлен",
+        "  📶 Проверка network-manager-applet...",
+        "    ✅ network-manager-applet установлен",
+        "✅ Проверка завершена — в порядке: 3, исправлено: 0, с ошибкой: 0"
+      ],
+      "results": [
+        [
+          "budgie_terminal",
+          "ok"
+        ],
+        [
+          "budgie_extras",
+          "ok"
+        ],
+        [
+          "budgie_nm_applet",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "name": "budgie_missing",
+      "de_id": "budgie",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "Budgie:GNOME",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "gsettings",
+            "get",
+            "org.gnome.desktop.default-applications.terminal",
+            "exec"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "budgie-extras"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pkexec",
+            "pacman",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "budgie-extras"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "network-manager-applet"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола budgie...",
+        "  🖥️ Проверка терминала Budgie...",
+        "    ⚠️ gsettings недоступен",
+        "  📦 Проверка budgie-extras...",
+        "    ⚠️ budgie-extras не установлен",
+        "  📶 Проверка network-manager-applet...",
+        "    ⚠️ network-manager-applet не установлен",
+        "✅ Проверка завершена — в порядке: 0, исправлено: 0, с ошибкой: 3"
+      ],
+      "results": [
+        [
+          "budgie_terminal",
+          "failed"
+        ],
+        [
+          "budgie_extras",
+          "failed"
+        ],
+        [
+          "budgie_nm_applet",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "hyprland_mixed",
+      "de_id": "hyprland",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "Hyprland",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "hyprland"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "waybar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "wofi"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "kitty"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "grim"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "slurp"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "wl-clipboard"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/hypr/hyprland.conf",
+          "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "xdg-desktop-portal-hyprland"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": true,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "polkit-gnome"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола hyprland...",
+        "  🧱 Проверка компонентов Hyprland...",
+        "    ✅ Композитор: hyprland",
+        "    ✅ Панель: waybar",
+        "    ⚠️ Меню запуска: wofi не установлен",
+        "    ✅ Терминал: kitty",
+        "    ⚠️ Скриншоты: grim не установлен",
+        "    ⚠️ Выделение области: slurp не установлен",
+        "    ✅ Буфер обмена: wl-clipboard",
+        "  📝 Проверка конфигурации...",
+        "    ✅ hyprland.conf существует",
+        "  🌐 Проверка xdg-desktop-portal...",
+        "    ✅ xdg-desktop-portal-hyprland установлен",
+        "  🔐 Проверка polkit-агента...",
+        "    ⚠️ polkit-gnome не установлен",
+        "✅ Проверка завершена — в порядке: 6, исправлено: 0, с ошибкой: 4"
+      ],
+      "results": [
+        [
+          "hyprland_hyprland",
+          "ok"
+        ],
+        [
+          "hyprland_waybar",
+          "ok"
+        ],
+        [
+          "hyprland_wofi",
+          "failed"
+        ],
+        [
+          "hyprland_kitty",
+          "ok"
+        ],
+        [
+          "hyprland_grim",
+          "failed"
+        ],
+        [
+          "hyprland_slurp",
+          "failed"
+        ],
+        [
+          "hyprland_wl-clipboard",
+          "ok"
+        ],
+        [
+          "hyprland_config",
+          "ok"
+        ],
+        [
+          "hyprland_portal",
+          "ok"
+        ],
+        [
+          "hyprland_polkit",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "hyprland_all_missing",
+      "de_id": "hyprland",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "Hyprland",
+      "journal": [
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "hyprland"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "waybar"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "wofi"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "kitty"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "grim"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "slurp"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "wl-clipboard"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "exists",
+          "path": "/home/tester/.config/hypr/hyprland.conf",
+          "result": false
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "xdg-desktop-portal-hyprland"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "pacman",
+            "-Q",
+            "polkit-gnome"
+          ],
+          "timeout": null,
+          "result": {
+            "ok": false,
+            "stdout": ""
+          }
+        }
+      ],
+      "log": [
+        "🔍 Проверка рабочего стола hyprland...",
+        "  🧱 Проверка компонентов Hyprland...",
+        "    ⚠️ Композитор: hyprland не установлен",
+        "    ⚠️ Панель: waybar не установлен",
+        "    ⚠️ Меню запуска: wofi не установлен",
+        "    ⚠️ Терминал: kitty не установлен",
+        "    ⚠️ Скриншоты: grim не установлен",
+        "    ⚠️ Выделение области: slurp не установлен",
+        "    ⚠️ Буфер обмена: wl-clipboard не установлен",
+        "  📝 Проверка конфигурации...",
+        "    ⚠️ hyprland.conf не найден",
+        "    ℹ️ Создайте: cp /usr/share/hyprland/hyprland.conf ~/.config/hypr/",
+        "  🌐 Проверка xdg-desktop-portal...",
+        "    ⚠️ xdg-desktop-portal-hyprland не установлен",
+        "  🔐 Проверка polkit-агента...",
+        "    ⚠️ polkit-gnome не установлен",
+        "✅ Проверка завершена — в порядке: 0, исправлено: 0, с ошибкой: 10"
+      ],
+      "results": [
+        [
+          "hyprland_hyprland",
+          "failed"
+        ],
+        [
+          "hyprland_waybar",
+          "failed"
+        ],
+        [
+          "hyprland_wofi",
+          "failed"
+        ],
+        [
+          "hyprland_kitty",
+          "failed"
+        ],
+        [
+          "hyprland_grim",
+          "failed"
+        ],
+        [
+          "hyprland_slurp",
+          "failed"
+        ],
+        [
+          "hyprland_wl-clipboard",
+          "failed"
+        ],
+        [
+          "hyprland_config",
+          "failed"
+        ],
+        [
+          "hyprland_portal",
+          "failed"
+        ],
+        [
+          "hyprland_polkit",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "name": "no_handler_lxqt",
+      "de_id": "lxqt",
+      "home": "/home/tester",
+      "pkg_helper_available": false,
+      "stage_helper_available": false,
+      "xdg": "LXQt",
+      "journal": [],
+      "log": [
+        "ℹ️ Нет проверок для рабочего стола: lxqt"
+      ],
+      "results": []
+    }
+  ],
+  "run_texts_v2": {
+    "unknown_de": "⚠️ Не удалось определить текущий рабочий стол",
+    "has_checks": {
+      "mate": true,
+      "kde": true,
+      "gnome": true,
+      "cosmic": true,
+      "xfce": true,
+      "cinnamon-mint": true,
+      "budgie": true,
+      "hyprland": true,
+      "cinnamon": false,
+      "lxqt": false,
+      "unknown": false,
+      "": false
+    },
+    "banner": {
+      "kde": [
+        "\n══════════════════════════════════════════════════",
+        "  Рабочий стол: kde",
+        "══════════════════════════════════════════════════"
+      ],
+      "hyprland": [
+        "\n══════════════════════════════════════════════════",
+        "  Рабочий стол: hyprland",
+        "══════════════════════════════════════════════════"
+      ],
+      "cinnamon-mint": [
+        "\n══════════════════════════════════════════════════",
+        "  Рабочий стол: cinnamon-mint",
+        "══════════════════════════════════════════════════"
+      ]
+    }
+  },
+  "pkg_query": [
+    {
+      "note": "Arch: пакет установлен — нулевой код",
+      "family": "arch",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "run": {
+        "ok": true,
+        "stdout": "gnome-tweaks 46-1\n"
+      },
+      "state": "installed"
+    },
+    {
+      "note": "Arch: пакета нет — ненулевой код",
+      "family": "arch",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "run": {
+        "ok": false,
+        "stdout": ""
+      },
+      "state": "missing"
+    },
+    {
+      "note": "Arch: команда не запустилась вовсе (safe_run вернул None)",
+      "family": "arch",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "run": null,
+      "state": "missing"
+    },
+    {
+      "note": "Arch: вывод с мусором при нулевом коде — всё равно установлен",
+      "family": "arch",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "run": {
+        "ok": true,
+        "stdout": "error: не удалось прочитать базу"
+      },
+      "state": "installed"
+    },
+    {
+      "note": "Arch: осмысленный вывод при ненулевом коде — не установлен",
+      "family": "arch",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "argv": [
+        "pacman",
+        "-Q",
+        "gnome-tweaks"
+      ],
+      "run": {
+        "ok": false,
+        "stdout": "gnome-tweaks 46-1\n"
+      },
+      "state": "missing"
+    },
+    {
+      "note": "Debian: команда движка есть, но пакетные шаги не для этого дистрибутива",
+      "family": "debian",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "dpkg",
+        "-s",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "Fedora: то же",
+      "family": "fedora",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "rpm",
+        "-q",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "openSUSE: то же",
+      "family": "suse",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "rpm",
+        "-q",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "Gentoo: то же",
+      "family": "gentoo",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "equery",
+        "list",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "Alpine: то же",
+      "family": "alpine",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "apk",
+        "info",
+        "-e",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "Void: то же",
+      "family": "void",
+      "pkg": "gnome-tweaks",
+      "engine_argv": [
+        "xbps-query",
+        "gnome-tweaks"
+      ],
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    },
+    {
+      "note": "неизвестное семейство: команды нет вовсе, ответ «недоступно», а не «не установлен»",
+      "family": "unknown",
+      "pkg": "gnome-tweaks",
+      "engine_argv": null,
+      "argv": null,
+      "run": null,
+      "state": "unsupported"
+    }
+  ]
+}

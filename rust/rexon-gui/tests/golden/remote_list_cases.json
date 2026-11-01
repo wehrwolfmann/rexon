@@ -1,0 +1,1946 @@
+{
+ "источник": "rexon/qt_wallpaper_engine/qml_ui/bridge.py:RemoteListModel",
+ "как_пересобрать": "python3 rust/rexon-gui/tests/golden/remote_list_cases.py",
+ "cases": [
+  {
+   "name": "первая страница: reset_rows с has_more",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": true
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": true
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": true,
+     "canFetchMore": true,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "пустая выдача: reset_rows без строк и без догрузки",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [],
+     "hasMore": false
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    }
+   ],
+   "final": [
+    {
+     "count": 0,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [],
+     "getFirst": {},
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {}
+    }
+   ]
+  },
+  {
+   "name": "reset_rows без смены has_more не поднимает hasMoreChanged",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая обоина",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "workshop",
+       "title": "Пятая обоина",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    }
+   ],
+   "final": [
+    {
+     "count": 2,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая обоина",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "workshop",
+       "title": "Пятая обоина",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "b1",
+      "sourceId": "wallhaven",
+      "title": "Четвёртая обоина",
+      "previewUrl": "https://example.invalid/b1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "b1",
+      "sourceId": "wallhaven",
+      "title": "Четвёртая обоина",
+      "previewUrl": "https://example.invalid/b1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "бесконечная прокрутка: fetchMore → догрузка страницы",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": true
+    },
+    {
+     "op": "fetchMore"
+    },
+    {
+     "op": "appendRows",
+     "rows": [
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая обоина",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "workshop",
+       "title": "Пятая обоина",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": false
+    },
+    {
+     "model": 0,
+     "sig": "reqFetchMore",
+     "row": 3
+    },
+    {
+     "model": 0,
+     "sig": "rowsInserted",
+     "first": 3,
+     "last": 4
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    }
+   ],
+   "final": [
+    {
+     "count": 5,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b1",
+       "sourceId": "wallhaven",
+       "title": "Четвёртая обоина",
+       "previewUrl": "https://example.invalid/b1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "b2",
+       "sourceId": "workshop",
+       "title": "Пятая обоина",
+       "previewUrl": "https://example.invalid/b2.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "fetchMore при исчерпанной выдаче ничего не делает",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "fetchMore"
+    },
+    {
+     "op": "fetchMore"
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "повторный fetchMore до ответа страницы не задваивает запрос",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": true
+    },
+    {
+     "op": "fetchMore"
+    },
+    {
+     "op": "fetchMore"
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": false
+    },
+    {
+     "model": 0,
+     "sig": "reqFetchMore",
+     "row": 3
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "append пустой страницы: только has_more",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": true
+    },
+    {
+     "op": "appendRows",
+     "rows": [],
+     "hasMore": false
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "model": 0,
+     "sig": "hasMoreChanged",
+     "value": false
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "состояние приобретения: подписка меняет одну строку",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "state": 1
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "state": 1
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "state": 3
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "workshop",
+     "itemId": "a1",
+     "state": 2
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "wallhaven",
+     "itemId": "нет такого",
+     "state": 2
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 3,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 3,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "одинаковый предмет в двух источниках",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "dup",
+       "sourceId": "wallhaven",
+       "title": "Из Wallhaven",
+       "previewUrl": "https://example.invalid/dup.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "dup",
+       "sourceId": "workshop",
+       "title": "Из Мастерской",
+       "previewUrl": "https://example.invalid/dup.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 1,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "setAcquisitionState",
+     "sourceId": "workshop",
+     "itemId": "dup",
+     "state": 2
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 1,
+     "last": 1,
+     "roles": [
+      "acquisitionState"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 2,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "dup",
+       "sourceId": "wallhaven",
+       "title": "Из Wallhaven",
+       "previewUrl": "https://example.invalid/dup.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "dup",
+       "sourceId": "workshop",
+       "title": "Из Мастерской",
+       "previewUrl": "https://example.invalid/dup.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 2,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "dup",
+      "sourceId": "wallhaven",
+      "title": "Из Wallhaven",
+      "previewUrl": "https://example.invalid/dup.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "dup",
+      "sourceId": "wallhaven",
+      "title": "Из Wallhaven",
+      "previewUrl": "https://example.invalid/dup.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "setInstalled: булев вход → состояния 3 и 0",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "setInstalled",
+     "sourceId": "wallhaven",
+     "itemId": "a1",
+     "installed": true
+    },
+    {
+     "op": "setInstalled",
+     "sourceId": "wallhaven",
+     "itemId": "a2",
+     "installed": false
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 1,
+     "last": 1,
+     "roles": [
+      "acquisitionState"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 3,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 3,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "дозаполнение авторов после показа карточек",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "setAuthors",
+     "names": {
+      "a1": "Первый автор",
+      "a2": "",
+      "a3": "Третий автор",
+      "нет такого": "мимо"
+     }
+    },
+    {
+     "op": "setAuthors",
+     "names": {
+      "a1": "Первый автор"
+     }
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "author"
+     ]
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 2,
+     "last": 2,
+     "roles": [
+      "author"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "Первый автор",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "Третий автор",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "Первый автор",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "Первый автор",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "дозаполнение аватарок авторов после показа карточек",
+   "models": 1,
+   "steps": [
+    {
+     "op": "resetRows",
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "setAuthorAvatars",
+     "names": {
+      "a1": "https://example.invalid/a1_medium.jpg",
+      "a2": "",
+      "a3": "https://example.invalid/a3_medium.jpg",
+      "нет такого": "мимо"
+     }
+    },
+    {
+     "op": "setAuthorAvatars",
+     "names": {
+      "a1": "https://example.invalid/a1_medium.jpg"
+     }
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "authorAvatarUrl"
+     ]
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 2,
+     "last": 2,
+     "roles": [
+      "authorAvatarUrl"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "https://example.invalid/a1_medium.jpg",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "https://example.invalid/a3_medium.jpg",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "https://example.invalid/a1_medium.jpg",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "https://example.invalid/a1_medium.jpg",
+      "authorUrl": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "общий склад: одна подписка обновляет ОБЕ модели",
+   "models": 2,
+   "steps": [
+    {
+     "op": "resetRows",
+     "model": 0,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": false
+    },
+    {
+     "op": "resetRows",
+     "model": 1,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "hasMore": true
+    },
+    {
+     "op": "storeSet",
+     "sourceId": "wallhaven",
+     "itemId": "a3",
+     "state": 2
+    },
+    {
+     "op": "storeSet",
+     "sourceId": "",
+     "itemId": "a3",
+     "state": 3
+    },
+    {
+     "op": "storeSet",
+     "sourceId": "wallhaven",
+     "itemId": "",
+     "state": 3
+    }
+   ],
+   "events": [
+    {
+     "model": 0,
+     "sig": "modelReset"
+    },
+    {
+     "model": 0,
+     "sig": "countChanged"
+    },
+    {
+     "model": 1,
+     "sig": "modelReset"
+    },
+    {
+     "model": 1,
+     "sig": "countChanged"
+    },
+    {
+     "model": 1,
+     "sig": "hasMoreChanged",
+     "value": true
+    },
+    {
+     "model": 0,
+     "sig": "dataChanged",
+     "first": 2,
+     "last": 2,
+     "roles": [
+      "acquisitionState"
+     ]
+    },
+    {
+     "model": 1,
+     "sig": "dataChanged",
+     "first": 2,
+     "last": 2,
+     "roles": [
+      "acquisitionState"
+     ]
+    }
+   ],
+   "final": [
+    {
+     "count": 3,
+     "hasMore": false,
+     "canFetchMore": false,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 2,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    },
+    {
+     "count": 3,
+     "hasMore": true,
+     "canFetchMore": true,
+     "canFetchMoreChild": false,
+     "rows": [
+      {
+       "itemId": "a1",
+       "sourceId": "wallhaven",
+       "title": "Первая обоина",
+       "previewUrl": "https://example.invalid/a1.jpg",
+       "author": "",
+       "wpType": "scene",
+       "acquisitionState": 0,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a2",
+       "sourceId": "wallhaven",
+       "title": "Вторая обоина",
+       "previewUrl": "https://example.invalid/a2.jpg",
+       "author": "уже известен",
+       "wpType": "scene",
+       "acquisitionState": 3,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      },
+      {
+       "itemId": "a3",
+       "sourceId": "wallhaven",
+       "title": "Третья обоина",
+       "previewUrl": "https://example.invalid/a3.jpg",
+       "author": "",
+       "wpType": "web",
+       "acquisitionState": 2,
+       "authorAvatarUrl": "",
+       "authorUrl": ""
+      }
+     ],
+     "getFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     },
+     "getOutOfRange": {},
+     "getNegative": {},
+     "itemFirst": {
+      "itemId": "a1",
+      "sourceId": "wallhaven",
+      "title": "Первая обоина",
+      "previewUrl": "https://example.invalid/a1.jpg",
+      "author": "",
+      "wpType": "scene",
+      "acquisitionState": 0,
+      "authorAvatarUrl": "",
+      "authorUrl": ""
+     }
+    }
+   ]
+  }
+ ]
+}

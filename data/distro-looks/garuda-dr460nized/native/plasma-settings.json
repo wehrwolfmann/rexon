@@ -1,0 +1,90 @@
+{
+  "schema": "kde-settings/1",
+  "about": "Rexon's own description of what to apply in Plasma for this look: only keys and declared edits, no code. Paths: sources/<id>/... is the pinned source, ${HOME} ${CONFIG} ${DATA} are substituted on apply.",
+  "apply": [
+    {"lookandfeel": "Dr460nized", "reset_layout": true},
+    {"colorscheme": "Sweet"},
+    {"desktoptheme": "Dr460nized"},
+    {"cursortheme": "Sweet-cursors"},
+    {"kvantum": "Dr460nized"},
+    {"gtk": {"theme": "Sweet-Dark", "icons": "BeautyLine", "cursor": "Sweet-cursors", "font": "Fira Sans 10", "prefer_dark": true, "decoration_layout": "close,maximize,minimize:"}},
+    {"wallpaper": {"plugin": "a2n.blur", "key": "Image", "value": "file://${DATA}/wallpapers/Maldrakor/contents/images/3840x1920.jpg", "verified": false, "fallback_plugin": "org.kde.image"}},
+    {"kwin_reconfigure": true}
+  ],
+  "files": [
+    {"from": "sources/garuda/usr/share/aurorae/themes/Sweet-Dark/Sweet-Darkrc-dr460nized",
+     "to": "${DATA}/aurorae/themes/Sweet-Dark/Sweet-Darkrc"},
+    {"from": "sources/garuda/usr/share/plasma/plasmoids/luisbocanegra.panel.colorizer/contents/ui/presets/Dr460nized Dock",
+     "to": "${CONFIG}/panel-colorizer/presets/Dr460nized Dock", "needs_role": "panel-colorizer"},
+    {"from": "sources/garuda/usr/share/plasma/plasmoids/luisbocanegra.panel.colorizer/contents/ui/presets/Dr460nized Top Panel",
+     "to": "${CONFIG}/panel-colorizer/presets/Dr460nized Top Panel", "needs_role": "panel-colorizer"},
+    {"from": "sources/garuda/usr/share/plasma/plasmoids/luisbocanegra.panel.colorizer/contents/ui/presets/Dr460nized Top Panel Interaction",
+     "to": "${CONFIG}/panel-colorizer/presets/Dr460nized Top Panel Interaction", "needs_role": "panel-colorizer"}
+  ],
+  "edits": [
+    {"file": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized/contents/layouts/org.kde.plasma.desktop-layout.js",
+     "drop_lines_containing": "RepeatDelay"},
+    {"file": "sources/garuda/usr/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/contents/layout.js",
+     "drop_lines_containing": "RepeatDelay"},
+    {"file": "sources/garuda/usr/share/plasma/layout-templates/org.garuda.desktop.defaultPanel/contents/layout.js",
+     "replace": {"from": "/usr/share/plasma/plasmoids/luisbocanegra.panel.colorizer/contents/ui/presets/", "to": "${CONFIG}/panel-colorizer/presets/"}},
+    {"file": "sources/garuda/usr/share/plasma/layout-templates/org.garuda.desktop.defaultDock/contents/layout.js",
+     "replace": {"from": "/usr/share/plasma/plasmoids/luisbocanegra.panel.colorizer/contents/ui/presets/", "to": "${CONFIG}/panel-colorizer/presets/"}},
+    {"file": "sources/garuda/usr/share/plasma/layout-templates/org.garuda.desktop.defaultDock/contents/layout.js",
+     "launchers_filter": {"drop": ["garuda-toolbox.desktop", "snapper-tools.desktop", "octopi.desktop"], "keep_only_installed": true}},
+    {"file": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized/contents/defaults",
+     "ini_set": {"group": ["Greeter", "Wallpaper", "org.kde.image", "General"], "key": "Image", "value": "file://${DATA}/wallpapers/Maldrakor/contents/images/3840x1920.jpg"}},
+    {"file": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized/contents/defaults",
+     "ini_set": {"group": ["Greeter", "Wallpaper", "org.kde.image", "General"], "key": "PreviewImage", "value": "file://${DATA}/wallpapers/Maldrakor/contents/images/3840x1920.jpg"}},
+    {"applets_filter": {"remove_when_missing": ["luisbocanegra.panel.colorizer", "org.kde.windowtitle", "org.kde.windowbuttons"]},
+     "file": "sources/garuda/usr/share/plasma/layout-templates"}
+  ],
+  "kconfig": [
+    {"file": "kdeglobals", "group": ["General"], "key": "font", "value": "Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"},
+    {"file": "kdeglobals", "group": ["General"], "key": "menuFont", "value": "Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"},
+    {"file": "kdeglobals", "group": ["General"], "key": "toolBarFont", "value": "Fira Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"},
+    {"file": "kdeglobals", "group": ["General"], "key": "smallestReadableFont", "value": "Fira Sans,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"},
+    {"file": "kdeglobals", "group": ["General"], "key": "fixed", "value": "FiraCode Nerd Font Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"},
+    {"file": "kdeglobals", "group": ["WM"], "key": "activeFont", "value": "Fira Sans,10,-1,5,75,0,0,0,0,0,Bold"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "wobblywindowsEnabled", "value": "true"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "magiclampEnabled", "value": "true"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "fadeEnabled", "value": "true"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "desktopchangeosdEnabled", "value": "true"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "squashEnabled", "value": "false"},
+    {"file": "kwinrc", "group": ["Plugins"], "key": "scaleEnabled", "value": "false"},
+    {"file": "kwinrc", "group": ["Effect-wobblywindows"], "key": "Drag", "value": "85"},
+    {"file": "kwinrc", "group": ["Effect-wobblywindows"], "key": "Stiffness", "value": "10"},
+    {"file": "kwinrc", "group": ["Effect-wobblywindows"], "key": "WobblynessLevel", "value": "1"},
+    {"file": "kwinrc", "group": ["Script-desktopchangeosd"], "key": "PopupHideDelay", "value": "2000"},
+    {"file": "kwinrc", "group": ["TabBox"], "key": "LayoutName", "value": "coverswitch", "needs_role": "cover-switch"},
+    {"file": "kwinrc", "group": ["Windows"], "key": "BorderlessMaximizedWindows", "value": "true", "verified": false},
+    {"file": "kwinrc", "group": ["org.kde.kdecoration2"], "key": "ButtonsOnLeft", "value": "XAI"},
+    {"file": "kwinrc", "group": ["org.kde.kdecoration2"], "key": "ButtonsOnRight", "value": ""},
+    {"file": "kwinrc", "group": ["org.kde.kdecoration2"], "key": "BorderSizeAuto", "value": "false"},
+    {"file": "kcminputrc", "group": ["Mouse"], "key": "cursorTheme", "value": "Sweet-cursors"},
+    {"file": "kscreenlockerrc", "group": ["Greeter", "Wallpaper", "org.kde.image", "General"], "key": "Image", "value": "file://${DATA}/wallpapers/Maldrakor/contents/images/3840x1920.jpg"},
+    {"file": "kscreenlockerrc", "group": ["Greeter", "Wallpaper", "org.kde.image", "General"], "key": "PreviewImage", "value": "file://${DATA}/wallpapers/Maldrakor/contents/images/3840x1920.jpg"},
+    {"file": "krunnerrc", "group": ["General"], "key": "FreeFloating", "value": "true"}
+  ],
+  "backup_extra": [
+    "${CONFIG}/Kvantum/kvantum.kvconfig",
+    "${CONFIG}/gtk-3.0/settings.ini",
+    "${CONFIG}/gtk-4.0/settings.ini",
+    "${CONFIG}/krunnerrc",
+    "${CONFIG}/ksplashrc",
+    "${CONFIG}/kscreenlockerrc",
+    "${CONFIG}/panel-colorizer/",
+    "${HOME}/.gtkrc-2.0"
+  ],
+  "not_taken": [
+    "environment.d", "mimeapps.list", "autostart", "fish", "libinput-gestures.conf",
+    "touchpadrc", "touchpadxlibinputrc", "kcminputrc[Keyboard]", "kdeglobals[KDE]SingleClick",
+    "kwinrc[Round-Corners]", "kwinrc[Xwayland]", "kscreenlockerrc[Daemon]", "sddm", "plymouth",
+    "garuda-common-settings", "garuda-fish-config", "plasma-login-manager"
+  ],
+  "after_apply": {
+    "en": "Some parts (menu fonts, KRunner in the middle of the screen) take effect after you log in again.",
+    "ru": "Часть изменений (шрифты меню, KRunner посередине экрана) заработает после повторного входа.",
+    "de": "Einige Teile (Menüschriften, KRunner in der Bildschirmmitte) wirken erst nach erneuter Anmeldung."
+  }
+}

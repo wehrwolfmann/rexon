@@ -1,0 +1,1327 @@
+{
+ "cases": {
+  "full_web": {
+   "json": "{\n  \"contentrating\": \"Everyone\",\n  \"description\": \"Опис\\u0430ние обоев\",\n  \"file\": \"index.html\",\n  \"general\": {\n    \"localization\": {\"ru-ru\": {\"ui_props_speed\": \"Скорость\"}},\n    \"properties\": {\n      \"schemecolor\": {\n        \"order\": 0,\n        \"text\": \"ui_browse_properties_scheme_color\",\n        \"type\": \"color\",\n        \"value\": \"0.6 0.6 0.6\"\n      },\n      \"speed\": {\n        \"max\": 200,\n        \"min\": 0,\n        \"order\": 3,\n        \"step\": 1,\n        \"precision\": 0,\n        \"fraction\": false,\n        \"text\": \"Скорость\",\n        \"type\": \"slider\",\n        \"value\": 100\n      },\n      \"quality\": {\n        \"options\": [\n          {\"label\": \"Низкое\", \"value\": \"low\"},\n          {\"label\": \"Высокое\", \"value\": 2},\n          \"мусор\",\n          {\"value\": \"no-label\"}\n        ],\n        \"order\": 4,\n        \"text\": \"Качество\",\n        \"type\": \"combo\",\n        \"value\": \"low\"\n      },\n      \"audio\": {\"type\": \"bool\", \"value\": true, \"order\": 1, \"index\": 7},\n      \"note\": {\"text\": \"<b>Инфо</b>\", \"order\": 5},\n      \"grp\": {\"type\": \"group\", \"text\": \"Группа\", \"order\": 2},\n      \"folder\": {\"type\": \"directory\", \"mode\": \"Spawn\", \"value\": \"media\"},\n      \"clip\": {\"type\": \"file\", \"fileType\": \"VIDEO\", \"value\": \"a.mp4\"},\n      \"empty\": {\"type\": \"textinput\", \"value\": \"\"},\n      \"cond\": {\"type\": \"bool\", \"value\": false, \"condition\": \"audio.value == true\"},\n      \"unknown_field\": {\"type\": \"slider\", \"value\": 1, \"хвост\": [1, 2], \"тип\": null}\n    },\n    \"supportsaudioprocessing\": true\n  },\n  \"preview\": \"preview.gif\",\n  \"tags\": [\"Nature\", 42],\n  \"title\": \"水墨 закат\",\n  \"type\": \"Web\",\n  \"version\": 3,\n  \"visibility\": \"public\",\n  \"workshopid\": 859267594,\n  \"workshopurl\": \"steam://url/CommunityFilePage/859267594\",\n  \"хвост_проекта\": {\"a\": 1}\n}",
+   "project": {
+    "type": "web",
+    "file": "index.html",
+    "title": "水墨 закат",
+    "description": "Описание обоев",
+    "preview": "preview.gif",
+    "tags": [
+     "Nature",
+     "42"
+    ],
+    "content_rating": "Everyone",
+    "visibility": "public",
+    "workshop_id": "859267594",
+    "workshop_url": "steam://url/CommunityFilePage/859267594",
+    "version": 3,
+    "properties": {
+     "schemecolor": {
+      "name": "schemecolor",
+      "type": "color",
+      "value": "0.6 0.6 0.6",
+      "text": "ui_browse_properties_scheme_color",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "speed": {
+      "name": "speed",
+      "type": "slider",
+      "value": 100,
+      "text": "Скорость",
+      "order": 3,
+      "index": 0,
+      "condition": "",
+      "min": 0,
+      "max": 200,
+      "step": 1,
+      "precision": 0,
+      "fraction": false,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "quality": {
+      "name": "quality",
+      "type": "combo",
+      "value": "low",
+      "text": "Качество",
+      "order": 4,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [
+       {
+        "label": "Низкое",
+        "value": "low"
+       },
+       {
+        "label": "Высокое",
+        "value": 2
+       },
+       {
+        "label": "",
+        "value": "no-label"
+       }
+      ],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "audio": {
+      "name": "audio",
+      "type": "bool",
+      "value": true,
+      "text": "",
+      "order": 1,
+      "index": 7,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "note": {
+      "name": "note",
+      "type": "label",
+      "value": null,
+      "text": "<b>Инфо</b>",
+      "order": 5,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "grp": {
+      "name": "grp",
+      "type": "group",
+      "value": null,
+      "text": "Группа",
+      "order": 2,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "folder": {
+      "name": "folder",
+      "type": "directory",
+      "value": "media",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": "spawn",
+      "file_type": null,
+      "extra": {}
+     },
+     "clip": {
+      "name": "clip",
+      "type": "file",
+      "value": "a.mp4",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": "video",
+      "extra": {}
+     },
+     "empty": {
+      "name": "empty",
+      "type": "textinput",
+      "value": "",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "cond": {
+      "name": "cond",
+      "type": "bool",
+      "value": false,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "audio.value == true",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "unknown_field": {
+      "name": "unknown_field",
+      "type": "slider",
+      "value": 1,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {
+       "хвост": [
+        1,
+        2
+       ],
+       "тип": null
+      }
+     }
+    },
+    "supports_audio": true,
+    "localization": {
+     "ru-ru": {
+      "ui_props_speed": "Скорость"
+     }
+    },
+    "extra": {
+     "хвост_проекта": {
+      "a": 1
+     }
+    }
+   },
+   "defaults_for_js": {
+    "schemecolor": {
+     "value": "0.6 0.6 0.6"
+    },
+    "speed": {
+     "value": 100
+    },
+    "quality": {
+     "value": "low"
+    },
+    "audio": {
+     "value": true
+    },
+    "folder": {
+     "value": "media"
+    },
+    "clip": {
+     "value": "a.mp4"
+    },
+    "empty": {},
+    "cond": {
+     "value": false
+    },
+    "unknown_field": {
+     "value": 1
+    }
+   }
+  },
+  "nulls_everywhere": {
+   "json": "{\"type\": null, \"file\": null, \"title\": null,\n        \"description\": null, \"preview\": null, \"contentrating\": null,\n        \"visibility\": null, \"workshopid\": null, \"workshopurl\": null,\n        \"version\": null, \"tags\": null,\n        \"general\": {\"properties\": {\"p\": {\"type\": null, \"value\": 1,\n            \"text\": null, \"condition\": null, \"mode\": null, \"fileType\": null}}}}",
+   "project": {
+    "type": "none",
+    "file": "None",
+    "title": "None",
+    "description": "None",
+    "preview": "None",
+    "tags": [],
+    "content_rating": "None",
+    "visibility": "None",
+    "workshop_id": "None",
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "p": {
+      "name": "p",
+      "type": "none",
+      "value": 1,
+      "text": "None",
+      "order": 0,
+      "index": 0,
+      "condition": "None",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": "none",
+      "file_type": "none",
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {
+    "p": {
+     "value": 1
+    }
+   }
+  },
+  "missing_type": {
+   "json": "{\"file\": \"scene.json\"}",
+   "project": {
+    "type": "",
+    "file": "scene.json",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "empty_object": {
+   "json": "{}",
+   "project": {
+    "type": "",
+    "file": "",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "order_garbage": {
+   "json": "{\"type\": \"scene\", \"file\": \"s.json\",\n        \"general\": {\"properties\": {\"p\": {\"type\": \"slider\", \"order\": \"abc\"}}}}",
+   "exception": {
+    "type": "ValueError",
+    "message": "invalid literal for int() with base 10: 'abc'"
+   }
+  },
+  "index_garbage": {
+   "json": "{\"type\": \"scene\", \"file\": \"s.json\",\n        \"general\": {\"properties\": {\"p\": {\"type\": \"slider\", \"index\": \"3.5\"}}}}",
+   "exception": {
+    "type": "ValueError",
+    "message": "invalid literal for int() with base 10: '3.5'"
+   }
+  },
+  "order_variants": {
+   "json": "{\"type\": \"scene\", \"file\": \"s.json\",\n        \"general\": {\"properties\": {\n            \"a\": {\"order\": \"3\"}, \"b\": {\"order\": 3.9}, \"c\": {\"order\": true},\n            \"d\": {\"order\": null}, \"e\": {\"order\": \"\"}, \"f\": {\"order\": []},\n            \"g\": {\"order\": -3.9}, \"h\": {\"index\": \" 7 \"}}}}",
+   "project": {
+    "type": "scene",
+    "file": "s.json",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "a": {
+      "name": "a",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 3,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "b": {
+      "name": "b",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 3,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "c": {
+      "name": "c",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 1,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "d": {
+      "name": "d",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "e": {
+      "name": "e",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "f": {
+      "name": "f",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "g": {
+      "name": "g",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": -3,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "h": {
+      "name": "h",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 7,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "general_not_dict": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"general\": [1, 2]}",
+   "exception": {
+    "type": "AttributeError",
+    "message": "'list' object has no attribute 'get'"
+   }
+  },
+  "properties_not_dict": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"general\": {\"properties\": [1, 2]}}",
+   "exception": {
+    "type": "AttributeError",
+    "message": "'list' object has no attribute 'items'"
+   }
+  },
+  "general_null": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"general\": null}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "top_level_list": {
+   "json": "[1, 2, 3]",
+   "exception": {
+    "type": "AttributeError",
+    "message": "'list' object has no attribute 'get'"
+   }
+  },
+  "top_level_string": {
+   "json": "\"строка\"",
+   "exception": {
+    "type": "AttributeError",
+    "message": "'str' object has no attribute 'get'"
+   }
+  },
+  "broken_json": {
+   "json": "{\"type\": \"web\", ",
+   "exception": {
+    "type": "JSONDecodeError",
+    "message": "Expecting property name enclosed in double quotes: line 1 column 17 (char 16)"
+   }
+  },
+  "tags_string": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"tags\": \"abc\"}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [
+     "a",
+     "b",
+     "c"
+    ],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "tags_dict": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"tags\": {\"a\": 1, \"b\": 2}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [
+     "a",
+     "b"
+    ],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "audio_string_false": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"general\": {\"supportsaudioprocessing\": \"false\"}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": true,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "audio_string_empty": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"general\": {\"supportsaudioprocessing\": \"\"}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "audio_zero": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"general\": {\"supportsaudioprocessing\": 0}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "prop_not_dict": {
+   "json": "{\"type\": \"scene\", \"file\": \"s.json\",\n        \"general\": {\"properties\": {\"a\": \"строка\", \"b\": 7, \"c\": null,\n                                   \"d\": [1, 2], \"e\": true}}}",
+   "project": {
+    "type": "scene",
+    "file": "s.json",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "a": {
+      "name": "a",
+      "type": "label",
+      "value": "строка",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "b": {
+      "name": "b",
+      "type": "label",
+      "value": 7,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "c": {
+      "name": "c",
+      "type": "label",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "d": {
+      "name": "d",
+      "type": "label",
+      "value": [
+       1,
+       2
+      ],
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "e": {
+      "name": "e",
+      "type": "label",
+      "value": true,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "options_shapes": {
+   "json": "{\"type\": \"scene\", \"file\": \"s.json\",\n        \"general\": {\"properties\": {\"p\": {\"type\": \"combo\",\n            \"options\": {\"k\": {\"label\": \"L\", \"value\": \"v\"}}},\n            \"q\": {\"type\": \"combo\", \"options\": null},\n            \"r\": {\"type\": \"combo\", \"options\": [{\"label\": null, \"value\": null}]}}}}",
+   "project": {
+    "type": "scene",
+    "file": "s.json",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "p": {
+      "name": "p",
+      "type": "combo",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "q": {
+      "name": "q",
+      "type": "combo",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "r": {
+      "name": "r",
+      "type": "combo",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [
+       {
+        "label": "None",
+        "value": null
+       }
+      ],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {
+    "p": {},
+    "q": {},
+    "r": {}
+   }
+  },
+  "localization_not_dict": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"general\": {\"localization\": [1, 2]}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": [
+     1,
+     2
+    ],
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "version_string": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"version\": \"3\"}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": "3",
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "version_float": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"version\": 3.9}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": 3.9,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "workshopid_float": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"workshopid\": 859267594.0}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": "859267594.0",
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "workshopid_string": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\",\n        \"workshopid\": \"859267594\"}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": "859267594",
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "numeric_strings": {
+   "json": "{\"type\": 7, \"file\": 12, \"title\": true,\n        \"preview\": 3.5, \"visibility\": false, \"contentrating\": 0}",
+   "project": {
+    "type": "7",
+    "file": "12",
+    "title": "True",
+    "description": "",
+    "preview": "3.5",
+    "tags": [],
+    "content_rating": "0",
+    "visibility": "False",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {},
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {}
+  },
+  "defaults_edge": {
+   "json": "{\"type\": \"web\", \"file\": \"i.html\", \"general\": {\"properties\": {\n        \"grp\": {\"type\": \"group\", \"value\": \"x\"},\n        \"lbl\": {\"type\": \"label\", \"value\": \"y\"},\n        \"notype\": {\"value\": \"z\"},\n        \"zero\": {\"type\": \"slider\", \"value\": 0},\n        \"false\": {\"type\": \"bool\", \"value\": false},\n        \"emptystr\": {\"type\": \"textinput\", \"value\": \"\"},\n        \"nul\": {\"type\": \"textinput\", \"value\": null},\n        \"absent\": {\"type\": \"textinput\"},\n        \"list\": {\"type\": \"textinput\", \"value\": [1, 2]},\n        \"obj\": {\"type\": \"textinput\", \"value\": {\"a\": 1}}}}}",
+   "project": {
+    "type": "web",
+    "file": "i.html",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "grp": {
+      "name": "grp",
+      "type": "group",
+      "value": "x",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "lbl": {
+      "name": "lbl",
+      "type": "label",
+      "value": "y",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "notype": {
+      "name": "notype",
+      "type": "label",
+      "value": "z",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "zero": {
+      "name": "zero",
+      "type": "slider",
+      "value": 0,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "false": {
+      "name": "false",
+      "type": "bool",
+      "value": false,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "emptystr": {
+      "name": "emptystr",
+      "type": "textinput",
+      "value": "",
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "nul": {
+      "name": "nul",
+      "type": "textinput",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "absent": {
+      "name": "absent",
+      "type": "textinput",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "list": {
+      "name": "list",
+      "type": "textinput",
+      "value": [
+       1,
+       2
+      ],
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     },
+     "obj": {
+      "name": "obj",
+      "type": "textinput",
+      "value": {
+       "a": 1
+      },
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": null,
+      "file_type": null,
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {
+    "zero": {
+     "value": 0
+    },
+    "false": {
+     "value": false
+    },
+    "emptystr": {},
+    "nul": {},
+    "absent": {},
+    "list": {
+     "value": [
+      1,
+      2
+     ]
+    },
+    "obj": {
+     "value": {
+      "a": 1
+     }
+    }
+   }
+  },
+  "upper_types": {
+   "json": "{\"type\": \"VIDEO\", \"file\": \"v.mp4\",\n        \"general\": {\"properties\": {\"p\": {\"type\": \"SLIDER\", \"mode\": \"SPAWN\",\n                                         \"fileType\": \"Image\"}}}}",
+   "project": {
+    "type": "video",
+    "file": "v.mp4",
+    "title": "",
+    "description": "",
+    "preview": "preview.jpg",
+    "tags": [],
+    "content_rating": "",
+    "visibility": "public",
+    "workshop_id": null,
+    "workshop_url": null,
+    "version": null,
+    "properties": {
+     "p": {
+      "name": "p",
+      "type": "slider",
+      "value": null,
+      "text": "",
+      "order": 0,
+      "index": 0,
+      "condition": "",
+      "min": null,
+      "max": null,
+      "step": null,
+      "precision": null,
+      "fraction": null,
+      "options": [],
+      "mode": "spawn",
+      "file_type": "image",
+      "extra": {}
+     }
+    },
+    "supports_audio": false,
+    "localization": {},
+    "extra": {}
+   },
+   "defaults_for_js": {
+    "p": {}
+   }
+  },
+  "missing_file": {
+   "json": null,
+   "exception": {
+    "type": "FileNotFoundError",
+    "message": "[Errno 2] No such file or directory: '/tmp/tmpcfgby1xe/нет-такого.json'"
+   }
+  },
+  "invalid_utf8": {
+   "json": null,
+   "exception": {
+    "type": "UnicodeDecodeError",
+    "message": "'utf-8' codec can't decode byte 0xff in position 11: invalid start byte"
+   }
+  }
+ }
+}

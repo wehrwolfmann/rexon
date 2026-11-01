@@ -1,0 +1,6 @@
+{
+ "data/audio/ru.mp3": "AUDIO-RU-BYTES",
+ "data/video/1080p.mp4": "VIDEO-1080-BYTES",
+ "icon.png": "PNG-BYTES",
+ "manifest.json": "{\"format_version\": 4, \"type\": \"wallpaper-video-adaptive\", \"title\": \"Demo\"}"
+}

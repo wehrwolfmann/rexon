@@ -1,0 +1,500 @@
+<release version="0.5.0" date="2026-10-20">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Smart playlists automatically select wallpapers using filter rules, including library inclusion and exclusion.</li>
+      <li>Libraries have editable names and can be hidden from the wallpaper page.</li>
+      <li>Automatic sizing follows display and canvas layouts.</li>
+      <li>Lock-screen displays have a dedicated role and remain independent of global desktop pause.</li>
+      <li>Automatic playback rules can react to battery power. #345 by @MR-kartoshki</li>
+      <li>Wallpaper sources can provide author avatars in the detail panel. #343 by @wehrwolfmann</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Library directory changes trigger automatic rescanning. #325 by @wehrwolfmann</li>
+      <li>Filter rules use numeric steppers and compact text editors.</li>
+      <li>Flip controls wrap on narrow panels. #330 by @wehrwolfmann</li>
+      <li>The About page shows the daemon version when it differs from the UI version. #327 by @wehrwolfmann</li>
+      <li>Packagers can disable update checks at build time. #328 by @wehrwolfmann</li>
+      <li>German translations are available. #319 by @wehrwolfmann</li>
+      <li>Russian translations are updated. #320 by @wehrwolfmann</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Video renderers advertise even dimensions for NV12 buffers. #332 by @MR-kartoshki</li>
+      <li>Wayfire is recognized as a layer-shell display backend. #337 by @MR-kartoshki</li>
+      <li>The tray language follows UI language changes. #335 by @MR-kartoshki</li>
+      <li>Web wallpaper actions open the correct resource directory. #333 by @MR-kartoshki</li>
+      <li>Russian settings labels use clearer wording. #323 by @wehrwolfmann</li>
+    </ul>
+  </description>
+</release>
+<release version="0.4.4" date="2026-10-06">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Automatic playback rules support window exclusions by application ID or title, with wildcard matching.</li>
+      <li>Wallpapers can be flipped horizontally, vertically, or both.</li>
+      <li>Wallpapers can be hidden from the library and managed from the playlist sheet. #300 by @barrence01</li>
+      <li>Optional update checks show a notification badge in the sidebar. #302 by @wehrwolfmann</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Thumbnails share animated playback and support configurable decoded-image caching.</li>
+      <li>Display controls stay open when switching between displays and canvases.</li>
+      <li>Detail actions fold to fit compact layouts.</li>
+      <li>Status page labels are translated. #303 by @wehrwolfmann</li>
+      <li>Russian translations are updated. #296 by @wehrwolfmann</li>
+      <li>The daemon restart button has been removed.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Pointer leave events are forwarded correctly across shared outputs. #293 by @LostAttractor</li>
+      <li>Window size and maximized state are restored correctly, and detail thumbnails reserve space while loading.</li>
+      <li>Closed UI processes are reaped instead of remaining as zombie processes.</li>
+      <li>QML singleton registration and property bindings work with Qt 6.12.</li>
+      <li>AppImage FFmpeg builds include the image demuxers and parsers required for thumbnails.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.4.3" date="2026-09-26">
+  <description>
+    <p>Improved:</p>
+    <ul>
+      <li>Wallpaper and Discover details use adaptive sheets on compact layouts.</li>
+      <li>Displays page support vertical layout.</li>
+      <li>Sidebar content follows navigation drawer expansion.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Selecting one of exactly two presentation targets no longer selects both. #262</li>
+      <li>Displays page open failed due to qml material changes. #291</li>
+    </ul>
+  </description>
+</release>
+<release version="0.4.2" date="2026-09-25">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>GameMode can trigger configurable automatic playback actions. #280 by @PolisanTheEasyNick</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Static image wallpapers release staging memory after publishing.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Changing wallpapers when displays paused .</li>
+      <li>Unable to add wallpapers to playlists. #290</li>
+    </ul>
+  </description>
+</release>
+<release version="0.4.1" date="2026-09-23">
+  <description>
+    <p>Improved:</p>
+    <ul>
+      <li>Remote MPRIS artwork is cached locally before being sent to wallpaper renderers. #283 by @CatSema</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Embedded and oversized MPRIS artwork no longer exceeds renderer IPC limits. #282 by @barrence01</li>
+      <li>The mouse parallax setting stays in the built-in property section. #274 by @ales-drnz</li>
+      <li>The UI no longer fails to load because of stale QML Material cache metadata.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.4.0" date="2026-09-21">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Wallpaper transitions with configurable effects, duration and direction. #264 by @OctaNebula</li>
+      <li>A sidebar carousel shows currently playing wallpapers.</li>
+      <li>Displays can pause independently while sharing a renderer.</li>
+      <li>Automatic playback actions support current-display and all-display scopes.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Display controls use compact status tags.</li>
+      <li>Video playback speed can be adjusted in one-percent steps. #273 by @ales-drnz</li>
+      <li>Library tags and content ratings use source-provided labels. #257 by @wehrwolfmann</li>
+      <li>Plugins can provide wallpaper type labels. #266 by @wehrwolfmann</li>
+      <li>The UI checks daemon capabilities instead of version strings. #256 by @wehrwolfmann</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Playlist status updates after a wallpaper activation fails. #258 by @wehrwolfmann</li>
+      <li>Incompatible plugin entry versions are reported clearly. #260 by @wehrwolfmann</li>
+      <li>The display demo supports timeline-only renderers. #265 by @wehrwolfmann</li>
+      <li>Content bindings distinguish wallpaper changes from presentation configuration updates.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.9" date="2026-09-08">
+  <description>
+    <p>Improved:</p>
+    <ul>
+      <li>Wallhaven detail tags use the localized labels declared by the source.</li>
+      <li>Tray menu labels can be translated. #240 by @wehrwolfmann</li>
+      <li>Russian translations use clearer wording. #245 by @wehrwolfmann</li>
+      <li>Native dependencies use the current Lito declaration model.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Plugin updates restart affected renderers.</li>
+      <li>Automatic playback resume is debounced to avoid repeated restarts.</li>
+      <li>Video wallpapers preserve their playback position across pause and fade transitions.</li>
+      <li>Plugin setting labels no longer show unresolved translation keys. #211 by @wehrwolfmann</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.8" date="2026-08-31">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Daemon file logging with configurable retention and filtering. #231 by @barrence01</li>
+      <li>In-app daemon log viewer.</li>
+      <li>AppImage zsync updates.</li>
+      <li>Layershell display supports COSMIC auto-pause.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Plugin update failures show their reason. #235 by @wehrwolfmann</li>
+      <li>Remote filter values support plugin translations. #239 by @CatSema</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Daemon file logging no longer panics during startup. #238 by @barrence01</li>
+      <li>Playlist navigation and position updates stay synchronized.</li>
+      <li>The daemon stops when the desktop login session ends.</li>
+      <li>Mute startup audio when switch wallpaper with mute state.</li>
+      <li>Display backend guidance follows the selected backend.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.7" date="2026-08-25">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>New playlist editor.</li>
+      <li>Optional synchronized selection for randomized playlists.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Display size changes now correctly mark the canvas as modified.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.6" date="2026-08-24">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Lua plugin translations.</li>
+      <li>Optional single-instance UI. #191 by @barrence01</li>
+      <li>Per-plugin Lua VM memory limits. #224 by @15daksh-2003</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Display handshake refusals are reported to clients. #207 by @wehrwolfmann</li>
+      <li>Displays reconnect reliably after daemon startup. #212 by @barrence01</li>
+      <li>Bridge ancillary and signed values are initialized. #223 by @15daksh-2003</li>
+      <li>Long combo boxes scroll instead of overflowing. #208 by @barrence01</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Reset and restore actions require confirmation. #216 by @lawrenceshi</li>
+      <li>Daemon shutdown behavior can be configured from the UI.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.5" date="2026-08-16">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Canvases with compose wallpapers across multiple outputs.</li>
+      <li>Displays can request a fresh frame from active renderers.</li>
+      <li>Open remote link in Wallpaper details page.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Automatic display backends are selected correctly.</li>
+      <li>Renderer init signal times out.</li>
+      <li>Qt strings fall back to the qtbase catalog. #200 by @wehrwolfmann</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Remote filters show compact choices inline.</li>
+      <li>Search input uses 1s debounce.</li>
+      <li>GPU names include resolved vendor and device names.</li>
+      <li>Russian translations are refreshed. #199 by @wehrwolfmann</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.4" date="2026-08-13">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Synchronized playlists can share playback across multiple displays. #185 by @barrence01</li>
+      <li>Wallhaven purity filtering.</li>
+      <li>The changelog opens automatically after an update.</li>
+      <li>Playlists can be created directly from the playlist sheet.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Manual wallpaper changes stop playlist playback only on affected displays.</li>
+      <li>Shared playlists restore reliably after restarts, display hotplug, and per-display changes.</li>
+      <li>Renderer startup reports early process exits without waiting for a timeout.</li>
+      <li>MPRIS updates follow renderer runtime subscriptions.</li>
+      <li>BBCode links are converted correctly.</li>
+      <li>Empty outlined text fields no longer leave a placeholder gap in the border.</li>
+      <li>Bridge protocol decoding rejects oversized collections. #190 by @15daksh-2003</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Retained renderer states and replay debouncing reduce repeated process restarts.</li>
+      <li>FFmpeg 9 runtime loading support.</li>
+      <li>Text fields and combo boxes use compact sizing.</li>
+      <li>Vulkan header dependency detection and diagnostics. #189 by @15daksh-2003</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.3" date="2026-08-10">
+  <description>
+    <p>Fixes:</p>
+    <ul>
+      <li>VAAPI hardware decoding no longer stalls between frames when looped video restarts.</li>
+      <li>Vulkan hardware decoding no longer intermittently displays stale frames.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.2" date="2026-08-08">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Playback speed controls for video wallpapers. #167</li>
+      <li>An option to hide the tray icon without restarting. #149 by @OctaNebula</li>
+      <li>Source plugin support apply with user property defaults.</li>
+      <li>In-app changelog.</li>
+      <li>Renderer status tags for hwdec status.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Displays refresh frame after layout changes.</li>
+      <li>Renderer clear colors are preserved when display links are created.</li>
+      <li>Vulkan bridge buffers support sampled display imports.</li>
+      <li>Renderer spawn version mismatches fail immediately.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Reduce VAAPI video playback latency.</li>
+      <li>Update guidance for incompatible displays.</li>
+      <li>Hardware decoding and Flatpak MPRIS documentation.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.1" date="2026-08-05">
+  <description>
+    <ul>
+      <li>Bump up spawn version.</li>
+      <li>Notify incompatible or malformed display protocol handshakes.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.3.0" date="2026-08-04">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Global mute and pause status controls.</li>
+      <li>Daemon-controlled pause effects and pointer forwarding controls.</li>
+      <li>Runtime UI language switching and Chinese translations.</li>
+      <li>Russian UI translations. #175 by @wehrwolfmann</li>
+      <li>Russian desktop entry and AppStream translations. #176 by @wehrwolfmann</li>
+      <li>Custom accent color support.</li>
+      <li>Wallhaven wallpaper titles now include the uploader. #171 by @wehrwolfmann</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Display frame release handling and protocol v8 contracts.</li>
+      <li>PulseAudio error buffers compile on aarch64.</li>
+      <li>Popup creation, parenting, and deferred opening.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Audio capture sends PCM windows over renderer IPC.</li>
+      <li>Display protocol connection errors and runtime health are reported in the UI.</li>
+      <li>Tooltips, layouts, and navigation icons.</li>
+      <li>Desktop integration documentation for niri and Wayfire. #165 by @wehrwolfmann</li>
+      <li>Russian documentation. #177 by @CatSema</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.6" date="2026-07-25">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Remote source account sessions with QR sign-in, subscription controls, and discovery filters. #142 by @WorkingRobot</li>
+      <li>Global renderer audio controls, including capture toggles.</li>
+      <li>Automatic muting while other audio is playing.</li>
+      <li>Theme preference.</li>
+      <li>Persistent network image cache.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>source: surface scan failures instead of reporting success. #153 by @ales-drnz</li>
+      <li>Renderer random freeze due to wrong mpmc channel.</li>
+      <li>Renderer buffers are no longer reused before every display releases them.</li>
+      <li>Displays remain bound to the exact buffer publication during wallpaper switches.</li>
+      <li>Pointer coordinates are mapped correctly on rotated displays.</li>
+      <li>Renderer resume retries now use backoff.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Discover views preserve their state, avoid redundant reloads, and show clearer item details.</li>
+      <li>Renderer startup failures provide more useful diagnostics.</li>
+      <li>Audio capture and device lifetime management are more reliable.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.5" date="2026-07-12">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Flatpak autostart support through the desktop portal.</li>
+      <li>System notifications for available plugin updates, with a setting to disable them.</li>
+      <li>Text user properties for Wallpaper Engine wallpapers.</li>
+      <li>An option to allow duplicate renderer instances when displays share a wallpaper.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Discover pagination now continues when the initial view already reaches the end of the loaded list.</li>
+      <li>Opening wallpaper folders from Flatpak now uses the desktop portal.</li>
+      <li>Content-rating filters no longer hide wallpapers without a rating.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Wallpaper search now matches external IDs.</li>
+      <li>The interface follows the system accent color.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.4" date="2026-07-05">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Plugin update checks with background scheduling, manual refresh, and progress reporting.</li>
+      <li>Plugin update installation flow with update actions and registry refresh after install.</li>
+      <li>Per-wallpaper audio enable/disable support for the video renderer.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Plugin scan ownership now preserves system and user roots during scanning.</li>
+      <li>Plugin install completion is no longer blocked by renderer restart handling.</li>
+      <li>Plugin filters refresh supported types after installing new renderers.</li>
+      <li>Wallpaper property editing keeps the selected wallpaper stable during quick switches.</li>
+      <li>Looped video decoder frame handling.</li>
+      <li>Auto-detected source folders are narrowed.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Plugin page update tags and actions.</li>
+      <li>Discover and wallpaper view tweak state are stored separately.</li>
+      <li>DBus menu mute state is persisted in settings.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.3" date="2026-07-03">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Discover filters and wallpaper detail controls.</li>
+      <li>MPRIS media event forwarding.</li>
+      <li>Network cache.</li>
+      <li>User plugin management with inactive plugin warnings.</li>
+      <li>Hot plugin install, overwrite, and install preview support.</li>
+      <li>Wallpaper item removal for sources that support deletion.</li>
+      <li>Settings reset action.</li>
+      <li>Home path expansion when adding source libraries.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Discover and wallpaper detail tag/type display.</li>
+      <li>Last-modified sorting now falls back to create_at.</li>
+      <li>WebSocket protobuf requests no longer block each other.</li>
+      <li>Filter dialog creation and parenting errors.</li>
+      <li>Status components are sorted alphabetically.</li>
+      <li>Display page spacing and responsive headers.</li>
+    </ul>
+    <p>Security:</p>
+    <ul>
+      <li>Bind WebSocket control plane to localhost by @RedOrkGreenRox in #116.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.2" date="2026-06-21">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Auto-mute support contributed by Arzumify.</li>
+      <li>Auto pause to Auto replay with mute and stop support.</li>
+      <li>Support pause and mute fade.</li>
+      <li>New lua plugin entry.</li>
+      <li>Cosmic support.</li>
+      <li>Custom resolution.</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Layershell display rotation.</li>
+      <li>Web wallpaper init on nvidia card.</li>
+      <li>Image frames replay after relinking displays to an existing image renderer.</li>
+      <li>Renderer texture size reporting on the displays page.</li>
+      <li>wallpapers loading component when filtered.</li>
+    </ul>
+  </description>
+</release>
+<release version="0.2.1" date="2026-06-16">
+  <description>
+    <p>Fix auto pause after switching wallpapers.</p>
+    <p>Fix resetting user properties.</p>
+    <p>Fix opening wallpaper container folder.</p>
+    <p>Fix video pause audio.</p>
+  </description>
+</release>
+<release version="0.2.0" date="2026-06-14">
+  <description>
+    <p>Support playlists.</p>
+    <p>Support per-wallpaper layout overrides.</p>
+    <p>Support tweak wallpaper view item.</p>
+    <p>Support wallpaper view selection.</p>
+    <p>Add wallpaper contains folder action.</p>
+    <p>Add wallpaper info action and page.</p>
+    <p>Fix properties title height.</p>
+    <p>Fix multi-plane buffer binding.</p>
+    <p>Fix Portrait orientation unusable #80.</p>
+    <p>Fix display setting for second applied to first #79.</p>
+    <p>Fix Auto-expand sidebar setting not saving #77.</p>
+    <p>Fix wallpapers sometimes pause indefinitely #61.</p>
+    <p>Thanks @burlone0 for playlists and discover pr.</p>
+  </description>
+</release>
+<release version="0.1.8" date="2026-06-04">
+  <description>
+    <p>Fix sometimes source plugin not show.</p>
+    <p>Fix audio not work in v0.1.7.</p>
+  </description>
+</release>
+<release version="0.1.7" date="2026-06-03">
+</release>
+<release version="0.1.5" date="2026-05-24">
+</release>
+<release version="0.1.4" date="2026-05-11">
+</release>
+<release version="0.1.3" date="2026-05-08">
+</release>
+<release version="0.1.2" date="2026-05-05">
+</release>
+<release version="0.1.1" date="2026-05-03">
+</release>
+<release version="0.1.0" date="2026-04-15">
+  <description>
+    <p>Initial release.</p>
+  </description>
+</release>

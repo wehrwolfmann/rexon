@@ -1,0 +1,26 @@
+[package]
+name = "qextraplugin"
+version = "0.1.0"
+standard = "c++23"
+
+[lib]
+name = "qextraplugin"
+module = "qextraplugin"
+kind = "shared"
+artifact = "qextraplugin"
+sources = ["plugin.cppm", "plugin.cpp"]
+
+[dependencies]
+lito-qt = { version = "0.1.1" }
+qextra = { git = "https://github.com/hypengw/QExtra.git" }
+
+[external-dependencies.cmake.qt6]
+package = "Qt6"
+components = ["Core", "Qml"]
+targets = [
+  { name = "Qt6::Core" },
+  { name = "Qt6::Qml" },
+]
+host-tools = [
+  { name = "moc", target = "Qt6::moc" },
+]

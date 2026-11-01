@@ -1,0 +1,8 @@
+{
+    "uuid": "rexon-wallpaper@rexon.app",
+    "name": "Rexon Wallpaper Engine",
+    "description": "Живые обои Rexon на GNOME Shell. Запускает хост обоев по строке запуска, которую присылает Rexon (ключ настроек daemon-argv), читает готовые кадры из /run/user/$UID/rexon-wp-frame.rgba и показывает их поверх обычного фона, под окнами. Нужно потому, что Mutter не поддерживает wlr-layer-shell.",
+    "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+    "settings-schema": "org.gnome.shell.extensions.rexon-wallpaper",
+    "version": 1
+}

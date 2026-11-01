@@ -1,0 +1,139 @@
+[
+ {
+  "id": "dracula-gtk",
+  "name": "Dracula GTK",
+  "author": "Dracula Team",
+  "type": "theme-gtk",
+  "description": "Тёмная тема Dracula для GTK3/GTK4",
+  "tags": [
+   "dark",
+   "purple",
+   "gothic"
+  ],
+  "download_url": "",
+  "ocs_provider": "gnome-look",
+  "ocs_content_id": "1687249"
+ },
+ {
+  "id": "catppuccin-mocha-gtk",
+  "name": "Catppuccin Mocha GTK",
+  "author": "Catppuccin",
+  "type": "theme-gtk",
+  "description": "Пастельная тёмная тема (вариант Mocha)",
+  "tags": [
+   "dark",
+   "pastel"
+  ],
+  "download_url": "",
+  "ocs_provider": "gnome-look",
+  "ocs_content_id": "1996672"
+ },
+ {
+  "id": "papirus-icons",
+  "name": "Papirus Icons",
+  "author": "PapirusDevelopmentTeam",
+  "type": "theme-icons",
+  "description": "Популярные SVG-иконки Papirus для Linux",
+  "tags": [
+   "icons",
+   "svg",
+   "modern"
+  ],
+  "download_url": "",
+  "ocs_provider": "gnome-look",
+  "ocs_content_id": "1166289"
+ },
+ {
+  "id": "bibata-cursors",
+  "name": "Bibata Modern Ice",
+  "author": "Kaiz Khatri",
+  "type": "theme-cursors",
+  "description": "Современные курсоры Bibata (вариант Ice)",
+  "tags": [
+   "cursors",
+   "modern"
+  ],
+  "download_url": "",
+  "ocs_provider": "gnome-look",
+  "ocs_content_id": "1197198"
+ },
+ {
+  "id": "jetbrains-mono-fonts",
+  "name": "JetBrains Mono",
+  "author": "JetBrains",
+  "type": "font-pack",
+  "description": "Моноширинный шрифт для терминала и IDE",
+  "tags": [
+   "mono",
+   "coding",
+   "terminal"
+  ],
+  "download_url": "",
+  "ocs_provider": "pling",
+  "ocs_content_id": "1390418"
+ },
+ {
+  "id": "sweet-kde-global",
+  "name": "Sweet KDE",
+  "author": "EliverLara",
+  "type": "theme-kde-global",
+  "description": "Тёмная тема Sweet для KDE Plasma",
+  "tags": [
+   "kde",
+   "dark",
+   "sweet"
+  ],
+  "download_url": "",
+  "ocs_provider": "kde-look",
+  "ocs_content_id": "1294174"
+ },
+ {
+  "id": "catppuccin-kde-colors",
+  "name": "Catppuccin Mocha Colors",
+  "author": "Catppuccin",
+  "type": "theme-kde-colors",
+  "description": "Цветовая схема Catppuccin Mocha для KDE",
+  "tags": [
+   "kde",
+   "dark",
+   "pastel",
+   "catppuccin"
+  ],
+  "download_url": "",
+  "ocs_provider": "kde-look",
+  "ocs_content_id": "1921998"
+ },
+ {
+  "id": "lightly-kde-plasma",
+  "name": "Lightly Plasma Style",
+  "author": "Luwx",
+  "type": "theme-kde-plasma",
+  "description": "Современный минималистичный Plasma style",
+  "tags": [
+   "kde",
+   "light",
+   "modern",
+   "minimal"
+  ],
+  "download_url": "",
+  "ocs_provider": "kde-look",
+  "ocs_content_id": "1879921"
+ },
+ {
+  "id": "kvantum-catppuccin",
+  "name": "Catppuccin Kvantum",
+  "author": "Catppuccin",
+  "type": "theme-kvantum",
+  "description": "Kvantum-тема для Qt-приложений в стиле Catppuccin",
+  "tags": [
+   "kde",
+   "kvantum",
+   "qt",
+   "catppuccin"
+  ],
+  "download_url": "",
+  "ocs_provider": "",
+  "ocs_content_id": "",
+  "github_repo": "catppuccin/kvantum"
+ }
+]

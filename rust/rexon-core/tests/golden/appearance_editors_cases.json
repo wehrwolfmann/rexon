@@ -1,0 +1,205 @@
+{
+ "_about": "Сверка «Настроить…» стиля и редактора цветовых схем. themerc — выдержки из breeze 6.8 / oxygen 6.8 (/usr/share/kstyle/themes, 31.10.2026); argv редактора — как KCMColors::editScheme (plasma-workspace 6.8.2).",
+ "themerc": [
+  "[Misc]\nName=Breeze\nName[ru]=Breeze\nConfigPage=kstyle_config/breezestyleconfig\n\n[KDE]\nWidgetStyle=Breeze\n",
+  "[Misc]\nName=Oxygen\nConfigPage=kstyle_config/kstyle_oxygen_config\n\n[KDE]\nWidgetStyle=Oxygen\n",
+  "[Misc]\nName=MS Windows 9x\n\n[KDE]\nWidgetStyle=Windows\n"
+ ],
+ "style_buttons": [
+  {
+   "kind": "widgetstyle",
+   "name": "Breeze",
+   "have": [
+    "breeze-settings6",
+    "kcmshell6"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "breeze-settings6"
+   ]
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "Oxygen",
+   "have": [
+    "oxygen-settings6"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "oxygen-settings6"
+   ]
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "Breeze",
+   "have": [
+    "kcmshell6"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "kcmshell6",
+    "kcm_style"
+   ]
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "Breeze",
+   "have": [],
+   "visible": true,
+   "enabled": false,
+   "argv": []
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "kvantum-dark",
+   "have": [
+    "kvantummanager"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "kvantummanager"
+   ]
+  },
+  {
+   "kind": "kvantum",
+   "name": "KvArcDark",
+   "have": [
+    "kvantummanager"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "kvantummanager"
+   ]
+  },
+  {
+   "kind": "kvantum",
+   "name": "KvArcDark",
+   "have": [],
+   "visible": true,
+   "enabled": false,
+   "argv": []
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "qt6ct-style",
+   "have": [
+    "qt6ct"
+   ],
+   "visible": true,
+   "enabled": true,
+   "argv": [
+    "qt6ct"
+   ]
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "Fusion",
+   "have": [
+    "kcmshell6",
+    "breeze-settings6"
+   ],
+   "visible": true,
+   "enabled": false,
+   "argv": []
+  },
+  {
+   "kind": "widgetstyle",
+   "name": "Windows",
+   "have": [
+    "kcmshell6"
+   ],
+   "visible": true,
+   "enabled": false,
+   "argv": []
+  },
+  {
+   "kind": "colors",
+   "name": "BreezeDark",
+   "have": [
+    "kvantummanager"
+   ],
+   "visible": false,
+   "enabled": false,
+   "argv": []
+  }
+ ],
+ "editor_argv": [
+  {
+   "name": "BreezeDark",
+   "user": false,
+   "mode": "edit",
+   "has": true,
+   "argv": [
+    "kcolorschemeeditor",
+    "BreezeDark"
+   ]
+  },
+  {
+   "name": "MyScheme",
+   "user": true,
+   "mode": "edit",
+   "has": true,
+   "argv": [
+    "kcolorschemeeditor",
+    "MyScheme",
+    "--overwrite"
+   ]
+  },
+  {
+   "name": "MyScheme",
+   "user": true,
+   "mode": "new",
+   "has": true,
+   "argv": [
+    "kcolorschemeeditor",
+    "MyScheme"
+   ]
+  },
+  {
+   "name": "MyScheme",
+   "user": true,
+   "mode": "edit",
+   "has": false,
+   "argv": null
+  }
+ ],
+ "scheme_base": "[ColorEffects:Disabled]\nColor=56,56,56\n\n[Colors:Button]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\n[Colors:Selection]\nBackgroundNormal=61,174,233\nForegroundNormal=252,252,252\n\n[Colors:Tooltip]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\n[Colors:View]\nBackgroundNormal=20,22,24\nForegroundNormal=252,252,252\n\n[Colors:Window]\nBackgroundNormal=32,35,38\nForegroundNormal=252,252,252\n\n[General]\nColorScheme=BreezeDark\nName=Breeze Dark\nName[ru]=Breeze, тёмный вариант\nshadeSortColumn=true\n\n[KDE]\ncontrast=4\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveForeground=252,252,252\n",
+ "scheme_roles": [
+  {
+   "key": "window",
+   "background": "#202326",
+   "foreground": "#fcfcfc"
+  },
+  {
+   "key": "view",
+   "background": "#141618",
+   "foreground": "#fcfcfc"
+  },
+  {
+   "key": "button",
+   "background": "#292c30",
+   "foreground": "#fcfcfc"
+  },
+  {
+   "key": "selection",
+   "background": "#3daee9",
+   "foreground": "#fcfcfc"
+  },
+  {
+   "key": "tooltip",
+   "background": "#292c30",
+   "foreground": "#fcfcfc"
+  },
+  {
+   "key": "titlebar",
+   "background": "#272c31",
+   "foreground": "#fcfcfc"
+  }
+ ],
+ "scheme_built": "[ColorEffects:Disabled]\nColor=56,56,56\n\n[Colors:Button]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\n[Colors:Selection]\nBackgroundNormal=255,0,128\nForegroundNormal=0,0,0\n\n[Colors:Tooltip]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\n[Colors:View]\nBackgroundNormal=20,22,24\nForegroundNormal=252,252,252\n\n[Colors:Window]\nBackgroundNormal=32,35,38\nForegroundNormal=252,252,252\n\n[General]\nColorScheme=MyPink\nName=My Pink\nshadeSortColumn=true\n\n[KDE]\ncontrast=4\n\n[WM]\nactiveBackground=10,20,30\nactiveBlend=252,252,252\nactiveForeground=250,250,250\n"
+}

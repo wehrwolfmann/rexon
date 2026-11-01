@@ -1,0 +1,63 @@
+Тема: запуск плейлиста на KDE работает и до первого дисплея
+
+Починка дефекта, не доработка. Тот же круг, что у «Применить» (патч 0010):
+на KDE дисплей у демона появляется, только когда Plasma-плагин waywallen
+назначен обоями стола, а назначает его Rexon при запуске плейлиста.
+Вендорный список плейлистов выбирает цели по одной: без дисплея кнопка
+запуска серая (`hasSelection`), а при пустом наборе целей проверка «уже
+играет» (`every()` по пустому массиву) отвечает «да», и нажатие стало бы
+паузой (ВМ Arch + Plasma 6.8.2, 30.10.2026).
+
+* `hasPlayTarget`: при нуле целей запуск доступен, если
+  `W.App.playWithoutDisplays` (решение — ядро,
+  `waywallen_kde_plugin::play_without_displays`, тот же `apply_gate`, что
+  у транспорта). Кадр `playlist_activate` придерживает транспорт Rexon,
+  пока plasmashell не зарегистрирует дисплей.
+* `playlistIsPlayingOnSelectedTargets`: пустой набор дисплеев — не играет.
+* `togglePlayback`: без дисплеев цель — «все рабочие столы», как
+  вендорное «все» (`selectAll()`: пустые цели + подключение новых
+  дисплеев). При реальных дисплеях поведение апстрима не меняется.
+---
+diff --git a/ui/qml/page/wallpaper/PlaylistListSheetState.qml b/ui/qml/page/wallpaper/PlaylistListSheetState.qml
+index 5f04f3b..b5d2c29 100644
+--- a/ui/qml/page/wallpaper/PlaylistListSheetState.qml
++++ b/ui/qml/page/wallpaper/PlaylistListSheetState.qml
+@@ -32,7 +32,14 @@ QtObject {
+     readonly property bool mutationQuerying: playlistMutation.querying || playlistCreateMutation.querying
+     readonly property bool createQuerying: playlistCreateMutation.querying
+     readonly property var playlists: playlistListQuery.playlists || []
+-    readonly property bool hasPlayTarget: targetState.hasSelection
++    // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
++    // появляется, только когда плагин обоев уже назначен, а назначает его
++    // Rexon при запуске плейлиста — без этой ветки запуск на свежей системе
++    // был недоступен навсегда. Пока дисплеев нет, цель — «все рабочие
++    // столы»; кадр придерживает транспорт Rexon до регистрации дисплея.
++    // Правка живёт в patches/0011-playlist-without-displays-on-kde.patch.
++    readonly property bool playWithoutDisplays: !targetState.hasTargets && W.App.playWithoutDisplays
++    readonly property bool hasPlayTarget: targetState.hasSelection || playWithoutDisplays
+ 
+     Component.onCompleted: {
+         if (!playlistSheetSettings.targetScopeMigrated) {
+@@ -46,6 +53,10 @@ QtObject {
+     function playlistIsPlayingOnSelectedTargets(playlist) {
+         if (!playlist || !root.hasPlayTarget)
+             return false;
++        // ПРАВКА REXON: без дисплеев ничего не играет — `every()` по
++        // пустому набору ответил бы «уже играет» и превратил запуск в паузу.
++        if (targetState.selectedDisplayIds.length === 0)
++            return false;
+         const playlistId = String(playlist.id);
+         return targetState.selectedDisplayIds.every(displayId => {
+             const display = W.App.displayManager.get(displayId);
+@@ -92,6 +103,11 @@ QtObject {
+             playlistPlaybackMutation.deactivate(targetState.wireTargets, targetState.allTargets ? playlist.id : 0);
+             return;
+         }
++        if (root.playWithoutDisplays) {
++            // ПРАВКА REXON: «все рабочие столы» — как вендорное «все»
++            // (пустые цели и подключение новых дисплеев).
++            targetState.selectAll();
++        }
+         playlistPlaybackMutation.activate(playlist.id, targetState.wireTargets, targetState.allTargets);
+     }
+ 

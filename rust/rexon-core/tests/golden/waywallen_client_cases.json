@@ -1,0 +1,950 @@
+{
+  "cases": [
+    {
+      "name": "cli_not_available",
+      "kind": "cli",
+      "argv": [],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": false
+        }
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "error: waywallen daemon not running on session-bus\nHint: запустите ~/.local/share/waywallen/waywallen.AppImage\n",
+      "python_crash": null
+    },
+    {
+      "name": "cli_status_full",
+      "kind": "cli",
+      "argv": [],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "property",
+          "name": "Version",
+          "result": "0.2.5"
+        },
+        {
+          "op": "property",
+          "name": "CurrentWallpaperId",
+          "result": "wp_42"
+        },
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": 8140
+        },
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": "shuffle"
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": 300
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "Version    : 0.2.5\nCurrent ID : wp_42\nWS port    : 8140\nQueue mode : shuffle\nRotation   : 300s\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_status_empty_props",
+      "kind": "cli",
+      "argv": [],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "property",
+          "name": "Version",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "CurrentWallpaperId",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": null
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "Version    : \nCurrent ID : (none)\nWS port    : 0\nQueue mode : \nRotation   : 0s\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_status_str_port",
+      "kind": "cli",
+      "argv": [],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "property",
+          "name": "Version",
+          "result": ""
+        },
+        {
+          "op": "property",
+          "name": "CurrentWallpaperId",
+          "result": ""
+        },
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": "8141"
+        },
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": "sequential"
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": "0"
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "Version    : \nCurrent ID : (none)\nWS port    : 8141\nQueue mode : sequential\nRotation   : 0s\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_apply_ok",
+      "kind": "cli",
+      "argv": [
+        "apply",
+        "wp_7"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "ApplyById",
+          "args": [
+            "wp_7"
+          ],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "task-99"
+          ]
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "applied: task-99\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_apply_no_id",
+      "kind": "cli",
+      "argv": [
+        "apply"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        }
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "usage: waywallen_client.py [apply <id>|next|previous|pause|resume|rescan|open-ui]\n",
+      "python_crash": null
+    },
+    {
+      "name": "cli_apply_dbus_error",
+      "kind": "cli",
+      "argv": [
+        "apply",
+        "bad"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "ApplyById",
+          "args": [
+            "bad"
+          ],
+          "error_name": "org.freedesktop.DBus.Error.NoReply",
+          "error_message": "Did not receive a reply",
+          "arguments": []
+        }
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "error: ApplyById: org.freedesktop.DBus.Error.NoReply — Did not receive a reply\n",
+      "python_crash": null
+    },
+    {
+      "name": "cli_next",
+      "kind": "cli",
+      "argv": [
+        "next"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Next",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "wp_next"
+          ]
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "wp_next\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_next_multi_args",
+      "kind": "cli",
+      "argv": [
+        "next"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Next",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "wp_a",
+            "wp_b"
+          ]
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "['wp_a', 'wp_b']\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_previous_empty_reply",
+      "kind": "cli",
+      "argv": [
+        "previous"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Previous",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "[]\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_pause",
+      "kind": "cli",
+      "argv": [
+        "pause"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Pause",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "paused\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_resume",
+      "kind": "cli",
+      "argv": [
+        "resume"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Resume",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "resumed\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_rescan_int",
+      "kind": "cli",
+      "argv": [
+        "rescan"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Rescan",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            17
+          ]
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "rescan task id: 17\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_rescan_str",
+      "kind": "cli",
+      "argv": [
+        "rescan"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Rescan",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "5"
+          ]
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "rescan task id: 5\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_rescan_empty",
+      "kind": "cli",
+      "argv": [
+        "rescan"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Rescan",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "rescan task id: 0\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_rescan_garbage",
+      "kind": "cli",
+      "argv": [
+        "rescan"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "Rescan",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "not-a-number"
+          ]
+        }
+      ],
+      "exit_code": null,
+      "stdout": "",
+      "stderr": "",
+      "python_crash": "ValueError: invalid literal for int() with base 10: 'not-a-number'"
+    },
+    {
+      "name": "cli_open_ui",
+      "kind": "cli",
+      "argv": [
+        "open-ui"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "call",
+          "method": "OpenUi",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "exit_code": 0,
+      "stdout": "UI opened\n",
+      "stderr": "",
+      "python_crash": null
+    },
+    {
+      "name": "cli_unknown_action",
+      "kind": "cli",
+      "argv": [
+        "frobnicate"
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        }
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "usage: waywallen_client.py [apply <id>|next|previous|pause|resume|rescan|open-ui]\n",
+      "python_crash": null
+    },
+    {
+      "name": "api_props_full",
+      "kind": "api",
+      "steps": [
+        [
+          "available"
+        ],
+        [
+          "version"
+        ],
+        [
+          "current_wallpaper_id"
+        ],
+        [
+          "ws_port"
+        ],
+        [
+          "queue_mode"
+        ],
+        [
+          "rotation_secs"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": true
+        },
+        {
+          "op": "property",
+          "name": "Version",
+          "result": "1.0"
+        },
+        {
+          "op": "property",
+          "name": "CurrentWallpaperId",
+          "result": "id1"
+        },
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": 9000
+        },
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": "shuffle"
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": 60
+        }
+      ],
+      "results": [
+        {
+          "step": "available",
+          "ok": true,
+          "value": true
+        },
+        {
+          "step": "version",
+          "ok": true,
+          "value": "1.0"
+        },
+        {
+          "step": "current_wallpaper_id",
+          "ok": true,
+          "value": "id1"
+        },
+        {
+          "step": "ws_port",
+          "ok": true,
+          "value": 9000
+        },
+        {
+          "step": "queue_mode",
+          "ok": true,
+          "value": "shuffle"
+        },
+        {
+          "step": "rotation_secs",
+          "ok": true,
+          "value": 60
+        }
+      ]
+    },
+    {
+      "name": "api_props_defaults",
+      "kind": "api",
+      "steps": [
+        [
+          "available"
+        ],
+        [
+          "version"
+        ],
+        [
+          "current_wallpaper_id"
+        ],
+        [
+          "ws_port"
+        ],
+        [
+          "queue_mode"
+        ],
+        [
+          "rotation_secs"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "is_valid",
+          "result": false
+        },
+        {
+          "op": "property",
+          "name": "Version",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "CurrentWallpaperId",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": "+7"
+        },
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": null
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": null
+        }
+      ],
+      "results": [
+        {
+          "step": "available",
+          "ok": true,
+          "value": false
+        },
+        {
+          "step": "version",
+          "ok": true,
+          "value": ""
+        },
+        {
+          "step": "current_wallpaper_id",
+          "ok": true,
+          "value": ""
+        },
+        {
+          "step": "ws_port",
+          "ok": true,
+          "value": 7
+        },
+        {
+          "step": "queue_mode",
+          "ok": true,
+          "value": ""
+        },
+        {
+          "step": "rotation_secs",
+          "ok": true,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "name": "api_version_int",
+      "kind": "api",
+      "steps": [
+        [
+          "version"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "property",
+          "name": "Version",
+          "result": 5
+        }
+      ],
+      "results": [
+        {
+          "step": "version",
+          "ok": true,
+          "value": 5
+        }
+      ]
+    },
+    {
+      "name": "api_version_zero_int",
+      "kind": "api",
+      "steps": [
+        [
+          "version"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "property",
+          "name": "Version",
+          "result": 0
+        }
+      ],
+      "results": [
+        {
+          "step": "version",
+          "ok": true,
+          "value": ""
+        }
+      ]
+    },
+    {
+      "name": "api_queue_mode_bool",
+      "kind": "api",
+      "steps": [
+        [
+          "queue_mode"
+        ],
+        [
+          "rotation_secs"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "property",
+          "name": "QueueMode",
+          "result": false
+        },
+        {
+          "op": "property",
+          "name": "RotationSecs",
+          "result": true
+        }
+      ],
+      "results": [
+        {
+          "step": "queue_mode",
+          "ok": true,
+          "value": ""
+        },
+        {
+          "step": "rotation_secs",
+          "ok": true,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "api_ws_port_garbage",
+      "kind": "api",
+      "steps": [
+        [
+          "ws_port"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "property",
+          "name": "WsPort",
+          "result": "abc"
+        }
+      ],
+      "results": [
+        {
+          "step": "ws_port",
+          "ok": false,
+          "error": "ValueError: invalid literal for int() with base 10: 'abc'"
+        }
+      ]
+    },
+    {
+      "name": "api_apply_int_id",
+      "kind": "api",
+      "steps": [
+        [
+          "apply_by_id",
+          123
+        ]
+      ],
+      "journal": [
+        {
+          "op": "call",
+          "method": "ApplyById",
+          "args": [
+            "123"
+          ],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            "t1"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "step": "apply_by_id",
+          "ok": true,
+          "value": "t1"
+        }
+      ]
+    },
+    {
+      "name": "api_call_error",
+      "kind": "api",
+      "steps": [
+        [
+          "next"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "call",
+          "method": "Next",
+          "args": [],
+          "error_name": "org.waywallen.Error.NotFound",
+          "error_message": "no such wallpaper",
+          "arguments": []
+        }
+      ],
+      "results": [
+        {
+          "step": "next",
+          "ok": false,
+          "error": "RuntimeError: Next: org.waywallen.Error.NotFound — no such wallpaper"
+        }
+      ]
+    },
+    {
+      "name": "api_setters",
+      "kind": "api",
+      "steps": [
+        [
+          "set_rotation_interval",
+          120
+        ],
+        [
+          "set_shuffle",
+          true
+        ],
+        [
+          "set_shuffle",
+          false
+        ]
+      ],
+      "journal": [
+        {
+          "op": "call",
+          "method": "SetRotationInterval",
+          "args": [
+            120
+          ],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        },
+        {
+          "op": "call",
+          "method": "SetShuffle",
+          "args": [
+            true
+          ],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        },
+        {
+          "op": "call",
+          "method": "SetShuffle",
+          "args": [
+            false
+          ],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "results": [
+        {
+          "step": "set_rotation_interval",
+          "ok": true,
+          "value": null
+        },
+        {
+          "step": "set_shuffle",
+          "ok": true,
+          "value": null
+        },
+        {
+          "step": "set_shuffle",
+          "ok": true,
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "api_quit",
+      "kind": "api",
+      "steps": [
+        [
+          "quit"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "call",
+          "method": "Quit",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": []
+        }
+      ],
+      "results": [
+        {
+          "step": "quit",
+          "ok": true,
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "api_rescan_multi_typeerror",
+      "kind": "api",
+      "steps": [
+        [
+          "rescan"
+        ]
+      ],
+      "journal": [
+        {
+          "op": "call",
+          "method": "Rescan",
+          "args": [],
+          "error_name": "",
+          "error_message": "",
+          "arguments": [
+            1,
+            2
+          ]
+        }
+      ],
+      "results": [
+        {
+          "step": "rescan",
+          "ok": false,
+          "error": "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'list'"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1737 @@
+{
+ "expand_groups": [
+  {
+   "label": "mate-groups",
+   "family": "arch",
+   "packages": [
+    "mate",
+    "mate-extra",
+    "plank",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ],
+   "qg": {
+    "mate": "mate mate-backgrounds\nmate mate-control-center\nmate mate-desktop\nmate mate-menus\nmate mate-panel\nmate mate-session-manager\nmate mate-settings-daemon\nmate mate-themes\nmate marco\nmate caja\n",
+    "mate-extra": "mate-extra atril\nmate-extra engrampa\nmate-extra eom\nmate-extra mate-applets\nmate-extra mate-calc\nmate-extra mate-media\nmate-extra mate-power-manager\nmate-extra mate-screensaver\nmate-extra mate-system-monitor\nmate-extra mate-terminal\nmate-extra mate-utils\nmate-extra pluma\n"
+   },
+   "expected": [
+    "mate-backgrounds",
+    "mate-control-center",
+    "mate-desktop",
+    "mate-menus",
+    "mate-panel",
+    "mate-session-manager",
+    "mate-settings-daemon",
+    "mate-themes",
+    "marco",
+    "caja",
+    "atril",
+    "engrampa",
+    "eom",
+    "mate-applets",
+    "mate-calc",
+    "mate-media",
+    "mate-power-manager",
+    "mate-screensaver",
+    "mate-system-monitor",
+    "mate-terminal",
+    "mate-utils",
+    "pluma",
+    "plank",
+    "lightdm",
+    "lightdm-gtk-greeter"
+   ]
+  },
+  {
+   "label": "dedup-shared-member",
+   "family": "arch",
+   "packages": [
+    "group-a",
+    "group-b",
+    "shared-pkg"
+   ],
+   "qg": {
+    "group-a": "group-a shared-pkg\ngroup-a only-a\n",
+    "group-b": "group-b shared-pkg\ngroup-b only-b\n"
+   },
+   "expected": [
+    "shared-pkg",
+    "only-a",
+    "only-b"
+   ]
+  },
+  {
+   "label": "qg-success-empty-stdout",
+   "family": "arch",
+   "packages": [
+    "ghost-group",
+    "firefox"
+   ],
+   "qg": {
+    "ghost-group": "   \n"
+   },
+   "expected": [
+    "ghost-group",
+    "firefox"
+   ]
+  },
+  {
+   "label": "qg-one-column-line",
+   "family": "arch",
+   "packages": [
+    "lxqt"
+   ],
+   "qg": {
+    "lxqt": "lonely\nlxqt lxqt-panel\nlxqt lxqt-session\n"
+   },
+   "expected": [
+    "lxqt-panel",
+    "lxqt-session"
+   ]
+  },
+  {
+   "label": "no-groups-at-all",
+   "family": "arch",
+   "packages": [
+    "plasma-meta",
+    "konsole"
+   ],
+   "qg": {},
+   "expected": [
+    "plasma-meta",
+    "konsole"
+   ]
+  },
+  {
+   "label": "non-arch-passthrough",
+   "family": "debian",
+   "packages": [
+    "mate",
+    "mate-extra",
+    "lightdm"
+   ],
+   "qg": {
+    "mate": "mate mate-backgrounds\nmate mate-control-center\nmate mate-desktop\nmate mate-menus\nmate mate-panel\nmate mate-session-manager\nmate mate-settings-daemon\nmate mate-themes\nmate marco\nmate caja\n"
+   },
+   "expected": [
+    "mate",
+    "mate-extra",
+    "lightdm"
+   ]
+  }
+ ],
+ "qi_field": [
+  {
+   "label": "versioned-constraints",
+   "family": "arch",
+   "package": "versioned",
+   "field": "Depends On",
+   "qi": {
+    "versioned": "Name            : versioned\nVersion         : 1.28.2-1\nDescription     : Fixture package versioned\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3>=3.24.0  glib2>2.0  cairo<2.0  pango=1.50  harfbuzz\nOptional Deps   : None\nRequired By     : app-one  app-two\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": [
+    "gtk3",
+    "glib2",
+    "cairo",
+    "pango",
+    "harfbuzz"
+   ]
+  },
+  {
+   "label": "required-by",
+   "family": "arch",
+   "package": "versioned",
+   "field": "Required By",
+   "qi": {
+    "versioned": "Name            : versioned\nVersion         : 1.28.2-1\nDescription     : Fixture package versioned\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3>=3.24.0  glib2>2.0  cairo<2.0  pango=1.50  harfbuzz\nOptional Deps   : None\nRequired By     : app-one  app-two\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": [
+    "app-one",
+    "app-two"
+   ]
+  },
+  {
+   "label": "provides-none",
+   "family": "arch",
+   "package": "versioned",
+   "field": "Provides",
+   "qi": {
+    "versioned": "Name            : versioned\nVersion         : 1.28.2-1\nDescription     : Fixture package versioned\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3>=3.24.0  glib2>2.0  cairo<2.0  pango=1.50  harfbuzz\nOptional Deps   : None\nRequired By     : app-one  app-two\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": []
+  },
+  {
+   "label": "missing-field",
+   "family": "arch",
+   "package": "versioned",
+   "field": "Optional Nonsense",
+   "qi": {
+    "versioned": "Name            : versioned\nVersion         : 1.28.2-1\nDescription     : Fixture package versioned\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3>=3.24.0  glib2>2.0  cairo<2.0  pango=1.50  harfbuzz\nOptional Deps   : None\nRequired By     : app-one  app-two\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": []
+  },
+  {
+   "label": "package-not-installed",
+   "family": "arch",
+   "package": "ghost",
+   "field": "Depends On",
+   "qi": {},
+   "expected": []
+  },
+  {
+   "label": "line-without-colon-skipped",
+   "family": "arch",
+   "package": "weird",
+   "field": "Depends On",
+   "qi": {
+    "weird": "Name            : weird\nDepends On\nDepends On      : real-dep\nRequired By     : None\n"
+   },
+   "expected": [
+    "real-dep"
+   ]
+  },
+  {
+   "label": "russian-locale-output",
+   "family": "arch",
+   "package": "mate-panel",
+   "field": "Depends On",
+   "qi": {
+    "mate-panel": "Название               : mate-panel\nВерсия                 : 1.28.2-1\nОписание               : Пакет-фикстура mate-panel\nАрхитектура            : x86_64\nПредоставляет          : Нет\nЗависит от             : gtk3  mate-desktop\nДополнительно зависит  : Нет\nТребуется пакетами     : mate-menu\nДополнительно для      : Нет\nКонфликтует с          : Нет\nУстановленный размер   : 12,52 MiB\n"
+   },
+   "expected": []
+  },
+  {
+   "label": "non-arch-family",
+   "family": "fedora",
+   "package": "versioned",
+   "field": "Depends On",
+   "qi": {
+    "versioned": "Name            : versioned\nVersion         : 1.28.2-1\nDescription     : Fixture package versioned\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3>=3.24.0  glib2>2.0  cairo<2.0  pango=1.50  harfbuzz\nOptional Deps   : None\nRequired By     : app-one  app-two\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": []
+  }
+ ],
+ "required_by_outside": [
+  {
+   "label": "outside-and-inside",
+   "family": "arch",
+   "package": "mate-panel",
+   "candidate": [
+    "mate-panel",
+    "mate-desktop"
+   ],
+   "qi": {
+    "mate-panel": "Name            : mate-panel\nVersion         : 1.28.2-1\nDescription     : Fixture package mate-panel\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3  mate-desktop\nOptional Deps   : None\nRequired By     : mate-menu  mate-desktop  brisk-menu\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": [
+    "mate-menu",
+    "brisk-menu"
+   ]
+  },
+  {
+   "label": "all-inside",
+   "family": "arch",
+   "package": "mate-panel",
+   "candidate": [
+    "mate-panel",
+    "mate-desktop",
+    "mate-menu",
+    "brisk-menu"
+   ],
+   "qi": {
+    "mate-panel": "Name            : mate-panel\nVersion         : 1.28.2-1\nDescription     : Fixture package mate-panel\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3  mate-desktop\nOptional Deps   : None\nRequired By     : mate-menu  mate-desktop  brisk-menu\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "expected": []
+  },
+  {
+   "label": "not-installed",
+   "family": "arch",
+   "package": "ghost",
+   "candidate": [
+    "ghost"
+   ],
+   "qi": {},
+   "expected": []
+  }
+ ],
+ "filter_removable": [
+  {
+   "label": "docstring-mate",
+   "family": "arch",
+   "packages": [
+    "mate-panel",
+    "mate-desktop",
+    "mate-menus"
+   ],
+   "qi": {
+    "mate-panel": "Name            : mate-panel\nVersion         : 1.28.2-1\nDescription     : Fixture package mate-panel\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3  mate-menus\nOptional Deps   : None\nRequired By     : mate-menu  mate-desktop\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "mate-desktop": "Name            : mate-desktop\nVersion         : 1.28.2-1\nDescription     : Fixture package mate-desktop\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : gtk3  mate-panel\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "mate-menus": "Name            : mate-menus\nVersion         : 1.28.2-1\nDescription     : Fixture package mate-menus\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glib2\nOptional Deps   : None\nRequired By     : mate-panel\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "safe": [
+    "mate-desktop"
+   ],
+   "skipped": [
+    "mate-panel",
+    "mate-menus"
+   ]
+  },
+  {
+   "label": "transitive-chain-depth2",
+   "family": "arch",
+   "packages": [
+    "pkg-a",
+    "pkg-b",
+    "pkg-c",
+    "pkg-free"
+   ],
+   "qi": {
+    "pkg-a": "Name            : pkg-a\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-a\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : pkg-b\nOptional Deps   : None\nRequired By     : external-app\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-b": "Name            : pkg-b\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-b\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : pkg-c\nOptional Deps   : None\nRequired By     : pkg-a\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-c": "Name            : pkg-c\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-c\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : pkg-b\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-free": "Name            : pkg-free\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-free\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "safe": [
+    "pkg-free"
+   ],
+   "skipped": [
+    "pkg-a",
+    "pkg-b",
+    "pkg-c"
+   ]
+  },
+  {
+   "label": "dependency-cycle",
+   "family": "arch",
+   "packages": [
+    "cyc-x",
+    "cyc-y",
+    "cyc-z",
+    "cyc-lone"
+   ],
+   "qi": {
+    "cyc-x": "Name            : cyc-x\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-x\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-y\nOptional Deps   : None\nRequired By     : outside-dep\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-y": "Name            : cyc-y\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-y\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-z\nOptional Deps   : None\nRequired By     : cyc-x\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-z": "Name            : cyc-z\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-z\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-x\nOptional Deps   : None\nRequired By     : cyc-y\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-lone": "Name            : cyc-lone\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-lone\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "safe": [
+    "cyc-lone"
+   ],
+   "skipped": [
+    "cyc-x",
+    "cyc-y",
+    "cyc-z"
+   ]
+  },
+  {
+   "label": "versioned-dep-matched",
+   "family": "arch",
+   "packages": [
+    "de-shell",
+    "lightdm",
+    "de-libs"
+   ],
+   "qi": {
+    "de-shell": "Name            : de-shell\nVersion         : 1.28.2-1\nDescription     : Fixture package de-shell\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : lightdm>=1.30  de-libs\nOptional Deps   : None\nRequired By     : external-tool\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "lightdm": "Name            : lightdm\nVersion         : 1.28.2-1\nDescription     : Fixture package lightdm\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "de-libs": "Name            : de-libs\nVersion         : 1.28.2-1\nDescription     : Fixture package de-libs\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : de-shell\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "safe": [],
+   "skipped": [
+    "de-shell",
+    "lightdm",
+    "de-libs"
+   ]
+  },
+  {
+   "label": "all-safe",
+   "family": "arch",
+   "packages": [
+    "pkg-free",
+    "cyc-lone"
+   ],
+   "qi": {
+    "pkg-a": "Name            : pkg-a\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-a\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : pkg-b\nOptional Deps   : None\nRequired By     : external-app\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-b": "Name            : pkg-b\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-b\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : pkg-c\nOptional Deps   : None\nRequired By     : pkg-a\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-c": "Name            : pkg-c\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-c\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : pkg-b\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "pkg-free": "Name            : pkg-free\nVersion         : 1.28.2-1\nDescription     : Fixture package pkg-free\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-x": "Name            : cyc-x\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-x\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-y\nOptional Deps   : None\nRequired By     : outside-dep\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-y": "Name            : cyc-y\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-y\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-z\nOptional Deps   : None\nRequired By     : cyc-x\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-z": "Name            : cyc-z\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-z\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : cyc-x\nOptional Deps   : None\nRequired By     : cyc-y\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n",
+    "cyc-lone": "Name            : cyc-lone\nVersion         : 1.28.2-1\nDescription     : Fixture package cyc-lone\nArchitecture    : x86_64\nURL             : https://example.org\nLicenses        : GPL\nGroups          : None\nProvides        : None\nDepends On      : glibc\nOptional Deps   : None\nRequired By     : None\nOptional For    : None\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 12.52 MiB\nPackager        : Fixture <fixture@example.org>\nBuild Date      : Tue 01 Jul 2026\nInstall Reason  : Explicitly installed\nValidated By    : Signature\n"
+   },
+   "safe": [
+    "pkg-free",
+    "cyc-lone"
+   ],
+   "skipped": []
+  },
+  {
+   "label": "russian-locale-all-safe",
+   "family": "arch",
+   "packages": [
+    "mate-panel",
+    "mate-desktop"
+   ],
+   "qi": {
+    "mate-panel": "Название               : mate-panel\nВерсия                 : 1.28.2-1\nОписание               : Пакет-фикстура mate-panel\nАрхитектура            : x86_64\nПредоставляет          : Нет\nЗависит от             : gtk3  mate-desktop\nДополнительно зависит  : Нет\nТребуется пакетами     : mate-menu\nДополнительно для      : Нет\nКонфликтует с          : Нет\nУстановленный размер   : 12,52 MiB\n",
+    "mate-desktop": "Название               : mate-desktop\nВерсия                 : 1.28.2-1\nОписание               : Пакет-фикстура mate-desktop\nАрхитектура            : x86_64\nПредоставляет          : Нет\nЗависит от             : gtk3\nДополнительно зависит  : Нет\nТребуется пакетами     : mate-panel\nДополнительно для      : Нет\nКонфликтует с          : Нет\nУстановленный размер   : 12,52 MiB\n"
+   },
+   "safe": [
+    "mate-panel",
+    "mate-desktop"
+   ],
+   "skipped": []
+  },
+  {
+   "label": "non-arch-passthrough",
+   "family": "alt",
+   "packages": [
+    "mate-panel",
+    "mate-desktop"
+   ],
+   "qi": {
+    "mate-panel": "Название               : mate-panel\nВерсия                 : 1.28.2-1\nОписание               : Пакет-фикстура mate-panel\nАрхитектура            : x86_64\nПредоставляет          : Нет\nЗависит от             : gtk3  mate-desktop\nДополнительно зависит  : Нет\nТребуется пакетами     : mate-menu\nДополнительно для      : Нет\nКонфликтует с          : Нет\nУстановленный размер   : 12,52 MiB\n",
+    "mate-desktop": "Название               : mate-desktop\nВерсия                 : 1.28.2-1\nОписание               : Пакет-фикстура mate-desktop\nАрхитектура            : x86_64\nПредоставляет          : Нет\nЗависит от             : gtk3\nДополнительно зависит  : Нет\nТребуется пакетами     : mate-panel\nДополнительно для      : Нет\nКонфликтует с          : Нет\nУстановленный размер   : 12,52 MiB\n"
+   },
+   "safe": [
+    "mate-panel",
+    "mate-desktop"
+   ],
+   "skipped": []
+  }
+ ],
+ "polkit_missing": {
+  "with_hint": "Не найден pkexec: Rexon не сможет выполнить ни одну операцию, требующую прав администратора, — установку рабочих столов, системных тем и экранов входа. Установите пакет «polkit»",
+  "no_hint": "Не найден pkexec: Rexon не сможет выполнить ни одну операцию, требующую прав администратора, — установку рабочих столов, системных тем и экранов входа."
+ },
+ "group_query": {
+  "note": "Шестой вопрос движка пакетов — состав ГРУППЫ. Сырьё снято ЧТЕНИЕМ живого pacman на CachyOS 05.09.2026; ничего не устанавливалось и не удалялось.",
+  "commands": [
+   {
+    "label": "arch-live-group",
+    "family": "arch",
+    "group": "cachyos",
+    "binary": "pacman",
+    "argv": [
+     "pacman",
+     "-Qg",
+     "cachyos"
+    ],
+    "lang_c": true,
+    "timeout": null,
+    "note": "Живая группа этой машины; ответ снят чтением, ничего не ставилось."
+   },
+   {
+    "label": "arch-name-trimmed",
+    "family": "arch",
+    "group": "  mate-extra  ",
+    "binary": "pacman",
+    "argv": [
+     "pacman",
+     "-Qg",
+     "mate-extra"
+    ],
+    "lang_c": true,
+    "timeout": null,
+    "note": "Пробелы по краям срезаются, как у остальных вопросов движка."
+   },
+   {
+    "label": "arch-bad-name",
+    "family": "arch",
+    "group": "плохое имя",
+    "argv": null,
+    "note": "Негодное имя наружу не уходит — команда не собирается вовсе."
+   },
+   {
+    "label": "arch-empty-name",
+    "family": "arch",
+    "group": "",
+    "argv": null
+   },
+   {
+    "label": "arch-whitespace-name",
+    "family": "arch",
+    "group": "   ",
+    "argv": null
+   },
+   {
+    "label": "debian-no-package-groups",
+    "family": "debian",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "fedora-no-package-groups",
+    "family": "fedora",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "suse-no-package-groups",
+    "family": "suse",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alt-no-package-groups",
+    "family": "alt",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "gentoo-no-package-groups",
+    "family": "gentoo",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alpine-no-package-groups",
+    "family": "alpine",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "void-no-package-groups",
+    "family": "void",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "nix-no-package-groups",
+    "family": "nix",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "solus-no-package-groups",
+    "family": "solus",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "clear-no-package-groups",
+    "family": "clear",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "unknown-no-package-groups",
+    "family": "unknown",
+    "group": "mate",
+    "argv": null,
+    "note": "Понятия «группа пакетов» у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   }
+  ],
+  "members": [
+   {
+    "label": "live-cachyos",
+    "ok": true,
+    "stdout": "cachyos cachyos-ananicy-rules\ncachyos cachyos-emerald-kde-theme-git\ncachyos cachyos-hello\ncachyos cachyos-hooks\ncachyos cachyos-iridescent-kde\ncachyos cachyos-kernel-manager\ncachyos cachyos-keyring\ncachyos cachyos-micro-settings\ncachyos cachyos-mirrorlist\ncachyos cachyos-nord-kde-theme-git\ncachyos cachyos-packageinstaller\ncachyos cachyos-plymouth-bootanimation\ncachyos cachyos-rate-mirrors\ncachyos cachyos-settings\ncachyos cachyos-v3-mirrorlist\ncachyos cachyos-v4-mirrorlist\ncachyos char-white\ncachyos chwd\ncachyos scx-manager\n",
+    "expected": [
+     "cachyos-ananicy-rules",
+     "cachyos-emerald-kde-theme-git",
+     "cachyos-hello",
+     "cachyos-hooks",
+     "cachyos-iridescent-kde",
+     "cachyos-kernel-manager",
+     "cachyos-keyring",
+     "cachyos-micro-settings",
+     "cachyos-mirrorlist",
+     "cachyos-nord-kde-theme-git",
+     "cachyos-packageinstaller",
+     "cachyos-plymouth-bootanimation",
+     "cachyos-rate-mirrors",
+     "cachyos-settings",
+     "cachyos-v3-mirrorlist",
+     "cachyos-v4-mirrorlist",
+     "char-white",
+     "chwd",
+     "scx-manager"
+    ],
+    "note": "Живой вывод `pacman -Qg cachyos` этой машины."
+   },
+   {
+    "label": "live-mate-extra",
+    "ok": true,
+    "stdout": "mate-extra atril\nmate-extra caja-actions\nmate-extra caja-audio-video-properties\nmate-extra caja-image-converter\nmate-extra caja-open-terminal\nmate-extra caja-sendto\nmate-extra caja-share\nmate-extra caja-wallpaper\nmate-extra caja-xattr-tags\nmate-extra engrampa\nmate-extra eom\nmate-extra mate-applets\nmate-extra mate-calc\nmate-extra mate-icon-theme-faenza\nmate-extra mate-media\nmate-extra mate-netbook\nmate-extra mate-power-manager\nmate-extra mate-screensaver\nmate-extra mate-sensors-applet\nmate-extra mate-system-monitor\nmate-extra mate-terminal\nmate-extra mate-user-share\nmate-extra mate-utils\nmate-extra mozo\nmate-extra pluma\n",
+    "expected": [
+     "atril",
+     "caja-actions",
+     "caja-audio-video-properties",
+     "caja-image-converter",
+     "caja-open-terminal",
+     "caja-sendto",
+     "caja-share",
+     "caja-wallpaper",
+     "caja-xattr-tags",
+     "engrampa",
+     "eom",
+     "mate-applets",
+     "mate-calc",
+     "mate-icon-theme-faenza",
+     "mate-media",
+     "mate-netbook",
+     "mate-power-manager",
+     "mate-screensaver",
+     "mate-sensors-applet",
+     "mate-system-monitor",
+     "mate-terminal",
+     "mate-user-share",
+     "mate-utils",
+     "mozo",
+     "pluma"
+    ],
+    "note": "Живой вывод `pacman -Qg mate-extra` — группа из 25 членов."
+   },
+   {
+    "label": "group-not-found",
+    "ok": false,
+    "stdout": "",
+    "expected": null,
+    "note": "Живой ответ на несуществующую группу: код 1, stdout ПУСТ, сообщение ушло в stderr."
+   },
+   {
+    "label": "plain-package-is-not-a-group",
+    "ok": false,
+    "stdout": "",
+    "expected": null,
+    "note": "Живой ответ на обычный пакет (`bash`): тот же код 1 и пустой stdout — имя остаётся как есть."
+   },
+   {
+    "label": "empty-stdout-zero-rc",
+    "ok": true,
+    "stdout": "",
+    "expected": null
+   },
+   {
+    "label": "blank-lines-only",
+    "ok": true,
+    "stdout": "\n   \n\n",
+    "expected": null
+   },
+   {
+    "label": "garbage-lines",
+    "ok": true,
+    "stdout": "cachyos cachyos-hello\n\nодинокое-слово\n   \ncachyos char-white extra-column\nerror: something went wrong\n",
+    "expected": [
+     "cachyos-hello",
+     "char-white",
+     "something"
+    ],
+    "note": "Мусор в выводе: пустые строки и строки в одно слово выбрасываются, лишние колонки игнорируются. Строка «error: …» из двух слов была бы принята за члена группы — на живом pacman этого не случается, сообщения об ошибках уходят в stderr, а stdout остаётся пустым (проверено чтением на трёх именах)."
+   }
+  ]
+ },
+ "foreign_query": {
+  "note": "Седьмой вопрос движка пакетов — что установлено НЕ ИЗ РЕПОЗИТОРИЕВ. Сырьё снято ЧТЕНИЕМ живого pacman на CachyOS 05.09.2026; ничего не устанавливалось и не удалялось.",
+  "commands": [
+   {
+    "label": "arch-live",
+    "family": "arch",
+    "binary": "pacman",
+    "argv": [
+     "pacman",
+     "-Qm"
+    ],
+    "lang_c": true,
+    "timeout": null,
+    "note": "Вопрос без аргументов: спрашивает про ВСЁ установленное сразу. Таймаут по классу «опрос»; LANG=C нужен не ради самого ответа, а ради сообщения о занятой базе — политика повторов ищет в нём «lck»/«lock»."
+   },
+   {
+    "label": "debian-no-foreign-notion",
+    "family": "debian",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "fedora-no-foreign-notion",
+    "family": "fedora",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "suse-no-foreign-notion",
+    "family": "suse",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alt-no-foreign-notion",
+    "family": "alt",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "gentoo-no-foreign-notion",
+    "family": "gentoo",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alpine-no-foreign-notion",
+    "family": "alpine",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "void-no-foreign-notion",
+    "family": "void",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "nix-no-foreign-notion",
+    "family": "nix",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "solus-no-foreign-notion",
+    "family": "solus",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "clear-no-foreign-notion",
+    "family": "clear",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "unknown-no-foreign-notion",
+    "family": "unknown",
+    "argv": null,
+    "note": "Понятия «пакет не из репозиториев» в том же смысле у семейства нет либо формат ответа руками не проверен: движок отдаёт None вместо выдуманной команды."
+   }
+  ]
+ },
+ "file_owner_query": {
+  "note": "Восьмой вопрос движка пакетов — КАКОЙ ПАКЕТ ВЛАДЕЕТ ФАЙЛОМ. Пути живые, ответы сняты ЧТЕНИЕМ; batches — argv по пачкам (null = семейство вопроса не понимает, [] = спрашивать не о чем).",
+  "commands": [
+   {
+    "label": "arch-live-paths",
+    "family": "arch",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "binary": "pacman",
+    "lang_c": true,
+    "timeout": 60,
+    "batches": [
+     [
+      "pacman",
+      "-Qo",
+      "/usr/share/themes/Breeze",
+      "/usr/share/icons/breeze",
+      "/usr/share/color-schemes/BreezeDark.colors",
+      "/usr/share/themes/НетТакого",
+      "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+     ]
+    ],
+    "note": "Живые пути этой машины, включая заведомо ничей (/usr/share/themes/НетТакого): отсутствие владельца даёт ненулевой код и строку в stderr, но команду не ломает."
+   },
+   {
+    "label": "arch-drops-relative",
+    "family": "arch",
+    "paths": [
+     "usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "-Qi"
+    ],
+    "binary": "pacman",
+    "lang_c": true,
+    "timeout": 60,
+    "batches": [
+     [
+      "pacman",
+      "-Qo",
+      "/usr/share/icons/breeze"
+     ]
+    ],
+    "note": "Неабсолютный путь наружу не уходит: менеджер считал бы его от текущего каталога. Тем же условием отсекается «-Qi» — иначе он уехал бы менеджеру как ключ."
+   },
+   {
+    "label": "arch-drops-newline-and-nul",
+    "family": "arch",
+    "paths": [
+     "/usr/share/themes/A\nB",
+     "/usr/share/themes/C\u0000D",
+     "/usr/share/themes/Breeze"
+    ],
+    "binary": "pacman",
+    "lang_c": true,
+    "timeout": 60,
+    "batches": [
+     [
+      "pacman",
+      "-Qo",
+      "/usr/share/themes/Breeze"
+     ]
+    ],
+    "note": "Перенос строки разорвал бы строку ответа надвое и разбор молча приписал бы файл чужому пакету; нулевой байт argv не переживёт."
+   },
+   {
+    "label": "arch-no-paths",
+    "family": "arch",
+    "paths": [],
+    "batches": [],
+    "note": "Спрашивать не о чем — команд ноль, но это НЕ отказ семейства."
+   },
+   {
+    "label": "arch-all-paths-dropped",
+    "family": "arch",
+    "paths": [
+     "относительный",
+     "-Qi"
+    ],
+    "batches": [],
+    "note": "Годных путей не осталось — команд ноль."
+   },
+   {
+    "label": "debian-no-file-owner",
+    "family": "debian",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "fedora-no-file-owner",
+    "family": "fedora",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "suse-no-file-owner",
+    "family": "suse",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alt-no-file-owner",
+    "family": "alt",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "gentoo-no-file-owner",
+    "family": "gentoo",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "alpine-no-file-owner",
+    "family": "alpine",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "void-no-file-owner",
+    "family": "void",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "nix-no-file-owner",
+    "family": "nix",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "solus-no-file-owner",
+    "family": "solus",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "clear-no-file-owner",
+    "family": "clear",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   },
+   {
+    "label": "unknown-no-file-owner",
+    "family": "unknown",
+    "paths": [
+     "/usr/share/themes/Breeze",
+     "/usr/share/icons/breeze",
+     "/usr/share/color-schemes/BreezeDark.colors",
+     "/usr/share/themes/НетТакого",
+     "/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop"
+    ],
+    "batches": null,
+    "note": "Формат ответа о владельце файла у семейства другой и руками не проверен: движок отдаёт None вместо выдуманной команды."
+   }
+  ]
+ },
+ "sync_repo": {
+  "note": "Девятый вопрос движка пакетов — синхронизировать ОДИН репозиторий. Gentoo не установлен на машине сборки: ответы закреплены только голденами, ни одна команда не выполнялась.",
+  "commands": [
+   {
+    "label": "gentoo-overlay-budgie",
+    "family": "gentoo",
+    "repo": "sarahmiaoverlay",
+    "argv": [
+     "pkexec",
+     "emerge",
+     "--sync",
+     "--repo",
+     "sarahmiaoverlay"
+    ],
+    "note": "Overlay из таблицы GENTOO_OVERLAYS (budgie). Команда полная, вместе с pkexec: у rexon-pkg-helper операции «синхронизировать один репозиторий» нет, его update тянет всё дерево."
+   },
+   {
+    "label": "gentoo-overlay-cosmic",
+    "family": "gentoo",
+    "repo": "cosmic-overlay",
+    "argv": [
+     "pkexec",
+     "emerge",
+     "--sync",
+     "--repo",
+     "cosmic-overlay"
+    ],
+    "note": "Второй overlay таблицы; дефис в имени законен."
+   },
+   {
+    "label": "gentoo-name-with-dot-and-underscore",
+    "family": "gentoo",
+    "repo": "my.repo_1-x",
+    "argv": [
+     "pkexec",
+     "emerge",
+     "--sync",
+     "--repo",
+     "my.repo_1-x"
+    ],
+    "note": "Точка, подчёркивание, цифры и дефис — годные символы имени."
+   },
+   {
+    "label": "gentoo-empty-name",
+    "family": "gentoo",
+    "repo": "",
+    "argv": null,
+    "note": "Пустое имя: синхронизировать нечего, команда не собирается."
+   },
+   {
+    "label": "gentoo-leading-dash",
+    "family": "gentoo",
+    "repo": "--root=/",
+    "argv": null,
+    "note": "Ведущий '-' уехал бы менеджеру ключом, а не именем репозитория."
+   },
+   {
+    "label": "gentoo-slash-in-name",
+    "family": "gentoo",
+    "repo": "guru/../etc",
+    "argv": null,
+    "note": "'/' в именах репозиториев не бывает; заодно отсекается обход каталогов."
+   },
+   {
+    "label": "gentoo-newline-in-name",
+    "family": "gentoo",
+    "repo": "guru\nemerge --sync",
+    "argv": null,
+    "note": "Перенос строки в имени: argv он пережил бы, но в журнале и в чужих обёртках превратился бы во вторую строку."
+   },
+   {
+    "label": "gentoo-space-in-name",
+    "family": "gentoo",
+    "repo": "gu ru",
+    "argv": null,
+    "note": "Пробел разорвал бы имя на два аргумента."
+   },
+   {
+    "label": "arch-no-separate-repo-notion",
+    "family": "arch",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "debian-no-separate-repo-notion",
+    "family": "debian",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "fedora-no-separate-repo-notion",
+    "family": "fedora",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "suse-no-separate-repo-notion",
+    "family": "suse",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "alt-no-separate-repo-notion",
+    "family": "alt",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "alpine-no-separate-repo-notion",
+    "family": "alpine",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "void-no-separate-repo-notion",
+    "family": "void",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "nix-no-separate-repo-notion",
+    "family": "nix",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "solus-no-separate-repo-notion",
+    "family": "solus",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "clear-no-separate-repo-notion",
+    "family": "clear",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   },
+   {
+    "label": "unknown-no-separate-repo-notion",
+    "family": "unknown",
+    "repo": "guru",
+    "argv": null,
+    "note": "Отдельно подключаемого репозитория у семейства нет: pacman и apt обновляют все базы разом, у dnf и zypper синтаксис есть, но Rexon на этих семействах репозиториев не подключает — имени взять неоткуда. Движок отдаёт None вместо выдуманной привилегированной команды."
+   }
+  ]
+ },
+ "gentoo_overlay_tool": {
+  "note": "Команда установки инструмента подключения overlay'ев. Имя пакета и флаги — из движка; прежняя копия в ensure_gentoo_overlay разошлась с ним. Ни одна команда не выполнялась.",
+  "package": "app-eselect/eselect-repository",
+  "commands": [
+   {
+    "label": "gentoo-named-helper",
+    "family": "gentoo",
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "gentoo",
+     "install",
+     "app-eselect/eselect-repository"
+    ],
+    "note": "Именованный путь org.rexon.pkg: команду собирает сам helper из встроенной таблицы, лишнего пароля нет."
+   },
+   {
+    "label": "gentoo-raw-fallback",
+    "family": "gentoo",
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "emerge",
+     "--ask=n",
+     "--quiet",
+     "app-eselect/eselect-repository"
+    ],
+    "note": "Сырой путь: ровно install_cmd(gentoo) под pkexec. Здесь и было расхождение — рукописная копия шла без --quiet, хотя и таблица движка, и шаблон самого helper'а его ставят."
+   },
+   {
+    "label": "arch-no-overlays-helper",
+    "family": "arch",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "arch-no-overlays-raw",
+    "family": "arch",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "debian-no-overlays-helper",
+    "family": "debian",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "debian-no-overlays-raw",
+    "family": "debian",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "fedora-no-overlays-helper",
+    "family": "fedora",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "fedora-no-overlays-raw",
+    "family": "fedora",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "suse-no-overlays-helper",
+    "family": "suse",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "suse-no-overlays-raw",
+    "family": "suse",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "alt-no-overlays-helper",
+    "family": "alt",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "alt-no-overlays-raw",
+    "family": "alt",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "alpine-no-overlays-helper",
+    "family": "alpine",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "alpine-no-overlays-raw",
+    "family": "alpine",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "void-no-overlays-helper",
+    "family": "void",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "void-no-overlays-raw",
+    "family": "void",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "nix-no-overlays-helper",
+    "family": "nix",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "nix-no-overlays-raw",
+    "family": "nix",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "solus-no-overlays-helper",
+    "family": "solus",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "solus-no-overlays-raw",
+    "family": "solus",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "clear-no-overlays-helper",
+    "family": "clear",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "clear-no-overlays-raw",
+    "family": "clear",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "unknown-no-overlays-helper",
+    "family": "unknown",
+    "helper_available": true,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   },
+   {
+    "label": "unknown-no-overlays-raw",
+    "family": "unknown",
+    "helper_available": false,
+    "argv": null,
+    "note": "Overlay'ев у семейства нет вовсе — ставить нечего."
+   }
+  ]
+ },
+ "install_argv": {
+  "note": "Единственный ответ движка на «какой командой поставить эти пакеты»: таблица флагов install_cmd плюс выбор «именованный путь org.rexon.pkg или сырой pkexec». Ожидаемые команды записаны руками, а не сняты с движка. ⛔Ни одна из них не выполнялась: живую систему проверка не трогает.",
+  "commands": [
+   {
+    "label": "arch-raw",
+    "family": "arch",
+    "packages": [
+     "mpv",
+     "mpvpaper"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "pacman",
+     "-S",
+     "--needed",
+     "--noconfirm",
+     "mpv",
+     "mpvpaper"
+    ],
+    "note": "Именно тот случай, ради которого всё и затевалось: прежняя таблица движка обоев шла БЕЗ --needed и переустанавливала уже стоящий mpv."
+   },
+   {
+    "label": "debian-raw",
+    "family": "debian",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "apt-get",
+     "install",
+     "-y",
+     "--no-install-recommends",
+     "mpv"
+    ],
+    "note": "Второе расхождение: было `apt install -y` — интерфейс, который сам apt объявляет нестабильным для скриптов, и без отсечения рекомендованных."
+   },
+   {
+    "label": "fedora-raw",
+    "family": "fedora",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "dnf",
+     "install",
+     "-y",
+     "mpv"
+    ],
+    "note": "Единственное из трёх семейств прежней таблицы, где команда совпадала."
+   },
+   {
+    "label": "suse-raw",
+    "family": "suse",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "zypper",
+     "install",
+     "-y",
+     "--no-recommends",
+     "mpv"
+    ],
+    "note": "Раньше openSUSE отвечал «Неизвестный пакетный менеджер» при полностью известном менеджере."
+   },
+   {
+    "label": "gentoo-raw",
+    "family": "gentoo",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "emerge",
+     "--ask=n",
+     "--quiet",
+     "mpv"
+    ],
+    "note": "Восьмёрка добавленных."
+   },
+   {
+    "label": "alpine-raw",
+    "family": "alpine",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "apk",
+     "add",
+     "--no-progress",
+     "mpv"
+    ],
+    "note": "Восьмёрка добавленных."
+   },
+   {
+    "label": "void-raw",
+    "family": "void",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "xbps-install",
+     "-y",
+     "mpv"
+    ],
+    "note": "Восьмёрка добавленных."
+   },
+   {
+    "label": "solus-raw",
+    "family": "solus",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "eopkg",
+     "it",
+     "-y",
+     "mpv"
+    ],
+    "note": "Восьмёрка добавленных."
+   },
+   {
+    "label": "clear-raw",
+    "family": "clear",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "swupd",
+     "bundle-add",
+     "mpv"
+    ],
+    "note": "Восьмёрка добавленных."
+   },
+   {
+    "label": "alt-raw",
+    "family": "alt",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "pkexec",
+     "apt-get",
+     "install",
+     "-y",
+     "mpv"
+    ],
+    "note": "ALT — APT-RPM: apt-get есть, а --no-install-recommends нет. Ещё довод против рукописных копий: различие семейств уже учтено в движке."
+   },
+   {
+    "label": "nix-raw",
+    "family": "nix",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": [
+     "nix-env",
+     "-iA",
+     "nixpkgs.mpv"
+    ],
+    "note": "NixOS ставит в профиль ПОЛЬЗОВАТЕЛЯ: pkexec здесь был бы прямой ошибкой, и имя пакета получает префикс nixpkgs."
+   },
+   {
+    "label": "unknown-raw",
+    "family": "unknown",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": false,
+    "argv": null,
+    "note": "Менеджер не опознан — команды нет, человеку говорится доустановить руками (install_deps_unknown_message)."
+   },
+   {
+    "label": "arch-named-helper",
+    "family": "arch",
+    "packages": [
+     "mpv",
+     "mpvpaper"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "arch",
+     "install",
+     "mpv",
+     "mpvpaper"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "debian-named-helper",
+    "family": "debian",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "debian",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "fedora-named-helper",
+    "family": "fedora",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "fedora",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "suse-named-helper",
+    "family": "suse",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "suse",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "gentoo-named-helper",
+    "family": "gentoo",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "gentoo",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "alpine-named-helper",
+    "family": "alpine",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "alpine",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "void-named-helper",
+    "family": "void",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "void",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "solus-named-helper",
+    "family": "solus",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "solus",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "clear-named-helper",
+    "family": "clear",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "clear",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "alt-named-helper",
+    "family": "alt",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "pkexec",
+     "/usr/local/lib/rexon-pkg-helper",
+     "alt",
+     "install",
+     "mpv"
+    ],
+    "note": "Команду собирает сам helper из встроенной таблицы — она с install_cmd совпадает слово в слово, и лишнего пароля нет."
+   },
+   {
+    "label": "nix-named-helper",
+    "family": "nix",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": [
+     "nix-env",
+     "-iA",
+     "nixpkgs.mpv"
+    ],
+    "note": "Nix в PKG_HELPER_FAMILIES не входит и root не нужен — ответ тот же, что и без helper'а."
+   },
+   {
+    "label": "unknown-named-helper",
+    "family": "unknown",
+    "packages": [
+     "mpv"
+    ],
+    "helper_available": true,
+    "argv": null,
+    "note": "Наличие helper'а неизвестного менеджера не опознаёт."
+   },
+   {
+    "label": "empty-packages-raw",
+    "family": "arch",
+    "packages": [],
+    "helper_available": false,
+    "argv": null,
+    "note": "Ставить нечего: «pacman -S --needed --noconfirm» без единого имени вернул бы от имени root ошибку использования."
+   },
+   {
+    "label": "empty-packages-named",
+    "family": "arch",
+    "packages": [],
+    "helper_available": true,
+    "argv": null,
+    "note": "То же и при развёрнутом helper'е."
+   },
+   {
+    "label": "unsafe-name-refused",
+    "family": "arch",
+    "packages": [
+     "-evil"
+    ],
+    "helper_available": true,
+    "argv": null,
+    "note": "⛔ 25.09.2026: прежде здесь стоял СЫРОЙ ОТКАТ — имя-флаг именованный помощник отвергал, и движок запускал то же имя через `pkexec pacman -S -evil` от root. Отказ помощника, приводящий к запуску без помощника, — не защита. Теперь имя, которое не имя (флаг, путь, файл пакета), отвергают САМИ таблицы команд: команды нет ни named, ни сырой."
+   },
+   {
+    "label": "path-name-refused-named",
+    "family": "debian",
+    "packages": [
+     "/tmp/evil.deb"
+    ],
+    "helper_available": true,
+    "argv": null,
+    "note": "Путь вместо имени: apt-get поставил бы ЛОКАЛЬНЫЙ ФАЙЛ, а его сценарии установки — от root. Команды нет."
+   },
+   {
+    "label": "path-name-refused-raw",
+    "family": "debian",
+    "packages": [
+     "/tmp/evil.deb"
+    ],
+    "helper_available": false,
+    "argv": null,
+    "note": "То же без помощника: сырой путь закрыт ровно так же, иначе отказ помощника был бы приглашением обойти его."
+   },
+   {
+    "label": "file-name-refused-raw",
+    "family": "fedora",
+    "packages": [
+     "evil.rpm"
+    ],
+    "helper_available": false,
+    "argv": null,
+    "note": "Файл пакета берётся из ТЕКУЩЕГО каталога — слэша в таком аргументе нет вовсе, поэтому проверяется и хвост имени."
+   },
+   {
+    "label": "dotdot-name-refused-raw",
+    "family": "arch",
+    "packages": [
+     "../../etc/passwd"
+    ],
+    "helper_available": false,
+    "argv": null,
+    "note": "Обход каталогов: «..» в имени пакета не бывает никогда."
+   }
+  ]
+ }
+}

@@ -1,0 +1,32 @@
+# rexon-splash-overlay — проигрывание видео на самом верхнем слое
+# (wlr-layer-shell OVERLAY) в сессии KWin Wayland (Plasma 6).
+#
+# Переиспользуемый компонент заставки входа Rexon: рисует видео поверх всего
+# экрана через встроенную libmpv (render API, OpenGL/GLES2) на EGL-поверхности
+# wl_egl_window. Внешний контроллер управляет проигрывателем по обычному
+# JSON IPC mpv (--ipc). Процесс держит последний кадр до SIGTERM или команды
+# «quit» по IPC — ровно как самостоятельный mpv, которым сейчас пользуется
+# оркестратор заставки.
+
+[package]
+name = "rexon-splash-overlay"
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0"
+
+[[bin]]
+name = "rexon-splash-overlay"
+path = "src/main.rs"
+
+[dependencies]
+# Слой-шелл, реестр, вывод, композитор; ре-экспортирует wayland-client.
+smithay-client-toolkit = "0.19"
+# WlEglSurface → *mut wl_egl_window (нативное окно для EGL).
+wayland-egl = "0.32"
+# Линкует libEGL, даёт EGL 1.4/1.5 API.
+khronos-egl = { version = "6", features = ["static"] }
+# eventfd/poll/signal.
+libc = "0.2"
+# Общий журнал Rexon (`applog`): строки заставки ложатся в тот же файл, что и
+# строки окна, с той же ротацией. Ядро без Qt — заставке оно Qt не приносит.
+rexon-core = { path = "../rexon-core" }

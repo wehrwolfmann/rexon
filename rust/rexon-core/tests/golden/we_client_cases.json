@@ -1,0 +1,704 @@
+{
+ "autostart": {
+  "desktop_content": "[Desktop Entry]\nType=Application\nName=Rexon Wallpaper Engine\nName[ru]=Rexon: движок обоев\nComment=Start the wallpaper engine (waywallen) at login\nComment[ru]=Автозапуск движка обоев (waywallen) при входе в систему\nExec=\"/home/tester/.local/share/waywallen/waywallen.AppImage\" --no-ui --no-tray\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n",
+  "desktop_name": "rexon-wallpaper-engine.desktop",
+  "desktop_path_default": "/home/tester/.config/autostart/rexon-wallpaper-engine.desktop",
+  "desktop_path_xdg": "/tmp/cfg/autostart/rexon-wallpaper-engine.desktop",
+  "messages": {
+   "disabled": "Автозапуск отключён",
+   "no_binary": "Движок waywallen не найден — автозапуск не настроен.",
+   "systemd": "Автозапуск включён (systemd user unit)",
+   "xdg": "Автозапуск включён (XDG autostart)"
+  },
+  "unit_content": "[Unit]\nDescription=Rexon: wallpaper engine (waywallen)\n# Файл управляется Rexon (вкладка WE → «Start at login»); правки затрутся.\nAfter=graphical-session.target\nPartOf=graphical-session.target\n\n[Service]\nExecStart=\"/home/tester/.local/share/waywallen/waywallen.AppImage\" --no-ui --no-tray\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n",
+  "unit_name": "rexon-wallpaper-engine.service",
+  "unit_path_default": "/home/tester/.config/systemd/user/rexon-wallpaper-engine.service",
+  "unit_path_xdg_python_quirk": "/home/tester/.config/systemd/user/rexon-wallpaper-engine.service"
+ },
+ "busctl": {
+  "argv": [
+   "busctl",
+   "--user",
+   "--json=short",
+   "call",
+   "org.waywallen.waywallen.Daemon",
+   "/org/waywallen/waywallen/Daemon",
+   "org.waywallen.waywallen.Daemon1",
+   "ListTasks"
+  ],
+  "parsed": {
+   "broken": [],
+   "empty": [],
+   "ok": [
+    [
+     1,
+     "scan",
+     "Библиотека",
+     1785000896000,
+     "running"
+    ],
+    [
+     2,
+     "download",
+     "wp-42",
+     1785000900000,
+     "failed: нет сети"
+    ]
+   ]
+  },
+  "stdout": {
+   "broken": "{not json",
+   "empty": "{\"type\": \"a(tssxs)\", \"data\": [[]]}",
+   "ok": "{\"type\": \"a(tssxs)\", \"data\": [[[1, \"scan\", \"\\u0411\\u0438\\u0431\\u043b\\u0438\\u043e\\u0442\\u0435\\u043a\\u0430\", 1785000896000, \"running\"], [2, \"download\", \"wp-42\", 1785000900000, \"failed: \\u043d\\u0435\\u0442 \\u0441\\u0435\\u0442\\u0438\"]]]}"
+  }
+ },
+ "daemon_fallbacks": [
+  "~/.local/bin/waywallen"
+ ],
+ "dbus": {
+  "iface": "org.waywallen.waywallen.Daemon1",
+  "path": "/org/waywallen/waywallen/Daemon",
+  "poll_limit": 24,
+  "poll_ms": 500,
+  "service": "org.waywallen.waywallen.Daemon"
+ },
+ "find_daemon_probe_order": [
+  [
+   "isfile",
+   "<PKG>/vendor/waywallen.AppImage"
+  ],
+  [
+   "isfile",
+   "<PKG>/vendor/waywallen"
+  ],
+  [
+   "isfile",
+   "/usr/bin/waywallen"
+  ],
+  [
+   "isfile",
+   "/usr/lib/rexon/engine/waywallen.AppImage"
+  ],
+  [
+   "isfile",
+   "/home/tester/.local/share/waywallen/waywallen.AppImage"
+  ],
+  [
+   "which",
+   "waywallen"
+  ],
+  [
+   "isfile",
+   "/home/tester/.local/bin/waywallen"
+  ]
+ ],
+ "generic": [
+  {
+   "field": "health",
+   "hex": "08335200",
+   "payload_hex": "",
+   "request_id": 51
+  },
+  {
+   "field": "wallpaper_get",
+   "hex": "0834d202050a03373737",
+   "payload_hex": "0a03373737",
+   "request_id": 52
+  },
+  {
+   "field": "autostart_set",
+   "hex": "0835920400",
+   "payload_hex": "",
+   "request_id": 53
+  },
+  {
+   "field": "renderer_fps",
+   "hex": "08368201080a046d6f6e30101e",
+   "payload_hex": "0a046d6f6e30101e",
+   "request_id": 54
+  }
+ ],
+ "home": "/home/tester",
+ "messages": {
+  "launch_failed": "Не удалось запустить /home/tester/.local/share/waywallen/waywallen.AppImage",
+  "not_found": "Движок waywallen не найден. Ожидается вшитый AppImage (rexon/vendor/), пакет дистрибутива (/usr/bin/waywallen), движок пакета (/usr/lib/rexon/engine/waywallen.AppImage), ~/.local/share/waywallen/waywallen.AppImage, в PATH или ~/.local/bin/waywallen.",
+  "poll_timeout": "Демон waywallen не поднялся за 12 секунд."
+ },
+ "next_id_after": 56,
+ "request_payload_fields": [
+  [
+   "health",
+   10
+  ],
+  [
+   "renderer_spawn",
+   11
+  ],
+  [
+   "renderer_list",
+   12
+  ],
+  [
+   "renderer_play",
+   13
+  ],
+  [
+   "renderer_pause",
+   14
+  ],
+  [
+   "renderer_mouse",
+   15
+  ],
+  [
+   "renderer_fps",
+   16
+  ],
+  [
+   "renderer_kill",
+   17
+  ],
+  [
+   "renderer_plugin_list",
+   18
+  ],
+  [
+   "wallpaper_list",
+   19
+  ],
+  [
+   "wallpaper_scan",
+   20
+  ],
+  [
+   "source_list",
+   21
+  ],
+  [
+   "wallpaper_apply",
+   22
+  ],
+  [
+   "display_list",
+   23
+  ],
+  [
+   "settings_get",
+   24
+  ],
+  [
+   "settings_set",
+   25
+  ],
+  [
+   "library_list",
+   26
+  ],
+  [
+   "library_add",
+   27
+  ],
+  [
+   "library_remove",
+   28
+  ],
+  [
+   "library_auto_detect",
+   29
+  ],
+  [
+   "playlist_list",
+   30
+  ],
+  [
+   "playlist_create",
+   31
+  ],
+  [
+   "playlist_delete",
+   32
+  ],
+  [
+   "playlist_rename",
+   33
+  ],
+  [
+   "playlist_set_items",
+   34
+  ],
+  [
+   "playlist_set_mode",
+   35
+  ],
+  [
+   "playlist_set_interval",
+   36
+  ],
+  [
+   "playlist_activate",
+   37
+  ],
+  [
+   "playlist_deactivate",
+   38
+  ],
+  [
+   "playlist_status",
+   39
+  ],
+  [
+   "display_layout_set",
+   40
+  ],
+  [
+   "gpu_list",
+   41
+  ],
+  [
+   "wallpaper_get",
+   42
+  ],
+  [
+   "wallpaper_property_set",
+   43
+  ],
+  [
+   "wallpaper_apply_via_portal",
+   44
+  ],
+  [
+   "display_rename",
+   45
+  ],
+  [
+   "plugin_install",
+   46
+  ],
+  [
+   "plugin_list",
+   47
+  ],
+  [
+   "tag_list",
+   48
+  ],
+  [
+   "content_rating_list",
+   49
+  ],
+  [
+   "remote_availability",
+   50
+  ],
+  [
+   "remote_search",
+   51
+  ],
+  [
+   "remote_download",
+   52
+  ],
+  [
+   "remote_uninstall",
+   53
+  ],
+  [
+   "remote_details",
+   54
+  ],
+  [
+   "playlist_jump_to",
+   58
+  ],
+  [
+   "wallpaper_layout_set",
+   59
+  ],
+  [
+   "plugin_delete",
+   60
+  ],
+  [
+   "wallpaper_remove",
+   61
+  ],
+  [
+   "plugin_inspect",
+   62
+  ],
+  [
+   "plugin_update_check",
+   63
+  ],
+  [
+   "plugin_update_install",
+   64
+  ],
+  [
+   "autostart_get",
+   65
+  ],
+  [
+   "autostart_set",
+   66
+  ],
+  [
+   "plugin_action",
+   69
+  ],
+  [
+   "subscription_status",
+   70
+  ],
+  [
+   "subscription_set",
+   71
+  ],
+  [
+   "qr_login_cancel",
+   72
+  ],
+  [
+   "remote_settings_patch",
+   73
+  ],
+  [
+   "wallpaper_unsubscribe",
+   74
+  ],
+  [
+   "global_pause_toggle",
+   75
+  ],
+  [
+   "global_pause_set",
+   76
+  ],
+  [
+   "global_mute_set",
+   77
+  ],
+  [
+   "global_stop_set",
+   78
+  ],
+  [
+   "canvas_list",
+   79
+  ],
+  [
+   "canvas_create",
+   80
+  ],
+  [
+   "canvas_update",
+   81
+  ],
+  [
+   "canvas_delete",
+   82
+  ],
+  [
+   "canvas_layout_set",
+   83
+  ],
+  [
+   "canvas_member_configure",
+   84
+  ],
+  [
+   "plugin_translation_list",
+   85
+  ],
+  [
+   "playlist_get",
+   86
+  ],
+  [
+   "playlist_update",
+   87
+  ],
+  [
+   "log_read",
+   88
+  ],
+  [
+   "wallpaper_lookup",
+   89
+  ],
+  [
+   "display_pause_set",
+   90
+  ],
+  [
+   "wallpaper_hide",
+   91
+  ],
+  [
+   "library_rename",
+   92
+  ]
+ ],
+ "requests": [
+  {
+   "hex": "08015200",
+   "name": "health",
+   "request_id": 1
+  },
+  {
+   "hex": "08029a01063a0408011001",
+   "name": "wallpaper_list_default",
+   "request_id": 2
+  },
+  {
+   "hex": "08039a01453a04080310024208d0bdd0bed187d18c4a05766964656f4a037765625205616e696d65520ad0b3d0bed180d0bed0b45a064d61747572655a0c5175657374696f6e61626c65",
+   "name": "wallpaper_list_full",
+   "request_id": 3
+  },
+  {
+   "hex": "0804ba0100",
+   "name": "display_list",
+   "request_id": 4
+  },
+  {
+   "hex": "0805b2010c0a0a31323334353637383930",
+   "name": "wallpaper_apply_plain",
+   "request_id": 5
+  },
+  {
+   "hex": "0806b2011c0a0a313233343536373839302a0208012a0208022a06088180808010",
+   "name": "wallpaper_apply_displays",
+   "request_id": 6
+  },
+  {
+   "hex": "0807a20100",
+   "name": "wallpaper_scan",
+   "request_id": 7
+  },
+  {
+   "hex": "0808d2020c0a0a31323334353637383930",
+   "name": "wallpaper_get",
+   "request_id": 8
+  },
+  {
+   "hex": "0809da02220a0a31323334353637383930120b736368656d65636f6c6f721a073120302e352030",
+   "name": "wallpaper_property_set",
+   "request_id": 9
+  },
+  {
+   "hex": "080ada021b0a0a31323334353637383930120b736368656d65636f6c6f721a00",
+   "name": "wallpaper_property_reset",
+   "request_id": 10
+  },
+  {
+   "hex": "080bf20100",
+   "name": "playlist_list",
+   "request_id": 11
+  },
+  {
+   "hex": "080cba0200",
+   "name": "playlist_status",
+   "request_id": 12
+  },
+  {
+   "hex": "080dfa01130a0cd09dd0bed187d0bdd0bed0b9100118ac02",
+   "name": "playlist_create_default",
+   "request_id": 13
+  },
+  {
+   "hex": "080efa011e0a0ed094d0bdd0b5d0b2d0bdd0bed0b91002188407220161220162220163",
+   "name": "playlist_create_full",
+   "request_id": 14
+  },
+  {
+   "hex": "080f8202020807",
+   "name": "playlist_delete",
+   "request_id": 15
+  },
+  {
+   "hex": "08108a021508071211d09dd0bed0b2d0bed0b520d0b8d0bcd18f",
+   "name": "playlist_rename",
+   "request_id": 16
+  },
+  {
+   "hex": "08119202080807120178120179",
+   "name": "playlist_set_items",
+   "request_id": 17
+  },
+  {
+   "hex": "08129a020408071002",
+   "name": "playlist_set_mode",
+   "request_id": 18
+  },
+  {
+   "hex": "0813a20205080710d804",
+   "name": "playlist_set_interval",
+   "request_id": 19
+  },
+  {
+   "hex": "0814aa02020807",
+   "name": "playlist_activate_plain",
+   "request_id": 20
+  },
+  {
+   "hex": "0815aa020c080712020803120208051801",
+   "name": "playlist_activate_full",
+   "request_id": 21
+  },
+  {
+   "hex": "0816b20200",
+   "name": "playlist_deactivate_plain",
+   "request_id": 22
+  },
+  {
+   "hex": "0817b202060a0208031009",
+   "name": "playlist_deactivate_full",
+   "request_id": 23
+  },
+  {
+   "hex": "0818d2030b08071207656e7472792d31",
+   "name": "playlist_jump_to",
+   "request_id": 24
+  },
+  {
+   "hex": "0819ea02180a0444502d311210d09ed181d0bdd0bed0b2d0bdd0bed0b9",
+   "name": "display_rename",
+   "request_id": 25
+  },
+  {
+   "hex": "081aea02080a0444502d311801",
+   "name": "display_rename_clear",
+   "request_id": 26
+  },
+  {
+   "hex": "081bc202060a0444502d31",
+   "name": "display_layout_set_empty",
+   "request_id": 27
+  },
+  {
+   "hex": "081cc202080a0444502d31382a",
+   "name": "display_layout_set_id",
+   "request_id": 28
+  },
+  {
+   "hex": "081dc2021c0a0444502d311212080110021801200338014001480150325819382a",
+   "name": "display_layout_set_full",
+   "request_id": 29
+  },
+  {
+   "hex": "081ec202100a0444502d31180120013001382a4001",
+   "name": "display_layout_set_clears",
+   "request_id": 30
+  },
+  {
+   "hex": "081f6200",
+   "name": "renderer_list",
+   "request_id": 31
+  },
+  {
+   "hex": "0820920100",
+   "name": "renderer_plugin_list",
+   "request_id": 32
+  },
+  {
+   "hex": "08218a01060a046d6f6e30",
+   "name": "renderer_kill",
+   "request_id": 33
+  },
+  {
+   "hex": "0822ca0200",
+   "name": "gpu_list",
+   "request_id": 34
+  },
+  {
+   "hex": "0823820300",
+   "name": "tag_list",
+   "request_id": 35
+  },
+  {
+   "hex": "08248a0300",
+   "name": "content_rating_list",
+   "request_id": 36
+  },
+  {
+   "hex": "0825aa0100",
+   "name": "source_list",
+   "request_id": 37
+  },
+  {
+   "hex": "0826d20100",
+   "name": "library_list",
+   "request_id": 38
+  },
+  {
+   "hex": "0827da011b0a152f686f6d652f7465737465722fd09ed0b1d0bed0b812027765",
+   "name": "library_add",
+   "request_id": 39
+  },
+  {
+   "hex": "0828e201020803",
+   "name": "library_remove",
+   "request_id": 40
+  },
+  {
+   "hex": "0829ea0100",
+   "name": "library_auto_detect",
+   "request_id": 41
+  },
+  {
+   "hex": "082ac20100",
+   "name": "settings_get",
+   "request_id": 42
+  },
+  {
+   "hex": "082bfa0200",
+   "name": "plugin_list",
+   "request_id": 43
+  },
+  {
+   "hex": "082cf2020e0a0c2f746d702f6f77652e7a6970",
+   "name": "plugin_install",
+   "request_id": 44
+  },
+  {
+   "hex": "082d920300",
+   "name": "remote_availability",
+   "request_id": 45
+  },
+  {
+   "hex": "082e9a0300",
+   "name": "remote_search_plain",
+   "request_id": 46
+  },
+  {
+   "hex": "082f9a03290a05737465616d120ad0b3d0bed180d0bed0b41a07706f70756c617220032a05616e696d652a02346b",
+   "name": "remote_search_full",
+   "request_id": 47
+  },
+  {
+   "hex": "0830b2030b0a05737465616d12023432",
+   "name": "remote_details",
+   "request_id": 48
+  },
+  {
+   "hex": "0831a2030b0a05737465616d12023432",
+   "name": "remote_download",
+   "request_id": 49
+  },
+  {
+   "hex": "0832aa030412023432",
+   "name": "remote_uninstall",
+   "request_id": 50
+  }
+ ],
+ "rexon_pkg_dir": "<PKG>",
+ "settings_set": {
+  "global_hex": "60ac026a037765628801fa01",
+  "hex": "0837ca012b0a0c60ac026a037765628801fa0112120a036f7765120b0a090a036670731202333012070a036d70761200",
+  "plugins": {
+   "mpv": "",
+   "owe": "0a090a0366707312023330"
+  },
+  "request_id": 55
+ }
+}

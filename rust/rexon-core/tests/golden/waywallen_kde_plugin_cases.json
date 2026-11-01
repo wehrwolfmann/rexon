@@ -1,0 +1,749 @@
+{
+  "is_kde": [
+    {
+      "env": "KDE",
+      "result": true
+    },
+    {
+      "env": "plasma",
+      "result": true
+    },
+    {
+      "env": "KDE Plasma",
+      "result": true
+    },
+    {
+      "env": "GNOME",
+      "result": false
+    },
+    {
+      "env": "",
+      "result": false
+    },
+    {
+      "env": "xfce",
+      "result": false
+    },
+    {
+      "env": "kde-plasma",
+      "result": true
+    },
+    {
+      "env": "X-Cinnamon",
+      "result": false
+    },
+    {
+      "env": "Plasma",
+      "result": true
+    }
+  ],
+  "const": {
+    "PLUGIN_ID": "org.waywallen.kde",
+    "PLUGIN_TYPE": "Plasma/Wallpaper",
+    "RUNTIME_SO_NAME": "libwaywallen-display-qml.so",
+    "RUNTIME_SO_REL": "contents/ui/Plugin/WaywallenDisplayEmbed/libwaywallen-display-qml.so",
+    "BUNDLE_DIR": "{BUNDLE}",
+    "INSTALL_DIR": "/home/user/.local/share/plasma/wallpapers/org.waywallen.kde",
+    "VERSION_MARKER": "/home/user/.local/share/plasma/wallpapers/org.waywallen.kde/.rexon-installed-version"
+  },
+  "bundle_version": "e9c240a1da4c9327",
+  "file_sha_vectors": {
+    "empty": {
+      "data": "",
+      "sha": "e3b0c44298fc1c14"
+    },
+    "abc": {
+      "data": "abc",
+      "sha": "ba7816bf8f01cfea"
+    },
+    "hello": {
+      "data": "hello world",
+      "sha": "b94d27b9934d3e08"
+    }
+  },
+  "select_plugin_call": {
+    "argv": [
+      "dbus-send",
+      "--session",
+      "--print-reply",
+      "--dest=org.kde.plasmashell",
+      "--type=method_call",
+      "/PlasmaShell",
+      "org.kde.PlasmaShell.evaluateScript",
+      "string:var ds = desktops();for (var i = 0; i < ds.length; i++) {  ds[i].wallpaperPlugin = 'org.waywallen.kde';}"
+    ],
+    "timeout": 15,
+    "text": false,
+    "capture_output": true
+  },
+  "current_plugins_call": {
+    "argv": [
+      "qdbus6",
+      "org.kde.plasmashell",
+      "/PlasmaShell",
+      "org.kde.PlasmaShell.evaluateScript",
+      "var ds = desktops(); var out = [];for (var i = 0; i < ds.length; i++) out.push(ds[i].wallpaperPlugin);print(out.join(','));"
+    ],
+    "timeout": 10,
+    "text": true,
+    "capture_output": true
+  },
+  "current_plugins_parsed": [
+    "org.waywallen.kde",
+    "org.kde.image"
+  ],
+  "current_plugins_parse": [
+    {
+      "stdout": "org.waywallen.kde,org.kde.image",
+      "parsed": [
+        "org.waywallen.kde",
+        "org.kde.image"
+      ]
+    },
+    {
+      "stdout": "org.waywallen.kde",
+      "parsed": [
+        "org.waywallen.kde"
+      ]
+    },
+    {
+      "stdout": "",
+      "parsed": []
+    },
+    {
+      "stdout": "a,,b",
+      "parsed": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "stdout": " x , y ",
+      "parsed": [
+        "x ",
+        " y"
+      ]
+    }
+  ],
+  "current_plugins_rc1": [
+    {
+      "stdout": "org.waywallen.kde",
+      "rc": 1,
+      "parsed": []
+    }
+  ],
+  "restart_calls": [
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "reset-failed",
+        "plasma-plasmashell.service"
+      ],
+      "timeout": 5,
+      "text": false,
+      "capture_output": true
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "restart",
+        "plasma-plasmashell.service"
+      ],
+      "timeout": 15,
+      "text": false,
+      "capture_output": true
+    }
+  ],
+  "install_cases": {
+    "fresh_install": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-i",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30
+      ],
+      "ok": true,
+      "msg": "плагин установлен",
+      "installed_now": true,
+      "marker_written": "0123456789abcdef"
+    },
+    "up_to_date": {
+      "argv": [],
+      "timeouts": [],
+      "ok": true,
+      "msg": "плагин уже установлен (актуальная версия)",
+      "installed_now": false,
+      "marker_written": null
+    },
+    "upgrade_ok": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-u",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30
+      ],
+      "ok": true,
+      "msg": "плагин обновлён",
+      "installed_now": true,
+      "marker_written": "0123456789abcdef"
+    },
+    "upgrade_fallback": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-u",
+          "{BUNDLE}"
+        ],
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-r",
+          "org.waywallen.kde"
+        ],
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-i",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30,
+        30,
+        30
+      ],
+      "ok": true,
+      "msg": "плагин обновлён",
+      "installed_now": true,
+      "marker_written": "0123456789abcdef"
+    },
+    "upgrade_fallback_fail": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-u",
+          "{BUNDLE}"
+        ],
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-r",
+          "org.waywallen.kde"
+        ],
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-i",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30,
+        30,
+        30
+      ],
+      "ok": false,
+      "msg": "kpackagetool6 -u rc=1: boom",
+      "installed_now": false,
+      "marker_written": null
+    },
+    "fresh_fail": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-i",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30
+      ],
+      "ok": false,
+      "msg": "kpackagetool6 -i rc=1: boom",
+      "installed_now": false,
+      "marker_written": null
+    },
+    "fresh_no_bundle_v": {
+      "argv": [
+        [
+          "kpackagetool6",
+          "--type",
+          "Plasma/Wallpaper",
+          "-i",
+          "{BUNDLE}"
+        ]
+      ],
+      "timeouts": [
+        30
+      ],
+      "ok": true,
+      "msg": "плагин установлен",
+      "installed_now": true,
+      "marker_written": null
+    }
+  },
+  "install_no_tool": {
+    "result": [
+      false,
+      "kpackagetool6 не найден — нужен KDE Plasma 6",
+      false
+    ]
+  },
+  "path_inputs": {
+    "module_dir": "/usr/local/lib/rexon/rexon",
+    "home": "/home/user",
+    "bundle_dir_expected": "/usr/local/lib/rexon/rexon/kpackage/org.waywallen.kde",
+    "install_dir_expected": "/home/user/.local/share/plasma/wallpapers/org.waywallen.kde",
+    "version_marker_expected": "/home/user/.local/share/plasma/wallpapers/org.waywallen.kde/.rexon-installed-version"
+  },
+  "version_guard_cases": {
+    "defect_2026_10_02_installed_newer_untouched": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "da1b8e3007238009",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": true,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "keep_newer",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_newer_daemon_unknown": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": null,
+        "consent": false
+      },
+      "expected": {
+        "action": "keep_newer",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_newer_foreign_by_sha": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "keep_newer",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_older_upgrade": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.3.3",
+          "marker": true,
+          "runtime_sha": "e9c240a1da4c9327"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": "0.3.3",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_older_stripped_sha_upgrade": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "da1b8e3007238009"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": "0.3.3",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "ours_marker_only_upgrade": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": true,
+          "runtime_sha": "0000feedfacecafe"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "foreign_unknown_ask": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "0000feedfacecafe"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "ask_foreign",
+        "installed_version": null,
+        "notice": "foreign_unknown",
+        "offers_install": true,
+        "select": true
+      }
+    },
+    "foreign_unknown_consent": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "0000feedfacecafe"
+        },
+        "daemon_version": "0.4.3",
+        "consent": true
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "same_runtime_noop": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": true,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "keep",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "same_version_foreign_noop": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "keep",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "same_version_ours_patch_refresh": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": true,
+          "runtime_sha": "0000feedfacecafe"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "fresh_install": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "install",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "fresh_bundle_older_than_daemon_blocked": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "blocked",
+        "installed_version": null,
+        "notice": "bundle_incompatible",
+        "bundle_older": true,
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "fresh_bundle_newer_than_daemon_blocked": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.3.9",
+        "consent": false
+      },
+      "expected": {
+        "action": "blocked",
+        "installed_version": null,
+        "notice": "bundle_incompatible",
+        "bundle_older": false,
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "older_installed_bundle_incompatible_blocked": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.2.8",
+          "marker": false,
+          "runtime_sha": "0000feedfacecafe"
+        },
+        "daemon_version": "0.4.3",
+        "consent": false
+      },
+      "expected": {
+        "action": "blocked",
+        "installed_version": "0.2.8",
+        "notice": "bundle_incompatible",
+        "bundle_older": true,
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "older_installed_still_works_bundle_too_new": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.3.3",
+          "marker": false,
+          "runtime_sha": "e9c240a1da4c9327"
+        },
+        "daemon_version": "0.3.9",
+        "consent": false
+      },
+      "expected": {
+        "action": "blocked",
+        "installed_version": "0.3.3",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_newer_incompatible_offer": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.3.9",
+        "consent": false
+      },
+      "expected": {
+        "action": "keep_newer",
+        "installed_version": "0.4.0",
+        "notice": "installed_incompatible",
+        "offers_install": true,
+        "select": false
+      }
+    },
+    "installed_newer_incompatible_consent": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.3.9",
+        "consent": true
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "installed_newer_consent_but_compatible_untouched": {
+      "input": {
+        "bundle_version": "0.3.3",
+        "bundle_sha": "e9c240a1da4c9327",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.0",
+          "marker": false,
+          "runtime_sha": "bc9e0fbd268e448a"
+        },
+        "daemon_version": "0.4.3",
+        "consent": true
+      },
+      "expected": {
+        "action": "keep_newer",
+        "installed_version": "0.4.0",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "daemon_beyond_table_no_verdict": {
+      "input": {
+        "bundle_version": "0.4.0",
+        "bundle_sha": "bc9e0fbd268e448a",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.3.3",
+          "marker": false,
+          "runtime_sha": "e9c240a1da4c9327"
+        },
+        "daemon_version": "0.5.0",
+        "consent": false
+      },
+      "expected": {
+        "action": "upgrade",
+        "installed_version": "0.3.3",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    }
+  },
+  "version_guard_note": "Сторож версии плагина (дефект 02.10.2026: r1062 поставил 0.3.3/v8 поверх 0.4.0/v9). Python-эталона у этого раздела нет: случаи записаны руками из правил plan_plugin и таблиц протоколов апстрима (теги 02.10.2026)."
+}

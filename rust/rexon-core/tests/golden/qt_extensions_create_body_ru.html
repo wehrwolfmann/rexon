@@ -1,0 +1,62 @@
+<p>Расширение Rexon — это обычный <b>ZIP-архив</b> с расширением <code>.rxn</code>.
+Структура одинакова для всех типов:</p>
+
+<pre>
+расширение.rxn (ZIP):
+├── manifest.json     ← ОБЯЗАТЕЛЬНО (format_version: 3)
+├── preview.png       ← 620×348 (для каталога/карточек)
+├── icon.png          ← 128×128 (списки в Rexon)
+├── install.sh        ← для desktop-tool / plugin
+├── uninstall.sh      ← для desktop-tool / plugin
+├── app.desktop       ← для desktop-tool
+├── README.md         ← опционально, описание
+└── data/             ← файлы расширения
+</pre>
+
+<h3>📋 Минимальный manifest.json</h3>
+<pre>
+{
+  "format_version": 3,
+  "id": "my-cool-theme",
+  "name": "Моя крутая тема",
+  "version": "1.0.0",
+  "author": "Я",
+  "description": "Что делает расширение",
+  "type": "theme-gtk",
+  "tags": ["dark", "modern"],
+  "license": "MIT",
+  "homepage": "https://github.com/me/my-theme",
+  "de_support": ["any"]
+}
+</pre>
+
+<h3>🎨 Категории (поле <code>type</code>)</h3>
+<p><b>Оформление</b> — Rexon ставит файлы автоматически:<br>
+<code>theme-gtk, theme-icons, theme-cursors, theme-sounds,
+theme-kde-global, theme-kde-colors, theme-kde-plasma, theme-kvantum,
+theme-window-decoration, theme-login-screen, theme-plymouth, theme-conky,
+theme-bundle, theme-plasmoid, wallpaper-pack, font-pack</code></p>
+
+<p><b>Кастомизация окружений</b> — Rexon кладёт в каталог этого рабочего
+стола и включает его же средствами:<br>
+<code>kde-kwin-script, kde-kwin-effect, kde-window-switcher,
+kde-wallpaper-plugin, theme-kde-splash, theme-kde-lockscreen,
+gnome-shell-extension, theme-gnome-shell, cinnamon-applet, cinnamon-desklet,
+cinnamon-extension, theme-cinnamon, nemo-action, theme-xfwm4, theme-marco,
+theme-lxqt</code></p>
+
+<p><b>Расширения</b> (предупреждение при установке — выполняется код):<br>
+<code>desktop-tool</code>, <code>plugin</code></p>
+
+<h3>📦 Сборка</h3>
+<pre>
+cd my-extension/
+zip -r ../my-extension.rxn .
+</pre>
+
+<p>Готовый <code>.rxn</code> можно перетащить в окно Rexon или нажать
+<b>「📦 Из файла」</b>.</p>
+
+<h3>🔗 Полная документация</h3>
+<p>В исходниках Rexon: <code>extensions/constants.py</code> — полный список
+типов и путей установки.</p>

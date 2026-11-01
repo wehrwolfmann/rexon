@@ -1,0 +1,133 @@
+{
+ "fs": {
+  "dirs": {
+   "/usr/share/plasma/look-and-feel": [
+    "org.sys.lnf"
+   ],
+   "/usr/share/plasma/look-and-feel/org.sys.lnf": [
+    "metadata.desktop"
+   ],
+   "/usr/share/icons": [
+    "breeze_cursors",
+    "breeze"
+   ],
+   "/usr/share/icons/breeze_cursors": [
+    "index.theme",
+    "cursors"
+   ],
+   "/usr/share/icons/breeze_cursors/cursors": [],
+   "/usr/share/icons/breeze": [
+    "index.theme"
+   ],
+   "/usr/share/themes": [
+    "UserGtk",
+    "SysGtk"
+   ],
+   "/usr/share/themes/UserGtk": [
+    "gtk-3.0"
+   ],
+   "/usr/share/themes/UserGtk/gtk-3.0": [],
+   "/usr/share/themes/SysGtk": [
+    "gtk-3.0"
+   ],
+   "/usr/share/themes/SysGtk/gtk-3.0": [],
+   "/H/.config/Kvantum": [
+    "NoKv",
+    "KvArc"
+   ],
+   "/H/.config/Kvantum/NoKv": [],
+   "/H/.config/Kvantum/KvArc": [
+    "KvArc.kvconfig"
+   ],
+   "/H/.local/share/color-schemes": [
+    "notcolors.txt",
+    "MyDark.colors"
+   ],
+   "/H/.local/share/plasma/desktoptheme": [
+    "MyStyle"
+   ],
+   "/H/.local/share/plasma/desktoptheme/MyStyle": [
+    "metadata.desktop"
+   ],
+   "/H/.local/share/plasma/look-and-feel": [
+    "junk",
+    "org.my.global"
+   ],
+   "/H/.local/share/plasma/look-and-feel/junk": [],
+   "/H/.local/share/plasma/look-and-feel/org.my.global": [
+    "metadata.json"
+   ],
+   "/H/.local/share/icons": [
+    "NoIndex",
+    "Bibata",
+    "Papirus"
+   ],
+   "/H/.local/share/icons/NoIndex": [],
+   "/H/.local/share/icons/Bibata": [
+    "cursors",
+    "index.theme"
+   ],
+   "/H/.local/share/icons/Bibata/cursors": [],
+   "/H/.local/share/icons/Papirus": [
+    "index.theme"
+   ],
+   "/H/.themes": [
+    "afile.txt",
+    "NoGtk",
+    "OnlyGtk2",
+    "UserGtk"
+   ],
+   "/H/.themes/NoGtk": [],
+   "/H/.themes/OnlyGtk2": [
+    "gtk-2.0"
+   ],
+   "/H/.themes/OnlyGtk2/gtk-2.0": [],
+   "/H/.themes/UserGtk": [
+    "gtk-3.0"
+   ],
+   "/H/.themes/UserGtk/gtk-3.0": []
+  },
+  "files": {
+   "/usr/share/plasma/look-and-feel/org.sys.lnf/metadata.desktop": "[Desktop Entry]\nName=X\n",
+   "/usr/share/icons/breeze_cursors/index.theme": "[Icon Theme]\nName=c\n",
+   "/usr/share/icons/breeze/index.theme": "[Icon Theme]\nDirectories=16\n",
+   "/H/.config/Kvantum/KvArc/KvArc.kvconfig": "[General]\n",
+   "/H/.local/share/color-schemes/notcolors.txt": "x",
+   "/H/.local/share/color-schemes/MyDark.colors": "[General]\n",
+   "/H/.local/share/plasma/desktoptheme/MyStyle/metadata.desktop": "[Desktop Entry]\nName=S\n",
+   "/H/.local/share/plasma/look-and-feel/org.my.global/metadata.json": "{}",
+   "/H/.local/share/icons/Bibata/index.theme": "[Icon Theme]\nName=Bibata\n",
+   "/H/.local/share/icons/Papirus/index.theme": "[Icon Theme]\nName=Papirus\nDirectories=16x16/apps\n",
+   "/H/.themes/afile.txt": ""
+  }
+ },
+ "home": "/H",
+ "expect": {
+  "gtk": [
+   "OnlyGtk2",
+   "SysGtk",
+   "UserGtk"
+  ],
+  "icons": [
+   "Papirus",
+   "breeze"
+  ],
+  "cursors": [
+   "Bibata",
+   "breeze_cursors"
+  ],
+  "kde_global": [
+   "org.my.global",
+   "org.sys.lnf"
+  ],
+  "kde_plasma": [
+   "MyStyle"
+  ],
+  "kde_colors": [
+   "MyDark"
+  ],
+  "kvantum": [
+   "KvArc"
+  ]
+ }
+}

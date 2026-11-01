@@ -1,0 +1,21 @@
+# rexon-qt-filter — модель редактора фильтров вкладки WE на Rust/cxx-qt
+# (порт waywallen ui/src/model/filter_rule_model.cpp, MIT — атрибуция в
+# NOTICE). Собирается в cdylib, грузится в Python через ctypes; прежняя
+# промежуточная C++-копия удалена 2026-07-27, это единственная модель.
+# Отдельный крейт — rexon-core НЕ трогается (там нет Qt).
+[package]
+name = "rexon-qt-filter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cxx = "1"
+cxx-qt = "0.9"
+cxx-qt-lib = { version = "0.9", features = ["qt_gui", "qt_qml"] }
+
+[build-dependencies]
+cxx-qt-build = "0.9"

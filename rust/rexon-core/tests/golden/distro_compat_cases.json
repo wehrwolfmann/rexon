@@ -1,0 +1,3112 @@
+{
+ "tables": {
+  "distro_info": {
+   "astra": {
+    "name": "Astra Linux",
+    "family": "debian",
+    "country": "RU",
+    "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+    "has_de_repos": false,
+    "warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+    ]
+   },
+   "osnova": {
+    "name": "ОСнова (НППКТ)",
+    "family": "debian",
+    "country": "RU",
+    "notes": "Debian 10 based. Закрытые репозитории, сертификация ФСТЭК.",
+    "has_de_repos": false,
+    "warnings": [
+     "OSnova is a closed distribution certified by FSTEC.",
+     "Its repositories are not public.",
+     "Rexon can manage packages, but the sources of desktop environments are limited."
+    ]
+   },
+   "alt": {
+    "name": "ALT Linux",
+    "family": "alt",
+    "country": "RU",
+    "notes": "APT-RPM: команды apt-get, но пакеты RPM. Не путать с Debian!",
+    "has_de_repos": true,
+    "warnings": [
+     "ALT Linux uses APT-RPM: apt-get with RPM packages.",
+     "Desktop environment package names differ from Debian and Fedora."
+    ]
+   },
+   "altlinux": {
+    "name": "ALT Linux",
+    "family": "alt",
+    "country": "RU",
+    "notes": "Синоним alt.",
+    "has_de_repos": true,
+    "warnings": []
+   },
+   "simply": {
+    "name": "Simply Linux",
+    "family": "alt",
+    "country": "RU",
+    "notes": "ALT-based, для домашних пользователей. XFCE по умолчанию.",
+    "has_de_repos": true,
+    "warnings": []
+   },
+   "rosa": {
+    "name": "ROSA Linux",
+    "family": "fedora",
+    "country": "RU",
+    "notes": "dnf с собственными именами пакетов (task-kde, task-gnome).",
+    "has_de_repos": true,
+    "warnings": [
+     "ROSA Linux uses its own task-* metapackages.",
+     "The standard Fedora comps groups (@kde-desktop) may not work.",
+     "Rexon will try Fedora-compatible commands, but the results may differ."
+    ]
+   },
+   "redos": {
+    "name": "РЕД ОС",
+    "family": "fedora",
+    "country": "RU",
+    "notes": "RHEL/CentOS-based. dnf, близкие к RHEL имена пакетов.",
+    "has_de_repos": true,
+    "warnings": [
+     "RED OS is certified by FSTEC. Adding third-party repositories may void the certification."
+    ]
+   },
+   "calculate": {
+    "name": "Calculate Linux",
+    "family": "gentoo",
+    "country": "RU",
+    "notes": "Полная совместимость с Gentoo. Portage/emerge, те же имена пакетов.",
+    "has_de_repos": true,
+    "warnings": []
+   },
+   "ubuntukylin": {
+    "name": "Ubuntu Kylin",
+    "family": "debian",
+    "country": "CN",
+    "notes": "Официальный флейвор Ubuntu. ID=ubuntu. Рабочий стол UKUI.",
+    "has_de_repos": true,
+    "warnings": []
+   },
+   "boss": {
+    "name": "BOSS Linux (Bharat OS)",
+    "family": "debian",
+    "country": "IN",
+    "notes": "Debian-based. C-DAC India. Рабочий стол Cinnamon по умолчанию. apt/dpkg, стандартные Debian-пакеты.",
+    "has_de_repos": true,
+    "warnings": []
+   },
+   "nixos": {
+    "name": "NixOS",
+    "family": "nix",
+    "country": "US",
+    "notes": "Декларативная система. Рабочий стол задаётся в /etc/nixos/configuration.nix, Rexon выдаёт готовый snippet и инструкцию nixos-rebuild switch.",
+    "has_de_repos": true,
+    "warnings": [
+     "NixOS uses a declarative model: Rexon doesn't install desktop environments with nix-env commands, it gives you a snippet for /etc/nixos/configuration.nix instead.",
+     "After adding the snippet, run: sudo nixos-rebuild switch"
+    ]
+   },
+   "steamos": {
+    "name": "SteamOS",
+    "family": "arch",
+    "country": "US",
+    "notes": "Arch-based, корень только для чтения, обновление заменяет образ целиком. Рабочие столы Rexon ставит образами-расширениями systemd-sysext.",
+    "has_de_repos": true,
+    "warnings": [
+     "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates.",
+     "Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+    ]
+   }
+  },
+  "alt_de_packages": {
+   "kde": {
+    "packages": [
+     "kde5",
+     "plasma5-workspace",
+     "konsole",
+     "dolphin",
+     "sddm"
+    ],
+    "dm": "sddm"
+   },
+   "gnome": {
+    "packages": [
+     "gnome-shell",
+     "gnome-control-center",
+     "gnome-tweaks",
+     "nautilus",
+     "gdm"
+    ],
+    "dm": "gdm"
+   },
+   "xfce": {
+    "packages": [
+     "xfce4",
+     "xfce4-goodies",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "mate": {
+    "packages": [
+     "mate",
+     "mate-terminal",
+     "plank",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "cinnamon-mint": {
+    "packages": [
+     "cinnamon",
+     "nemo",
+     "gnome-terminal",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "budgie": {
+    "packages": [
+     "budgie-desktop",
+     "nautilus",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "hyprland": {
+    "packages": [
+     "hyprland",
+     "waybar",
+     "wofi",
+     "kitty",
+     "grim",
+     "slurp",
+     "wl-clipboard"
+    ],
+    "dm": "sddm"
+   },
+   "lxqt": {
+    "packages": [
+     "lxqt-session",
+     "lxqt-panel",
+     "lxqt-config",
+     "lxqt-policykit",
+     "lxqt-runner",
+     "lxqt-notificationd",
+     "pcmanfm-qt",
+     "qterminal",
+     "openbox",
+     "sddm"
+    ],
+    "dm": "sddm"
+   }
+  },
+  "rosa_de_packages": {
+   "kde": {
+    "packages": [
+     "task-kde5",
+     "sddm"
+    ],
+    "dm": "sddm"
+   },
+   "gnome": {
+    "packages": [
+     "task-gnome",
+     "gdm"
+    ],
+    "dm": "gdm"
+   },
+   "xfce": {
+    "packages": [
+     "task-xfce",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "mate": {
+    "packages": [
+     "task-mate",
+     "lightdm",
+     "lightdm-gtk-greeter"
+    ],
+    "dm": "lightdm"
+   },
+   "lxqt": {
+    "packages": [
+     "task-lxqt",
+     "sddm"
+    ],
+    "dm": "sddm"
+   }
+  },
+  "rosa_branding_packages": {
+   "kde": [
+    "simplewelcome",
+    "klook"
+   ]
+  },
+  "distro_info_order": [
+   "astra",
+   "osnova",
+   "alt",
+   "altlinux",
+   "simply",
+   "rosa",
+   "redos",
+   "calculate",
+   "ubuntukylin",
+   "boss",
+   "nixos",
+   "steamos"
+  ],
+  "alt_order": [
+   "kde",
+   "gnome",
+   "xfce",
+   "mate",
+   "cinnamon-mint",
+   "budgie",
+   "hyprland",
+   "lxqt"
+  ],
+  "rosa_order": [
+   "kde",
+   "gnome",
+   "xfce",
+   "mate",
+   "lxqt"
+  ]
+ },
+ "regional": {
+  "russian": [
+   {
+    "id": "astra",
+    "name": "Astra Linux",
+    "family": "debian",
+    "country": "RU",
+    "has_de_repos": false,
+    "has_warnings": true
+   },
+   {
+    "id": "osnova",
+    "name": "ОСнова (НППКТ)",
+    "family": "debian",
+    "country": "RU",
+    "has_de_repos": false,
+    "has_warnings": true
+   },
+   {
+    "id": "alt",
+    "name": "ALT Linux",
+    "family": "alt",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "simply",
+    "name": "Simply Linux",
+    "family": "alt",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": false
+   },
+   {
+    "id": "rosa",
+    "name": "ROSA Linux",
+    "family": "fedora",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "redos",
+    "name": "РЕД ОС",
+    "family": "fedora",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "calculate",
+    "name": "Calculate Linux",
+    "family": "gentoo",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": false
+   }
+  ],
+  "all_regional": [
+   {
+    "id": "astra",
+    "name": "Astra Linux",
+    "family": "debian",
+    "country": "RU",
+    "has_de_repos": false,
+    "has_warnings": true
+   },
+   {
+    "id": "osnova",
+    "name": "ОСнова (НППКТ)",
+    "family": "debian",
+    "country": "RU",
+    "has_de_repos": false,
+    "has_warnings": true
+   },
+   {
+    "id": "alt",
+    "name": "ALT Linux",
+    "family": "alt",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "simply",
+    "name": "Simply Linux",
+    "family": "alt",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": false
+   },
+   {
+    "id": "rosa",
+    "name": "ROSA Linux",
+    "family": "fedora",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "redos",
+    "name": "РЕД ОС",
+    "family": "fedora",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "calculate",
+    "name": "Calculate Linux",
+    "family": "gentoo",
+    "country": "RU",
+    "has_de_repos": true,
+    "has_warnings": false
+   },
+   {
+    "id": "ubuntukylin",
+    "name": "Ubuntu Kylin",
+    "family": "debian",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": false
+   },
+   {
+    "id": "boss",
+    "name": "BOSS Linux (Bharat OS)",
+    "family": "debian",
+    "country": "IN",
+    "has_de_repos": true,
+    "has_warnings": false
+   }
+  ],
+  "cn": [
+   {
+    "id": "ubuntukylin",
+    "name": "Ubuntu Kylin",
+    "family": "debian",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": false
+   }
+  ],
+  "in": [
+   {
+    "id": "boss",
+    "name": "BOSS Linux (Bharat OS)",
+    "family": "debian",
+    "country": "IN",
+    "has_de_repos": true,
+    "has_warnings": false
+   }
+  ],
+  "us": [
+   {
+    "id": "nixos",
+    "name": "NixOS",
+    "family": "nix",
+    "country": "US",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "steamos",
+    "name": "SteamOS",
+    "family": "arch",
+    "country": "US",
+    "has_de_repos": true,
+    "has_warnings": true
+   }
+  ]
+ },
+ "cases": [
+  {
+   "label": "known:astra",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:osnova",
+   "detector": {
+    "distro_id": "osnova",
+    "family": "debian",
+    "pretty_name": "ОСнова (НППКТ)",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "ОСнова (НППКТ)",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "ОСнова (НППКТ)",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian 10 based. Закрытые репозитории, сертификация ФСТЭК.",
+     "has_de_repos": false,
+     "warnings": [
+      "OSnova is a closed distribution certified by FSTEC.",
+      "Its repositories are not public.",
+      "Rexon can manage packages, but the sources of desktop environments are limited."
+     ]
+    },
+    "get_warnings": [
+     "OSnova is a closed distribution certified by FSTEC.",
+     "Its repositories are not public.",
+     "Rexon can manage packages, but the sources of desktop environments are limited."
+    ],
+    "get_compatibility_badge": "⚠️ ОСнова (НППКТ) (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "ОСнова — закрытый дистрибутив. Публичные репозитории с рабочими столами недоступны."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:alt",
+   "detector": {
+    "distro_id": "alt",
+    "family": "alt",
+    "pretty_name": "ALT Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "ALT Linux",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "ALT Linux",
+     "family": "alt",
+     "country": "RU",
+     "notes": "APT-RPM: команды apt-get, но пакеты RPM. Не путать с Debian!",
+     "has_de_repos": true,
+     "warnings": [
+      "ALT Linux uses APT-RPM: apt-get with RPM packages.",
+      "Desktop environment package names differ from Debian and Fedora."
+     ]
+    },
+    "get_warnings": [
+     "ALT Linux uses APT-RPM: apt-get with RPM packages.",
+     "Desktop environment package names differ from Debian and Fedora.",
+     "ℹ️ APT-RPM is in use. Desktop environment packages are adapted for ALT Linux."
+    ],
+    "get_compatibility_badge": "⚠️ ALT Linux (alt)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": [
+       "kde5",
+       "plasma5-workspace",
+       "konsole",
+       "dolphin",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": [
+       "gnome-shell",
+       "gnome-control-center",
+       "gnome-tweaks",
+       "nautilus",
+       "gdm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": [
+       "xfce4",
+       "xfce4-goodies",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": [
+       "mate",
+       "mate-terminal",
+       "plank",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": [
+       "cinnamon",
+       "nemo",
+       "gnome-terminal",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": [
+       "budgie-desktop",
+       "nautilus",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": [
+       "hyprland",
+       "waybar",
+       "wofi",
+       "kitty",
+       "grim",
+       "slurp",
+       "wl-clipboard"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": [
+       "lxqt-session",
+       "lxqt-panel",
+       "lxqt-config",
+       "lxqt-policykit",
+       "lxqt-runner",
+       "lxqt-notificationd",
+       "pcmanfm-qt",
+       "qterminal",
+       "openbox",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:altlinux",
+   "detector": {
+    "distro_id": "altlinux",
+    "family": "alt",
+    "pretty_name": "ALT Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "ALT Linux",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "ALT Linux",
+     "family": "alt",
+     "country": "RU",
+     "notes": "Синоним alt.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [
+     "ℹ️ APT-RPM is in use. Desktop environment packages are adapted for ALT Linux."
+    ],
+    "get_compatibility_badge": "✅ ALT Linux (alt)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": [
+       "kde5",
+       "plasma5-workspace",
+       "konsole",
+       "dolphin",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": [
+       "gnome-shell",
+       "gnome-control-center",
+       "gnome-tweaks",
+       "nautilus",
+       "gdm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": [
+       "xfce4",
+       "xfce4-goodies",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": [
+       "mate",
+       "mate-terminal",
+       "plank",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": [
+       "cinnamon",
+       "nemo",
+       "gnome-terminal",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": [
+       "budgie-desktop",
+       "nautilus",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": [
+       "hyprland",
+       "waybar",
+       "wofi",
+       "kitty",
+       "grim",
+       "slurp",
+       "wl-clipboard"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": [
+       "lxqt-session",
+       "lxqt-panel",
+       "lxqt-config",
+       "lxqt-policykit",
+       "lxqt-runner",
+       "lxqt-notificationd",
+       "pcmanfm-qt",
+       "qterminal",
+       "openbox",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:simply",
+   "detector": {
+    "distro_id": "simply",
+    "family": "alt",
+    "pretty_name": "Simply Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Simply Linux",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Simply Linux",
+     "family": "alt",
+     "country": "RU",
+     "notes": "ALT-based, для домашних пользователей. XFCE по умолчанию.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [
+     "ℹ️ APT-RPM is in use. Desktop environment packages are adapted for ALT Linux."
+    ],
+    "get_compatibility_badge": "✅ Simply Linux (alt)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": [
+       "kde5",
+       "plasma5-workspace",
+       "konsole",
+       "dolphin",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": [
+       "gnome-shell",
+       "gnome-control-center",
+       "gnome-tweaks",
+       "nautilus",
+       "gdm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": [
+       "xfce4",
+       "xfce4-goodies",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": [
+       "mate",
+       "mate-terminal",
+       "plank",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": [
+       "cinnamon",
+       "nemo",
+       "gnome-terminal",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": [
+       "budgie-desktop",
+       "nautilus",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": [
+       "hyprland",
+       "waybar",
+       "wofi",
+       "kitty",
+       "grim",
+       "slurp",
+       "wl-clipboard"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": [
+       "lxqt-session",
+       "lxqt-panel",
+       "lxqt-config",
+       "lxqt-policykit",
+       "lxqt-runner",
+       "lxqt-notificationd",
+       "pcmanfm-qt",
+       "qterminal",
+       "openbox",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:rosa",
+   "detector": {
+    "distro_id": "rosa",
+    "family": "fedora",
+    "pretty_name": "ROSA Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "ROSA Linux",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "ROSA Linux",
+     "family": "fedora",
+     "country": "RU",
+     "notes": "dnf с собственными именами пакетов (task-kde, task-gnome).",
+     "has_de_repos": true,
+     "warnings": [
+      "ROSA Linux uses its own task-* metapackages.",
+      "The standard Fedora comps groups (@kde-desktop) may not work.",
+      "Rexon will try Fedora-compatible commands, but the results may differ."
+     ]
+    },
+    "get_warnings": [
+     "ROSA Linux uses its own task-* metapackages.",
+     "The standard Fedora comps groups (@kde-desktop) may not work.",
+     "Rexon will try Fedora-compatible commands, but the results may differ."
+    ],
+    "get_compatibility_badge": "⚠️ ROSA Linux (fedora)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": [
+       "task-kde5",
+       "sddm"
+      ],
+      "get_rosa_branding": [
+       "simplewelcome",
+       "klook"
+      ],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": [
+       "task-gnome",
+       "gdm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": [
+       "task-xfce",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": [
+       "task-mate",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «cinnamon-mint» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «budgie» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «hyprland» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": [
+       "task-lxqt",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «cosmic» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «cinnamon» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "⚠️ Для «unknown-de» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:redos",
+   "detector": {
+    "distro_id": "redos",
+    "family": "fedora",
+    "pretty_name": "РЕД ОС",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "РЕД ОС",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "РЕД ОС",
+     "family": "fedora",
+     "country": "RU",
+     "notes": "RHEL/CentOS-based. dnf, близкие к RHEL имена пакетов.",
+     "has_de_repos": true,
+     "warnings": [
+      "RED OS is certified by FSTEC. Adding third-party repositories may void the certification."
+     ]
+    },
+    "get_warnings": [
+     "RED OS is certified by FSTEC. Adding third-party repositories may void the certification."
+    ],
+    "get_compatibility_badge": "⚠️ РЕД ОС (fedora)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:calculate",
+   "detector": {
+    "distro_id": "calculate",
+    "family": "gentoo",
+    "pretty_name": "Calculate Linux",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Calculate Linux",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Calculate Linux",
+     "family": "gentoo",
+     "country": "RU",
+     "notes": "Полная совместимость с Gentoo. Portage/emerge, те же имена пакетов.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [],
+    "get_compatibility_badge": "✅ Calculate Linux (gentoo)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:ubuntukylin",
+   "detector": {
+    "distro_id": "ubuntukylin",
+    "family": "debian",
+    "pretty_name": "Ubuntu Kylin",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Ubuntu Kylin",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Ubuntu Kylin",
+     "family": "debian",
+     "country": "CN",
+     "notes": "Официальный флейвор Ubuntu. ID=ubuntu. Рабочий стол UKUI.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [],
+    "get_compatibility_badge": "✅ Ubuntu Kylin (debian)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:boss",
+   "detector": {
+    "distro_id": "boss",
+    "family": "debian",
+    "pretty_name": "BOSS Linux (Bharat OS)",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "BOSS Linux (Bharat OS)",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "BOSS Linux (Bharat OS)",
+     "family": "debian",
+     "country": "IN",
+     "notes": "Debian-based. C-DAC India. Рабочий стол Cinnamon по умолчанию. apt/dpkg, стандартные Debian-пакеты.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [],
+    "get_compatibility_badge": "✅ BOSS Linux (Bharat OS) (debian)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:nixos",
+   "detector": {
+    "distro_id": "nixos",
+    "family": "nix",
+    "pretty_name": "NixOS",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "NixOS",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "NixOS",
+     "family": "nix",
+     "country": "US",
+     "notes": "Декларативная система. Рабочий стол задаётся в /etc/nixos/configuration.nix, Rexon выдаёт готовый snippet и инструкцию nixos-rebuild switch.",
+     "has_de_repos": true,
+     "warnings": [
+      "NixOS uses a declarative model: Rexon doesn't install desktop environments with nix-env commands, it gives you a snippet for /etc/nixos/configuration.nix instead.",
+      "After adding the snippet, run: sudo nixos-rebuild switch"
+     ]
+    },
+    "get_warnings": [
+     "NixOS uses a declarative model: Rexon doesn't install desktop environments with nix-env commands, it gives you a snippet for /etc/nixos/configuration.nix instead.",
+     "After adding the snippet, run: sudo nixos-rebuild switch"
+    ],
+    "get_compatibility_badge": "⚠️ NixOS (nix)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:steamos",
+   "detector": {
+    "distro_id": "steamos",
+    "family": "arch",
+    "pretty_name": "SteamOS",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "SteamOS",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "SteamOS",
+     "family": "arch",
+     "country": "US",
+     "notes": "Arch-based, корень только для чтения, обновление заменяет образ целиком. Рабочие столы Rexon ставит образами-расширениями systemd-sysext.",
+     "has_de_repos": true,
+     "warnings": [
+      "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates.",
+      "Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+     ]
+    },
+    "get_warnings": [
+     "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates.",
+     "Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+    ],
+    "get_compatibility_badge": "⚠️ SteamOS (arch)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "astra-se-name-zps-on",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "",
+    "name": "Astra Linux Special Edition"
+   },
+   "zps": true,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories.",
+     "Astra Linux Special Edition detected. The closed software environment may block package installation.",
+     "⚠️ The closed software environment (ZPS) is ON. Installing unsigned packages is blocked."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "astra-se-name-zps-off",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "",
+    "name": "Astra Linux Special Edition"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories.",
+     "Astra Linux Special Edition detected. The closed software environment may block package installation."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «kde» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «gnome» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «xfce» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «mate» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon-mint» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «budgie» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «hyprland» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «lxqt» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "astra-se-variant-smolensk",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "smolensk",
+    "name": "Astra Linux"
+   },
+   "zps": true,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories.",
+     "Astra Linux Special Edition detected. The closed software environment may block package installation.",
+     "⚠️ The closed software environment (ZPS) is ON. Installing unsigned packages is blocked."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Astra Linux SE: ЗПС включена. Установка неподписанных пакетов невозможна.\nОтключите ЗПС или используйте Astra Linux CE."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "astra-se-variant-se",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "se",
+    "name": "Astra Linux"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories.",
+     "Astra Linux Special Edition detected. The closed software environment may block package installation."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «kde» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «gnome» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «xfce» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «mate» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon-mint» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «budgie» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «hyprland» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «lxqt» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» недоступен в стандартных репозиториях Astra Linux.\nПодключите репозитории Debian для установки альтернативных рабочих столов."
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "astra-ce",
+   "detector": {
+    "distro_id": "astra",
+    "family": "debian",
+    "pretty_name": "Astra Linux",
+    "variant_id": "orel",
+    "name": "Astra Linux Common Edition"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": true,
+    "distro_name": "Astra Linux",
+    "is_known": true,
+    "has_de_repos": false,
+    "get_info": {
+     "name": "Astra Linux",
+     "family": "debian",
+     "country": "RU",
+     "notes": "Debian-based. SE: ЗПС ограничивает установку неподписанных пакетов.",
+     "has_de_repos": false,
+     "warnings": [
+      "Astra Linux SE runs a closed software environment (ZPS).",
+      "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+      "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+     ]
+    },
+    "get_warnings": [
+     "Astra Linux SE runs a closed software environment (ZPS).",
+     "Other desktop environments can only be installed on Astra Linux CE or with the closed software environment turned off.",
+     "The stock desktop is Fly. GNOME/KDE/XFCE/MATE are not available in the standard repositories."
+    ],
+    "get_compatibility_badge": "⚠️ Astra Linux (limited repositories)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "unknown:myunknown:arch",
+   "detector": {
+    "distro_id": "myunknown",
+    "family": "arch",
+    "pretty_name": "Pretty myunknown",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Pretty myunknown",
+    "is_known": false,
+    "has_de_repos": true,
+    "get_info": null,
+    "get_warnings": [],
+    "get_compatibility_badge": "ℹ️ Pretty myunknown",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "unknown:mistery:alt",
+   "detector": {
+    "distro_id": "mistery",
+    "family": "alt",
+    "pretty_name": "Pretty mistery",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Pretty mistery",
+    "is_known": false,
+    "has_de_repos": true,
+    "get_info": null,
+    "get_warnings": [
+     "ℹ️ APT-RPM is in use. Desktop environment packages are adapted for ALT Linux."
+    ],
+    "get_compatibility_badge": "ℹ️ Pretty mistery",
+    "per_de": {
+     "kde": {
+      "get_de_packages": [
+       "kde5",
+       "plasma5-workspace",
+       "konsole",
+       "dolphin",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": [
+       "gnome-shell",
+       "gnome-control-center",
+       "gnome-tweaks",
+       "nautilus",
+       "gdm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": [
+       "xfce4",
+       "xfce4-goodies",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": [
+       "mate",
+       "mate-terminal",
+       "plank",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": [
+       "cinnamon",
+       "nemo",
+       "gnome-terminal",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": [
+       "budgie-desktop",
+       "nautilus",
+       "lightdm",
+       "lightdm-gtk-greeter"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": [
+       "hyprland",
+       "waybar",
+       "wofi",
+       "kitty",
+       "grim",
+       "slurp",
+       "wl-clipboard"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": [
+       "lxqt-session",
+       "lxqt-panel",
+       "lxqt-config",
+       "lxqt-policykit",
+       "lxqt-runner",
+       "lxqt-notificationd",
+       "pcmanfm-qt",
+       "qterminal",
+       "openbox",
+       "sddm"
+      ],
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cosmic» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «cinnamon» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "Рабочий стол «unknown-de» не поддерживается на ALT Linux.\nДоступные рабочие столы: kde, gnome, xfce, mate, cinnamon-mint, budgie, hyprland, lxqt"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "unknown:weird:suse",
+   "detector": {
+    "distro_id": "weird",
+    "family": "suse",
+    "pretty_name": "Pretty weird",
+    "variant_id": "",
+    "name": ""
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Pretty weird",
+    "is_known": false,
+    "has_de_repos": true,
+    "get_info": null,
+    "get_warnings": [],
+    "get_compatibility_badge": "ℹ️ Pretty weird",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

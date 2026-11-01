@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Стенд помощника сеанса прав («один пароль на запуск», уровни 2–3;
+# все три уровня описаны в docs/testing.md).
+#
+# Без root, без pkexec, без настоящего pacman и без GUI:
+#   * уровень 2 — tests/priv_stand.rs: настоящее окно (privilege::client) и
+#     помощник `rexon-priv-stand` ОБЫЧНЫМ процессом через socketpair на fd 0/1;
+#     «сухой» RootIo с корнем-префиксом, журнал argv, подменные logind/часы/сон;
+#   * уровень 3 — tests/priv_userns.rs: НАСТОЯЩИЙ rexon-priv-helper от «root»
+#     в `unshare -r --mount` (packaging/test/priv-ns-enter.sh): подменные
+#     /usr/bin, /etc, /usr/share, /var/tmp; настоящие файлы, PDEATHSIG, EOF.
+#     Нет unshare или ядро не даёт пространств имён — ПРОПУСК с причиной.
+#
+# Использование:
+#   scripts/priv-stand                 # оба уровня (сборка — через build-queue)
+#   scripts/priv-stand --release-check # + проверить собранный релизный помощник
+#   scripts/priv-stand -- <фильтр>     # аргументы после -- уходят тест-раннеру
+#
+# Код возврата — как у cargo test; --release-check: 1, если в релизном
+# rexon-priv-helper нашлась строка стенда или рядом лежит rexon-priv-stand.
+
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+release_check=0
+extra=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --release-check) release_check=1; shift ;;
+        --) shift; extra=("$@"); break ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "priv-stand: неизвестный ключ $1" >&2; exit 2 ;;
+    esac
+done
+
+BUILD_QUEUE_SLOTS="${BUILD_QUEUE_SLOTS:-1}" "$ROOT/scripts/build-queue" \
+    test -p rexon-core --features stand --test priv_stand --test priv_userns \
+    -- --nocapture "${extra[@]}"
+
+if [ "$release_check" -eq 1 ]; then
+    rel="${BUILD_QUEUE_TARGET:-$ROOT/target-shared}/release"
+    if [ ! -x "$rel/rexon-priv-helper" ]; then
+        echo "priv-stand: НЕ ПРОВЕРЕНО — нет $rel/rexon-priv-helper (собрать: scripts/build-queue build-app)" >&2
+        exit 3
+    fi
+    bad=0
+    for needle in REXON_STAND_DIR REXON_STAND_BUILD rexon-priv-stand priv-ns-enter; do
+        if grep -qaF "$needle" "$rel/rexon-priv-helper"; then
+            echo "priv-stand: ⛔ в релизном rexon-priv-helper строка стенда «$needle»" >&2
+            bad=1
+        fi
+    done
+    if [ -e "$rel/rexon-priv-stand" ]; then
+        echo "priv-stand: ⛔ в $rel лежит rexon-priv-stand — релиз собран с feature stand?" >&2
+        bad=1
+    fi
+    [ "$bad" -eq 0 ] && echo "priv-stand: релизный помощник чист ($rel/rexon-priv-helper)"
+    exit "$bad"
+fi

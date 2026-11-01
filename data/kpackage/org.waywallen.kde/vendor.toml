@@ -1,0 +1,32 @@
+name        = "org.waywallen.kde"
+description = "Плагин обоев waywallen для Plasma (сторона вывода изображения)"
+upstream    = "https://github.com/waywallen/waywallen-display"
+source      = "github-release"
+version     = "0.4.3"
+tag         = "v0.4.3"
+asset       = "waywallen-kde-0.4.3-x86_64-embed.zip"
+vendored    = "2026-10-23"
+license     = "MIT / GPL-2.0-or-later — см. note"
+checksum    = "sha256:dd5bb9934e2c0fb0ead14960571cd3fb84b66dbde3266cef81e4ab7ea8e51edb"
+tree        = "sha256-tree:f804916e12fff76826524ee7da97c99481f18c87ab4524467eb515e8315d4628"
+pkgbuild_var = "_wwd_ver"
+note        = """
+Плазмоид едет БЕЗ ИЗМЕНЕНИЙ — официальный архив выпуска, наших правок нет \
+(решение владельца 09.10.2026). В git лежит только этот файл: архив качает \
+пакет при сборке (packaging/aur/PKGBUILD, переменная _wwd_ver, сумма = \
+digest выпуска), а для запуска из дерева и тестов его распаковывает сюда же \
+`cargo run -p rexon-core --bin vendor-check -- --выкачать`.
+Пакет кладёт этот файл рядом с распакованным плазмоидом: по нему Rexon \
+узнаёт «ставили мы» и точную версию (waywallen_kde_plugin.rs, \
+KNOWN_RUNTIME_SHA — для чужих установок без этого файла).
+Сторож появился после того, как вложенный 24 июня кусок с протоколом v7 \
+молча протух: апстрим перешёл на v8, у пользователя пропал список мониторов.
+
+⚖️ Лицензия у апстрима записана двояко: extensions/kde/LICENSE — MIT \
+© 2026 hypengw, а metadata.json — «GPL-2.0-or-later». Вопрос задан автору \
+(waywallen/waywallen-display#70); до ответа пакет ставит в /usr/share/licenses \
+ОБА текста. Вложенная libwaywallen-display-qml.so — сборка их библиотеки \
+waywallen-display (MIT), линкуется только с Qt6. С 0.4.2 текст MIT лежит \
+в самом архиве (LICENSE, waywallen/waywallen-display#71) — пакет берёт его \
+оттуда.
+"""

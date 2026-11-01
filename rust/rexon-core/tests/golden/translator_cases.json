@@ -1,0 +1,1006 @@
+{
+ "detect": [
+  {
+   "input": "Hello world",
+   "lang": "en"
+  },
+  {
+   "input": "Привет мир",
+   "lang": "ru"
+  },
+  {
+   "input": "",
+   "lang": null
+  },
+  {
+   "input": "   ",
+   "lang": null
+  },
+  {
+   "input": "12345 !!! ???",
+   "lang": null
+  },
+  {
+   "input": "Привет hello",
+   "lang": "ru"
+  },
+  {
+   "input": "aб",
+   "lang": "ru"
+  },
+  {
+   "input": "mostly english with а one cyrillic",
+   "lang": "en"
+  },
+  {
+   "input": "АБВ abcdefgh",
+   "lang": "en"
+  },
+  {
+   "input": "中文テキスト",
+   "lang": null
+  },
+  {
+   "input": "Тёмная тема для Plasma",
+   "lang": "ru"
+  },
+  {
+   "input": "Plasma theme Тёмная",
+   "lang": "en"
+  },
+  {
+   "input": "ёёё",
+   "lang": "ru"
+  },
+  {
+   "input": "😀😀😀",
+   "lang": null
+  },
+  {
+   "input": "  Тема  ",
+   "lang": "ru"
+  },
+  {
+   "input": "3840x2160",
+   "lang": "en"
+  }
+ ],
+ "hashes": [
+  {
+   "hash": "f15c38573183f31b0a91cfdacdd837902613fa8b",
+   "src": "en",
+   "text": "Hello",
+   "tgt": "ru"
+  },
+  {
+   "hash": "4ed0eb8af5f75e3e17ffcc0221c4ffc7a842a73e",
+   "src": "en",
+   "text": "",
+   "tgt": "ru"
+  },
+  {
+   "hash": "f66c6e31d5d7bbe82d950aee4bee1a4e9eb0f45e",
+   "src": "en",
+   "text": "A beautiful dark theme",
+   "tgt": "de"
+  },
+  {
+   "hash": "2d535398bc336d9a9a2228b67c3d6b98e1144d15",
+   "src": "es",
+   "text": "Un tema oscuro",
+   "tgt": "ru"
+  },
+  {
+   "hash": "727a0c62389923f3f71dabdd61ffbb80c49470c8",
+   "src": "en",
+   "text": "Привет 😀 emoji",
+   "tgt": "ru"
+  },
+  {
+   "hash": "3a00598ed8644b9d266bcab12d88200b4a614b23",
+   "src": "en",
+   "text": "<p>HTML &amp; text</p>",
+   "tgt": "ru"
+  },
+  {
+   "hash": "1472b6639d3391bbd2567484a4397d89caa07867",
+   "src": "fr",
+   "text": "Thème sombre",
+   "tgt": "ru"
+  },
+  {
+   "hash": "fdb1315882665410a29d5122f173c819422ce67b",
+   "src": "en",
+   "text": "Тёмная тема",
+   "tgt": "ru"
+  },
+  {
+   "hash": "c72e82369dee92b1bc9ef8bfe3c4d9a0cc1f37bd",
+   "src": "ru",
+   "text": "Тёмная тема",
+   "tgt": "en"
+  },
+  {
+   "hash": "726bb044efc3642e873f7bf80e67a13b2a593ef4",
+   "src": "en",
+   "text": "Sweet KDE — тема для Плазмы",
+   "tgt": "ru"
+  },
+  {
+   "hash": "d241e7d99b0046d34de0134464e650428b81237d",
+   "src": "en",
+   "text": "  ",
+   "tgt": "ru"
+  },
+  {
+   "hash": "586f8bacf814a0178c79658f220174d3cf75ad3f",
+   "src": "",
+   "text": "",
+   "tgt": ""
+  },
+  {
+   "hash": "76dbb39daa0db1a1f92efa7469c773efb2bdfa26",
+   "src": "en",
+   "text": "ёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёёё",
+   "tgt": "ru"
+  },
+  {
+   "hash": "5701769de95e6923f53c3d4906aab4fe9f9d1def",
+   "src": "en",
+   "text": "<p>Тёмная &amp; светлая</p>",
+   "tgt": "ru"
+  }
+ ],
+ "locales": [
+  {
+   "lang": "ru",
+   "locale": "ru_RU"
+  },
+  {
+   "lang": "en",
+   "locale": "en_US"
+  },
+  {
+   "lang": "de",
+   "locale": "de_DE"
+  },
+  {
+   "lang": "es",
+   "locale": "es_ES"
+  },
+  {
+   "lang": "fr",
+   "locale": "fr_FR"
+  },
+  {
+   "lang": "pt",
+   "locale": "pt_BR"
+  },
+  {
+   "lang": "ru",
+   "locale": "ru"
+  },
+  {
+   "lang": "en",
+   "locale": "EN"
+  },
+  {
+   "lang": "en",
+   "locale": "En_US"
+  },
+  {
+   "lang": "en",
+   "locale": ""
+  },
+  {
+   "lang": "c",
+   "locale": "C"
+  },
+  {
+   "lang": "zh",
+   "locale": "zh_CN.UTF-8"
+  },
+  {
+   "lang": "ru",
+   "locale": "ru_RU.UTF-8"
+  }
+ ],
+ "looks": [
+  {
+   "html": false,
+   "input": "plain text without markup"
+  },
+  {
+   "html": false,
+   "input": "  leading and trailing spaces  "
+  },
+  {
+   "html": true,
+   "input": "<p>Hello world</p>"
+  },
+  {
+   "html": true,
+   "input": "<p>Hello</p><p>World</p>"
+  },
+  {
+   "html": true,
+   "input": "<b>Bold</b> and <i>italic</i> text"
+  },
+  {
+   "html": false,
+   "input": "Features:"
+  },
+  {
+   "html": true,
+   "input": "<h2>Features:</h2>"
+  },
+  {
+   "html": true,
+   "input": "<a href=\"https://example.com/path?x=1\">link text</a>"
+  },
+  {
+   "html": true,
+   "input": "<a href='https://example.com'>single quoted</a>"
+  },
+  {
+   "html": true,
+   "input": "<br/>"
+  },
+  {
+   "html": true,
+   "input": "<br />"
+  },
+  {
+   "html": true,
+   "input": "<img src=\"a.png\" alt=\"An image\" />"
+  },
+  {
+   "html": true,
+   "input": "Line one<br>Line two"
+  },
+  {
+   "html": true,
+   "input": "4K &bull; UHD &mdash; wallpaper"
+  },
+  {
+   "html": true,
+   "input": "a &amp; b &lt; c &gt; d"
+  },
+  {
+   "html": true,
+   "input": "bullet &#8226; and hex &#x2022; here"
+  },
+  {
+   "html": true,
+   "input": "<p>  spaced inside  </p>"
+  },
+  {
+   "html": true,
+   "input": "<DIV>Uppercase Tag</DIV>"
+  },
+  {
+   "html": true,
+   "input": "<P CLASS=\"Big\">Mixed Case</P>"
+  },
+  {
+   "html": true,
+   "input": "<!-- a comment --> visible"
+  },
+  {
+   "html": true,
+   "input": "<p>nested <span>inner <b>deep</b> text</span> end</p>"
+  },
+  {
+   "html": true,
+   "input": "text with <unknownTag attr> content"
+  },
+  {
+   "html": true,
+   "input": "  <p>lead ws before tag</p>  trailing  "
+  },
+  {
+   "html": true,
+   "input": "Привет <b>мир</b>!"
+  },
+  {
+   "html": true,
+   "input": "<ul><li>One</li><li>Two</li></ul>"
+  },
+  {
+   "html": false,
+   "input": "no semicolon entity &amp here"
+  },
+  {
+   "html": false,
+   "input": "charref no semi &#169 tail"
+  },
+  {
+   "html": true,
+   "input": "<span style=\"color: red\">styled</span>"
+  },
+  {
+   "html": false,
+   "input": "mismatched < less than sign"
+  },
+  {
+   "html": false,
+   "input": "trailing amp &"
+  },
+  {
+   "html": false,
+   "input": "empty tag <>"
+  },
+  {
+   "html": true,
+   "input": "<p></p>"
+  },
+  {
+   "html": true,
+   "input": "&copy; 2026 Author"
+  },
+  {
+   "html": false,
+   "input": "tab\tand\nnewline handling"
+  },
+  {
+   "html": true,
+   "input": "<a\n  href=\"x\"\n  title=\"y\">multiline attrs</a>"
+  },
+  {
+   "html": true,
+   "input": "<input disabled>"
+  },
+  {
+   "html": true,
+   "input": "<b>x</b>&nbsp;<b>y</b>"
+  },
+  {
+   "html": false,
+   "input": "just words"
+  },
+  {
+   "html": false,
+   "input": "Features:"
+  },
+  {
+   "html": false,
+   "input": "абвгд"
+  },
+  {
+   "html": false,
+   "input": "a & b (no entity)"
+  },
+  {
+   "html": false,
+   "input": "x < y and y > z"
+  },
+  {
+   "html": false,
+   "input": "email@host.com"
+  },
+  {
+   "html": true,
+   "input": "&amp;"
+  },
+  {
+   "html": true,
+   "input": "<b>"
+  },
+  {
+   "html": true,
+   "input": "</b>"
+  },
+  {
+   "html": true,
+   "input": "&#38;"
+  },
+  {
+   "html": false,
+   "input": "5 < 10"
+  },
+  {
+   "html": false,
+   "input": "Тёмная тема"
+  },
+  {
+   "html": true,
+   "input": "Тема <b>жирная</b>"
+  },
+  {
+   "html": true,
+   "input": "Цена&nbsp;—&nbsp;0"
+  },
+  {
+   "html": false,
+   "input": ""
+  },
+  {
+   "html": false,
+   "input": "   "
+  },
+  {
+   "html": false,
+   "input": "1 < 2 и 3 > 2"
+  },
+  {
+   "html": false,
+   "input": "a&b"
+  },
+  {
+   "html": true,
+   "input": "&#1058;"
+  }
+ ],
+ "plans": [
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": ""
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "   "
+  },
+  {
+   "argos_available": true,
+   "detected_src": "ru",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hello"
+  },
+  {
+   "argos_available": false,
+   "detected_src": "en",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hello"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hello"
+  },
+  {
+   "argos_available": true,
+   "detected_src": null,
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hello"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hello"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "es",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "es",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Hola"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "es",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": false,
+   "target": "ru",
+   "text": "Hola"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "translate",
+    "is_html": true,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "<p>Hello</p>"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "es",
+   "plan": {
+    "action": "translate",
+    "is_html": true,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": false,
+   "target": "ru",
+   "text": "<p>Hola</p>"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "ru",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "<b>Привет</b>"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "fr",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "fr",
+    "tgt": "de"
+   },
+   "src_pair_ensurable": true,
+   "target": "de",
+   "text": "Bonjour"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "en",
+   "text": "Hello"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "ru",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Тёмная тема"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "ru",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "ru",
+    "tgt": "en"
+   },
+   "src_pair_ensurable": true,
+   "target": "en",
+   "text": "Тёмная тема"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "translate",
+    "is_html": true,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "<p>Тёмная тема</p>"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "en",
+   "plan": {
+    "action": "translate",
+    "is_html": true,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": false,
+   "target": "ru",
+   "text": "<p>Тёмная тема</p>"
+  },
+  {
+   "argos_available": true,
+   "detected_src": null,
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Тёмная тема"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "",
+   "plan": {
+    "action": "translate",
+    "is_html": false,
+    "src": "en",
+    "tgt": "ru"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Тёмная тема"
+  },
+  {
+   "argos_available": true,
+   "detected_src": "ru",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "   "
+  },
+  {
+   "argos_available": true,
+   "detected_src": null,
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": ""
+  },
+  {
+   "argos_available": false,
+   "detected_src": "en",
+   "plan": {
+    "action": "skip"
+   },
+   "src_pair_ensurable": true,
+   "target": "ru",
+   "text": "Тёмная тема"
+  }
+ ],
+ "probes": [
+  {
+   "input": "<p>Hello &amp;   world</p><br/>",
+   "probe": "Hello world"
+  },
+  {
+   "input": "<b>Жирный</b> текст",
+   "probe": "Жирный текст"
+  },
+  {
+   "input": "4K &bull; UHD &mdash; wallpaper",
+   "probe": "4K UHD wallpaper"
+  },
+  {
+   "input": "plain text no html",
+   "probe": "plain text no html"
+  },
+  {
+   "input": "<a href=\"http://x.com\">Click &copy; here</a>",
+   "probe": "Click here"
+  },
+  {
+   "input": "bullet &#8226; hex &#x2022;",
+   "probe": "bullet hex"
+  },
+  {
+   "input": "<h1>Features:</h1><ul><li>One</li></ul>",
+   "probe": "Features: One"
+  },
+  {
+   "input": "",
+   "probe": ""
+  },
+  {
+   "input": "   ",
+   "probe": ""
+  },
+  {
+   "input": "<p>Тёмная</p>  <b>тема</b>",
+   "probe": "Тёмная тема"
+  },
+  {
+   "input": "Тема&nbsp;для&nbsp;Плазмы",
+   "probe": "Тема для Плазмы"
+  },
+  {
+   "input": "<a href=\"http://x\">Скачать</a> &mdash; бесплатно",
+   "probe": "Скачать бесплатно"
+  },
+  {
+   "input": "&#1058;&#1077;&#1084;&#1072;",
+   "probe": ""
+  },
+  {
+   "input": "  Обои   4K   с   пробелами  ",
+   "probe": "Обои 4K с пробелами"
+  },
+  {
+   "input": "😀<p>эмодзи</p>😀",
+   "probe": "😀 эмодзи 😀"
+  }
+ ],
+ "segments": [
+  {
+   "input": "plain text without markup",
+   "output": "‹plain text without markup›"
+  },
+  {
+   "input": "  leading and trailing spaces  ",
+   "output": "  ‹leading and trailing spaces›  "
+  },
+  {
+   "input": "<p>Hello world</p>",
+   "output": "<p>‹Hello world›</p>"
+  },
+  {
+   "input": "<p>Hello</p><p>World</p>",
+   "output": "<p>‹Hello›</p><p>‹World›</p>"
+  },
+  {
+   "input": "<b>Bold</b> and <i>italic</i> text",
+   "output": "<b>‹Bold›</b> ‹and› <i>‹italic›</i> ‹text›"
+  },
+  {
+   "input": "Features:",
+   "output": "‹Features:›"
+  },
+  {
+   "input": "<h2>Features:</h2>",
+   "output": "<h2>‹Features:›</h2>"
+  },
+  {
+   "input": "<a href=\"https://example.com/path?x=1\">link text</a>",
+   "output": "<a href=\"https://example.com/path?x=1\">‹link text›</a>"
+  },
+  {
+   "input": "<a href='https://example.com'>single quoted</a>",
+   "output": "<a href='https://example.com'>‹single quoted›</a>"
+  },
+  {
+   "input": "<br/>",
+   "output": "<br/>"
+  },
+  {
+   "input": "<br />",
+   "output": "<br />"
+  },
+  {
+   "input": "<img src=\"a.png\" alt=\"An image\" />",
+   "output": "<img src=\"a.png\" alt=\"An image\" />"
+  },
+  {
+   "input": "Line one<br>Line two",
+   "output": "‹Line one›<br>‹Line two›"
+  },
+  {
+   "input": "4K &bull; UHD &mdash; wallpaper",
+   "output": "‹4K› &bull; ‹UHD› &mdash; ‹wallpaper›"
+  },
+  {
+   "input": "a &amp; b &lt; c &gt; d",
+   "output": "‹a› &amp; ‹b› &lt; ‹c› &gt; ‹d›"
+  },
+  {
+   "input": "bullet &#8226; and hex &#x2022; here",
+   "output": "‹bullet› &#8226; ‹and hex› &#x2022; ‹here›"
+  },
+  {
+   "input": "<p>  spaced inside  </p>",
+   "output": "<p>  ‹spaced inside›  </p>"
+  },
+  {
+   "input": "<DIV>Uppercase Tag</DIV>",
+   "output": "<DIV>‹Uppercase Tag›</div>"
+  },
+  {
+   "input": "<P CLASS=\"Big\">Mixed Case</P>",
+   "output": "<P CLASS=\"Big\">‹Mixed Case›</p>"
+  },
+  {
+   "input": "<!-- a comment --> visible",
+   "output": "<!-- a comment --> ‹visible›"
+  },
+  {
+   "input": "<p>nested <span>inner <b>deep</b> text</span> end</p>",
+   "output": "<p>‹nested› <span>‹inner› <b>‹deep›</b> ‹text›</span> ‹end›</p>"
+  },
+  {
+   "input": "text with <unknownTag attr> content",
+   "output": "‹text with› <unknownTag attr> ‹content›"
+  },
+  {
+   "input": "  <p>lead ws before tag</p>  trailing  ",
+   "output": "  <p>‹lead ws before tag›</p>  ‹trailing›  "
+  },
+  {
+   "input": "Привет <b>мир</b>!",
+   "output": "‹Привет› <b>‹мир›</b>‹!›"
+  },
+  {
+   "input": "<ul><li>One</li><li>Two</li></ul>",
+   "output": "<ul><li>‹One›</li><li>‹Two›</li></ul>"
+  },
+  {
+   "input": "no semicolon entity &amp here",
+   "output": "‹no semicolon entity› &amp; ‹here›"
+  },
+  {
+   "input": "charref no semi &#169 tail",
+   "output": "‹charref no semi› &#169; ‹tail›"
+  },
+  {
+   "input": "<span style=\"color: red\">styled</span>",
+   "output": "<span style=\"color: red\">‹styled›</span>"
+  },
+  {
+   "input": "mismatched < less than sign",
+   "output": "‹mismatched› ‹<› ‹less than sign›"
+  },
+  {
+   "input": "trailing amp &",
+   "output": "‹trailing amp› ‹&›"
+  },
+  {
+   "input": "empty tag <>",
+   "output": "‹empty tag› ‹<›‹>›"
+  },
+  {
+   "input": "<p></p>",
+   "output": "<p></p>"
+  },
+  {
+   "input": "&copy; 2026 Author",
+   "output": "&copy; ‹2026 Author›"
+  },
+  {
+   "input": "tab\tand\nnewline handling",
+   "output": "‹tab\tand\nnewline handling›"
+  },
+  {
+   "input": "<a\n  href=\"x\"\n  title=\"y\">multiline attrs</a>",
+   "output": "<a\n  href=\"x\"\n  title=\"y\">‹multiline attrs›</a>"
+  },
+  {
+   "input": "<input disabled>",
+   "output": "<input disabled>"
+  },
+  {
+   "input": "<b>x</b>&nbsp;<b>y</b>",
+   "output": "<b>‹x›</b>&nbsp;<b>‹y›</b>"
+  },
+  {
+   "input": "Тёмная тема для Plasma 6",
+   "output": "‹Тёмная тема для Plasma 6›"
+  },
+  {
+   "input": "<p>Тёмная тема</p>",
+   "output": "<p>‹Тёмная тема›</p>"
+  },
+  {
+   "input": "<b>Жирный</b> и <i>курсив</i> в описании",
+   "output": "<b>‹Жирный›</b> ‹и› <i>‹курсив›</i> ‹в описании›"
+  },
+  {
+   "input": "  Пробелы вокруг русского текста  ",
+   "output": "  ‹Пробелы вокруг русского текста›  "
+  },
+  {
+   "input": "<ul><li>Иконки</li><li>Курсоры</li></ul>",
+   "output": "<ul><li>‹Иконки›</li><li>‹Курсоры›</li></ul>"
+  },
+  {
+   "input": "Sweet KDE — тема для Плазмы",
+   "output": "‹Sweet KDE — тема для Плазмы›"
+  },
+  {
+   "input": "<p>Theme <b>Тёмная</b> v2.0</p>",
+   "output": "<p>‹Theme› <b>‹Тёмная›</b> ‹v2.0›</p>"
+  },
+  {
+   "input": "<a href=\"https://pling.com/p/1294729\">Скачать тему</a>",
+   "output": "<a href=\"https://pling.com/p/1294729\">‹Скачать тему›</a>"
+  },
+  {
+   "input": "GTK-темы &mdash; см. <code>~/.local/share/themes</code>",
+   "output": "‹GTK-темы› &mdash; ‹см.› <code>‹~/.local/share/themes›</code>"
+  },
+  {
+   "input": "Обои 4K &bull; 3840x2160 &copy; автор",
+   "output": "‹Обои 4K› &bull; ‹3840x2160› &copy; ‹автор›"
+  },
+  {
+   "input": "",
+   "output": ""
+  },
+  {
+   "input": " ",
+   "output": " "
+  },
+  {
+   "input": "   \n\t  ",
+   "output": "   \n\t  "
+  },
+  {
+   "input": "<p> </p>",
+   "output": "<p> </p>"
+  },
+  {
+   "input": "&nbsp;",
+   "output": "&nbsp;"
+  },
+  {
+   "input": "Тема <незакрытый",
+   "output": "‹Тема› ‹<›‹незакрытый›"
+  },
+  {
+   "input": "<!-- комментарий по-русски -->Тема",
+   "output": "<!-- комментарий по-русски -->‹Тема›"
+  },
+  {
+   "input": "Цена&nbsp;—&nbsp;бесплатно",
+   "output": "‹Цена›&nbsp;‹—›&nbsp;‹бесплатно›"
+  },
+  {
+   "input": "&#1058;&#1077;&#1084;&#1072;",
+   "output": "&#1058;&#1077;&#1084;&#1072;"
+  },
+  {
+   "input": "Тема 😀 с эмодзи",
+   "output": "‹Тема 😀 с эмодзи›"
+  },
+  {
+   "input": "<p>Строка 1</p>\n<p>Строка 2</p>",
+   "output": "<p>‹Строка 1›</p>\n<p>‹Строка 2›</p>"
+  }
+ ],
+ "translator_version": 3,
+ "wrap": [
+  "‹",
+  "›"
+ ]
+}

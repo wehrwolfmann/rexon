@@ -1,0 +1,316 @@
+{
+  "parsed": [
+    {
+      "name": "Работа & учёба",
+      "families": [
+        "Inter",
+        "Nimbus Roman",
+        "Noto Sans"
+      ]
+    },
+    {
+      "name": "Пусто",
+      "families": []
+    },
+    {
+      "name": "Символы",
+      "families": [
+        "A <B> Ж"
+      ]
+    }
+  ],
+  "xml": "<groups>\n <group name=\"Работа &amp; учёба\">\n  <family>Inter</family>\n  <family>Nimbus Roman</family>\n  <family>Noto Sans</family>\n </group>\n <group name=\"Пусто\">\n </group>\n <group name=\"Символы\">\n  <family>A &lt;B&gt; Ж</family>\n </group>\n</groups>\n",
+  "steps": [
+    {
+      "status": "✅ Group Новая группа created — drag fonts onto it or use “Add to Group”",
+      "changed": true,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ A group named Новая группа already exists",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ Type a name for the group",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ Personal is a built-in group — choose another name",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ Unclassified is a built-in group — choose another name",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "✅ 2 font families added to Новая группа",
+      "changed": true,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "ℹ️ Already in group Новая группа",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ Group Нет такой wasn't found — the list has been refreshed",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "✅ 1 font family removed from Новая группа; the font stays installed",
+      "changed": true,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "ℹ️ Not in group Новая группа",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "⚠️ A group named Символы already exists",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Новая группа"
+      ]
+    },
+    {
+      "status": "✅ Group Новая группа renamed to Мои",
+      "changed": true,
+      "groups": [
+        "Работа & учёба",
+        "Пусто",
+        "Символы",
+        "Мои"
+      ]
+    },
+    {
+      "status": "🗑️ Group Пусто removed; its fonts stay installed",
+      "changed": true,
+      "groups": [
+        "Работа & учёба",
+        "Символы",
+        "Мои"
+      ]
+    },
+    {
+      "status": "⚠️ Group Пусто wasn't found — the list has been refreshed",
+      "changed": false,
+      "groups": [
+        "Работа & учёба",
+        "Символы",
+        "Мои"
+      ]
+    }
+  ],
+  "final_xml": "<groups>\n <group name=\"Работа &amp; учёба\">\n  <family>Inter</family>\n  <family>Nimbus Roman</family>\n  <family>Noto Sans</family>\n </group>\n <group name=\"Символы\">\n  <family>A &lt;B&gt; Ж</family>\n </group>\n <group name=\"Мои\">\n  <family>Inter</family>\n </group>\n</groups>\n",
+  "view": {
+    "group_mine": [
+      "Inter"
+    ],
+    "group_work": [
+      "Inter",
+      "Nimbus Roman",
+      "Noto Sans"
+    ],
+    "group_work_cyrillic_query": [
+      "Noto Sans"
+    ],
+    "unclassified": [
+      "Bitmap Fixed",
+      "Mine",
+      "Nimbus Sans",
+      "Noto Sans CJK JP",
+      "Noto Sans Gunjala Gondi",
+      "Old Thing",
+      "Schumacher Clean"
+    ],
+    "unclassified_personal_script_mix": [
+      "Old Thing"
+    ],
+    "unknown_group": [],
+    "user_unchanged": [
+      "Inter",
+      "Mine",
+      "Old Thing"
+    ]
+  },
+  "choices": [
+    [
+      "all",
+      "All",
+      false
+    ],
+    [
+      "user",
+      "Personal",
+      false
+    ],
+    [
+      "system",
+      "System",
+      false
+    ],
+    [
+      "unclassified",
+      "Unclassified",
+      false
+    ],
+    [
+      "group:Мои",
+      "Мои",
+      true
+    ],
+    [
+      "group:Работа & учёба",
+      "Работа & учёба",
+      true
+    ],
+    [
+      "group:Символы",
+      "Символы",
+      true
+    ]
+  ],
+  "choices_without_groups": [
+    [
+      "all",
+      "All",
+      false
+    ],
+    [
+      "user",
+      "Personal",
+      false
+    ],
+    [
+      "system",
+      "System",
+      false
+    ]
+  ],
+  "of_family_inter": [
+    "Мои",
+    "Работа & учёба"
+  ],
+  "work_files": [
+    "/home/u/.local/share/fonts/Inter.otf",
+    "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/urw-base35/NimbusRoman-Regular.t1"
+  ],
+  "toggle": [
+    "✅ Group Мои: 1 font family enabled. Apps will see it after a restart",
+    "⏸️ Group Мои: 3 font families disabled. Apps stop seeing them after a restart; you can turn them back on here",
+    "ℹ️ Group Пусто has no installed fonts yet"
+  ],
+  "disable_confirm": [
+    "Disable Fonts in Group",
+    "Disable the fonts of group Мои? The same files also hold Noto Sans CJK KR — they will be disabled too."
+  ],
+  "disable_confirm_none": null,
+  "remove_confirm": [
+    "Remove Group",
+    "Remove the group Мои? Only the group goes away — its fonts stay installed."
+  ],
+  "export_entries": [
+    [
+      "Dup.ttf",
+      "/a/Dup.ttf"
+    ],
+    [
+      "dup-2.ttf",
+      "/b/dup.ttf"
+    ],
+    [
+      "Dup-3.ttf",
+      "/c/Dup.ttf"
+    ],
+    [
+      "Dup.pfb",
+      "/b/Dup.pfb"
+    ],
+    [
+      "Dup.pfm",
+      "/b/Dup.pfm"
+    ],
+    [
+      "NimbusRoman-Regular.pfb",
+      "/usr/share/fonts/urw/NimbusRoman-Regular.pfb"
+    ],
+    [
+      "NimbusRoman-Regular.afm",
+      "/usr/share/fonts/urw/NimbusRoman-Regular.afm"
+    ]
+  ],
+  "export_names": [
+    "Работа - учёба.zip",
+    "скрытая.zip",
+    "fonts.zip"
+  ],
+  "export_paths": [
+    "/h/a.zip",
+    "/h/a.ZIP"
+  ],
+  "export_status": [
+    "📦 Group Мои exported: 2 font files → /h/Мои.zip",
+    "⚠️ Could not write /h/Мои.zip: Permission denied"
+  ]
+}

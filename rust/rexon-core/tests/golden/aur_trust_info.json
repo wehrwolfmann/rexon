@@ -1,0 +1,81 @@
+{
+ "resultcount": 2,
+ "results": [
+  {
+   "Conflicts": [
+    "yay"
+   ],
+   "Depends": [
+    "pacman>6.1",
+    "git"
+   ],
+   "Description": "Yet another yogurt. Pacman wrapper and AUR helper written in go. Pre-compiled.",
+   "FirstSubmitted": 1480777574,
+   "ID": 2131229,
+   "Keywords": [
+    "AUR",
+    "go",
+    "helper",
+    "pacman",
+    "wrapper"
+   ],
+   "LastModified": 1781904582,
+   "License": [
+    "GPL-3.0-or-later"
+   ],
+   "Maintainer": "jguer",
+   "Name": "yay-bin",
+   "NumVotes": 370,
+   "OptDepends": [
+    "sudo",
+    "doas"
+   ],
+   "OutOfDate": null,
+   "PackageBase": "yay-bin",
+   "PackageBaseID": 117489,
+   "Popularity": 4.665968,
+   "Provides": [
+    "yay"
+   ],
+   "Submitter": "jguer",
+   "URL": "https://github.com/Jguer/yay",
+   "URLPath": "/cgit/aur.git/snapshot/yay-bin.tar.gz",
+   "Version": "13.0.1-1"
+  },
+  {
+   "Conflicts": [
+    "sweet-kvantum"
+   ],
+   "Depends": [
+    "kvantum"
+   ],
+   "Description": "Sweet KDE Plasma theme",
+   "FirstSubmitted": 1776576109,
+   "ID": 2044218,
+   "Keywords": [],
+   "LastModified": 1776576110,
+   "License": [
+    "GPL-3.0-or-later"
+   ],
+   "Maintainer": "Gigas002",
+   "MakeDepends": [
+    "git"
+   ],
+   "Name": "sweet-kvantum-git",
+   "NumVotes": 0,
+   "OutOfDate": null,
+   "PackageBase": "sweet-kvantum-git",
+   "PackageBaseID": 234274,
+   "Popularity": 0,
+   "Provides": [
+    "sweet-kvantum"
+   ],
+   "Submitter": "Gigas002",
+   "URL": "https://github.com/Gigas002/Sweet-kde",
+   "URLPath": "/cgit/aur.git/snapshot/sweet-kvantum-git.tar.gz",
+   "Version": "r50.0feee61-1"
+  }
+ ],
+ "type": "multiinfo",
+ "version": 5
+}

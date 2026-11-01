@@ -1,0 +1,345 @@
+{
+  "fonts": [
+    {
+      "family": "Noto Sans",
+      "foundry": "GOOG",
+      "type": "truetype",
+      "scripts": [
+        "latin",
+        "greek",
+        "cyrillic",
+        "vietnamese",
+        "runic"
+      ]
+    },
+    {
+      "family": "Noto Sans",
+      "foundry": "GOOG",
+      "type": "truetype",
+      "scripts": [
+        "latin",
+        "greek",
+        "cyrillic",
+        "vietnamese"
+      ]
+    },
+    {
+      "family": "Noto Sans CJK JP",
+      "foundry": "GOOG",
+      "type": "collection",
+      "scripts": [
+        "latin",
+        "chinese_simplified",
+        "chinese_traditional",
+        "japanese",
+        "korean"
+      ]
+    },
+    {
+      "family": "Noto Sans Gunjala Gondi",
+      "foundry": "GOOG",
+      "type": "truetype",
+      "scripts": []
+    },
+    {
+      "family": "Schumacher Clean",
+      "foundry": "Schumacher",
+      "type": "pcf",
+      "scripts": [
+        "runic"
+      ]
+    },
+    {
+      "family": "Nimbus Roman",
+      "foundry": "URW",
+      "type": "type1",
+      "scripts": [
+        "latin",
+        "cyrillic"
+      ]
+    },
+    {
+      "family": "Nimbus Sans",
+      "foundry": "urw",
+      "type": "type1",
+      "scripts": [
+        "latin",
+        "greek",
+        "cyrillic"
+      ]
+    },
+    {
+      "family": "Inter",
+      "foundry": "RSMS",
+      "type": "opentype",
+      "scripts": [
+        "latin",
+        "greek",
+        "cyrillic",
+        "vietnamese"
+      ]
+    },
+    {
+      "family": "Mine",
+      "foundry": "unknown",
+      "type": "woff",
+      "scripts": [
+        "latin"
+      ]
+    },
+    {
+      "family": "Old Thing",
+      "foundry": "unknown",
+      "type": "truetype",
+      "scripts": [
+        "hebrew",
+        "arabic"
+      ]
+    },
+    {
+      "family": "Bitmap Fixed",
+      "foundry": "unknown",
+      "type": "bdf",
+      "scripts": [
+        "latin"
+      ]
+    }
+  ],
+  "choices": {
+    "foundries": [
+      [
+        "",
+        "Any foundry"
+      ],
+      [
+        "GOOG",
+        "GOOG"
+      ],
+      [
+        "RSMS",
+        "RSMS"
+      ],
+      [
+        "Schumacher",
+        "Schumacher"
+      ],
+      [
+        "URW",
+        "URW"
+      ],
+      [
+        "unknown",
+        "Foundry not specified"
+      ]
+    ],
+    "file_types": [
+      [
+        "",
+        "Any file type"
+      ],
+      [
+        "truetype",
+        "TrueType"
+      ],
+      [
+        "opentype",
+        "OpenType"
+      ],
+      [
+        "collection",
+        "Font collection (TTC/OTC)"
+      ],
+      [
+        "type1",
+        "Type 1 (PostScript)"
+      ],
+      [
+        "pcf",
+        "PCF bitmap font"
+      ],
+      [
+        "bdf",
+        "BDF bitmap font"
+      ],
+      [
+        "woff",
+        "Web font (WOFF)"
+      ]
+    ],
+    "scripts": [
+      [
+        "",
+        "Any writing system"
+      ],
+      [
+        "arabic",
+        "Arabic"
+      ],
+      [
+        "cyrillic",
+        "Cyrillic"
+      ],
+      [
+        "greek",
+        "Greek"
+      ],
+      [
+        "hebrew",
+        "Hebrew"
+      ],
+      [
+        "japanese",
+        "Japanese"
+      ],
+      [
+        "korean",
+        "Korean"
+      ],
+      [
+        "latin",
+        "Latin"
+      ],
+      [
+        "runic",
+        "Runic"
+      ],
+      [
+        "chinese_simplified",
+        "Simplified Chinese"
+      ],
+      [
+        "chinese_traditional",
+        "Traditional Chinese"
+      ],
+      [
+        "vietnamese",
+        "Vietnamese"
+      ],
+      [
+        "other",
+        "Symbols and other"
+      ]
+    ]
+  },
+  "filters": {
+    "cyrillic": [
+      "Inter",
+      "Nimbus Roman",
+      "Nimbus Sans",
+      "Noto Sans"
+    ],
+    "cyrillic_opentype": [
+      "Inter"
+    ],
+    "chinese_simplified": [
+      "Noto Sans CJK JP"
+    ],
+    "runic_probe": [
+      "Noto Sans",
+      "Schumacher Clean"
+    ],
+    "other_script": [
+      "Noto Sans Gunjala Gondi"
+    ],
+    "foundry_urw_any_case": [
+      "Nimbus Roman",
+      "Nimbus Sans"
+    ],
+    "foundry_unknown": [
+      "Bitmap Fixed",
+      "Mine",
+      "Old Thing"
+    ],
+    "type1": [
+      "Nimbus Roman",
+      "Nimbus Sans"
+    ],
+    "collection": [
+      "Noto Sans CJK JP"
+    ],
+    "personal_cyrillic": [
+      "Inter"
+    ],
+    "query_and_foundry": [
+      "Noto Sans"
+    ],
+    "nothing": [],
+    "garbage_json": [
+      "Bitmap Fixed",
+      "Inter",
+      "Mine",
+      "Nimbus Roman",
+      "Nimbus Sans",
+      "Noto Sans",
+      "Noto Sans CJK JP",
+      "Noto Sans Gunjala Gondi",
+      "Old Thing",
+      "Schumacher Clean"
+    ]
+  },
+  "char_blocks": [
+    {
+      "start": 0,
+      "name": "Basic Latin",
+      "count": 95,
+      "first": 32,
+      "last": 126
+    },
+    {
+      "start": 128,
+      "name": "Latin-1 Supplement",
+      "count": 96,
+      "first": 160,
+      "last": 255
+    },
+    {
+      "start": 1024,
+      "name": "Cyrillic",
+      "count": 79,
+      "first": 1025,
+      "last": 1103
+    },
+    {
+      "start": 8448,
+      "name": "Letterlike Symbols",
+      "count": 1,
+      "first": 8470,
+      "last": 8470
+    },
+    {
+      "start": 57344,
+      "name": "Private Use Area",
+      "count": 3,
+      "first": 57344,
+      "last": 57346
+    },
+    {
+      "start": 128512,
+      "name": "Emoticons",
+      "count": 1,
+      "first": 128512,
+      "last": 128512
+    },
+    {
+      "start": null,
+      "name": "Other characters",
+      "count": 2,
+      "first": 131072,
+      "last": 131073
+    }
+  ],
+  "char_blocks_bold": [
+    65,
+    66,
+    67
+  ],
+  "char_blocks_unknown_style_falls_back_to_first": [
+    "Basic Latin",
+    "Latin-1 Supplement",
+    "Cyrillic",
+    "Letterlike Symbols",
+    "Private Use Area",
+    "Emoticons",
+    "Other characters"
+  ]
+}

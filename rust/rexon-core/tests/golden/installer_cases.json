@@ -1,0 +1,815 @@
+{
+ "constants": {
+  "system_install_action": "org.rexon.system-install",
+  "system_helper_path": "/usr/local/lib/rexon-system-helper",
+  "system_policy_path": "/usr/share/polkit-1/actions/org.rexon.system-install.policy",
+  "install_dir": "/usr/local/bin",
+  "lib_dir": "/usr/local/lib/rexon",
+  "desktop_dir": "/usr/share/applications"
+ },
+ "texts": {
+  "system_helper_script": "#!/bin/bash\n# Rexon system helper — привилегированная установка и выбор SDDM/Plymouth-тем.\n# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.system-install,\n# auth_admin_keep: подтверждённый пароль держится несколько минут для окна\n# Rexon). Принимает только строго валидируемые аргументы. НЕ выполняет\n# произвольный код и не пропускает его в систему в составе темы.\nset -euo pipefail\nexport LC_ALL=C LANG=C\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\nexec </dev/null\numask 022\n\n# ── Язык сообщений ─────────────────────────────────────────────────\n# Отметка ниже говорит Rexon, что помощник понимает --lang.\n# REXON_HELPER_LANG_ARG=1\n# Первый аргумент --lang=<код> необязателен; код сверяется с белым\n# списком из po/LINGUAS, всё прочее — английский. Тексты — ТОЛЬКО из\n# таблицы ниже (вшиты при генерации); вставки %1..%9 подставляются как\n# данные, а не как формат printf и не как команды.\nrx_lang=en\ncase \"${1:-}\" in\n    --lang=*)\n        case \"${1#--lang=}\" in\n            ru) rx_lang=ru ;;\n        esac\n        shift ;;\nesac\nrx_text() {\n    case \"$rx_lang:$1\" in\n        ru:bad_category) rx_t='недопустимая категория: %1' ;;\n        *:bad_category) rx_t='invalid category: %1' ;;\n        ru:bad_family) rx_t='недопустимое семейство: %1' ;;\n        *:bad_family) rx_t='invalid family: %1' ;;\n        ru:bad_module) rx_t='в %1 ModuleName не из штатных модулей plymouth' ;;\n        *:bad_module) rx_t='%1: ModuleName is not one of Plymouth'\\''s standard modules' ;;\n        ru:bad_theme_chars) rx_t='недопустимые символы в имени темы: %1' ;;\n        *:bad_theme_chars) rx_t='invalid characters in the theme name: %1' ;;\n        ru:bad_theme_name) rx_t='недопустимое имя темы: %1' ;;\n        *:bad_theme_name) rx_t='invalid theme name: %1' ;;\n        ru:initramfs_failed) rx_t='не удалось пересобрать образ загрузки, поэтому новая заставка не покажется — оставлена прежняя тема' ;;\n        *:initramfs_failed) rx_t='couldn'\\''t rebuild the boot image, so the new boot splash can'\\''t be shown — the previous theme is kept' ;;\n        ru:no_activation) rx_t='нечем включить тему загрузки: нет ни plymouth-set-default-theme, ни update-alternatives' ;;\n        *:no_activation) rx_t='no way to enable the boot splash theme: neither plymouth-set-default-theme nor update-alternatives is available' ;;\n        ru:no_plymouth_file) rx_t='в теме нет файла %1' ;;\n        *:no_plymouth_file) rx_t='the theme has no %1 file' ;;\n        ru:no_stock_module) rx_t='в %1 нет ModuleName штатного модуля plymouth' ;;\n        *:no_stock_module) rx_t='%1 has no ModuleName of a standard Plymouth module' ;;\n        ru:no_work_dir) rx_t='не создать рабочий каталог' ;;\n        *:no_work_dir) rx_t='cannot create a working directory' ;;\n        ru:not_via_pkexec) rx_t='запуск не через pkexec' ;;\n        *:not_via_pkexec) rx_t='not started through pkexec' ;;\n        ru:nul_byte) rx_t='в %1 есть нулевой байт' ;;\n        *:nul_byte) rx_t='%1 contains a null byte' ;;\n        ru:staged_not_callers) rx_t='staged принадлежит не вызвавшему: %1' ;;\n        *:staged_not_callers) rx_t='staged does not belong to the caller: %1' ;;\n        ru:staged_not_dir) rx_t='staged не каталог: %1' ;;\n        *:staged_not_dir) rx_t='staged is not a directory: %1' ;;\n        ru:staged_outside_tmp) rx_t='staged вне /tmp|/var/tmp: %1' ;;\n        *:staged_outside_tmp) rx_t='staged is outside /tmp|/var/tmp: %1' ;;\n        ru:staged_unreachable) rx_t='staged недоступен: %1' ;;\n        *:staged_unreachable) rx_t='staged is not accessible: %1' ;;\n        ru:sys_args) rx_t='ожидается 4 аргумента: category theme_id staged family' ;;\n        *:sys_args) rx_t='expected 4 arguments: category theme_id staged family' ;;\n        ru:theme_active) rx_t='тема %1 сейчас выбрана — сначала выберите другую' ;;\n        *:theme_active) rx_t='the theme %1 is selected right now — choose another one first' ;;\n        ru:theme_copy_failed) rx_t='не скопировать тему' ;;\n        *:theme_copy_failed) rx_t='cannot copy the theme' ;;\n        ru:theme_from_package) rx_t='тема %1 принадлежит пакету системы — удалите её менеджером пакетов' ;;\n        *:theme_from_package) rx_t='the theme %1 belongs to a system package — remove it with the package manager' ;;\n        ru:theme_has_lib) rx_t='в теме есть библиотека (%1) — код в теме загрузки не допускается' ;;\n        *:theme_has_lib) rx_t='the theme contains a library (%1) — code in a boot splash theme is not allowed' ;;\n        ru:theme_not_installed) rx_t='тема %1 не установлена в системный каталог' ;;\n        *:theme_not_installed) rx_t='the theme %1 is not installed in the system folder' ;;\n        ru:theme_odd) rx_t='в теме есть ссылка или особый файл: %1' ;;\n        *:theme_odd) rx_t='the theme contains a link or a special file: %1' ;;\n        ru:theme_set_elsewhere) rx_t='тема экрана входа задана в файле, который Rexon не меняет, — выбрать %1 здесь нельзя' ;;\n        *:theme_set_elsewhere) rx_t='the login screen theme is set in a file Rexon doesn'\\''t change — %1 can'\\''t be selected here' ;;\n        *) rx_t=\"$1\" ;;\n    esac\n}\nrx_say() {\n    local rx_t rx_out=\"\" rx_n\n    rx_text \"$1\"; shift\n    while [ -n \"$rx_t\" ]; do\n        case \"$rx_t\" in\n            %[1-9]*) rx_n=\"${rx_t:1:1}\"; rx_out+=\"${!rx_n-}\"; rx_t=\"${rx_t:2}\" ;;\n            *) rx_out+=\"${rx_t:0:1}\"; rx_t=\"${rx_t:1}\" ;;\n        esac\n    done\n    printf '%s: %s\\n' rexon-helper \"$rx_out\"\n}\ndie() { rx_say \"$@\" >&2; exit 2; }\n\n[ \"$#\" -eq 4 ] || die sys_args\n\ncategory=\"$1\"\ntheme_id=\"$2\"\nstaged=\"$3\"\nfamily=\"$4\"\n\n# 1) category — строгий allowlist. `apply-<вид>` — режим «Применить»: тема\n#    уже стоит в /usr/share/<вид>/themes, её надо только выбрать (решение\n#    04.10.2026: установка тему не включает, включает кнопка). `remove-<вид>`\n#    — режим «Удалить»: снять каталог темы (не активной и не из пакета).\nmode=install\ncase \"$category\" in\n    sddm|plymouth) : ;;\n    apply-sddm|apply-plymouth) mode=apply; category=\"${category#apply-}\" ;;\n    remove-sddm|remove-plymouth) mode=remove; category=\"${category#remove-}\" ;;\n    *) die bad_category \"$category\" ;;\nesac\n\n# 2) theme_id — только безопасные символы; без / .. и ведущих '-' и '.'\n#    ('-x' стал бы флагом plymouth-set-default-theme, '.' — корнем тем).\ncase \"$theme_id\" in\n    \"\"|-*|.*|*/*|*..*) die bad_theme_name \"$theme_id\" ;;\nesac\nif ! printf '%s' \"$theme_id\" | grep -Eq '^[A-Za-z0-9._-]+$'; then\n    die bad_theme_chars \"$theme_id\"\nfi\n\n# 3) family — принимается для совместимости вызова; способ активации\n#    Plymouth выбирается НЕ по нему, а по факту наличия инструментов.\ncase \"$family\" in\n    arch|debian) : ;;\n    *) die bad_family \"$family\" ;;\nesac\n\n# Пересборка образа ядра после смены темы — первым, что есть. Порядок — как\n# у помощника сеанса прав: сначала сценарий самого plymouth (его зовёт и\n# `plymouth-set-default-theme -R`; дистрибутив настраивает его под свой\n# загрузчик — на CachyOS с Limine это limine-mkinitcpio, а голый\n# `mkinitcpio -P` образ Limine не обновляет). Нечем — код 3.\nrebuild_initramfs() {\n    local p\n    for p in /usr/lib/plymouth/plymouth-update-initrd \\\n             /usr/libexec/plymouth/plymouth-update-initrd; do\n        if [ -x \"$p\" ]; then \"$p\"; return; fi\n    done\n    if command -v update-initramfs >/dev/null 2>&1; then\n        update-initramfs -u\n    elif command -v limine-mkinitcpio >/dev/null 2>&1; then\n        limine-mkinitcpio\n    elif command -v mkinitcpio >/dev/null 2>&1; then\n        mkinitcpio -P\n    elif command -v limine-dracut >/dev/null 2>&1; then\n        limine-dracut\n    elif command -v dracut >/dev/null 2>&1; then\n        dracut --regenerate-all --force\n    elif [ -x /usr/lib/booster/regenerate_images ]; then\n        /usr/lib/booster/regenerate_images\n    else\n        return 3\n    fi\n}\n\n# Есть ли в файле `[Theme] Current=` (не в комментарии, именно в группе Theme).\nsddm_has_current() {\n    awk 'BEGIN { r = 1 }\n         { s = $0; sub(/^[ \\t]+/, \"\", s) }\n         s ~ /^\\[/ { g = s; sub(/^\\[[ \\t]*/, \"\", g); sub(/[ \\t]*\\][ \\t\\r]*$/, \"\", g); next }\n         g == \"Theme\" && s ~ /^Current[ \\t]*=/ { r = 0 }\n         END { exit r }' \"$1\"\n}\n\n# Тема экрана входа SDDM. /etc/sddm.conf SDDM читает ПОСЛЕДНИМ, после всех\n# sddm.conf.d/*.conf, и его `Current=` молча перекрывал свой файл (так на\n# CachyOS: Current=breeze). Поэтому значение меняется во всех файлах /etc,\n# где ключ уже есть (настройки KDE тоже покажут эту тему), а свой файл\n# пишется, только если ключа в /etc нет нигде. Две фазы: сначала копии с\n# правкой рядом с каждым файлом (не вышло хоть одна, или файл — ссылка —\n# копии снимаются, система не тронута), затем mv поверх. Прочие строки\n# остаются как были.\nsddm_set_theme() {\n    local f tmp files=() tmps=()\n    for f in /etc/sddm.conf.d/*.conf /etc/sddm.conf; do\n        [ -f \"$f\" ] || continue\n        sddm_has_current \"$f\" || continue\n        [ ! -L \"$f\" ] || die theme_set_elsewhere \"$theme_id\"\n        files+=(\"$f\")\n    done\n    for f in \"${files[@]}\"; do\n        if ! tmp=\"$(mktemp \"$f.rexon.XXXXXXXX\")\" \\\n            || ! awk -v t=\"$theme_id\" '\n                { s = $0; sub(/^[ \\t]+/, \"\", s) }\n                s ~ /^\\[/ { g = s; sub(/^\\[[ \\t]*/, \"\", g); sub(/[ \\t]*\\][ \\t\\r]*$/, \"\", g); print; next }\n                g == \"Theme\" && match($0, /^[ \\t]*Current[ \\t]*=/) { print substr($0, 1, RLENGTH) t; next }\n                { print }' \"$f\" >\"$tmp\" \\\n            || ! chmod --reference=\"$f\" -- \"$tmp\"; then\n            rm -f -- \"${tmps[@]}\" \"${tmp:-}\"\n            exit 1\n        fi\n        tmps+=(\"$tmp\")\n    done\n    local i\n    for i in \"${!files[@]}\"; do\n        mv -f -- \"${tmps[$i]}\" \"${files[$i]}\"\n    done\n    if [ \"${#files[@]}\" = 0 ]; then\n        install -d /etc/sddm.conf.d\n        cat > /etc/sddm.conf.d/zz-rexon-theme.conf <<REXON_EOF\n[Theme]\nCurrent=$theme_id\nREXON_EOF\n    fi\n}\n\n# Выбор темы, уже лежащей в /usr/share/<вид>/themes/<имя>.\nactivate() {\n    local dest=\"/usr/share/$category/themes/$theme_id\" prev\n    if [ \"$category\" = \"sddm\" ]; then\n        sddm_set_theme\n        return 0\n    fi\n    # Способ активации выбираем по ФАКТУ, а не по семейству: на Ubuntu\n    # бинарь plymouth-set-default-theme вырезан из пакета и остаются только\n    # alternatives, а на Debian наоборот — alternatives для plymouth не\n    # используются (тема там обычный файл, update-alternatives на нём\n    # ошибается), зато бинарь работает и сам зовёт update-initramfs.\n    # На Debian и openSUSE бинарь лежит в /usr/sbin (он уже в PATH выше).\n    # Тема выбирается без -R, образ пересобирается следом: не вышло —\n    # прежняя тема возвращается в настройки (образ и так прежний).\n    if command -v plymouth-set-default-theme >/dev/null 2>&1; then\n        prev=\"$(plymouth-set-default-theme 2>/dev/null || true)\"\n        plymouth-set-default-theme \"$theme_id\"\n        if ! rebuild_initramfs; then\n            case \"$prev\" in\n                \"\"|\"$theme_id\"|-*|.*|*/*) : ;;\n                *) plymouth-set-default-theme \"$prev\" || true ;;\n            esac\n            die initramfs_failed\n        fi\n    elif command -v update-alternatives >/dev/null 2>&1; then\n        pl=\"$dest/$theme_id.plymouth\"\n        [ -f \"$pl\" ] || die no_plymouth_file \"$theme_id.plymouth\"\n        prev=\"$(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || true)\"\n        update-alternatives --install \\\n            /usr/share/plymouth/themes/default.plymouth \\\n            default.plymouth \"$pl\" 100\n        update-alternatives --set default.plymouth \"$pl\"\n        if ! rebuild_initramfs; then\n            if [ -n \"$prev\" ] && [ \"$prev\" != \"$pl\" ] && [ -f \"$prev\" ]; then\n                update-alternatives --set default.plymouth \"$prev\" || true\n            fi\n            die initramfs_failed\n        fi\n    else\n        die no_activation\n    fi\n}\n\n# Строка `ключ = значение` в файле настроек (ключ без учёта регистра,\n# пробелы по краям не в счёт). Разбор — средствами bash, без внешних программ.\nconf_has() {\n    local line k v\n    while IFS= read -r line || [ -n \"$line\" ]; do\n        line=\"${line%$'\\r'}\"\n        case \"$line\" in *=*) : ;; *) continue ;; esac\n        k=\"${line%%=*}\"; v=\"${line#*=}\"\n        k=\"${k#\"${k%%[![:space:]]*}\"}\"; k=\"${k%\"${k##*[![:space:]]}\"}\"\n        v=\"${v#\"${v%%[![:space:]]*}\"}\"; v=\"${v%\"${v##*[![:space:]]}\"}\"\n        [ \"${k,,}\" = \"${2,,}\" ] && [ \"$v\" = \"$3\" ] && return 0\n    done < \"$1\"\n    return 1\n}\n\n# Выбрана ли тема сейчас. С запасом: любое упоминание в любом источнике, без\n# разбора групп и порядка, — лишний отказ лучше снятой активной темы\n# (экран входа без темы, заставка без файлов при следующей сборке образа).\ntheme_is_active() {\n    local f link\n    if [ \"$category\" = \"sddm\" ]; then\n        for f in /usr/lib/sddm/sddm.conf.d/*.conf /etc/sddm.conf.d/*.conf /etc/sddm.conf; do\n            [ -f \"$f\" ] && conf_has \"$f\" Current \"$theme_id\" && return 0\n        done\n        return 1\n    fi\n    for f in /etc/plymouth/plymouthd.conf /usr/share/plymouth/plymouthd.defaults \\\n             /usr/share/plymouth/plymouthd.conf; do\n        [ -f \"$f\" ] && conf_has \"$f\" Theme \"$theme_id\" && return 0\n    done\n    link=\"$(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || true)\"\n    case \"$link\" in \"$dest\"/*) return 0 ;; esac\n    return 1\n}\n\n# Каталог принадлежит пакету системы — его снимает менеджер пакетов, а не мы.\ntheme_from_package() {\n    if command -v pacman >/dev/null 2>&1 && pacman -Qoq -- \"$dest\" >/dev/null 2>&1; then\n        return 0\n    fi\n    if command -v dpkg-query >/dev/null 2>&1 && dpkg-query -S -- \"$dest\" >/dev/null 2>&1; then\n        return 0\n    fi\n    if command -v rpm >/dev/null 2>&1 && rpm -qf -- \"$dest\" >/dev/null 2>&1; then\n        return 0\n    fi\n    return 1\n}\n\n[ -n \"${PKEXEC_UID:-}\" ] || die not_via_pkexec\n\n# Режим «Удалить»: только каталог /usr/share/<вид>/themes/<имя> — обычный\n# каталог, не ссылка (имя уже без / и ..), не выбранная сейчас тема и не\n# файлы пакета системы. Ссылки ВНУТРИ темы rm не разыменовывает.\nif [ \"$mode\" = \"remove\" ]; then\n    [ \"$staged\" = \"-\" ] || die sys_args\n    dest=\"/usr/share/$category/themes/$theme_id\"\n    [ -d \"$dest\" ] && [ ! -L \"$dest\" ] || die theme_not_installed \"$theme_id\"\n    if theme_is_active; then die theme_active \"$theme_id\"; fi\n    if theme_from_package; then die theme_from_package \"$theme_id\"; fi\n    rm -rf --one-file-system -- \"$dest\"\n    exit 0\nfi\n\n# Режим «Применить»: ничего не копируем, staged — прочерк. Тема обязана уже\n# стоять в системном каталоге обычным каталогом (не ссылкой): выбрать можно\n# только то, что положил root.\nif [ \"$mode\" = \"apply\" ]; then\n    [ \"$staged\" = \"-\" ] || die sys_args\n    dest=\"/usr/share/$category/themes/$theme_id\"\n    [ -d \"$dest\" ] && [ ! -L \"$dest\" ] || die theme_not_installed \"$theme_id\"\n    if [ \"$category\" = \"plymouth\" ]; then\n        [ -f \"$dest/$theme_id.plymouth\" ] || die no_plymouth_file \"$theme_id.plymouth\"\n    fi\n    activate\n    exit 0\nfi\n\n# 4) staged — каталог вызвавшего под /tmp|/var/tmp (Rexon создаёт его через\n#    mkdtemp). Сначала ВХОДИМ в него: дальше работаем с тем самым каталогом,\n#    и подмена любой части пути ссылкой уже ничего не меняет. Место и\n#    владельца проверяем у входа, а не у пути.\n[ -d \"$staged\" ] || die staged_not_dir \"$staged\"\ncd -P -- \"$staged\" 2>/dev/null || die staged_unreachable \"$staged\"\nreal_staged=\"$(pwd -P)\"\ncase \"$real_staged\" in\n    /tmp/?*|/var/tmp/?*) : ;;\n    *) die staged_outside_tmp \"$real_staged\" ;;\nesac\n[ \"$(stat -c %u .)\" = \"$PKEXEC_UID\" ] || die staged_not_callers \"$real_staged\"\n\n# 5) Копия в свой каталог (0700, root) — проверяется и ставится ИМЕННО она.\nwork=\"$(mktemp -d /var/tmp/rexon-system-helper.XXXXXXXX)\" || die no_work_dir\ntrap 'rm -rf -- \"$work\"' EXIT\nsrc=\"$work/theme\"\ncp -R -P -- . \"$src\" || die theme_copy_failed\n\n# 6) Тема — только обычные файлы и каталоги.\nodd=\"$(find \"$src\" -mindepth 1 ! -type f ! -type d -print -quit)\"\n[ -z \"$odd\" ] || die theme_odd \"${odd#\"$src\"/}\"\n\n# 7) Plymouth: ни исполняемого кода, ни модуля мимо каталога модулей.\nmodline='^[[:space:]]*ModuleName[[:space:]]*=[[:space:]]*(details|fade-throbber|script|space-flares|text|tribar|two-step)[[:space:]]*$'\ncheck_plymouth_conf() {\n    local f=\"$1\" rel=\"${1#\"$src\"/}\" total strict\n    # NUL: plymouth читает строку до него, проверка видела бы другое.\n    [ \"$(tr -d '\\000' <\"$f\" | wc -c)\" = \"$(wc -c <\"$f\")\" ] \\\n        || die nul_byte \"$rel\"\n    # Каждое вхождение слова ModuleName (без учёта регистра) обязано быть\n    # целой строкой ModuleName=<штатный модуль>.\n    total=\"$({ grep -aoi 'modulename' \"$f\" || true; } | wc -l)\"\n    strict=\"$({ grep -aE \"$modline\" \"$f\" || true; } | wc -l)\"\n    [ \"$total\" = \"$strict\" ] \\\n        || die bad_module \"$rel\"\n    printf '%s' \"$strict\"\n}\nif [ \"$category\" = \"plymouth\" ]; then\n    so=\"$(find \"$src\" -type f \\( -name '*.so' -o -name '*.so.*' \\) -print -quit)\"\n    [ -z \"$so\" ] || die theme_has_lib \"${so#\"$src\"/}\"\n    main=\"$src/$theme_id.plymouth\"\n    [ -f \"$main\" ] || die no_plymouth_file \"$theme_id.plymouth\"\n    while IFS= read -r -d '' conf; do\n        check_plymouth_conf \"$conf\" >/dev/null\n    done < <(find \"$src\" -type f -iname '*.plymouth' -print0)\n    [ \"$(check_plymouth_conf \"$main\")\" -ge 1 ] \\\n        || die no_stock_module \"$theme_id.plymouth\"\nfi\n\n# ── Установка ────────────────────────────────────────────────────────\n# Только копия: выбирает тему режим `apply-<вид>` (кнопка «Применить»).\ndest=\"/usr/share/$category/themes/$theme_id\"\ninstall -d \"$dest\"\ncp -R -P -T --remove-destination -- \"$src\" \"$dest\"\nchmod -R a+rX \"$dest\"\nexit 0\n",
+  "system_policy_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE policyconfig PUBLIC\n \"-//freedesktop//DTD polkit Policy Configuration 1.0//EN\"\n \"http://www.freedesktop.org/software/polkit/policyconfig-1.dtd\">\n<policyconfig>\n  <vendor>Rexon</vendor>\n  <vendor_url>https://github.com/Wehrwolfmann</vendor_url>\n  <action id=\"org.rexon.system-install\">\n    <description>Install a system theme (SDDM / Plymouth)</description>\n    <description xml:lang=\"ru\">Установка системной темы (SDDM / Plymouth)</description>\n    <message>Authentication is required to install a system theme</message>\n    <message xml:lang=\"ru\">Для установки системной темы требуется аутентификация</message>\n    <defaults>\n      <allow_any>auth_admin</allow_any>\n      <allow_inactive>auth_admin</allow_inactive>\n      <allow_active>auth_admin_keep</allow_active>\n    </defaults>\n    <annotate key=\"org.freedesktop.policykit.exec.path\">/usr/local/lib/rexon-system-helper</annotate>\n    <annotate key=\"org.freedesktop.policykit.exec.allow_gui\">true</annotate>\n  </action>\n</policyconfig>\n",
+  "desktop_content": "[Desktop Entry]\nVersion=1.5\nType=Application\nName=Rexon\nGenericName=Desktop Environment Manager\nGenericName[ru]=Менеджер рабочих столов\nComment=Universal desktop environment manager for Linux\nComment[ru]=Универсальный менеджер рабочих столов для Linux\nKeywords=desktop;environment;DE;settings;system;cinnamon;xfce;mate;gnome;kde;plasma;\nKeywords[ru]=рабочий;стол;окружение;настройки;система;\n\nExec=rexon\nTryExec=rexon\nTerminal=false\nStartupNotify=true\n\nIcon=rexon\n\nCategories=Qt;Graphics;\nX-GNOME-UsesNotifications=true\nX-Desktop-File-Install-Version=0.26\n\nActions=InstallDE;Backup;Compare;Recover;\n\n[Desktop Action InstallDE]\nName=Install Desktop Environment\nName[ru]=Установить рабочий стол\nExec=rexon --page=install\n\n[Desktop Action Backup]\nName=Manage Backups\nName[ru]=Управление резервными копиями\nExec=rexon --page=backups\n\n[Desktop Action Compare]\nName=Compare Desktop Environments\nName[ru]=Сравнить рабочие столы\nExec=rexon --page=compare\n\n[Desktop Action Recover]\nName=🛟 Recover desktop appearance (emergency)\nName[ru]=🛟 Восстановить оформление рабочего стола (аварийно)\nExec=rexon --recover-kde\nIcon=emblem-important-symbolic\n",
+  "recover_desktop_content": "[Desktop Entry]\nVersion=1.0\nType=Application\nName=Rexon — Recover desktop appearance\nName[ru]=Rexon — Восстановить оформление рабочего стола\nGenericName=Emergency appearance rollback\nGenericName[ru]=Аварийный откат оформления\nComment=Restore the standard desktop look if an applied theme broke it or Rexon won't start\nComment[ru]=Вернуть стандартный вид рабочего стола, если применённая тема его сломала или Rexon не запускается\nKeywords=rexon;recover;kde;plasma;theme;emergency;\nKeywords[ru]=rexon;восстановить;kde;plasma;тема;аварийный;\n\nExec=rexon --recover-kde\nTryExec=rexon\nTerminal=false\nStartupNotify=false\n\nIcon=emblem-important-symbolic\n\nCategories=Qt;Graphics;\nOnlyShowIn=KDE;\n"
+ },
+ "detect_default_mode": [
+  {
+   "env": {},
+   "mode": "system",
+   "distro_id": ""
+  },
+  {
+   "env": {
+    "SteamGameId": "480"
+   },
+   "mode": "portable",
+   "distro_id": ""
+  },
+  {
+   "env": {
+    "SteamAppId": "480"
+   },
+   "mode": "portable",
+   "distro_id": ""
+  },
+  {
+   "env": {
+    "STEAM_COMPAT_DATA_PATH": "/x"
+   },
+   "mode": "portable",
+   "distro_id": ""
+  },
+  {
+   "env": {},
+   "distro_id": "steamos",
+   "mode": "user"
+  },
+  {
+   "env": {},
+   "distro_id": "SteamOS",
+   "mode": "user"
+  },
+  {
+   "env": {
+    "SteamGameId": "480"
+   },
+   "distro_id": "steamos",
+   "mode": "portable"
+  },
+  {
+   "env": {},
+   "distro_id": "cachyos",
+   "mode": "system"
+  },
+  {
+   "env": {},
+   "distro_id": "holoiso",
+   "mode": "user"
+  }
+ ],
+ "paths": {
+  "system": {
+   "input": {},
+   "out": {
+    "install_dir": "/usr/local/bin",
+    "lib_dir": "/usr/local/lib/rexon",
+    "desktop_dir": "/usr/share/applications",
+    "icon_root": "/usr/share/icons/hicolor",
+    "pixmap_dir": "/usr/share/pixmaps",
+    "gnome_ext_dir": "/usr/share/gnome-shell/extensions",
+    "cinnamon_ext_dir": "/usr/share/cinnamon/extensions"
+   }
+  },
+  "user_default_xdg": {
+   "input": {
+    "home": "/home/w",
+    "xdg": null
+   },
+   "out": {
+    "install_dir": "/home/w/.local/bin",
+    "lib_dir": "/home/w/.local/lib/rexon",
+    "desktop_dir": "/home/w/.local/share/applications",
+    "icon_root": "/home/w/.local/share/icons/hicolor",
+    "pixmap_dir": "/home/w/.local/share/pixmaps",
+    "gnome_ext_dir": "/home/w/.local/share/gnome-shell/extensions",
+    "cinnamon_ext_dir": "/home/w/.local/share/cinnamon/extensions"
+   }
+  },
+  "user_custom_xdg": {
+   "input": {
+    "home": "/home/w",
+    "xdg": "/data/x"
+   },
+   "out": {
+    "install_dir": "/home/w/.local/bin",
+    "lib_dir": "/home/w/.local/lib/rexon",
+    "desktop_dir": "/data/x/applications",
+    "icon_root": "/data/x/icons/hicolor",
+    "pixmap_dir": "/data/x/pixmaps",
+    "gnome_ext_dir": "/data/x/gnome-shell/extensions",
+    "cinnamon_ext_dir": "/data/x/cinnamon/extensions"
+   }
+  },
+  "portable": {
+   "input": {},
+   "out": {
+    "install_dir": null,
+    "lib_dir": null,
+    "desktop_dir": null,
+    "icon_root": null,
+    "pixmap_dir": null,
+    "gnome_ext_dir": null,
+    "cinnamon_ext_dir": null
+   }
+  }
+ },
+ "dependencies": {
+  "arch": {
+   "packages": [
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-webengine",
+    "qt6-multimedia",
+    "qt6-websockets",
+    "qt6-grpc",
+    "layer-shell-qt",
+    "vulkan-icd-loader",
+    "mpv"
+   ],
+   "cmd": "pacman -S --needed --noconfirm qt6-base qt6-declarative qt6-webengine qt6-multimedia qt6-websockets qt6-grpc layer-shell-qt vulkan-icd-loader mpv",
+   "optional_packages": [
+    "wayland",
+    "libglvnd",
+    "dbus",
+    "openssl",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "pacman -S --needed --noconfirm wayland libglvnd dbus openssl polkit bash hicolor-icon-theme"
+  },
+  "debian": {
+   "packages": [
+    "qt6-qpa-plugins",
+    "qt6-wayland",
+    "qml6-module-qtquick-controls",
+    "qml6-module-qtwebengine",
+    "qml6-module-qtmultimedia",
+    "libqt6websockets6",
+    "libqt6grpc6",
+    "qml6-module-org-kde-layershell",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "apt-get install -y --no-install-recommends qt6-qpa-plugins qt6-wayland qml6-module-qtquick-controls qml6-module-qtwebengine qml6-module-qtmultimedia libqt6websockets6 libqt6grpc6 qml6-module-org-kde-layershell libvulkan1 libmpv2",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd0",
+    "dbus",
+    "openssl",
+    "pkexec",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "apt-get install -y --no-install-recommends libwayland-client0 libglvnd0 dbus openssl pkexec bash hicolor-icon-theme"
+  },
+  "fedora": {
+   "packages": [
+    "qt6-qtbase-gui",
+    "qt6-qtdeclarative",
+    "qt6-qtwebengine",
+    "qt6-qtmultimedia",
+    "qt6-qtwebsockets",
+    "qt6-qtgrpc",
+    "layer-shell-qt",
+    "vulkan-loader",
+    "mpv-libs"
+   ],
+   "cmd": "dnf install -y qt6-qtbase-gui qt6-qtdeclarative qt6-qtwebengine qt6-qtmultimedia qt6-qtwebsockets qt6-qtgrpc layer-shell-qt vulkan-loader mpv-libs",
+   "optional_packages": [
+    "libwayland-client",
+    "libglvnd-egl",
+    "dbus-libs",
+    "openssl-libs",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "dnf install -y libwayland-client libglvnd-egl dbus-libs openssl-libs polkit bash hicolor-icon-theme"
+  },
+  "suse": {
+   "packages": [
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-webengine",
+    "qt6-multimedia",
+    "qt6-websockets",
+    "qt6-grpc",
+    "layer-shell-qt",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "zypper install -y --no-recommends qt6-base qt6-declarative qt6-webengine qt6-multimedia qt6-websockets qt6-grpc layer-shell-qt libvulkan1 libmpv2",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd",
+    "dbus-1",
+    "libopenssl3",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "zypper install -y --no-recommends libwayland-client0 libglvnd dbus-1 libopenssl3 polkit bash hicolor-icon-theme"
+  },
+  "gentoo": {
+   "packages": [
+    "dev-qt/qtbase",
+    "dev-qt/qtdeclarative",
+    "dev-qt/qtwebengine",
+    "dev-qt/qtmultimedia",
+    "dev-qt/qtwebsockets",
+    "dev-qt/qtgrpc",
+    "kde-frameworks/layer-shell-qt",
+    "media-libs/vulkan-loader",
+    "media-video/mpv"
+   ],
+   "cmd": "emerge --ask=n --quiet dev-qt/qtbase dev-qt/qtdeclarative dev-qt/qtwebengine dev-qt/qtmultimedia dev-qt/qtwebsockets dev-qt/qtgrpc kde-frameworks/layer-shell-qt media-libs/vulkan-loader media-video/mpv",
+   "optional_packages": [
+    "dev-libs/wayland",
+    "media-libs/libglvnd",
+    "sys-apps/dbus",
+    "dev-libs/openssl",
+    "sys-auth/polkit",
+    "app-shells/bash",
+    "x11-themes/hicolor-icon-theme"
+   ],
+   "optional_cmd": "emerge --ask=n --quiet dev-libs/wayland media-libs/libglvnd sys-apps/dbus dev-libs/openssl sys-auth/polkit app-shells/bash x11-themes/hicolor-icon-theme"
+  },
+  "alpine": {
+   "packages": [
+    "qt6-qtbase",
+    "qt6-qtdeclarative",
+    "qt6-qtwebengine",
+    "qt6-qtmultimedia",
+    "qt6-qtwebsockets",
+    "qt6-qtgrpc",
+    "layer-shell-qt",
+    "vulkan-loader",
+    "mpv-libs"
+   ],
+   "cmd": "apk add --no-progress qt6-qtbase qt6-qtdeclarative qt6-qtwebengine qt6-qtmultimedia qt6-qtwebsockets qt6-qtgrpc layer-shell-qt vulkan-loader mpv-libs",
+   "optional_packages": [
+    "wayland-libs-client",
+    "libglvnd",
+    "dbus",
+    "openssl",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "apk add --no-progress wayland-libs-client libglvnd dbus openssl polkit bash hicolor-icon-theme"
+  },
+  "void": {
+   "packages": [
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-webengine",
+    "qt6-multimedia",
+    "qt6-websockets",
+    "qt6-grpc",
+    "layer-shell-qt",
+    "Vulkan-Loader",
+    "mpv"
+   ],
+   "cmd": "xbps-install -y qt6-base qt6-declarative qt6-webengine qt6-multimedia qt6-websockets qt6-grpc layer-shell-qt Vulkan-Loader mpv",
+   "optional_packages": [
+    "wayland",
+    "libglvnd",
+    "dbus",
+    "openssl",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "xbps-install -y wayland libglvnd dbus openssl polkit bash hicolor-icon-theme"
+  },
+  "nix": {
+   "packages": [
+    "qt6-qpa-plugins",
+    "qt6-wayland",
+    "qml6-module-qtquick-controls",
+    "qml6-module-qtwebengine",
+    "qml6-module-qtmultimedia",
+    "libqt6websockets6",
+    "libqt6grpc6",
+    "qml6-module-org-kde-layershell",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd0",
+    "dbus",
+    "openssl",
+    "pkexec",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": ""
+  },
+  "solus": {
+   "packages": [
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-webengine",
+    "qt6-multimedia",
+    "qt6-websockets",
+    "layer-shell-qt",
+    "vulkan",
+    "mpv"
+   ],
+   "cmd": "eopkg it -y qt6-base qt6-declarative qt6-webengine qt6-multimedia qt6-websockets layer-shell-qt vulkan mpv",
+   "optional_packages": [
+    "wayland",
+    "libglvnd",
+    "dbus",
+    "openssl",
+    "polkit",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "eopkg it -y wayland libglvnd dbus openssl polkit bash hicolor-icon-theme"
+  },
+  "clear": {
+   "packages": [
+    "qt6-qpa-plugins",
+    "qt6-wayland",
+    "qml6-module-qtquick-controls",
+    "qml6-module-qtwebengine",
+    "qml6-module-qtmultimedia",
+    "libqt6websockets6",
+    "libqt6grpc6",
+    "qml6-module-org-kde-layershell",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "swupd bundle-add qt6-qpa-plugins qt6-wayland qml6-module-qtquick-controls qml6-module-qtwebengine qml6-module-qtmultimedia libqt6websockets6 libqt6grpc6 qml6-module-org-kde-layershell libvulkan1 libmpv2",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd0",
+    "dbus",
+    "openssl",
+    "pkexec",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "swupd bundle-add libwayland-client0 libglvnd0 dbus openssl pkexec bash hicolor-icon-theme"
+  },
+  "alt": {
+   "packages": [
+    "qt6-qpa-plugins",
+    "qt6-wayland",
+    "qml6-module-qtquick-controls",
+    "qml6-module-qtwebengine",
+    "qml6-module-qtmultimedia",
+    "libqt6websockets6",
+    "libqt6grpc6",
+    "qml6-module-org-kde-layershell",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "apt-get install -y qt6-qpa-plugins qt6-wayland qml6-module-qtquick-controls qml6-module-qtwebengine qml6-module-qtmultimedia libqt6websockets6 libqt6grpc6 qml6-module-org-kde-layershell libvulkan1 libmpv2",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd0",
+    "dbus",
+    "openssl",
+    "pkexec",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": "apt-get install -y libwayland-client0 libglvnd0 dbus openssl pkexec bash hicolor-icon-theme"
+  },
+  "unknown": {
+   "packages": [
+    "qt6-qpa-plugins",
+    "qt6-wayland",
+    "qml6-module-qtquick-controls",
+    "qml6-module-qtwebengine",
+    "qml6-module-qtmultimedia",
+    "libqt6websockets6",
+    "libqt6grpc6",
+    "qml6-module-org-kde-layershell",
+    "libvulkan1",
+    "libmpv2"
+   ],
+   "cmd": "",
+   "optional_packages": [
+    "libwayland-client0",
+    "libglvnd0",
+    "dbus",
+    "openssl",
+    "pkexec",
+    "bash",
+    "hicolor-icon-theme"
+   ],
+   "optional_cmd": ""
+  }
+ },
+ "distro_pkg_owner": {
+  "arch": [
+   "pacman",
+   "-Qoq"
+  ],
+  "debian": [
+   "dpkg",
+   "-S"
+  ],
+  "fedora": [
+   "rpm",
+   "-qf",
+   "--qf",
+   "%{NAME}"
+  ],
+  "suse": [
+   "rpm",
+   "-qf",
+   "--qf",
+   "%{NAME}"
+  ],
+  "alt": [
+   "rpm",
+   "-qf",
+   "--qf",
+   "%{NAME}"
+  ]
+ },
+ "distro_pkg_remove": {
+  "arch": [
+   "pacman",
+   "-R",
+   "--noconfirm"
+  ],
+  "debian": [
+   "apt-get",
+   "remove",
+   "-y"
+  ],
+  "alt": [
+   "apt-get",
+   "remove",
+   "-y"
+  ],
+  "fedora": [
+   "dnf",
+   "remove",
+   "-y"
+  ],
+  "suse": [
+   "zypper",
+   "remove",
+   "-y"
+  ],
+  "gentoo": [
+   "emerge",
+   "--unmerge"
+  ],
+  "alpine": [
+   "apk",
+   "del"
+  ],
+  "void": [
+   "xbps-remove",
+   "-y"
+  ],
+  "solus": [
+   "eopkg",
+   "rm",
+   "-y"
+  ]
+ },
+ "parse_owner_cases": [
+  {
+   "tool": "dpkg",
+   "stdout": "rexon: /usr/bin/rexon\n",
+   "expect": "rexon"
+  },
+  {
+   "tool": "pacman",
+   "stdout": "rexon\n",
+   "expect": "rexon"
+  },
+  {
+   "tool": "rpm",
+   "stdout": "rexon\nother\n",
+   "expect": "rexon"
+  },
+  {
+   "tool": "pacman",
+   "stdout": "  \n",
+   "expect": null
+  },
+  {
+   "tool": "dpkg",
+   "stdout": "",
+   "expect": null
+  }
+ ],
+ "distro_candidate_bins": [
+  "/usr/bin/rexon",
+  "/usr/local/bin/rexon"
+ ],
+ "launchers": {
+  "system": {
+   "lib_dir": "/usr/local/lib/rexon",
+   "text": "#!/bin/sh\n# Rexon — лаунчер (установка в систему).\nexec /usr/local/lib/rexon/rexon-main-window \"$@\"\n"
+  },
+  "user": {
+   "lib_dir": "/home/w/.local/lib/rexon",
+   "text": "#!/bin/sh\n# Rexon — лаунчер (установка в домашнюю папку).\nexec /home/w/.local/lib/rexon/rexon-main-window \"$@\"\n"
+  }
+ },
+ "install_system": {
+  "deps_installed": {
+   "params": {
+    "lib_dir": "/usr/local/lib/rexon",
+    "install_dir": "/usr/local/bin",
+    "desktop_dir": "/usr/share/applications",
+    "tmp_pkg": "/tmp/rexon_gen/rexon_pkg_dir",
+    "tmp_launcher": "/tmp/rexon_gen/rexon_launcher_1",
+    "tmp_desktop": "/tmp/rexon_gen/rexon_2.desktop",
+    "tmp_recover": "/tmp/rexon_gen/rexon_recover_3.desktop",
+    "helpers": {
+     "tmp_helper": "/tmp/rexon_gen/rexon_helper_13.sh",
+     "tmp_policy": "/tmp/rexon_gen/rexon_policy_14.policy",
+     "tmp_de_helper": "/tmp/rexon_gen/rexon_de_helper_15.sh",
+     "tmp_de_policy": "/tmp/rexon_gen/rexon_de_policy_16.policy",
+     "tmp_pkg_helper": "/tmp/rexon_gen/rexon_pkg_helper_17.sh",
+     "tmp_pkg_policy": "/tmp/rexon_gen/rexon_pkg_policy_18.policy",
+     "tmp_stage_helper": "/tmp/rexon_gen/rexon_stage_helper_19.sh",
+     "tmp_stage_policy": "/tmp/rexon_gen/rexon_stage_policy_20.policy",
+     "tmp_de_rules": "/tmp/rexon_gen/rexon_rules_21.rules"
+    },
+    "icons": {
+     "sizes": {
+      "16": "/tmp/rexon_gen/rexon_icon_16_4.png",
+      "24": "/tmp/rexon_gen/rexon_icon_24_5.png",
+      "32": "/tmp/rexon_gen/rexon_icon_32_6.png",
+      "48": "/tmp/rexon_gen/rexon_icon_48_7.png",
+      "64": "/tmp/rexon_gen/rexon_icon_64_8.png",
+      "128": "/tmp/rexon_gen/rexon_icon_128_9.png",
+      "256": "/tmp/rexon_gen/rexon_icon_256_10.png",
+      "512": "/tmp/rexon_gen/rexon_icon_512_11.png"
+     },
+     "svg": "/tmp/rexon_gen/rexon_icon_12.svg",
+     "master": null
+    },
+    "dep_cmd": ""
+   },
+   "script": "#!/bin/bash\nset -e\n# Зависимости уже установлены\nrm -rf /usr/local/lib/rexon\nmkdir -p /usr/local/lib/rexon\ncp -r /tmp/rexon_gen/rexon_pkg_dir/* /usr/local/lib/rexon/\nchmod -R 755 /usr/local/lib/rexon\ninstall -Dm755 /tmp/rexon_gen/rexon_launcher_1 /usr/local/bin/rexon\ninstall -Dm644 /tmp/rexon_gen/rexon_2.desktop /usr/share/applications/rexon.desktop\ninstall -Dm644 /tmp/rexon_gen/rexon_recover_3.desktop /usr/share/applications/rexon-recover.desktop\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_16_4.png /usr/share/icons/hicolor/16x16/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_24_5.png /usr/share/icons/hicolor/24x24/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_32_6.png /usr/share/icons/hicolor/32x32/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_48_7.png /usr/share/icons/hicolor/48x48/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_64_8.png /usr/share/icons/hicolor/64x64/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_128_9.png /usr/share/icons/hicolor/128x128/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_256_10.png /usr/share/icons/hicolor/256x256/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_512_11.png /usr/share/icons/hicolor/512x512/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_12.svg /usr/share/icons/hicolor/scalable/apps/rexon.svg\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_128_9.png /usr/share/pixmaps/rexon.png\ninstall -Dm755 /tmp/rexon_gen/rexon_helper_13.sh /usr/local/lib/rexon-system-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_policy_14.policy /usr/share/polkit-1/actions/org.rexon.system-install.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_de_helper_15.sh /usr/local/lib/rexon-de-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_de_policy_16.policy /usr/share/polkit-1/actions/org.rexon.de-install.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_pkg_helper_17.sh /usr/local/lib/rexon-pkg-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_pkg_policy_18.policy /usr/share/polkit-1/actions/org.rexon.pkg.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_stage_helper_19.sh /usr/local/lib/rexon-stage-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_stage_policy_20.policy /usr/share/polkit-1/actions/org.rexon.stage.policy\n# Правило «без пароля» ставится только с согласия; прежнее, поставленное молча, снимается.\nrm -f /etc/polkit-1/rules.d/49-rexon-nopasswd.rules\nupdate-desktop-database /usr/share/applications 2>/dev/null || true\ngtk4-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || \\\n  gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true\n# KDE SyCoCa rebuild (чтобы панель/меню сразу увидели иконку)\n( kbuildsycoca6 --noincremental 2>/dev/null || \\\n  kbuildsycoca5 --noincremental 2>/dev/null ) || true\n\n# Wehrwolfmann: GNOME Shell + Cinnamon extensions для wallpaper-режима.\n# Mutter (GNOME) и Muffin (Cinnamon) не поддерживают wlr-layer-shell —\n# extension через Clutter.Actor + mmap-streaming. Ставим всегда без выбора\n# пользователя (на случай переключения на GNOME/Cinnamon-Wayland).\nfor de_pair in \"gnome-extension|/usr/share/gnome-shell/extensions\" \\\n               \"cinnamon-extension|/usr/share/cinnamon/extensions\"; do\n    DE_DIR=\"${de_pair%|*}\"\n    DEST_BASE=\"${de_pair#*|}\"\n    EXT_SRC=\"/usr/local/lib/rexon/$DE_DIR/rexon-wallpaper@rexon.app\"\n    EXT_DEST=\"$DEST_BASE/rexon-wallpaper@rexon.app\"\n    # Расширение раньше называлось rexon-wallpaper@openaxon.io (домен от\n    # чужого проекта). Старый каталог сносим: два расширения с одним и тем\n    # же кодом рисовали бы обои дважды.\n    rm -rf \"$DEST_BASE/rexon-wallpaper@openaxon.io\"\n    if [ -d \"$EXT_SRC\" ]; then\n        rm -rf \"$EXT_DEST\"\n        mkdir -p \"$(dirname \"$EXT_DEST\")\"\n        cp -r \"$EXT_SRC\" \"$EXT_DEST\"\n        chmod -R 755 \"$EXT_DEST\"\n        if command -v glib-compile-schemas >/dev/null 2>&1 \\\n            && [ -d \"$EXT_DEST/schemas\" ]; then\n            glib-compile-schemas \"$EXT_DEST/schemas/\" 2>/dev/null || true\n        fi\n    fi\ndone\n",
+   "pkexec": {
+    "argv": [
+     "pkexec",
+     "bash",
+     "/tmp/rexon_gen/rexon_install_22.sh"
+    ],
+    "timeout": 600
+   },
+   "ok": true,
+   "msg": "Установка завершена успешно"
+  },
+  "deps_missing": {
+   "params": {
+    "lib_dir": "/usr/local/lib/rexon",
+    "install_dir": "/usr/local/bin",
+    "desktop_dir": "/usr/share/applications",
+    "tmp_pkg": "/tmp/rexon_gen/rexon_pkg_dir",
+    "tmp_launcher": "/tmp/rexon_gen/rexon_launcher_1",
+    "tmp_desktop": "/tmp/rexon_gen/rexon_2.desktop",
+    "tmp_recover": "/tmp/rexon_gen/rexon_recover_3.desktop",
+    "helpers": {
+     "tmp_helper": "/tmp/rexon_gen/rexon_helper_13.sh",
+     "tmp_policy": "/tmp/rexon_gen/rexon_policy_14.policy",
+     "tmp_de_helper": "/tmp/rexon_gen/rexon_de_helper_15.sh",
+     "tmp_de_policy": "/tmp/rexon_gen/rexon_de_policy_16.policy",
+     "tmp_pkg_helper": "/tmp/rexon_gen/rexon_pkg_helper_17.sh",
+     "tmp_pkg_policy": "/tmp/rexon_gen/rexon_pkg_policy_18.policy",
+     "tmp_stage_helper": "/tmp/rexon_gen/rexon_stage_helper_19.sh",
+     "tmp_stage_policy": "/tmp/rexon_gen/rexon_stage_policy_20.policy",
+     "tmp_de_rules": "/tmp/rexon_gen/rexon_rules_21.rules"
+    },
+    "icons": {
+     "sizes": {
+      "16": "/tmp/rexon_gen/rexon_icon_16_4.png",
+      "24": "/tmp/rexon_gen/rexon_icon_24_5.png",
+      "32": "/tmp/rexon_gen/rexon_icon_32_6.png",
+      "48": "/tmp/rexon_gen/rexon_icon_48_7.png",
+      "64": "/tmp/rexon_gen/rexon_icon_64_8.png",
+      "128": "/tmp/rexon_gen/rexon_icon_128_9.png",
+      "256": "/tmp/rexon_gen/rexon_icon_256_10.png",
+      "512": "/tmp/rexon_gen/rexon_icon_512_11.png"
+     },
+     "svg": "/tmp/rexon_gen/rexon_icon_12.svg",
+     "master": null
+    },
+    "dep_cmd": "pacman -S --needed --noconfirm pyside6 qt6-webengine python-cairo layer-shell-qt"
+   },
+   "script": "#!/bin/bash\nset -e\n# Установка зависимостей\npacman -S --needed --noconfirm pyside6 qt6-webengine python-cairo layer-shell-qt\nrm -rf /usr/local/lib/rexon\nmkdir -p /usr/local/lib/rexon\ncp -r /tmp/rexon_gen/rexon_pkg_dir/* /usr/local/lib/rexon/\nchmod -R 755 /usr/local/lib/rexon\ninstall -Dm755 /tmp/rexon_gen/rexon_launcher_1 /usr/local/bin/rexon\ninstall -Dm644 /tmp/rexon_gen/rexon_2.desktop /usr/share/applications/rexon.desktop\ninstall -Dm644 /tmp/rexon_gen/rexon_recover_3.desktop /usr/share/applications/rexon-recover.desktop\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_16_4.png /usr/share/icons/hicolor/16x16/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_24_5.png /usr/share/icons/hicolor/24x24/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_32_6.png /usr/share/icons/hicolor/32x32/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_48_7.png /usr/share/icons/hicolor/48x48/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_64_8.png /usr/share/icons/hicolor/64x64/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_128_9.png /usr/share/icons/hicolor/128x128/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_256_10.png /usr/share/icons/hicolor/256x256/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_512_11.png /usr/share/icons/hicolor/512x512/apps/rexon.png\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_12.svg /usr/share/icons/hicolor/scalable/apps/rexon.svg\ninstall -Dm644 /tmp/rexon_gen/rexon_icon_128_9.png /usr/share/pixmaps/rexon.png\ninstall -Dm755 /tmp/rexon_gen/rexon_helper_13.sh /usr/local/lib/rexon-system-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_policy_14.policy /usr/share/polkit-1/actions/org.rexon.system-install.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_de_helper_15.sh /usr/local/lib/rexon-de-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_de_policy_16.policy /usr/share/polkit-1/actions/org.rexon.de-install.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_pkg_helper_17.sh /usr/local/lib/rexon-pkg-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_pkg_policy_18.policy /usr/share/polkit-1/actions/org.rexon.pkg.policy\ninstall -Dm755 /tmp/rexon_gen/rexon_stage_helper_19.sh /usr/local/lib/rexon-stage-helper\ninstall -Dm644 /tmp/rexon_gen/rexon_stage_policy_20.policy /usr/share/polkit-1/actions/org.rexon.stage.policy\n# Правило «без пароля» ставится только с согласия; прежнее, поставленное молча, снимается.\nrm -f /etc/polkit-1/rules.d/49-rexon-nopasswd.rules\nupdate-desktop-database /usr/share/applications 2>/dev/null || true\ngtk4-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || \\\n  gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true\n# KDE SyCoCa rebuild (чтобы панель/меню сразу увидели иконку)\n( kbuildsycoca6 --noincremental 2>/dev/null || \\\n  kbuildsycoca5 --noincremental 2>/dev/null ) || true\n\n# Wehrwolfmann: GNOME Shell + Cinnamon extensions для wallpaper-режима.\n# Mutter (GNOME) и Muffin (Cinnamon) не поддерживают wlr-layer-shell —\n# extension через Clutter.Actor + mmap-streaming. Ставим всегда без выбора\n# пользователя (на случай переключения на GNOME/Cinnamon-Wayland).\nfor de_pair in \"gnome-extension|/usr/share/gnome-shell/extensions\" \\\n               \"cinnamon-extension|/usr/share/cinnamon/extensions\"; do\n    DE_DIR=\"${de_pair%|*}\"\n    DEST_BASE=\"${de_pair#*|}\"\n    EXT_SRC=\"/usr/local/lib/rexon/$DE_DIR/rexon-wallpaper@rexon.app\"\n    EXT_DEST=\"$DEST_BASE/rexon-wallpaper@rexon.app\"\n    # Расширение раньше называлось rexon-wallpaper@openaxon.io (домен от\n    # чужого проекта). Старый каталог сносим: два расширения с одним и тем\n    # же кодом рисовали бы обои дважды.\n    rm -rf \"$DEST_BASE/rexon-wallpaper@openaxon.io\"\n    if [ -d \"$EXT_SRC\" ]; then\n        rm -rf \"$EXT_DEST\"\n        mkdir -p \"$(dirname \"$EXT_DEST\")\"\n        cp -r \"$EXT_SRC\" \"$EXT_DEST\"\n        chmod -R 755 \"$EXT_DEST\"\n        if command -v glib-compile-schemas >/dev/null 2>&1 \\\n            && [ -d \"$EXT_DEST/schemas\" ]; then\n            glib-compile-schemas \"$EXT_DEST/schemas/\" 2>/dev/null || true\n        fi\n    fi\ndone\n",
+   "pkexec": {
+    "argv": [
+     "pkexec",
+     "bash",
+     "/tmp/rexon_gen/rexon_install_22.sh"
+    ],
+    "timeout": 600
+   },
+   "ok": true,
+   "msg": "Установка завершена успешно"
+  }
+ },
+ "uninstall_system": {
+  "sys_paths": {
+   "install_dir": "/usr/local/bin",
+   "lib_dir": "/usr/local/lib/rexon",
+   "desktop_dir": "/usr/share/applications",
+   "icon_root": "/usr/share/icons/hicolor",
+   "pixmap_dir": "/usr/share/pixmaps",
+   "gnome_ext_dir": "/usr/share/gnome-shell/extensions",
+   "cinnamon_ext_dir": "/usr/share/cinnamon/extensions"
+  },
+  "tmp_sh": "/tmp/rexon_uninstall_X.sh",
+  "script": "#!/bin/bash\nset -e\necho REXON-STEP:files\nrm -rf /usr/local/lib/rexon\nrm -rf /usr/local/bin/rexon\nrm -rf /usr/local/bin/rexon-wallpaper-host\nrm -rf /usr/local/bin/rexon-splash-overlay\nrm -rf /usr/share/applications/rexon.desktop\nrm -rf /usr/share/applications/rexon-recover.desktop\nrm -rf /usr/share/gnome-shell/extensions/rexon-wallpaper@rexon.app\nrm -rf /usr/share/cinnamon/extensions/rexon-wallpaper@rexon.app\nrm -rf /usr/share/gnome-shell/extensions/rexon-wallpaper@openaxon.io\nrm -rf /usr/share/cinnamon/extensions/rexon-wallpaper@openaxon.io\nrm -rf /usr/local/lib/rexon-system-helper\nrm -rf /usr/share/polkit-1/actions/org.rexon.system-install.policy\nrm -rf /usr/local/lib/rexon-de-helper\nrm -rf /usr/share/polkit-1/actions/org.rexon.de-install.policy\nrm -rf /usr/local/lib/rexon-pkg-helper\nrm -rf /usr/share/polkit-1/actions/org.rexon.pkg.policy\nrm -rf /usr/local/lib/rexon-stage-helper\nrm -rf /usr/share/polkit-1/actions/org.rexon.stage.policy\nrm -rf /usr/local/lib/rexon-priv-helper\nrm -rf /usr/share/polkit-1/actions/org.rexon.session.policy\nrm -rf /var/lib/rexon/bin/rexon-priv-helper\nrm -rf /etc/polkit-1/actions/org.rexon.session.policy\nrm -rf /etc/polkit-1/rules.d/49-rexon-nopasswd.rules\nrm -rf /usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override\nupdate-desktop-database /usr/share/applications 2>/dev/null || true\nglib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true\nif command -v pacman >/dev/null 2>&1; then\n  for f in /usr/share/mate-panel/layouts/*.layout; do\n    [ -e \"$f\" ] || continue\n    pacman -Qo \"$f\" >/dev/null 2>&1 || rm -f \"$f\"\n  done\nfi\nfor f in /etc/systemd/system/*.service.d/50-rexon-fallback.conf; do\n  [ -e \"$f\" ] || continue\n  rm -f \"$f\"\n  rmdir \"$(dirname \"$f\")\" 2>/dev/null || true\ndone\nrm -f /etc/systemd/system/rexon-dm-fallback.service\nrm -rf /etc/rexon\nif command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload 2>/dev/null || true; fi\n",
+  "pkexec": {
+   "argv": [
+    "pkexec",
+    "bash",
+    "/tmp/rexon_uninstall_X.sh"
+   ],
+   "timeout": 300
+  }
+ },
+ "uninstall_pkg": {
+  "arch": {
+   "pkg_name": "rexon",
+   "argv": [
+    "pkexec",
+    "pacman",
+    "-R",
+    "--noconfirm",
+    "rexon"
+   ],
+   "timeout": 300
+  },
+  "debian": {
+   "pkg_name": "rexon-git",
+   "argv": [
+    "pkexec",
+    "apt-get",
+    "remove",
+    "-y",
+    "rexon-git"
+   ],
+   "timeout": 300
+  }
+ },
+ "get_installed_files": {
+  "note": "оригинал фильтрует os.path.exists(p); порт возвращает кандидатов, фильтрация — задача исполнителя (передаёт present-флаги + exists)",
+  "case_pkg_and_system": [
+   "пакет «rexon» (со всеми его файлами в системе)",
+   "/usr/local/bin/rexon",
+   "/usr/local/bin/rexon-wallpaper-host",
+   "/usr/local/bin/rexon-splash-overlay",
+   "/usr/local/lib/rexon",
+   "/usr/share/applications/rexon.desktop",
+   "/usr/share/applications/rexon-recover.desktop",
+   "/usr/share/gnome-shell/extensions/rexon-wallpaper@rexon.app",
+   "/usr/share/cinnamon/extensions/rexon-wallpaper@rexon.app",
+   "/usr/share/gnome-shell/extensions/rexon-wallpaper@openaxon.io",
+   "/usr/share/cinnamon/extensions/rexon-wallpaper@openaxon.io",
+   "/home/w/.config/rexon",
+   "/home/w/.local/share/rexon/backups"
+  ]
+ },
+ "uninstall_user_v2": {
+  "icon_size_dirs": [
+   "16x16",
+   "24x24",
+   "32x32",
+   "48x48",
+   "64x64",
+   "128x128",
+   "256x256",
+   "512x512",
+   "scalable"
+  ],
+  "uninstall_user": {
+   "paths": {
+    "install_dir": "/home/user/.local/bin",
+    "lib_dir": "/home/user/.local/lib/rexon",
+    "desktop_dir": "/home/user/.local/share/applications",
+    "icon_root": "/home/user/.local/share/icons/hicolor",
+    "pixmap_dir": "/home/user/.local/share/pixmaps",
+    "gnome_ext_dir": "/home/user/.local/share/gnome-shell/extensions",
+    "cinnamon_ext_dir": "/home/user/.local/share/cinnamon/extensions"
+   },
+   "present": [
+    "/home/user/.local/share/icons/hicolor/128x128/apps/rexon.png",
+    "/home/user/.local/share/icons/hicolor/48x48/apps/rexon.png",
+    "/home/user/.local/share/icons/hicolor/scalable/apps/rexon.svg",
+    "/home/user/.local/share/pixmaps/rexon.png"
+   ],
+   "want": [
+    "/home/user/.local/lib/rexon",
+    "/home/user/.local/bin/rexon",
+    "/home/user/.local/bin/rexon-wallpaper-host",
+    "/home/user/.local/bin/rexon-splash-overlay",
+    "/home/user/.local/share/applications/rexon.desktop",
+    "/home/user/.local/share/applications/rexon-recover.desktop",
+    "/home/user/.local/share/gnome-shell/extensions/rexon-wallpaper@rexon.app",
+    "/home/user/.local/share/cinnamon/extensions/rexon-wallpaper@rexon.app",
+    "/home/user/.local/share/gnome-shell/extensions/rexon-wallpaper@openaxon.io",
+    "/home/user/.local/share/cinnamon/extensions/rexon-wallpaper@openaxon.io",
+    "/home/user/.local/share/icons/hicolor/48x48/apps/rexon.png",
+    "/home/user/.local/share/icons/hicolor/128x128/apps/rexon.png",
+    "/home/user/.local/share/icons/hicolor/scalable/apps/rexon.svg",
+    "/home/user/.local/share/pixmaps/rexon.png"
+   ]
+  },
+  "uninstall_summary": [
+   {
+    "pkg_name": null,
+    "has_system": false,
+    "has_user": false,
+    "want": [
+     false,
+     "Rexon не установлен"
+    ]
+   },
+   {
+    "pkg_name": null,
+    "has_system": false,
+    "has_user": true,
+    "want": [
+     true,
+     "Rexon удалён (user)"
+    ]
+   },
+   {
+    "pkg_name": null,
+    "has_system": true,
+    "has_user": false,
+    "want": [
+     true,
+     "Rexon удалён (system)"
+    ]
+   },
+   {
+    "pkg_name": null,
+    "has_system": true,
+    "has_user": true,
+    "want": [
+     true,
+     "Rexon удалён (system, user)"
+    ]
+   },
+   {
+    "pkg_name": "rexon-git",
+    "has_system": false,
+    "has_user": false,
+    "want": [
+     true,
+     "Rexon удалён (пакет rexon-git)"
+    ]
+   },
+   {
+    "pkg_name": "rexon-git",
+    "has_system": false,
+    "has_user": true,
+    "want": [
+     true,
+     "Rexon удалён (пакет rexon-git, user)"
+    ]
+   },
+   {
+    "pkg_name": "rexon-git",
+    "has_system": true,
+    "has_user": false,
+    "want": [
+     true,
+     "Rexon удалён (пакет rexon-git, system)"
+    ]
+   },
+   {
+    "pkg_name": "rexon-git",
+    "has_system": true,
+    "has_user": true,
+    "want": [
+     true,
+     "Rexon удалён (пакет rexon-git, system, user)"
+    ]
+   }
+  ]
+ }
+}

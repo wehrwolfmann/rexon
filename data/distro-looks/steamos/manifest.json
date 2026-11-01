@@ -1,0 +1,134 @@
+{
+  "format_version": 5,
+  "id": "steamos",
+  "version": "1.0.0",
+  "name": {
+    "en": "Like SteamOS",
+    "ru": "Как в SteamOS",
+    "de": "Wie SteamOS"
+  },
+  "description": {
+    "en": "The Vapor look of the Steam Deck desktop (or the classic VGUI2 style of the old Steam client) and, if you want it, a game mode: a “Steam Big Picture” session on the login screen, as on the Steam Deck. Rexon does not turn on automatic login and does not start Steam by itself. Steam Deck logos and wallpapers are not included.",
+    "ru": "Вид Vapor с рабочего стола Steam Deck (или классический стиль VGUI2 старого клиента Steam) и, по желанию, игровой режим: сеанс «Steam Big Picture» на экране входа, как на Steam Deck. Rexon не включает автоматический вход и сам Steam не запускает. Логотипы и обои Steam Deck не входят.",
+    "de": "Der Vapor-Look des Steam-Deck-Desktops (oder der klassische VGUI2-Stil des alten Steam-Clients) und auf Wunsch ein Spielmodus: eine „Steam Big Picture“-Sitzung auf dem Anmeldebildschirm wie auf dem Steam Deck. Rexon schaltet keine automatische Anmeldung ein und startet Steam nicht von selbst. Logos und Hintergrundbilder des Steam Deck sind nicht enthalten."
+  },
+  "authors": [{"name": "Wehrwolfmann"}],
+  "license": "Apache-2.0",
+  "tags": ["distro-look", "dark", "plasma", "gaming"],
+  "properties": {
+    "variant": {
+      "type": "combo",
+      "options": [
+        {"value": "vapor", "label": {"en": "Vapor (Steam Deck)", "ru": "Vapor (как на Steam Deck)", "de": "Vapor (wie auf dem Steam Deck)"}},
+        {"value": "vgui", "label": {"en": "VGUI2 (classic Steam)", "ru": "VGUI2 (классический Steam)", "de": "VGUI2 (klassisches Steam)"}}
+      ],
+      "default": "vapor",
+      "label": {"en": "Style", "ru": "Стиль", "de": "Stil"}
+    }
+  },
+  "sources": [
+    {
+      "what": "Steam Deck KDE presets 3.9.4-2: Vapor and VGUI global themes, colour schemes, Vapor Plasma and GTK themes",
+      "id": "valve",
+      "url": "https://steamdeck-packages.steamos.cloud/archlinux-mirror/jupiter-main/os/x86_64/steamdeck-kde-presets-3.9.4-2-any.pkg.tar.zst",
+      "sha256": "b593a4a7617b3c5e37f5b3fde440d17ff928db5dcbaadf391827e506e2582f72",
+      "author": "Valve",
+      "license": "GPL-2.0-or-later AND GPL-3.0-only"
+    },
+    {
+      "what": "Breeze Dark icons",
+      "id": "breeze-icons",
+      "url": "https://invent.kde.org/frameworks/breeze-icons",
+      "package": "icons-breeze",
+      "author": "KDE",
+      "license": "LGPL-3.0-or-later"
+    },
+    {
+      "what": "Breeze cursors",
+      "id": "breeze-cursors",
+      "url": "https://invent.kde.org/plasma/breeze",
+      "package": "cursors-breeze",
+      "author": "KDE",
+      "license": "LGPL-2.0-or-later"
+    },
+    {
+      "what": "Steam Big Picture session for gamescope",
+      "id": "game-session",
+      "url": "https://github.com/OpenGamingCollective/gamescope-session-steam",
+      "package": "game-session",
+      "author": "OpenGamingCollective",
+      "license": "MIT"
+    }
+  ],
+  "items": [
+    {
+      "kind": "global-look",
+      "native": {"kde-lnf": "sources/valve/usr/share/plasma/look-and-feel"},
+      "required": false,
+      "permissions": ["exec"]
+    },
+    {
+      "kind": "palette",
+      "native": {"kde-colors": "sources/valve/usr/share/color-schemes"},
+      "required": false
+    },
+    {
+      "kind": "shell-theme",
+      "native": {"plasma": "sources/valve/usr/share/plasma/desktoptheme/Vapor"},
+      "required": false
+    },
+    {
+      "kind": "gtk-theme",
+      "native": {"gtk": "sources/valve/usr/share/themes/Vapor"}
+    },
+    {
+      "kind": "icons",
+      "native": {"freedesktop": "sources/breeze-icons/usr/share/icons/breeze-dark"}
+    },
+    {
+      "kind": "cursors",
+      "native": {"freedesktop": "sources/breeze-cursors/usr/share/icons/breeze_cursors"},
+      "required": false
+    },
+    {
+      "kind": "behaviour",
+      "native": {"kconfig": "native/plasma-settings.json"},
+      "required": false
+    },
+    {
+      "kind": "game-session",
+      "native": {"freedesktop": "sources/game-session/usr/share/wayland-sessions/gamescope-session-steam.desktop"},
+      "required": false,
+      "permissions": ["exec"],
+      "note": {
+        "en": "Game mode adds a “Steam Big Picture” session to the login screen; choose it there yourself. On a laptop with two graphics cards the screen may stay black if Steam starts on the card the screen is not connected to. If that happens, restart the computer and choose your usual session on the login screen.",
+        "ru": "Игровой режим добавляет сеанс «Steam Big Picture» на экран входа — выберите его там сами. На ноутбуке с двумя видеокартами экран может остаться чёрным, если Steam запустится не на той видеокарте, к которой подключён экран. Если так случилось, перезагрузите компьютер и выберите обычный сеанс на экране входа.",
+        "de": "Der Spielmodus fügt dem Anmeldebildschirm eine „Steam Big Picture“-Sitzung hinzu; wählen Sie sie dort selbst aus. Auf einem Laptop mit zwei Grafikkarten kann der Bildschirm schwarz bleiben, wenn Steam auf der Karte startet, an der der Bildschirm nicht hängt. Starten Sie in diesem Fall den Computer neu und wählen Sie auf dem Anmeldebildschirm Ihre gewohnte Sitzung."
+      }
+    }
+  ],
+  "requires": {
+    "packages": [
+      {"role": "icons-breeze", "for": ["icons"],
+       "arch": ["breeze-icons"], "fedora": ["breeze-icon-theme"], "debian": ["breeze-icon-theme"]},
+      {"role": "cursors-breeze", "for": ["cursors"], "required": false,
+       "arch": ["breeze-cursors"], "fedora": null, "debian": null},
+      {"role": "cursors-kde-classic", "for": ["behaviour"], "consumers": ["kconfig"], "required": false,
+       "when": {"variant": "vgui"},
+       "arch": ["oxygen-cursors"], "fedora": null, "debian": null},
+      {"role": "gamescope", "for": ["game-session"], "required": false,
+       "arch": ["gamescope", "steam"], "fedora": null, "debian": null},
+      {"role": "game-session", "for": ["game-session"], "required": false, "source": "aur",
+       "aur": ["gamescope-session-git", "gamescope-session-steam-git"],
+       "forbid": ["jupiter-hw-support", "gamescope-session-cachyos"]}
+    ],
+    "targets": {"kde-lnf": ">=6.0", "plasma": ">=6.0"},
+    "forbid": ["steamdeck-kde-presets"],
+    "preconditions": [{"name": "libplasma", "owners": ["libplasma"],
+       "message": {
+         "en": "Plasma's libplasma has been replaced here by another build (a fork such as AeroShell). Plasma looks do not apply on top of it: put the regular libplasma back first.",
+         "ru": "Здесь libplasma из Plasma заменена другой сборкой (форком вроде AeroShell). Оформление Plasma поверх неё не применяется: сначала верните обычную libplasma.",
+         "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her."
+       }}]
+  }
+}

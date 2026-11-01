@@ -1,0 +1,324 @@
+{
+ "env_screen_size": [
+  {
+   "label": "defaults",
+   "width": null,
+   "height": null,
+   "result": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "label": "both_set",
+   "width": "2560",
+   "height": "1440",
+   "result": [
+    2560,
+    1440
+   ]
+  },
+  {
+   "label": "width_only",
+   "width": "3840",
+   "height": null,
+   "result": [
+    3840,
+    1080
+   ]
+  },
+  {
+   "label": "bad_width",
+   "width": "abc",
+   "height": "1080",
+   "result": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "label": "bad_height",
+   "width": "1920",
+   "height": "12.5",
+   "result": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "label": "negative",
+   "width": "-100",
+   "height": "-5",
+   "result": [
+    1,
+    1
+   ]
+  },
+  {
+   "label": "zero",
+   "width": "0",
+   "height": "0",
+   "result": [
+    1,
+    1
+   ]
+  },
+  {
+   "label": "whitespace",
+   "width": " 1600 ",
+   "height": " 900 ",
+   "result": [
+    1600,
+    900
+   ]
+  },
+  {
+   "label": "empty",
+   "width": "",
+   "height": "",
+   "result": [
+    1920,
+    1080
+   ]
+  }
+ ],
+ "env_output_path": [
+  {
+   "label": "unset",
+   "value": null,
+   "result": null
+  },
+  {
+   "label": "empty",
+   "value": "",
+   "result": null
+  },
+  {
+   "label": "path",
+   "value": "/run/user/1000/rexon-wp-frame.rgba",
+   "result": "/run/user/1000/rexon-wp-frame.rgba"
+  }
+ ],
+ "is_wayland_session": [
+  {
+   "label": "both_unset",
+   "session_type": null,
+   "wayland_display": null,
+   "result": false
+  },
+  {
+   "label": "xdg_wayland",
+   "session_type": "wayland",
+   "wayland_display": null,
+   "result": true
+  },
+  {
+   "label": "xdg_wayland_upper",
+   "session_type": "Wayland",
+   "wayland_display": null,
+   "result": true
+  },
+  {
+   "label": "xdg_x11",
+   "session_type": "x11",
+   "wayland_display": null,
+   "result": false
+  },
+  {
+   "label": "display_set",
+   "session_type": null,
+   "wayland_display": "wayland-0",
+   "result": true
+  },
+  {
+   "label": "display_empty",
+   "session_type": null,
+   "wayland_display": "",
+   "result": false
+  },
+  {
+   "label": "x11_but_display",
+   "session_type": "x11",
+   "wayland_display": "wayland-1",
+   "result": true
+  },
+  {
+   "label": "tty",
+   "session_type": "tty",
+   "wayland_display": null,
+   "result": false
+  }
+ ],
+ "xprop": [
+  {
+   "window_id": 54525959,
+   "ok": true,
+   "calls": [
+    [
+     "xprop",
+     "-id",
+     "54525959",
+     "-f",
+     "_NET_WM_WINDOW_TYPE",
+     "32a",
+     "-set",
+     "_NET_WM_WINDOW_TYPE",
+     "_NET_WM_WINDOW_TYPE_DESKTOP"
+    ],
+    [
+     "xprop",
+     "-id",
+     "54525959",
+     "-f",
+     "_NET_WM_STATE",
+     "32a",
+     "-set",
+     "_NET_WM_STATE",
+     "_NET_WM_STATE_BELOW,_NET_WM_STATE_SKIP_TASKBAR,_NET_WM_STATE_SKIP_PAGER,_NET_WM_STATE_STICKY"
+    ]
+   ],
+   "timeouts": [
+    5,
+    5
+   ]
+  },
+  {
+   "window_id": 0,
+   "ok": true,
+   "calls": [
+    [
+     "xprop",
+     "-id",
+     "0",
+     "-f",
+     "_NET_WM_WINDOW_TYPE",
+     "32a",
+     "-set",
+     "_NET_WM_WINDOW_TYPE",
+     "_NET_WM_WINDOW_TYPE_DESKTOP"
+    ],
+    [
+     "xprop",
+     "-id",
+     "0",
+     "-f",
+     "_NET_WM_STATE",
+     "32a",
+     "-set",
+     "_NET_WM_STATE",
+     "_NET_WM_STATE_BELOW,_NET_WM_STATE_SKIP_TASKBAR,_NET_WM_STATE_SKIP_PAGER,_NET_WM_STATE_STICKY"
+    ]
+   ],
+   "timeouts": [
+    5,
+    5
+   ]
+  },
+  {
+   "window_id": 1,
+   "ok": true,
+   "calls": [
+    [
+     "xprop",
+     "-id",
+     "1",
+     "-f",
+     "_NET_WM_WINDOW_TYPE",
+     "32a",
+     "-set",
+     "_NET_WM_WINDOW_TYPE",
+     "_NET_WM_WINDOW_TYPE_DESKTOP"
+    ],
+    [
+     "xprop",
+     "-id",
+     "1",
+     "-f",
+     "_NET_WM_STATE",
+     "32a",
+     "-set",
+     "_NET_WM_STATE",
+     "_NET_WM_STATE_BELOW,_NET_WM_STATE_SKIP_TASKBAR,_NET_WM_STATE_SKIP_PAGER,_NET_WM_STATE_STICKY"
+    ]
+   ],
+   "timeouts": [
+    5,
+    5
+   ]
+  }
+ ],
+ "prime_output_file": [
+  {
+   "label": "small",
+   "width": 3,
+   "height": 2,
+   "ok": true,
+   "size": 24,
+   "hex": "000000ff000000ff000000ff000000ff000000ff000000ff",
+   "mode_octal": "0o600"
+  },
+  {
+   "label": "clamp_zero",
+   "width": 0,
+   "height": 0,
+   "ok": true,
+   "size": 4,
+   "hex": "000000ff",
+   "mode_octal": "0o600"
+  },
+  {
+   "label": "clamp_negative",
+   "width": -5,
+   "height": 2,
+   "ok": true,
+   "size": 8,
+   "hex": "000000ff000000ff",
+   "mode_octal": "0o600"
+  },
+  {
+   "label": "fullhd",
+   "width": 1920,
+   "height": 1080,
+   "ok": true,
+   "size": 8294400
+  }
+ ],
+ "headless_tick": [
+  {
+   "fps": 30,
+   "interval_ms": 33,
+   "rc": 0
+  },
+  {
+   "fps": 60,
+   "interval_ms": 16,
+   "rc": 0
+  },
+  {
+   "fps": 144,
+   "interval_ms": 8,
+   "rc": 0
+  },
+  {
+   "fps": 25,
+   "interval_ms": 40,
+   "rc": 0
+  },
+  {
+   "fps": 1,
+   "interval_ms": 1000,
+   "rc": 0
+  },
+  {
+   "fps": 0,
+   "interval_ms": 1000,
+   "rc": 0
+  },
+  {
+   "fps": -5,
+   "interval_ms": 1000,
+   "rc": 0
+  }
+ ],
+ "headless_app_name": "RexonWallpaperHeadless"
+}

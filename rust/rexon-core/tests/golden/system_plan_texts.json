@@ -1,0 +1,3430 @@
+{
+ "constants": {
+  "de_install_action": "org.rexon.de-install",
+  "de_helper_path": "/usr/local/lib/rexon-de-helper",
+  "de_policy_path": "/usr/share/polkit-1/actions/org.rexon.de-install.policy",
+  "rexon_polkit_rules_path": "/etc/polkit-1/rules.d/49-rexon-nopasswd.rules",
+  "pkg_action": "org.rexon.pkg",
+  "pkg_helper_path": "/usr/local/lib/rexon-pkg-helper",
+  "pkg_policy_path": "/usr/share/polkit-1/actions/org.rexon.pkg.policy",
+  "stage_action": "org.rexon.stage",
+  "stage_helper_path": "/usr/local/lib/rexon-stage-helper",
+  "stage_policy_path": "/usr/share/polkit-1/actions/org.rexon.stage.policy",
+  "de_helper_families": [
+   "arch",
+   "debian",
+   "fedora",
+   "suse",
+   "alpine",
+   "void",
+   "solus",
+   "clear",
+   "alt"
+  ],
+  "pkg_helper_families": [
+   "arch",
+   "debian",
+   "fedora",
+   "suse",
+   "gentoo",
+   "alpine",
+   "void",
+   "solus",
+   "clear",
+   "alt"
+  ],
+  "pkg_helper_ops": [
+   "install",
+   "remove",
+   "update",
+   "enable-dm",
+   "switch-dm",
+   "build-deps",
+   "install-built"
+  ],
+  "de_helper_display_managers": [
+   "plasmalogin",
+   "cosmic-greeter",
+   "lightdm",
+   "gdm",
+   "sddm"
+  ],
+  "dm_pkg_for_unit": {
+   "plasmalogin": "plasma-login-manager"
+  },
+  "dm_force_enable": [
+   "plasmalogin"
+  ],
+  "stage_categories": [
+   "gdm-bg",
+   "lightdm-bg",
+   "cosmic-greeter",
+   "login-bg",
+   "lightdm-webkit",
+   "mate-layouts"
+  ],
+  "stage_dir_root": {
+   "lightdm-webkit": "/usr/share/lightdm-webkit/themes",
+   "mate-layouts": "/usr/share/mate-panel/layouts"
+  },
+  "mate_layouts": [
+   "familiar",
+   "redmond",
+   "cupertino",
+   "mutiny",
+   "pantheon",
+   "contemporary",
+   "netbook",
+   "traditional"
+  ]
+ },
+ "scripts": {
+  "de_helper_pkg_table": "        \"cinnamon-mint|arch\") echo cinnamon cinnamon-translations nemo nemo-fileroller gnome-terminal lightdm lightdm-slick-greeter ;;\n        \"cinnamon-mint|debian\") echo cinnamon-desktop-environment lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|fedora\") echo @cinnamon-desktop-environment cinnamon-themes mint-y-theme mint-y-icons mint-x-icons lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|suse\") echo patterns-cinnamon-cinnamon lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|alpine\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|solus\") echo cinnamon nemo lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|void\") echo cinnamon-all lightdm lightdm-gtk3-greeter ;;\n        \"cinnamon-mint|alt\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"xfce|arch\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|debian\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|fedora\") echo @xfce-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"xfce|suse\") echo patterns-xfce-xfce lightdm lightdm-gtk-greeter ;;\n        \"xfce|alpine\") echo xfce4 xfce4-terminal xfce4-screensaver lightdm lightdm-gtk-greeter ;;\n        \"xfce|void\") echo xfce4 lightdm lightdm-gtk3-greeter ;;\n        \"xfce|solus\") echo xfce4-desktop lightdm ;;\n        \"xfce|clear\") echo desktop-xfce4 ;;\n        \"xfce|alt\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"mate|arch\") echo mate mate-extra plank lightdm lightdm-gtk-greeter appmenu-gtk-module ;;\n        \"mate|debian\") echo mate-desktop-environment mate-desktop-environment-extras lightdm lightdm-gtk-greeter ;;\n        \"mate|fedora\") echo @mate-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"mate|suse\") echo patterns-mate-mate lightdm lightdm-gtk-greeter ;;\n        \"mate|alpine\") echo mate-desktop mate-session-manager mate-panel caja marco mate-terminal mate-utils lightdm lightdm-gtk-greeter ;;\n        \"mate|void\") echo mate lightdm lightdm-gtk3-greeter ;;\n        \"mate|alt\") echo mate mate-terminal plank lightdm lightdm-gtk-greeter ;;\n        \"gnome|arch\") echo gnome gnome-tweaks gdm ;;\n        \"gnome|debian\") echo gnome gnome-tweaks gdm3 ;;\n        \"gnome|fedora\") echo @gnome-desktop gnome-tweaks gdm ;;\n        \"gnome|suse\") echo patterns-gnome-gnome gdm ;;\n        \"gnome|alpine\") echo gnome-desktop gnome-shell gnome-control-center nautilus gdm ;;\n        \"gnome|void\") echo gnome gdm ;;\n        \"gnome|solus\") echo gnome-shell gnome-desktop-branding gnome-control-center gdm ;;\n        \"gnome|clear\") echo desktop-gnome-apps ;;\n        \"gnome|alt\") echo gnome-shell gnome-control-center gnome-tweaks nautilus gdm ;;\n        \"kde|arch\") echo plasma-meta konsole dolphin kate gwenview ark spectacle plasma-login-manager ;;\n        \"kde|debian\") echo kde-plasma-desktop konsole dolphin sddm ;;\n        \"kde|fedora\") echo @kde-desktop-environment sddm ;;\n        \"kde|suse\") echo patterns-kde-kde sddm ;;\n        \"kde|alpine\") echo plasma-desktop-meta konsole dolphin sddm ;;\n        \"kde|void\") echo kde-plasma konsole dolphin sddm ;;\n        \"kde|solus\") echo plasma-desktop sddm ;;\n        \"kde|clear\") echo desktop-kde-apps ;;\n        \"kde|alt\") echo kde5 plasma5-workspace konsole dolphin sddm ;;\n        \"budgie|arch\") echo budgie-desktop budgie-desktop-view budgie-extras network-manager-applet nautilus lightdm lightdm-gtk-greeter ;;\n        \"budgie|debian\") echo budgie-desktop budgie-extras lightdm lightdm-gtk-greeter ;;\n        \"budgie|fedora\") echo @budgie-desktop-environment lightdm ;;\n        \"budgie|suse\") echo patterns-budgie-budgie lightdm ;;\n        \"budgie|void\") echo budgie-desktop lightdm lightdm-gtk3-greeter ;;\n        \"budgie|solus\") echo budgie-desktop lightdm ;;\n        \"budgie|alt\") echo budgie-desktop nautilus lightdm lightdm-gtk-greeter ;;\n        \"pantheon|arch\") echo pantheon lightdm lightdm-gtk-greeter ;;\n        \"cosmic|arch\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces cosmic-initial-setup xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-player cosmic-wallpapers cosmic-icon-theme gnome-keyring power-profiles-daemon packagekit flatpak ;;\n        \"cosmic|fedora\") echo cosmic-desktop ;;\n        \"cosmic|suse\") echo patterns-cosmic-cosmic ;;\n        \"cosmic|alpine\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-wallpapers cosmic-icons ;;\n        \"cosmic|void\") echo cosmic-desktop ;;\n        \"hyprland|arch\") echo hyprland hyprpaper hyprlock hypridle xdg-desktop-portal-hyprland xdg-desktop-portal-gtk waybar wofi kitty thunar grim slurp wl-clipboard polkit-gnome otf-font-awesome ;;\n        \"hyprland|debian\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|fedora\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|suse\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|void\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|alpine\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|alt\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"lxqt|arch\") echo lxqt openbox breeze-icons sddm ;;\n        \"lxqt|debian\") echo lxqt sddm ;;\n        \"lxqt|fedora\") echo @lxqt-desktop-environment sddm ;;\n        \"lxqt|suse\") echo patterns-lxqt-lxqt sddm ;;\n        \"lxqt|alpine\") echo lxqt-desktop lximage-qt pavucontrol-qt font-dejavu sddm ;;\n        \"lxqt|void\") echo lxqt sddm ;;\n        \"lxqt|alt\") echo lxqt-session lxqt-panel lxqt-config lxqt-policykit lxqt-runner lxqt-notificationd pcmanfm-qt qterminal openbox sddm ;;\n        \"niri|arch\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-gnome xwayland-satellite otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"niri|fedora\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts ;;\n        \"niri|suse\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"niri|alpine\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome font-awesome font-nerd-fonts-symbols ;;\n        \"sway|arch\") echo sway swaybg swayidle swaylock waybar wofi wmenu foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"sway|debian\") echo sway swaybg swayidle swaylock waybar wofi foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr fonts-font-awesome ;;\n        \"sway|fedora\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"sway|suse\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"sway|void\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome nerd-fonts-symbols-ttf ;;\n        \"sway|alpine\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome font-nerd-fonts-symbols ;;\n        \"sway|alt\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard fonts-font-awesome ;;\n        \"river|arch\") echo river-classic waybar fuzzel foot mako swaybg thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"river|fedora\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"river|void\") echo river waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome nerd-fonts-symbols-ttf ;;\n        \"river|alpine\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome font-nerd-fonts-symbols ;;\n        \"wayfire|arch\") echo wayfire wf-shell wcm foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland ;;\n        \"wayfire|debian\") echo wayfire wf-shell wcm foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|fedora\") echo wayfire wf-shell wayfire-config-manager foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|suse\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|void\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;",
+  "de_helper_script": "#!/bin/bash\n# Rexon DE helper — привилегированная установка/восстановление DE.\n# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.de-install,\n# auth_admin_keep: подтверждённый пароль держится несколько минут для окна\n# Rexon). Принимает только строго валидируемые de_id + family (+ опц.\n# log_path под /tmp). Имена пакетов берёт из ВСТРОЕННОЙ таблицы. НЕ выполняет произвольный код.\nset -euo pipefail\n\n# Стабильная C-локаль: вывод pacman/apt/… всегда по-английски, чтобы\n# Python-парсер прогресса (_RE_SKIP «is up to date -- skipping» и т.п.)\n# ловил пропуски/прогресс на ЛЮБОЙ системной локали (иначе на русской\n# pacman пишет «не устарел -- пропускается» и «✓ уже установлено» не\n# срабатывает).\nexport LC_ALL=C LANG=C\n\n# ⚠️ Никакого ввода с клавиатуры. Пакетный менеджер задаёт вопросы сам себе\n# (члены группы, выбор поставщика) и при --noconfirm отвечает на них по\n# умолчанию, не читая stdin. Но если завтра в какой-то ветке --noconfirm\n# потеряется, а stdin окажется живым (терминал, из которого запустили Rexon,\n# или незакрытая труба), вопрос ЗАВИСНЕТ — молча, до самого таймаута в\n# полчаса. Отрезаем stdin один раз здесь: тогда худшее, что может случиться,\n# — быстрый отказ вместо вечного ожидания.\nexec </dev/null\n\n# ── Язык сообщений ─────────────────────────────────────────────────\n# Отметка ниже говорит Rexon, что помощник понимает --lang.\n# REXON_HELPER_LANG_ARG=1\n# Первый аргумент --lang=<код> необязателен; код сверяется с белым\n# списком из po/LINGUAS, всё прочее — английский. Тексты — ТОЛЬКО из\n# таблицы ниже (вшиты при генерации); вставки %1..%9 подставляются как\n# данные, а не как формат printf и не как команды.\nrx_lang=en\ncase \"${1:-}\" in\n    --lang=*)\n        case \"${1#--lang=}\" in\n            ru) rx_lang=ru ;;\n        esac\n        shift ;;\nesac\nrx_text() {\n    case \"$rx_lang:$1\" in\n        ru:bad_de_id) rx_t='плохой de_id: %1' ;;\n        *:bad_de_id) rx_t='bad de_id: %1' ;;\n        ru:bad_family_arg) rx_t='плохой family: %1' ;;\n        *:bad_family_arg) rx_t='bad family: %1' ;;\n        ru:db_update_failed) rx_t='обновление БД не удалось' ;;\n        *:db_update_failed) rx_t='package database update failed' ;;\n        ru:de_args) rx_t='ожидается 2-3 аргумента: de_id family [log_path]' ;;\n        *:de_args) rx_t='expected 2-3 arguments: de_id family [log_path]' ;;\n        ru:dm_already) rx_t='экран входа уже настроен (%1) — не меняю' ;;\n        *:dm_already) rx_t='a login screen is already set up (%1) — leaving it as is' ;;\n        ru:dm_enable_failed) rx_t='не удалось включить %1: %2' ;;\n        *:dm_enable_failed) rx_t='could not enable %1: %2' ;;\n        ru:dm_enable_failed_plain) rx_t='не удалось включить %1: systemctl вернул ошибку' ;;\n        *:dm_enable_failed_plain) rx_t='could not enable %1: systemctl returned an error' ;;\n        ru:dm_enabled) rx_t='display-manager включён: %1' ;;\n        *:dm_enabled) rx_t='display manager enabled: %1' ;;\n        ru:dm_none) rx_t='экран входа не включён (нет установленного DM из списка стола)' ;;\n        *:dm_none) rx_t='login screen not enabled (no installed display manager from this desktop'\\''s list)' ;;\n        ru:empty_pkg_list) rx_t='пустой список пакетов для %1' ;;\n        *:empty_pkg_list) rx_t='empty package list for %1' ;;\n        ru:log_outside_tmp) rx_t='log_path вне /tmp|/var/tmp: %1' ;;\n        *:log_outside_tmp) rx_t='log_path is outside /tmp|/var/tmp: %1' ;;\n        ru:no_setpriv) rx_t='нет setpriv (util-linux) — журнал хода не ведётся' ;;\n        *:no_setpriv) rx_t='setpriv (util-linux) is missing — the progress log is not kept' ;;\n        ru:no_user_group) rx_t='нет группы у пользователя %1' ;;\n        *:no_user_group) rx_t='user %1 has no group' ;;\n        ru:not_via_pkexec) rx_t='запуск не через pkexec' ;;\n        *:not_via_pkexec) rx_t='not started through pkexec' ;;\n        ru:unknown_de_pair) rx_t='неизвестная пара DE/семейство: %1' ;;\n        *:unknown_de_pair) rx_t='unknown desktop environment/family pair: %1' ;;\n        ru:unsupported_family) rx_t='неподдерживаемое семейство: %1' ;;\n        *:unsupported_family) rx_t='unsupported family: %1' ;;\n        *) rx_t=\"$1\" ;;\n    esac\n}\nrx_say() {\n    local rx_t rx_out=\"\" rx_n\n    rx_text \"$1\"; shift\n    while [ -n \"$rx_t\" ]; do\n        case \"$rx_t\" in\n            %[1-9]*) rx_n=\"${rx_t:1:1}\"; rx_out+=\"${!rx_n-}\"; rx_t=\"${rx_t:2}\" ;;\n            *) rx_out+=\"${rx_t:0:1}\"; rx_t=\"${rx_t:1}\" ;;\n        esac\n    done\n    printf '%s: %s\\n' rexon-de-helper \"$rx_out\"\n}\ndie() { rx_say \"$@\" >&2; exit 2; }\n\n[ \"$#\" -ge 2 ] && [ \"$#\" -le 3 ] \\\n    || die de_args\nde_id=\"$1\"\nfamily=\"$2\"\nlog_path=\"${3:-}\"\n\n# de_id / family — строгий формат (allowlist символов). Реальная проверка\n# валидности пары — через таблицу ниже (неизвестная пара → die).\nprintf '%s' \"$de_id\"  | grep -Eq '^[A-Za-z0-9._-]+$' || die bad_de_id \"$de_id\"\nprintf '%s' \"$family\" | grep -Eq '^[a-z]+$'          || die bad_family_arg \"$family\"\n\n# log_path (если задан): журнал хода установки для окна Rexon. Файл создаёт\n# Rexon заранее (mkstemp), и принадлежит он ВЫЗВАВШЕМУ. Поэтому и пишет его\n# процесс С ПРАВАМИ ВЫЗВАВШЕГО (setpriv), а не root: какой бы файл ни\n# оказался по этому пути к моменту записи, root туда не пишет и владельца\n# не меняет.\n#\n# ⛔ Дыра, которую это закрыло (28.09.2026). Прежде: realpath, затем\n# `chown root` + запись root'ом + в конце `chown $PKEXEC_UID` — по строке\n# пути, через минуты установки. Каталог в пути принадлежит пользователю, и\n# подменить его ссылкой (/tmp/a/b → /etc) можно было в любой момент до\n# конца установки: в конце root отдавал пользователю, скажем, /etc/shadow.\n# Действие org.rexon.de-install при этом стояло в правиле «без пароля» —\n# молчаливый root для любого процесса сеанса.\n#\n# exit-маркер __REXON_EXIT__ фильтруется tail-парсером Rexon.\nif [ -n \"$log_path\" ]; then\n    case \"$log_path\" in\n        /tmp/?*|/var/tmp/?*) : ;;\n        *) die log_outside_tmp \"$log_path\" ;;\n    esac\n    log_uid=\"${PKEXEC_UID:-}\"\n    printf '%s' \"$log_uid\" | grep -Eq '^[0-9]+$' || die not_via_pkexec\n    log_gid=\"$(getent passwd \"$log_uid\" 2>/dev/null | cut -d: -f4)\"\n    printf '%s' \"$log_gid\" | grep -Eq '^[0-9]+$' || die no_user_group \"$log_uid\"\n    if command -v setpriv >/dev/null 2>&1; then\n        exec > >(exec setpriv --reuid=\"$log_uid\" --regid=\"$log_gid\" --clear-groups \\\n                     -- tee -a -- \"$log_path\" >/dev/null) 2>&1\n        log_pid=$!\n        trap 'ec=$?; echo \"__REXON_EXIT__$ec\"; exec >&- 2>&-; wait \"$log_pid\" 2>/dev/null || true; exit \"$ec\"' EXIT\n    else\n        # Без setpriv журнал не ведём вовсе: писать чужой файл от root нельзя.\n        rx_say no_setpriv >&2\n    fi\nfi\n\n# Пакеты для пары de_id|family — ТОЛЬКО из встроенной таблицы (allowlist).\npkgs=\"$(\n  case \"$de_id|$family\" in\n        \"cinnamon-mint|arch\") echo cinnamon cinnamon-translations nemo nemo-fileroller gnome-terminal lightdm lightdm-slick-greeter ;;\n        \"cinnamon-mint|debian\") echo cinnamon-desktop-environment lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|fedora\") echo @cinnamon-desktop-environment cinnamon-themes mint-y-theme mint-y-icons mint-x-icons lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|suse\") echo patterns-cinnamon-cinnamon lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|alpine\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|solus\") echo cinnamon nemo lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|void\") echo cinnamon-all lightdm lightdm-gtk3-greeter ;;\n        \"cinnamon-mint|alt\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"xfce|arch\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|debian\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|fedora\") echo @xfce-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"xfce|suse\") echo patterns-xfce-xfce lightdm lightdm-gtk-greeter ;;\n        \"xfce|alpine\") echo xfce4 xfce4-terminal xfce4-screensaver lightdm lightdm-gtk-greeter ;;\n        \"xfce|void\") echo xfce4 lightdm lightdm-gtk3-greeter ;;\n        \"xfce|solus\") echo xfce4-desktop lightdm ;;\n        \"xfce|clear\") echo desktop-xfce4 ;;\n        \"xfce|alt\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"mate|arch\") echo mate mate-extra plank lightdm lightdm-gtk-greeter appmenu-gtk-module ;;\n        \"mate|debian\") echo mate-desktop-environment mate-desktop-environment-extras lightdm lightdm-gtk-greeter ;;\n        \"mate|fedora\") echo @mate-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"mate|suse\") echo patterns-mate-mate lightdm lightdm-gtk-greeter ;;\n        \"mate|alpine\") echo mate-desktop mate-session-manager mate-panel caja marco mate-terminal mate-utils lightdm lightdm-gtk-greeter ;;\n        \"mate|void\") echo mate lightdm lightdm-gtk3-greeter ;;\n        \"mate|alt\") echo mate mate-terminal plank lightdm lightdm-gtk-greeter ;;\n        \"gnome|arch\") echo gnome gnome-tweaks gdm ;;\n        \"gnome|debian\") echo gnome gnome-tweaks gdm3 ;;\n        \"gnome|fedora\") echo @gnome-desktop gnome-tweaks gdm ;;\n        \"gnome|suse\") echo patterns-gnome-gnome gdm ;;\n        \"gnome|alpine\") echo gnome-desktop gnome-shell gnome-control-center nautilus gdm ;;\n        \"gnome|void\") echo gnome gdm ;;\n        \"gnome|solus\") echo gnome-shell gnome-desktop-branding gnome-control-center gdm ;;\n        \"gnome|clear\") echo desktop-gnome-apps ;;\n        \"gnome|alt\") echo gnome-shell gnome-control-center gnome-tweaks nautilus gdm ;;\n        \"kde|arch\") echo plasma-meta konsole dolphin kate gwenview ark spectacle plasma-login-manager ;;\n        \"kde|debian\") echo kde-plasma-desktop konsole dolphin sddm ;;\n        \"kde|fedora\") echo @kde-desktop-environment sddm ;;\n        \"kde|suse\") echo patterns-kde-kde sddm ;;\n        \"kde|alpine\") echo plasma-desktop-meta konsole dolphin sddm ;;\n        \"kde|void\") echo kde-plasma konsole dolphin sddm ;;\n        \"kde|solus\") echo plasma-desktop sddm ;;\n        \"kde|clear\") echo desktop-kde-apps ;;\n        \"kde|alt\") echo kde5 plasma5-workspace konsole dolphin sddm ;;\n        \"budgie|arch\") echo budgie-desktop budgie-desktop-view budgie-extras network-manager-applet nautilus lightdm lightdm-gtk-greeter ;;\n        \"budgie|debian\") echo budgie-desktop budgie-extras lightdm lightdm-gtk-greeter ;;\n        \"budgie|fedora\") echo @budgie-desktop-environment lightdm ;;\n        \"budgie|suse\") echo patterns-budgie-budgie lightdm ;;\n        \"budgie|void\") echo budgie-desktop lightdm lightdm-gtk3-greeter ;;\n        \"budgie|solus\") echo budgie-desktop lightdm ;;\n        \"budgie|alt\") echo budgie-desktop nautilus lightdm lightdm-gtk-greeter ;;\n        \"pantheon|arch\") echo pantheon lightdm lightdm-gtk-greeter ;;\n        \"cosmic|arch\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces cosmic-initial-setup xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-player cosmic-wallpapers cosmic-icon-theme gnome-keyring power-profiles-daemon packagekit flatpak ;;\n        \"cosmic|fedora\") echo cosmic-desktop ;;\n        \"cosmic|suse\") echo patterns-cosmic-cosmic ;;\n        \"cosmic|alpine\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-wallpapers cosmic-icons ;;\n        \"cosmic|void\") echo cosmic-desktop ;;\n        \"hyprland|arch\") echo hyprland hyprpaper hyprlock hypridle xdg-desktop-portal-hyprland xdg-desktop-portal-gtk waybar wofi kitty thunar grim slurp wl-clipboard polkit-gnome otf-font-awesome ;;\n        \"hyprland|debian\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|fedora\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|suse\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|void\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|alpine\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|alt\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"lxqt|arch\") echo lxqt openbox breeze-icons sddm ;;\n        \"lxqt|debian\") echo lxqt sddm ;;\n        \"lxqt|fedora\") echo @lxqt-desktop-environment sddm ;;\n        \"lxqt|suse\") echo patterns-lxqt-lxqt sddm ;;\n        \"lxqt|alpine\") echo lxqt-desktop lximage-qt pavucontrol-qt font-dejavu sddm ;;\n        \"lxqt|void\") echo lxqt sddm ;;\n        \"lxqt|alt\") echo lxqt-session lxqt-panel lxqt-config lxqt-policykit lxqt-runner lxqt-notificationd pcmanfm-qt qterminal openbox sddm ;;\n        \"niri|arch\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-gnome xwayland-satellite otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"niri|fedora\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts ;;\n        \"niri|suse\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"niri|alpine\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome font-awesome font-nerd-fonts-symbols ;;\n        \"sway|arch\") echo sway swaybg swayidle swaylock waybar wofi wmenu foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"sway|debian\") echo sway swaybg swayidle swaylock waybar wofi foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr fonts-font-awesome ;;\n        \"sway|fedora\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"sway|suse\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"sway|void\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome nerd-fonts-symbols-ttf ;;\n        \"sway|alpine\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome font-nerd-fonts-symbols ;;\n        \"sway|alt\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard fonts-font-awesome ;;\n        \"river|arch\") echo river-classic waybar fuzzel foot mako swaybg thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"river|fedora\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"river|void\") echo river waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome nerd-fonts-symbols-ttf ;;\n        \"river|alpine\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome font-nerd-fonts-symbols ;;\n        \"wayfire|arch\") echo wayfire wf-shell wcm foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland ;;\n        \"wayfire|debian\") echo wayfire wf-shell wcm foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|fedora\") echo wayfire wf-shell wayfire-config-manager foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|suse\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|void\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n    *) die unknown_de_pair \"$de_id|$family\" ;;\n  esac\n)\"\n[ -n \"$pkgs\" ] || die empty_pkg_list \"$de_id|$family\"\n\n# Команды менеджера пакетов по семейству (--needed = restore/repair:\n# установленное пропускается).\ncase \"$family\" in\n    arch) PKG_CMD=(pacman -S --needed --noconfirm --noprogressbar --color never) ;;\n    arch) UPD_CMD=(pacman -Sy --noconfirm --noprogressbar --color never) ;;\n    debian) PKG_CMD=(apt-get install -y --no-install-recommends) ;;\n    debian) UPD_CMD=(apt-get update -q) ;;\n    fedora) PKG_CMD=(dnf install -y) ;;\n    fedora) UPD_CMD=(dnf makecache -q) ;;\n    suse) PKG_CMD=(zypper install -y --no-recommends) ;;\n    suse) UPD_CMD=(zypper refresh -q) ;;\n    alpine) PKG_CMD=(apk add --no-progress) ;;\n    alpine) UPD_CMD=(apk update) ;;\n    void) PKG_CMD=(xbps-install -y) ;;\n    void) UPD_CMD=(xbps-install -S) ;;\n    solus) PKG_CMD=(eopkg it -y) ;;\n    solus) UPD_CMD=(eopkg ur) ;;\n    clear) PKG_CMD=(swupd bundle-add) ;;\n    clear) UPD_CMD=(swupd update --download) ;;\n    alt) PKG_CMD=(apt-get install -y) ;;\n    alt) UPD_CMD=(apt-get update -q) ;;\n    *) die unsupported_family \"$family\" ;;\nesac\n\n# ⛔ Никакого `eval`: команды — МАССИВЫ аргументов, список пакетов\n# разбивается на слова РОВНО один раз и оболочке на разбор не отдаётся.\n# Прежнее `eval \"${PKG_CMD/'{PKGS}'/$pkgs}\"` держало дверь открытой: стоило\n# в таблицу попасть имени с метасимволом, и это была команда, а не пакет.\n\n# 1) Обновление БД (иначе --needed может упасть на устаревшей БД).\n\"${UPD_CMD[@]}\" || die db_update_failed\n\n# 2) Установка пакетов DE (имена — только из встроенной таблицы выше).\nread -r -a pkg_list <<<\"$pkgs\"\n[ \"${#pkg_list[@]}\" -gt 0 ] || die empty_pkg_list \"$de_id|$family\"\n\"${PKG_CMD[@]}\" \"${pkg_list[@]}\"\n\n# 3) Экран входа в ТОМ ЖЕ сеансе авторизации (без 2-го пароля). Только при\n# systemd. Имя DM берётся ТОЛЬКО из встроенного списка И обязано\n# присутствовать в $pkgs данного DE.\n#\n# ⚠️ Чужой экран входа НЕ трогаем. Подмена экрана входа — заметное для\n# человека вмешательство в общесистемную сущность, и делать её молча,\n# «заодно» с установкой стола, нельзя: у человека может стоять plasmalogin,\n# gdm, greetd. Включаем DM этого стола ТОЛЬКО когда включённого экрана входа\n# в системе нет вовсе (иначе после перезагрузки не будет входа в графику).\n#\n# ⚠️ И в любом исходе говорим правду: сделал — что сделал, не смог — почему.\n# Раньше ошибка systemctl уходила в /dev/null, а «включён» печаталось\n# безусловно — вывод сообщал об успехе там, где ничего не произошло.\nif command -v systemctl >/dev/null 2>&1; then\n    # Что стоит сейчас: цель симлинка display-manager.service, а если\n    # симлинка нет — первый включённый юнит из известного списка.\n    cur_dm=\"\"\n    if [ -L \"/etc/systemd/system/display-manager.service\" ]; then\n        cur_target=\"$(readlink -f \"/etc/systemd/system/display-manager.service\" 2>/dev/null || true)\"\n        cur_dm=\"${cur_target##*/}\"\n        cur_dm=\"${cur_dm%.service}\"\n        [ -n \"$cur_dm\" ] || cur_dm=\"display-manager\"\n    else\n        for known in display-manager plasmalogin sddm gdm gdm3 lightdm lxdm greetd ly cosmic-greeter slim nodm xdm entrance emptty tbsm; do\n            state=\"$(systemctl is-enabled \"$known.service\" 2>/dev/null || true)\"\n            case \"$state\" in\n                enabled|enabled-runtime|alias|indirect|static) cur_dm=\"$known\"; break ;;\n            esac\n        done\n    fi\n\n    if [ -n \"$cur_dm\" ]; then\n        rx_say dm_already \"$cur_dm\"\n    else\n        # Маппинг ИМЯ-ЮНИТА → ИМЯ-ПАКЕТА (имена обычно совпадают; исключение —\n        # Plasma Login Manager: юнит plasmalogin, пакет plasma-login-manager).\n        pkg_for_dm() {\n            case \"$1\" in\n                plasmalogin) printf '%s' 'plasma-login-manager' ;;\n                *) printf '%s' \"$1\" ;;\n            esac\n        }\n        dm_done=\"\"\n        for dm in plasmalogin cosmic-greeter lightdm gdm sddm; do\n            case \"$dm\" in\n                \"plasmalogin\" | \"cosmic-greeter\" | \"lightdm\" | \"gdm\" | \"sddm\") : ;;\n                *) continue ;;\n            esac\n            dm_pkg=\"$(pkg_for_dm \"$dm\")\"\n            # dm-ПАКЕТ должен быть в пакет-листе ЭТОГО DE (точное слово).\n            printf ' %s ' \"$pkgs\" | grep -q \" $dm_pkg \" || continue\n            # И юнит реально установлен (unit-файл существует).\n            systemctl cat \"$dm.service\" >/dev/null 2>&1 || continue\n            # --force для DM, не Provides display-manager.service (PLM).\n            force=\"\"\n            case \"$dm\" in\n                \"plasmalogin\") force=\"--force\" ;;\n            esac\n            # shellcheck disable=SC2086\n            if err=\"$(systemctl enable $force \"$dm.service\" 2>&1)\"; then\n                rx_say dm_enabled \"$dm\"\n            else\n                if [ -n \"$err\" ]; then\n                    rx_say dm_enable_failed \"$dm\" \"$err\"\n                else\n                    rx_say dm_enable_failed_plain \"$dm\"\n                fi\n            fi\n            dm_done=\"$dm\"\n            break\n        done\n        [ -n \"$dm_done\" ] || rx_say dm_none\n    fi\nfi\nexit 0\n",
+  "de_policy_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE policyconfig PUBLIC\n \"-//freedesktop//DTD polkit Policy Configuration 1.0//EN\"\n \"http://www.freedesktop.org/software/polkit/policyconfig-1.dtd\">\n<policyconfig>\n  <vendor>Rexon</vendor>\n  <vendor_url>https://github.com/Wehrwolfmann</vendor_url>\n  <action id=\"org.rexon.de-install\">\n    <description>Install or repair a desktop environment</description>\n    <description xml:lang=\"ru\">Установка или восстановление рабочего стола</description>\n    <message>Authentication is required to install a desktop environment</message>\n    <message xml:lang=\"ru\">Для установки рабочего стола требуется аутентификация</message>\n    <defaults>\n      <allow_any>auth_admin</allow_any>\n      <allow_inactive>auth_admin</allow_inactive>\n      <allow_active>auth_admin_keep</allow_active>\n    </defaults>\n    <annotate key=\"org.freedesktop.policykit.exec.path\">/usr/local/lib/rexon-de-helper</annotate>\n    <annotate key=\"org.freedesktop.policykit.exec.allow_gui\">true</annotate>\n  </action>\n</policyconfig>\n",
+  "pkg_helper_script": "#!/bin/bash\n# Rexon pkg helper — привилегированные операции пакетного менеджера.\n#\n# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.pkg).\n# Принимает операцию и ИМЕНА пакетов. Команды — из ВСТРОЕННЫХ таблиц,\n# семейство пакетного менеджера помощник определяет САМ по ЭТОЙ машине.\n# Ни оболочки, ни `eval`, ни путей: произвольный код не выполняется.\n# Единственный файл, который помощник принимает, — пакет, собранный\n# пересборкой Rexon от пользователя (операция install-built, только из\n# каталога пересборок вызвавшего; см. её раздел ниже).\n#\n# ⛔ ДЫРА, КОТОРУЮ ЭТО ЗАКРЫЛО (25.09.2026)\n# Прежний помощник (1) брал семейство из АРГУМЕНТА, (2) разрешал в именах\n# пакетов символ '/' (allowlist '^[A-Za-z0-9@._+:/-]+$') и (3) собирал\n# команду через eval. Любой процесс сеанса мог позвать\n#     pkexec rexon-pkg-helper debian install /tmp/evil.deb\n# и apt-get (а равно dnf, zypper) поставил бы ЛОКАЛЬНЫЙ ФАЙЛ, сценарии\n# установки которого идут ОТ ROOT. Семейство при этом не обязано было\n# совпадать с машиной — хватало любого установленного менеджера.\n# Вторая половина дыры — 'remove': имя не проверялось ничем, кроме\n# символов, и 'remove linux' сносил ядро.\nset -euo pipefail\nexport LC_ALL=C LANG=C\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\n# Ни ввода с клавиатуры (вопрос менеджера завис бы молча до таймаута), ни\n# чужого рабочего каталога: pkexec его НЕ меняет, а 'dnf install evil.rpm'\n# ищет файл именно в нём.\nexec </dev/null\ncd /\n\n# ── Язык сообщений ─────────────────────────────────────────────────\n# Отметка ниже говорит Rexon, что помощник понимает --lang.\n# REXON_HELPER_LANG_ARG=1\n# Первый аргумент --lang=<код> необязателен; код сверяется с белым\n# списком из po/LINGUAS, всё прочее — английский. Тексты — ТОЛЬКО из\n# таблицы ниже (вшиты при генерации); вставки %1..%9 подставляются как\n# данные, а не как формат printf и не как команды.\nrx_lang=en\ncase \"${1:-}\" in\n    --lang=*)\n        case \"${1#--lang=}\" in\n            ru) rx_lang=ru ;;\n        esac\n        shift ;;\nesac\nrx_text() {\n    case \"$rx_lang:$1\" in\n        ru:arg_dash) rx_t='аргумент начинается с '\\''-'\\'' (флаг-инъекция?): %1' ;;\n        *:arg_dash) rx_t='argument starts with '\\''-'\\'' (flag injection?): %1' ;;\n        ru:bad_dm) rx_t='недопустимый display-manager: %1' ;;\n        *:bad_dm) rx_t='invalid display manager: %1' ;;\n        ru:bad_greeter) rx_t='недопустимое приветствие: %1' ;;\n        *:bad_greeter) rx_t='invalid greeter: %1' ;;\n        ru:bad_op) rx_t='недопустимая операция: %1' ;;\n        *:bad_op) rx_t='invalid operation: %1' ;;\n        ru:build_only_kept) rx_t='пакеты, нужные только для сборки, оставлены' ;;\n        *:build_only_kept) rx_t='build-only packages kept' ;;\n        ru:build_only_not_ours) rx_t='%1 ставили не для этой сборки — оставлен' ;;\n        *:build_only_not_ours) rx_t='%1 was not installed for this build — kept' ;;\n        ru:built_args) rx_t='install-built ожидает: plain|replace file [pkg...]' ;;\n        *:built_args) rx_t='install-built expects: plain|replace file [pkg...]' ;;\n        ru:built_bad_name) rx_t='это не файл пакета, собранный makepkg: %1' ;;\n        *:built_bad_name) rx_t='not a package file made by makepkg: %1' ;;\n        ru:built_copy_failed) rx_t='не скопировать файл пакета: %1' ;;\n        *:built_copy_failed) rx_t='cannot copy the package file: %1' ;;\n        ru:built_no_home) rx_t='не найден домашний каталог пользователя %1' ;;\n        *:built_no_home) rx_t='cannot find the home folder of user %1' ;;\n        ru:built_not_callers) rx_t='файл пакета принадлежит не вызвавшему: %1' ;;\n        *:built_not_callers) rx_t='the package file does not belong to the caller: %1' ;;\n        ru:built_not_file) rx_t='файл пакета — ссылка или не обычный файл: %1' ;;\n        *:built_not_file) rx_t='the package file is a link or not a regular file: %1' ;;\n        ru:built_outside) rx_t='файл пакета вне каталога пересборок Rexon вызвавшего: %1' ;;\n        *:built_outside) rx_t='the package file is outside the caller'\\''s Rexon rebuild folder: %1' ;;\n        ru:built_unreachable) rx_t='файл пакета недоступен: %1' ;;\n        *:built_unreachable) rx_t='the package file is not accessible: %1' ;;\n        ru:current_de_pkg) rx_t='отказ снять пакет рабочего стола или экрана входа, которые сейчас используются: %1' ;;\n        *:current_de_pkg) rx_t='refusing to remove a package of the desktop or login screen in use: %1' ;;\n        ru:dm_already_default) rx_t='%1 уже основной экран входа — менять нечего' ;;\n        *:dm_already_default) rx_t='%1 is already the login screen — nothing to change' ;;\n        ru:dm_backend_unsupported) rx_t='на этой системе Rexon пока не умеет переключать экран входа' ;;\n        *:dm_backend_unsupported) rx_t='on this system Rexon can'\\''t switch the login screen yet' ;;\n        ru:dm_masked) rx_t='экран входа %1 выключен в системе (замаскирован)' ;;\n        *:dm_masked) rx_t='the login screen %1 is switched off in the system (masked)' ;;\n        ru:dm_no_greeter_prog) rx_t='приветствие %1 не установлено' ;;\n        *:dm_no_greeter_prog) rx_t='the greeter %1 is not installed' ;;\n        ru:dm_no_pam) rx_t='нет файла настроек входа (PAM) %1' ;;\n        *:dm_no_pam) rx_t='the sign-in settings file (PAM) %1 is missing' ;;\n        ru:dm_no_program) rx_t='нет программы экрана входа %1' ;;\n        *:dm_no_program) rx_t='the login screen program %1 is missing' ;;\n        ru:dm_no_unit) rx_t='служба экрана входа %1 не установлена' ;;\n        *:dm_no_unit) rx_t='the service of the login screen %1 is not installed' ;;\n        ru:dm_no_xorg) rx_t='этому экрану входа нужен Xorg, а он не установлен' ;;\n        *:dm_no_xorg) rx_t='this login screen needs Xorg, and Xorg is not installed' ;;\n        ru:dm_switch_failed) rx_t='не удалось сделать %1 экраном входа: %2 — прежний оставлен' ;;\n        *:dm_switch_failed) rx_t='could not make %1 the login screen: %2 — the previous one is kept' ;;\n        ru:dm_switch_mismatch) rx_t='после переключения система не считает %1 экраном входа — прежний возвращён' ;;\n        *:dm_switch_mismatch) rx_t='after switching, the system doesn'\\''t show %1 as the login screen — the previous one is restored' ;;\n        ru:dm_switched) rx_t='теперь экран входа — %1 (был %2); он появится после перезагрузки' ;;\n        *:dm_switched) rx_t='%1 is now the login screen (it was %2); it appears after a restart' ;;\n        ru:dm_switched_first) rx_t='теперь экран входа — %1; он появится после перезагрузки' ;;\n        *:dm_switched_first) rx_t='%1 is now the login screen; it appears after a restart' ;;\n        ru:dm_text_login) rx_t='greetd настроен на текстовый вход — рабочий стол не запустится' ;;\n        *:dm_text_login) rx_t='greetd is set up for text sign-in — the desktop won'\\''t start' ;;\n        ru:enable_dm_one) rx_t='enable-dm ожидает ровно один DM' ;;\n        *:enable_dm_one) rx_t='enable-dm expects exactly one DM' ;;\n        ru:family_mismatch) rx_t='семейство из аргумента (%1) не совпало с определённым по машине (%2) — работаю по определённому' ;;\n        *:family_mismatch) rx_t='family from the argument (%1) does not match the one detected on this machine (%2) — using the detected one' ;;\n        ru:family_unknown) rx_t='семейство пакетного менеджера этой машины не определено' ;;\n        *:family_unknown) rx_t='could not determine the package manager family of this machine' ;;\n        ru:greeter_not_lightdm) rx_t='приветствие выбирается только для LightDM' ;;\n        *:greeter_not_lightdm) rx_t='a greeter can only be chosen for LightDM' ;;\n        ru:lightdm_no_greeter) rx_t='у LightDM не установлено ни одного приветствия' ;;\n        *:lightdm_no_greeter) rx_t='LightDM has no greeter installed' ;;\n        ru:no_cmd) rx_t='команда для %1 не задана' ;;\n        *:no_cmd) rx_t='no command is set for %1' ;;\n        ru:no_pm) rx_t='нет менеджера пакетов: %1' ;;\n        *:no_pm) rx_t='package manager not found: %1' ;;\n        ru:no_systemctl) rx_t='нет systemctl' ;;\n        *:no_systemctl) rx_t='systemctl not found' ;;\n        ru:no_systemd) rx_t='в этой системе не работает systemd — экран входа выбирает её собственная система инициализации' ;;\n        *:no_systemd) rx_t='this system isn'\\''t running systemd — the login screen is chosen by its own init' ;;\n        ru:no_work_dir) rx_t='не создать рабочий каталог' ;;\n        *:no_work_dir) rx_t='cannot create a working directory' ;;\n        ru:not_a_name) rx_t='имя пакета, а не путь: %1' ;;\n        *:not_a_name) rx_t='a package name is expected, not a path: %1' ;;\n        ru:not_in_tables) rx_t='отказ ставить пакет, которого нет в таблицах Rexon: %1' ;;\n        *:not_in_tables) rx_t='refusing to install a package that is not in Rexon'\\''s tables: %1' ;;\n        ru:not_via_pkexec) rx_t='запуск не через pkexec' ;;\n        *:not_via_pkexec) rx_t='not started through pkexec' ;;\n        ru:op_needs_pkg) rx_t='%1 требует хотя бы один пакет' ;;\n        *:op_needs_pkg) rx_t='%1 needs at least one package' ;;\n        ru:pkg_args) rx_t='ожидается >=2 аргумента: family op [pkg...]' ;;\n        *:pkg_args) rx_t='expected at least 2 arguments: family op [pkg...]' ;;\n        ru:prev_dm_auto) rx_t='Если %1 не запустится, Rexon сам вернёт %2 при этой же загрузке.' ;;\n        *:prev_dm_auto) rx_t='If %1 fails to start, Rexon brings back %2 by itself on that boot.' ;;\n        ru:prev_dm_back) rx_t='Чтобы вернуть %1 из текстовой консоли (Ctrl+Alt+F3), войдите и выполните:' ;;\n        *:prev_dm_back) rx_t='To bring back %1 from a text console (Ctrl+Alt+F3), sign in and run:' ;;\n        ru:prev_dm_header) rx_t='Rexon сменил экран входа: был %1, стал %2.' ;;\n        *:prev_dm_header) rx_t='Rexon changed the login screen from %1 to %2.' ;;\n        ru:rebuild_arch_only) rx_t='%1 работает только с pacman (Arch)' ;;\n        *:rebuild_arch_only) rx_t='%1 works only with pacman (Arch)' ;;\n        ru:switch_dm_args) rx_t='switch-dm ждёт экран входа и, для LightDM, приветствие: unit [greeter]' ;;\n        *:switch_dm_args) rx_t='switch-dm expects a login screen and, for LightDM, a greeter: unit [greeter]' ;;\n        ru:unsupported_family) rx_t='неподдерживаемое семейство: %1' ;;\n        *:unsupported_family) rx_t='unsupported family: %1' ;;\n        ru:update_no_pkgs) rx_t='update не принимает пакеты' ;;\n        *:update_no_pkgs) rx_t='update takes no packages' ;;\n        ru:vital_pkg) rx_t='жизненно важный пакет не удаляю: %1' ;;\n        *:vital_pkg) rx_t='refusing to remove a vital package: %1' ;;\n        *) rx_t=\"$1\" ;;\n    esac\n}\nrx_say() {\n    local rx_t rx_out=\"\" rx_n\n    rx_text \"$1\"; shift\n    while [ -n \"$rx_t\" ]; do\n        case \"$rx_t\" in\n            %[1-9]*) rx_n=\"${rx_t:1:1}\"; rx_out+=\"${!rx_n-}\"; rx_t=\"${rx_t:2}\" ;;\n            *) rx_out+=\"${rx_t:0:1}\"; rx_t=\"${rx_t:1}\" ;;\n        esac\n    done\n    printf '%s: %s\\n' rexon-pkg-helper \"$rx_out\"\n}\ndie() { rx_say \"$@\" >&2; exit 2; }\nhave() { command -v \"$1\" >/dev/null 2>&1; }\n\n# ── Семейство пакетного менеджера: ТОЛЬКО по этой машине ─────────────\n# Порядок тот же, что у ядра (DistroDetector.family): ID из os-release →\n# ID_LIKE → наличие бинарников. os-release не исполняется и в оболочку не\n# подаётся — значение вынимает sed.\nosr_field() {\n    local f v\n    for f in /etc/os-release /usr/lib/os-release; do\n        [ -r \"$f\" ] || continue\n        v=\"$(sed -n \"s/^$1=//p\" \"$f\" | head -n1)\"\n        v=\"${v%\\\"}\"; v=\"${v#\\\"}\"; v=\"${v%\\'}\"; v=\"${v#\\'}\"\n        printf '%s' \"$v\" | tr 'A-Z' 'a-z'\n        return 0\n    done\n}\n\nfamily_of_id() {\n    case \"$1\" in\n        arch|cachyos|manjaro|endeavouros|garuda|artix|steamos|archcraft|blendos|archbang|crystal) printf '%s' arch; return 0 ;;\n        debian|ubuntu|linuxmint|pop|elementary|zorin|kali|parrot|mx|mxlinux|lmde|raspbian|peppermint|tuxedo|astra|osnova|boss) printf '%s' debian; return 0 ;;\n        fedora|rhel|centos|almalinux|rocky|ol|nobara|ultramarine|bazzite|redos|rosa) printf '%s' fedora; return 0 ;;\n        opensuse|opensuse-leap|opensuse-tumbleweed|sle|sles) printf '%s' suse; return 0 ;;\n        gentoo|calculate) printf '%s' gentoo; return 0 ;;\n        alpine) printf '%s' alpine; return 0 ;;\n        void) printf '%s' void; return 0 ;;\n        nixos) printf '%s' nix; return 0 ;;\n        solus) printf '%s' solus; return 0 ;;\n        clear-linux-os) printf '%s' clear; return 0 ;;\n        alt|altlinux|simply) printf '%s' alt; return 0 ;;\n        *) return 1 ;;\n    esac\n}\n\ndetect_family() {\n    local id like\n    id=\"$(osr_field ID)\"\n    if [ -n \"$id\" ] && family_of_id \"$id\"; then return 0; fi\n    for like in $(osr_field ID_LIKE); do\n        if family_of_id \"$like\"; then return 0; fi\n    done\n    # APT-RPM (ALT): apt-get есть, dpkg нет.\n    if have apt-get; then\n        if have dpkg; then printf '%s' debian; return 0; fi\n        if have rpm; then printf '%s' alt; return 0; fi\n        printf '%s' debian; return 0\n    fi\n    if have pacman; then printf '%s' arch; return 0; fi\n    if have dnf; then printf '%s' fedora; return 0; fi\n    if have yum; then printf '%s' fedora; return 0; fi\n    if have zypper; then printf '%s' suse; return 0; fi\n    if have emerge; then printf '%s' gentoo; return 0; fi\n    if have apk; then printf '%s' alpine; return 0; fi\n    if have xbps-install; then printf '%s' void; return 0; fi\n    if have eopkg; then printf '%s' solus; return 0; fi\n    if have swupd; then printf '%s' clear; return 0; fi\n    return 1\n}\n\n# ── Аргументы ────────────────────────────────────────────────────────\n# argv прежний (family op [pkg...]) — по нему зовёт движок, — но ПЕРВЫЙ\n# аргумент больше ничего не решает: команду выбирает только определённое\n# выше семейство. Расхождение не отказ, а запись в журнал: подсунуть через\n# него чужой менеджер пакетов уже нельзя.\n[ \"$#\" -ge 2 ] || die pkg_args\nclaimed=\"$1\"; op=\"$2\"; shift 2\n\nfamily=\"$(detect_family || true)\"\n[ -n \"$family\" ] || die family_unknown\ncase \"$family\" in\n    arch|debian|fedora|suse|gentoo|alpine|void|solus|clear|alt) : ;;\n    *) die unsupported_family \"$family\" ;;\nesac\nif [ \"$claimed\" != \"$family\" ]; then\n    rx_say family_mismatch \"$claimed\" \"$family\" >&2\nfi\n\ncase \"$op\" in\n    install|remove|update|enable-dm|switch-dm|build-deps|install-built) : ;;\n    *) die bad_op \"$op\" ;;\nesac\n\n# ── Пересборка по рецепту Arch: две узкие операции ───────────────────\n# Пересборка Rexon (repo_rebuild) собирает пакет ОТ ПОЛЬЗОВАТЕЛЯ и\n# зовёт помощник дважды, под тем же действием polkit, что и установка\n# остального, — пароль спрашивают один раз:\n#   build-deps dep...                         недостающее для сборки,\n#       pacman -S --needed --asdeps; строка — имя и, возможно,\n#       ограничение версии ('cmake>=3.20'), как её отдаёт 'pacman -T';\n#   install-built plain|replace file [pkg...] собранный файл, pacman -U\n#       (replace — '--ask=4': заменить конфликтующий установленный), затем\n#       'pacman -Rns' сборочных pkg; не снялись — не ошибка.\n# ⛔ Снять install-built может ТОЛЬКО то, что поставил предыдущий\n# build-deps этого же вызвавшего: build-deps записывает новые пакеты\n# (разница 'pacman -Qq' до и после) в свой файл root под /run/rexon-rebuild,\n# install-built снимает пересечение переданного списка с записью, и лишь\n# пакеты с пометкой «зависимость» ('pacman -Qqd'); запись после установки\n# стирается. Нет записи — не снимается ничего: иначе через install-built\n# можно было бы снять любой пакет системы, кроме вечного списка.\n# ⛔ file — НЕ «любой файл»: только из каталога пересборок вызвавшего\n# (~/.cache/rexon/rebuild/<подкаталог>, домашний каталог — из passwd по\n# PKEXEC_UID, не из окружения), обычный файл вызвавшего, не ссылка, имя\n# файла makepkg (*.pkg.tar[.сжатие]). pacman получает СВОЮ копию в\n# каталоге 0700 root, снятую с проверенного файла (cp без разыменования\n# ссылок отказывает, если файл подменили во время копии), — подмена\n# после проверки ничего не меняет. Так помощник не поставит ни системный\n# файл, ни старую версию из кэша pacman, ни чужой файл.\nif [ \"$op\" = build-deps ] || [ \"$op\" = install-built ]; then\n    [ \"$family\" = arch ] || die rebuild_arch_only \"$op\"\nfi\nbuilt=\"\"; built_mode=\"\"\nif [ \"$op\" = install-built ]; then\n    [ \"$#\" -ge 2 ] || die built_args\n    built_mode=\"$1\"; built=\"$2\"; shift 2\n    case \"$built_mode\" in\n        plain|replace) : ;;\n        *) die built_args ;;\n    esac\nfi\n\n# ── Имя пакета — ИМЯ, а не путь ──────────────────────────────────────\n# '/' запрещён везде, кроме атома Gentoo «категория/имя»; ведущий '-' —\n# подмена пакета на флаг; ведущая точка и '..' — всегда путь; хвост файла\n# пакета ('.deb', '.rpm', …) — файл даже без '/'; '@' законно только как\n# группа dnf на Fedora (набор Portage '@world' в 'emerge --unmerge' снёс\n# бы систему). Правило то же, что у ядра в is_safe_pkg_arg.\natom_ok() {\n    printf '%s' \"$1\" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._+:-]*$'\n}\n\npkg_ok() {\n    local a=\"$1\" ctg nm\n    case \"$a\" in\n        *..*) return 1 ;;\n        *.deb|*.rpm|*.apk|*.eopkg|*.xbps|*.tar|*.tgz|*.txz|*.zst|*.xz|*.gz|*.bz2|*.lz4|*.snap|*.flatpakref)\n            return 1 ;;\n    esac\n    [ \"$family\" != fedora ] || a=\"${a#@}\"\n    case \"$a\" in\n        */*)\n            [ \"$family\" = gentoo ] || return 1\n            ctg=\"${a%%/*}\"; nm=\"${a#*/}\"\n            case \"$nm\" in */*) return 1 ;; esac\n            atom_ok \"$ctg\" && atom_ok \"$nm\" ;;\n        *) atom_ok \"$a\" ;;\n    esac\n}\n\n# Строка зависимости для build-deps: имя (то же правило) и, возможно,\n# ограничение версии.\ndep_ok() {\n    local nm=\"${1%%[<>=]*}\" ver\n    ver=\"${1#\"$nm\"}\"\n    pkg_ok \"$nm\" || return 1\n    [ -z \"$ver\" ] || printf '%s' \"$ver\" | grep -Eq '^(>=|<=|=|<|>)[A-Za-z0-9][A-Za-z0-9._+:~-]*$'\n}\n\nfor a in \"$@\"; do\n    case \"$a\" in\n        -*) die arg_dash \"$a\" ;;\n    esac\n    if [ \"$op\" = build-deps ]; then\n        dep_ok \"$a\" || die not_a_name \"$a\"\n    else\n        pkg_ok \"$a\" || die not_a_name \"$a\"\n    fi\ndone\n\n# ── Удаление: жизненно важное не сносим никогда ──────────────────────\n# 'remove' идёт от root и с «не спрашивай»: 'remove linux' оставил бы\n# машину без загрузки, 'remove polkit' — без механизма подтверждения. Ни\n# одно из этих имён не входит ни в один рабочий стол базы Rexon, поэтому\n# честному удалению стола список не мешает.\n# ⛔ 28.10.2026: не только точные имена, но и семейства — ядра\n# ('linux-cachyos', 'linux-image-…'), драйверы ('nvidia-…', 'mesa'),\n# прошивки и микрокод ('*-firmware', '*-ucode'), сборщики initramfs.\n# Шаблон — то же правило, что у ядра (is_vital_package); без eval.\nis_vital() {\n    local k=\"${1#@}\"\n    k=\"${k##*/}\"\n    case \"$k\" in\n        base|base-files|filesystem|glibc|gcc-libs|bash|coreutils|util-linux|systemd|systemd-libs|systemd-sysvcompat|dbus|dbus-broker|linux|linux-lts|linux-zen|linux-hardened|linux-firmware|kernel|kernel-core|grub|limine|systemd-boot|pacman|apt|dpkg|rpm|dnf|yum|zypper|apk-tools|xbps|eopkg|swupd-client|portage|emerge|polkit|polkit-qt5|sudo|openssl|zlib|rexon|linux-*|kernel-*|gentoo-kernel*|gentoo-sources*|systemd-*|glibc-*|grub-*|sudo-*|opendoas*|polkit-qt*|pacman-*|nvidia*|lib32-nvidia*|mesa*|lib32-mesa*|vulkan-*|lib32-vulkan-*|xf86-video-*|firmware-*|mkinitcpio*|dracut*|booster*|*-firmware|*-ucode|*-dkms) return 0 ;;\n    esac\n    return 1\n}\nif [ \"$op\" = \"remove\" ]; then\n    for a in \"$@\"; do\n        if is_vital \"$a\"; then\n            die vital_pkg \"$a\"\n        fi\n    done\nfi\n# install-built: прежний точный список (сборочные вроде 'linux-headers'\n# снимаются законно; их границы — у раздела install-built).\nVITAL=\"base base-files filesystem glibc gcc-libs bash coreutils util-linux systemd systemd-libs systemd-sysvcompat dbus dbus-broker linux linux-lts linux-zen linux-hardened linux-firmware kernel kernel-core grub limine systemd-boot pacman apt dpkg rpm dnf yum zypper apk-tools xbps eopkg swupd-client portage emerge polkit polkit-qt5 sudo openssl zlib rexon\"\nif [ \"$op\" = install-built ]; then\n    for a in \"$@\"; do\n        for v in $VITAL; do\n            if [ \"$a\" = \"$v\" ] || [ \"${a##*/}\" = \"$v\" ]; then\n                die vital_pkg \"$a\"\n            fi\n        done\n    done\nfi\n\n# ── Удаление: стол, в котором сидят, и его экран входа — не снимаются ─\n# Окну помощник не верит: что держать, он узнаёт сам, от root.\n#   1. Активный экран входа: цель ссылки display-manager.service (нет\n#      ссылки — первый включённый юнит из известного списка); держится\n#      имя юнита, его пакет по таблице ядра и владелец файла юнита у\n#      пакетного менеджера. У LightDM — ещё и приветствия\n#      ('lightdm-*greeter*'): lightdm от них не зависит.\n#   2. Графические сеансы logind (Type x11/wayland/mir, Class user — любого\n#      пользователя, не только вызвавшего): стол — по 'Desktop=' сеанса\n#      (XDG_SESSION_DESKTOP) той же таблицей, что у ядра; пакеты стола — из\n#      таблицы ядра, группы Arch раскрываются ('pacman -Qqg').\n# Ограничения: без systemd/elogind ('loginctl') пункт 2 молчит; сеанс без\n# 'Desktop=' (startx, часть входов через greetd) стола не называет —\n# держится только экран входа.\ndm_unit_now() {\n    local link=\"/etc/systemd/system/display-manager.service\" tgt known state\n    if [ -L \"$link\" ]; then\n        tgt=\"$(readlink -f \"$link\" 2>/dev/null || true)\"\n        if [ -n \"$tgt\" ] && [ -e \"$tgt\" ]; then\n            printf '%s\\n%s\\n' \"${tgt##*/}\" \"$tgt\"\n            return 0\n        fi\n    fi\n    have systemctl || return 0\n    for known in display-manager plasmalogin sddm gdm gdm3 lightdm lxdm greetd ly cosmic-greeter slim nodm xdm entrance emptty tbsm; do\n        [ \"$known\" != display-manager ] || continue\n        state=\"$(systemctl is-enabled \"$known.service\" 2>/dev/null || true)\"\n        case \"$state\" in\n            enabled|enabled-runtime|alias|indirect|static)\n                tgt=\"$(systemctl show -p FragmentPath --value \"$known.service\" 2>/dev/null || true)\"\n                printf '%s\\n%s\\n' \"$known.service\" \"$tgt\"\n                return 0 ;;\n        esac\n    done\n}\n\nowner_of() {\n    [ -n \"$1\" ] && [ -e \"$1\" ] || return 0\n    case \"$family\" in\n        arch) pacman -Qqo -- \"$1\" 2>/dev/null || true ;;\n        debian) dpkg-query -S -- \"$1\" 2>/dev/null | sed -n 's/^\\([^:,]*\\)[:,].*/\\1/p' | head -n1 || true ;;\n        fedora|suse|alt|clear) rpm -qf --qf '%{NAME}\\n' -- \"$1\" 2>/dev/null || true ;;\n        alpine) apk info -Wq -- \"$1\" 2>/dev/null || true ;;\n        void) xbps-query -o -- \"$1\" 2>/dev/null | sed -n 's/^\\([^:]*\\)-[^-:]*:.*/\\1/p' | head -n1 || true ;;\n    esac\n}\n\ndm_pkg_of_unit() {\n    case \"$family|$1\" in\n        debian\\|gdm) printf '%s\\n' gdm3 ;;\n        debian\\|plasmalogin) printf '%s\\n' plasma-login-manager ;;\n        *\\|plasmalogin) printf '%s\\n' plasma-login-manager ;;\n        *) printf '%s\\n' \"$1\" ;;\n    esac\n}\n\nde_of_desktop() {\n    local d t\n    d=\"$(printf '%s' \"$1\" | tr 'A-Z' 'a-z')\"\n    [ -n \"$d\" ] || return 1\n    # Токены через read, не через разбиение слов: ни одного раскрытия шаблона.\n    while IFS= read -r t; do\n        case \"$t\" in\n            kde) printf '%s' kde; return 0 ;;\n            plasma) printf '%s' kde; return 0 ;;\n            gnome) printf '%s' gnome; return 0 ;;\n            x-cinnamon) printf '%s' cinnamon-mint; return 0 ;;\n            cinnamon) printf '%s' cinnamon-mint; return 0 ;;\n            xfce) printf '%s' xfce; return 0 ;;\n            mate) printf '%s' mate; return 0 ;;\n            budgie) printf '%s' budgie; return 0 ;;\n            pantheon) printf '%s' pantheon; return 0 ;;\n            dde) printf '%s' deepin; return 0 ;;\n            deepin) printf '%s' deepin; return 0 ;;\n            treeland) printf '%s' deepin; return 0 ;;\n            lxqt) printf '%s' lxqt; return 0 ;;\n            cosmic) printf '%s' cosmic; return 0 ;;\n            hyprland) printf '%s' hyprland; return 0 ;;\n            sway) printf '%s' sway; return 0 ;;\n            niri) printf '%s' niri; return 0 ;;\n            river) printf '%s' river; return 0 ;;\n            wayfire) printf '%s' wayfire; return 0 ;;\n            labwc) printf '%s' labwc; return 0 ;;\n        esac\n    done < <(printf '%s\\n' \"$d\" | tr ':' '\\n')\n    case \"$d\" in\n        *kde*) printf '%s' kde; return 0 ;;\n        *plasma*) printf '%s' kde; return 0 ;;\n        *gnome*) printf '%s' gnome; return 0 ;;\n        *x-cinnamon*) printf '%s' cinnamon-mint; return 0 ;;\n        *cinnamon*) printf '%s' cinnamon-mint; return 0 ;;\n        *xfce*) printf '%s' xfce; return 0 ;;\n        *mate*) printf '%s' mate; return 0 ;;\n        *budgie*) printf '%s' budgie; return 0 ;;\n        *pantheon*) printf '%s' pantheon; return 0 ;;\n        *dde*) printf '%s' deepin; return 0 ;;\n        *deepin*) printf '%s' deepin; return 0 ;;\n        *treeland*) printf '%s' deepin; return 0 ;;\n        *lxqt*) printf '%s' lxqt; return 0 ;;\n        *cosmic*) printf '%s' cosmic; return 0 ;;\n        *hyprland*) printf '%s' hyprland; return 0 ;;\n        *sway*) printf '%s' sway; return 0 ;;\n        *niri*) printf '%s' niri; return 0 ;;\n        *river*) printf '%s' river; return 0 ;;\n        *wayfire*) printf '%s' wayfire; return 0 ;;\n        *labwc*) printf '%s' labwc; return 0 ;;\n    esac\n    return 1\n}\n\nde_pkgs() {\n    case \"$1\" in\n        \"cinnamon-mint|arch\") echo cinnamon cinnamon-translations nemo nemo-fileroller gnome-terminal lightdm lightdm-slick-greeter mint-themes mint-x-icons mint-y-icons mint-backgrounds lightdm-settings ;;\n        \"cinnamon-mint|debian\") echo cinnamon-desktop-environment lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|fedora\") echo @cinnamon-desktop-environment cinnamon-themes mint-y-theme mint-y-icons mint-x-icons lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|suse\") echo patterns-cinnamon-cinnamon lightdm lightdm-gtk-greeter nemo ;;\n        \"cinnamon-mint|gentoo\") echo gnome-extra/cinnamon x11-misc/lightdm gnome-extra/nemo ;;\n        \"cinnamon-mint|alpine\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|void\") echo cinnamon-all lightdm lightdm-gtk3-greeter ;;\n        \"cinnamon-mint|solus\") echo cinnamon nemo lightdm lightdm-gtk-greeter ;;\n        \"cinnamon-mint|alt\") echo cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter ;;\n        \"xfce|arch\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|debian\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"xfce|fedora\") echo @xfce-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"xfce|suse\") echo patterns-xfce-xfce lightdm lightdm-gtk-greeter ;;\n        \"xfce|gentoo\") echo xfce-base/xfce4-meta x11-terms/xfce4-terminal app-editors/mousepad x11-misc/lightdm ;;\n        \"xfce|alpine\") echo xfce4 xfce4-terminal xfce4-screensaver lightdm lightdm-gtk-greeter ;;\n        \"xfce|void\") echo xfce4 lightdm lightdm-gtk3-greeter ;;\n        \"xfce|solus\") echo xfce4-desktop lightdm ;;\n        \"xfce|clear\") echo desktop-xfce4 ;;\n        \"xfce|alt\") echo xfce4 xfce4-goodies lightdm lightdm-gtk-greeter ;;\n        \"mate|arch\") echo mate mate-extra plank lightdm lightdm-gtk-greeter appmenu-gtk-module mate-tweak brisk-menu mate-indicator-applet ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications vala-panel-appmenu-mate vala-panel-appmenu-registrar ;;\n        \"mate|debian\") echo mate-desktop-environment mate-desktop-environment-extras lightdm lightdm-gtk-greeter ;;\n        \"mate|fedora\") echo @mate-desktop-environment lightdm lightdm-gtk-greeter ;;\n        \"mate|suse\") echo patterns-mate-mate lightdm lightdm-gtk-greeter ;;\n        \"mate|gentoo\") echo mate-base/mate x11-misc/lightdm ;;\n        \"mate|alpine\") echo mate-desktop mate-session-manager mate-panel caja marco mate-terminal mate-utils lightdm lightdm-gtk-greeter ;;\n        \"mate|void\") echo mate lightdm lightdm-gtk3-greeter ;;\n        \"mate|alt\") echo mate mate-terminal plank lightdm lightdm-gtk-greeter ;;\n        \"gnome|arch\") echo gnome gnome-tweaks gdm ;;\n        \"gnome|debian\") echo gnome gnome-tweaks gdm3 ;;\n        \"gnome|fedora\") echo @gnome-desktop gnome-tweaks gdm ;;\n        \"gnome|suse\") echo patterns-gnome-gnome gdm ;;\n        \"gnome|gentoo\") echo gnome-base/gnome gnome-base/gdm ;;\n        \"gnome|alpine\") echo gnome-desktop gnome-shell gnome-control-center nautilus gdm ;;\n        \"gnome|void\") echo gnome gdm ;;\n        \"gnome|solus\") echo gnome-shell gnome-desktop-branding gnome-control-center gdm ;;\n        \"gnome|clear\") echo desktop-gnome-apps ;;\n        \"gnome|alt\") echo gnome-shell gnome-control-center gnome-tweaks nautilus gdm ;;\n        \"kde|arch\") echo plasma-meta konsole dolphin kate gwenview ark spectacle plasma-login-manager ;;\n        \"kde|debian\") echo kde-plasma-desktop konsole dolphin sddm ;;\n        \"kde|fedora\") echo @kde-desktop-environment sddm ;;\n        \"kde|suse\") echo patterns-kde-kde sddm ;;\n        \"kde|gentoo\") echo kde-plasma/plasma-meta x11-misc/sddm ;;\n        \"kde|alpine\") echo plasma-desktop-meta konsole dolphin sddm ;;\n        \"kde|void\") echo kde-plasma konsole dolphin sddm ;;\n        \"kde|solus\") echo plasma-desktop sddm ;;\n        \"kde|clear\") echo desktop-kde-apps ;;\n        \"kde|alt\") echo kde5 plasma5-workspace konsole dolphin sddm ;;\n        \"budgie|arch\") echo budgie-desktop budgie-desktop-view budgie-extras network-manager-applet nautilus lightdm lightdm-gtk-greeter ;;\n        \"budgie|debian\") echo budgie-desktop budgie-extras lightdm lightdm-gtk-greeter ;;\n        \"budgie|fedora\") echo @budgie-desktop-environment lightdm ;;\n        \"budgie|suse\") echo patterns-budgie-budgie lightdm ;;\n        \"budgie|gentoo\") echo budgie-base/budgie-desktop budgie-base/budgie-desktop-view x11-misc/lightdm ;;\n        \"budgie|void\") echo budgie-desktop lightdm lightdm-gtk3-greeter ;;\n        \"budgie|solus\") echo budgie-desktop lightdm ;;\n        \"budgie|alt\") echo budgie-desktop nautilus lightdm lightdm-gtk-greeter ;;\n        \"pantheon|arch\") echo pantheon lightdm lightdm-gtk-greeter ;;\n        \"deepin|arch\") echo deepin lightdm ;;\n        \"cosmic|arch\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces cosmic-initial-setup xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-player cosmic-wallpapers cosmic-icon-theme gnome-keyring power-profiles-daemon packagekit flatpak ;;\n        \"cosmic|fedora\") echo cosmic-desktop ;;\n        \"cosmic|suse\") echo patterns-cosmic-cosmic ;;\n        \"cosmic|gentoo\") echo cosmic-base/cosmic-session ;;\n        \"cosmic|alpine\") echo cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-wallpapers cosmic-icons ;;\n        \"cosmic|void\") echo cosmic-desktop ;;\n        \"hyprland|arch\") echo hyprland hyprpaper hyprlock hypridle xdg-desktop-portal-hyprland xdg-desktop-portal-gtk waybar wofi kitty thunar grim slurp wl-clipboard polkit-gnome otf-font-awesome ;;\n        \"hyprland|debian\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|fedora\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|suse\") echo hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|gentoo\") echo gui-wm/hyprland gui-apps/waybar gui-apps/wofi x11-terms/kitty gui-apps/grim gui-apps/slurp ;;\n        \"hyprland|alpine\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|void\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"hyprland|alt\") echo hyprland waybar wofi kitty grim slurp wl-clipboard ;;\n        \"lxqt|arch\") echo lxqt openbox breeze-icons sddm ;;\n        \"lxqt|debian\") echo lxqt sddm ;;\n        \"lxqt|fedora\") echo @lxqt-desktop-environment sddm ;;\n        \"lxqt|suse\") echo patterns-lxqt-lxqt sddm ;;\n        \"lxqt|gentoo\") echo lxqt-base/lxqt-meta x11-misc/sddm ;;\n        \"lxqt|alpine\") echo lxqt-desktop lximage-qt pavucontrol-qt font-dejavu sddm ;;\n        \"lxqt|void\") echo lxqt sddm ;;\n        \"lxqt|alt\") echo lxqt-session lxqt-panel lxqt-config lxqt-policykit lxqt-runner lxqt-notificationd pcmanfm-qt qterminal openbox sddm ;;\n        \"niri|arch\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-gnome xwayland-satellite otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"niri|fedora\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako thunar grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts ;;\n        \"niri|suse\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"niri|alpine\") echo niri swaybg swayidle swaylock waybar fuzzel alacritty mako grim slurp wl-clipboard xdg-desktop-portal-gnome font-awesome font-nerd-fonts-symbols ;;\n        \"sway|arch\") echo sway swaybg swayidle swaylock waybar wofi wmenu foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"sway|debian\") echo sway swaybg swayidle swaylock waybar wofi foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr fonts-font-awesome ;;\n        \"sway|fedora\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"sway|suse\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts symbols-only-nerd-fonts ;;\n        \"sway|gentoo\") echo gui-wm/sway gui-apps/swaybg gui-apps/waybar gui-apps/wofi gui-apps/foot gui-apps/grim gui-apps/slurp media-fonts/fontawesome media-fonts/symbols-nerd-font ;;\n        \"sway|alpine\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome font-nerd-fonts-symbols ;;\n        \"sway|void\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard font-awesome nerd-fonts-symbols-ttf ;;\n        \"sway|alt\") echo sway swaybg swayidle swaylock waybar wofi foot mako grim slurp wl-clipboard fonts-font-awesome ;;\n        \"river|arch\") echo river-classic waybar fuzzel foot mako swaybg thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk otf-font-awesome ttf-nerd-fonts-symbols ;;\n        \"river|fedora\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr fontawesome-fonts ;;\n        \"river|alpine\") echo river-classic waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome font-nerd-fonts-symbols ;;\n        \"river|void\") echo river waybar fuzzel foot mako swaybg grim slurp wl-clipboard xdg-desktop-portal-wlr font-awesome nerd-fonts-symbols-ttf ;;\n        \"wayfire|arch\") echo wayfire wf-shell wcm foot mako thunar grim slurp wl-clipboard polkit-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk xorg-xwayland ;;\n        \"wayfire|debian\") echo wayfire wf-shell wcm foot mako-notifier grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|fedora\") echo wayfire wf-shell wayfire-config-manager foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|suse\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n        \"wayfire|gentoo\") echo gui-wm/wayfire gui-apps/wf-shell gui-apps/wcm gui-apps/foot gui-apps/grim gui-apps/slurp ;;\n        \"wayfire|void\") echo wayfire wf-shell wcm foot mako grim slurp wl-clipboard xdg-desktop-portal-wlr ;;\n    esac\n}\n\nheld_packages() {\n    local unit file s ty cl de p\n    { read -r unit; read -r file; } < <(dm_unit_now; printf '\\n\\n')\n    unit=\"${unit%.service}\"\n    if [ -n \"$unit\" ]; then\n        printf '%s\\n' \"$unit\"\n        dm_pkg_of_unit \"$unit\"\n        owner_of \"$file\"\n    fi\n    have loginctl || return 0\n    for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do\n        case \"$s\" in *[!A-Za-z0-9._-]*|'') continue ;; esac\n        ty=\"$(loginctl show-session \"$s\" -p Type --value 2>/dev/null || true)\"\n        case \"$ty\" in x11|wayland|mir) : ;; *) continue ;; esac\n        cl=\"$(loginctl show-session \"$s\" -p Class --value 2>/dev/null || true)\"\n        [ \"$cl\" = user ] || continue\n        de=\"$(de_of_desktop \"$(loginctl show-session \"$s\" -p Desktop --value 2>/dev/null || true)\" || true)\"\n        [ -n \"$de\" ] || continue\n        for p in $(de_pkgs \"$de|$family\"); do\n            printf '%s\\n' \"$p\"\n            if [ \"$family\" = arch ]; then\n                pacman -Qqg -- \"$p\" 2>/dev/null || true\n            fi\n        done\n    done\n}\n\nif [ \"$op\" = \"remove\" ]; then\n    held=\"$(held_packages | sed 's|.*/||' | LC_ALL=C sort -u || true)\"\n    for a in \"$@\"; do\n        b=\"${a##*/}\"\n        # here-string, не конвейер (pipefail и SIGPIPE).\n        if grep -Fxq -- \"$b\" <<<\"$held\"; then\n            die current_de_pkg \"$a\"\n        fi\n        if grep -Fxq lightdm <<<\"$held\"; then\n            case \"$b\" in lightdm-*greeter*) die current_de_pkg \"$a\" ;; esac\n        fi\n    done\nfi\n\n# ── Установка: только пакеты из таблиц ядра ──────────────────────────\n# Белый список вшит при генерации помощника: столы (основные и AUR),\n# экраны входа, починка соответствия, видеозависимости обоев, yt-dlp,\n# оболочки, программы виджетов Conky и распаковщик 7z, части раскладок\n# MATE, значки и курсоры тем, образы «Как в дистрибутиве». Имя вне списка\n# помощник от root не ставит, что бы ни прислал вызывающий.\ninstall_allowed() {\n    local list=\"\"\n    case \"$family\" in\n        arch) list=\"cinnamon cinnamon-translations nemo nemo-fileroller gnome-terminal lightdm lightdm-slick-greeter mint-themes mint-x-icons mint-y-icons mint-backgrounds lightdm-settings xfce4 xfce4-goodies lightdm-gtk-greeter mate mate-extra plank appmenu-gtk-module mate-tweak brisk-menu mate-indicator-applet ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications vala-panel-appmenu-mate vala-panel-appmenu-registrar gnome gnome-tweaks gdm plasma-meta konsole dolphin kate gwenview ark spectacle plasma-login-manager budgie-desktop budgie-desktop-view budgie-extras network-manager-applet nautilus pantheon deepin cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces cosmic-initial-setup xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-player cosmic-wallpapers cosmic-icon-theme gnome-keyring power-profiles-daemon packagekit flatpak hyprland hyprpaper hyprlock hypridle xdg-desktop-portal-hyprland xdg-desktop-portal-gtk waybar wofi kitty thunar grim slurp wl-clipboard polkit-gnome otf-font-awesome lxqt openbox breeze-icons sddm niri swaybg swayidle swaylock fuzzel alacritty mako xdg-desktop-portal-gnome xwayland-satellite ttf-nerd-fonts-symbols sway wmenu foot xdg-desktop-portal-wlr xorg-xwayland river-classic wayfire wf-shell wcm gdm3 lxdm ttf-ubuntu-font-family mpv mpvpaper yt-dlp noctalia dms-shell dms-shell-hyprland dms-shell-niri imagemagick libarchive xorg-server-xvfb 7zip icoutils xorg-xcursorgen cabextract qt6ct win2xcur ffmpeg libnotify pipewire libpulse alsa-utils libcanberra glib2 dbus wireplumber xdg-terminal-exec polkit xorg-xprop xorg-xrandr git kvantum vlc-cli qt6-tools kconfig awww xwinwrap-git ruffle gtk-update-icon-cache desktop-file-utils lm_sensors wget curl jq cava bc playerctl conky mintmenu mate-menu mate-window-buttons-applet mate-netbook mate-applets mate-media xcursor-vanilla-dmz xcursor-vanilla-dmz-aa adwaita-cursors breeze whitesur-cursor-theme-git adwaita-icon-theme papirus-icon-theme whitesur-icon-theme breeze-cursors oxygen-cursors gamescope steam gamescope-session-git gamescope-session-steam-git beautyline ttf-fira-sans ttf-firacode-nerd plasma-applet-window-buttons plasma6-applets-panel-colorizer plasma6-applets-window-title plasma6-wallpapers-blurredwallpaper compiz kdeplasma-addons\" ;;\n        debian) list=\"cinnamon-desktop-environment lightdm lightdm-gtk-greeter nemo xfce4 xfce4-goodies mate-desktop-environment mate-desktop-environment-extras gnome gnome-tweaks gdm3 kde-plasma-desktop konsole dolphin sddm budgie-desktop budgie-extras hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard lxqt sway swaybg swayidle swaylock foot mako-notifier xdg-desktop-portal-wlr fonts-font-awesome wayfire wf-shell wcm plasma-login-manager cosmic-greeter gdm lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme mpv yt-dlp imagemagick libarchive-tools xvfb 7zip icoutils x11-apps cabextract qt6ct ffmpeg libnotify-bin pipewire-bin pulseaudio-utils alsa-utils gnome-session-canberra libglib2.0-bin dbus-bin wireplumber xdg-terminal-exec pkexec x11-utils x11-xserver-utils git qt6-style-kvantum vlc-bin qdbus-qt6 libkf6config-bin awww libgtk-3-bin desktop-file-utils lm-sensors wget curl jq cava bc playerctl conky mate-applet-brisk-menu mate-menu mate-applet-appmenu mate-window-buttons-applet mate-netbook mate-applets mate-media dmz-cursor-theme adwaita-icon-theme breeze-cursor-theme breeze-icon-theme papirus-icon-theme mint-y-icons qt-style-kvantum kdeplasma-addons\" ;;\n        fedora) list=\"@cinnamon-desktop-environment cinnamon-themes mint-y-theme mint-y-icons mint-x-icons lightdm lightdm-gtk-greeter @xfce-desktop-environment @mate-desktop-environment @gnome-desktop gnome-tweaks gdm @kde-desktop-environment sddm @budgie-desktop-environment cosmic-desktop hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard @lxqt-desktop-environment niri swaybg swayidle swaylock fuzzel alacritty mako thunar xdg-desktop-portal-gnome fontawesome-fonts sway foot xdg-desktop-portal-wlr river-classic wayfire wf-shell wayfire-config-manager plasma-login-manager cosmic-greeter gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp noctalia ImageMagick bsdtar xorg-x11-server-Xvfb 7zip icoutils xcursorgen cabextract qt6ct ffmpeg-free libnotify pipewire-utils pulseaudio-utils alsa-utils libcanberra-gtk3 glib2 dbus-tools wireplumber polkit xprop xrandr git-core kvantum vlc-cli qt6-qttools kf6-kconfig awww hyprpaper gtk-update-icon-cache desktop-file-utils lm_sensors wget2-wget curl jq cava bc playerctl conky mate-menu mate-applets mate-media adwaita-cursor-theme breeze-cursor-theme adwaita-icon-theme breeze-icon-theme papirus-icon-theme-dark papirus-icon-theme-light papirus-icon-theme kdeplasma-addons\" ;;\n        suse) list=\"patterns-cinnamon-cinnamon lightdm lightdm-gtk-greeter nemo patterns-xfce-xfce patterns-mate-mate patterns-gnome-gnome gdm patterns-kde-kde sddm patterns-budgie-budgie patterns-cosmic-cosmic hyprland xdg-desktop-portal-hyprland waybar wofi kitty grim slurp wl-clipboard patterns-lxqt-lxqt niri swaybg swayidle swaylock fuzzel alacritty mako xdg-desktop-portal-gnome fontawesome-fonts symbols-only-nerd-fonts sway foot xdg-desktop-portal-wlr wayfire wf-shell wcm plasma-login-manager cosmic-greeter gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp ImageMagick bsdtar xorg-x11-server-Xvfb 7zip icoutils xcursorgen cabextract qt6ct ffmpeg-7 libnotify-tools pipewire-tools pulseaudio-utils alsa-utils libcanberra-gtk3 glib2-tools dbus-1-tools wireplumber xdg-terminal-exec polkit xprop xrandr git-core kvantum-manager vlc-noX qt6-tools-qdbus kf6-kconfig awww mpvpaper hyprpaper ruffle gtk3-tools desktop-file-utils sensors wget curl jq cava bc playerctl conky mate-menu mate-applet-indicator mate-netbook mate-applets mate-media dmz-icon-theme-cursors adwaita-icon-theme breeze6-cursors kf6-breeze-icons papirus-icon-theme mint-y-icon-theme\" ;;\n        gentoo) list=\"gnome-extra/cinnamon x11-misc/lightdm gnome-extra/nemo xfce-base/xfce4-meta x11-terms/xfce4-terminal app-editors/mousepad mate-base/mate gnome-base/gnome gnome-base/gdm kde-plasma/plasma-meta x11-misc/sddm budgie-base/budgie-desktop budgie-base/budgie-desktop-view cosmic-base/cosmic-session gui-wm/hyprland gui-apps/waybar gui-apps/wofi x11-terms/kitty gui-apps/grim gui-apps/slurp lxqt-base/lxqt-meta gui-wm/sway gui-apps/swaybg gui-apps/foot media-fonts/fontawesome media-fonts/symbols-nerd-font gui-wm/wayfire gui-apps/wf-shell gui-apps/wcm plasma-login-manager cosmic-greeter lightdm gdm sddm gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp app-eselect/eselect-repository gui-apps/qt6ct\" ;;\n        alpine) list=\"cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter xfce4 xfce4-terminal xfce4-screensaver mate-desktop mate-session-manager mate-panel caja marco mate-terminal mate-utils gnome-desktop gnome-shell gnome-control-center nautilus gdm plasma-desktop-meta konsole dolphin sddm cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-app-library cosmic-bg cosmic-greeter cosmic-idle cosmic-launcher cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot cosmic-settings cosmic-settings-daemon cosmic-workspaces xdg-desktop-portal-cosmic cosmic-files cosmic-terminal cosmic-text-editor cosmic-store cosmic-wallpapers cosmic-icons hyprland waybar wofi kitty grim slurp wl-clipboard lxqt-desktop lximage-qt pavucontrol-qt font-dejavu niri swaybg swayidle swaylock fuzzel alacritty mako xdg-desktop-portal-gnome font-awesome font-nerd-fonts-symbols sway foot river-classic xdg-desktop-portal-wlr plasma-login-manager gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-icon-theme budgie-extras mpv yt-dlp qt6ct\" ;;\n        void) list=\"cinnamon-all lightdm lightdm-gtk3-greeter xfce4 mate gnome gdm kde-plasma konsole dolphin sddm budgie-desktop cosmic-desktop hyprland waybar wofi kitty grim slurp wl-clipboard lxqt sway swaybg swayidle swaylock foot mako font-awesome nerd-fonts-symbols-ttf river fuzzel xdg-desktop-portal-wlr wayfire wf-shell wcm plasma-login-manager cosmic-greeter gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp qt6ct\" ;;\n        solus) list=\"cinnamon nemo lightdm lightdm-gtk-greeter xfce4-desktop gnome-shell gnome-desktop-branding gnome-control-center gdm plasma-desktop sddm budgie-desktop plasma-login-manager cosmic-greeter gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp qt6ct\" ;;\n        clear) list=\"desktop-xfce4 desktop-gnome-apps desktop-kde-apps plasma-login-manager cosmic-greeter lightdm gdm sddm gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp\" ;;\n        alt) list=\"cinnamon nemo gnome-terminal lightdm lightdm-gtk-greeter xfce4 xfce4-goodies mate mate-terminal plank gnome-shell gnome-control-center gnome-tweaks nautilus gdm kde5 plasma5-workspace konsole dolphin sddm budgie-desktop hyprland waybar wofi kitty grim slurp wl-clipboard lxqt-session lxqt-panel lxqt-config lxqt-policykit lxqt-runner lxqt-notificationd pcmanfm-qt qterminal openbox sway swaybg swayidle swaylock foot mako fonts-font-awesome plasma-login-manager cosmic-greeter gdm3 lxdm ayatana-indicator-application ayatana-indicator-session ayatana-indicator-datetime ayatana-indicator-sound ayatana-indicator-notifications mate-tweak brisk-menu mate-indicator-applet vala-panel-appmenu-mate vala-panel-appmenu-registrar ttf-ubuntu-font-family cosmic-wallpapers cosmic-icon-theme budgie-extras mpv yt-dlp qt6ct\" ;;\n    esac\n    case \" $list \" in\n        *\" $1 \"*) return 0 ;;\n    esac\n    return 1\n}\nif [ \"$op\" = install ]; then\n    for a in \"$@\"; do\n        install_allowed \"$a\" || die not_in_tables \"$a\"\n    done\nfi\n\n# Команда — массив аргументов; исполняется напрямую, без оболочки.\ncmd=()\nrun_cmd() {\n    [ \"${#cmd[@]}\" -gt 0 ] || die no_cmd \"$family\"\n    have \"${cmd[0]}\" || die no_pm \"${cmd[0]}\"\n    \"${cmd[@]}\" \"$@\"\n}\n\nuid_ok() {\n    [ -n \"${PKEXEC_UID:-}\" ] || die not_via_pkexec\n    case \"$PKEXEC_UID\" in\n        *[!0-9]*) die not_via_pkexec ;;\n    esac\n}\nREC_DIR=\"/run/rexon-rebuild\"\n\nif [ \"$op\" = build-deps ]; then\n    [ \"$#\" -ge 1 ] || die op_needs_pkg \"$op\"\n    uid_ok\n    have pacman || die no_pm pacman\n    before=\"$(pacman -Qq 2>/dev/null | LC_ALL=C sort -u || true)\"\n    rc=0\n    pacman -S --needed --noconfirm --asdeps -- \"$@\" || rc=$?\n    after=\"$(pacman -Qq 2>/dev/null | LC_ALL=C sort -u || true)\"\n    mkdir -p -- \"$REC_DIR\"\n    chmod 0700 -- \"$REC_DIR\"\n    rm -f -- \"$REC_DIR/$PKEXEC_UID\"\n    if [ -n \"$before\" ] && [ -n \"$after\" ]; then\n        ( umask 077\n          LC_ALL=C comm -13 <(printf '%s\\n' \"$before\") <(printf '%s\\n' \"$after\") > \"$REC_DIR/$PKEXEC_UID\" )\n    fi\n    exit \"$rc\"\nfi\n\nif [ \"$op\" = install-built ]; then\n    uid_ok\n    have pacman || die no_pm pacman\n    name=\"${built##*/}\"\n    case \"$name\" in\n        .*|-*) die built_bad_name \"$built\" ;;\n        *.pkg.tar|*.pkg.tar.zst|*.pkg.tar.xz|*.pkg.tar.gz|*.pkg.tar.bz2|*.pkg.tar.lz4|*.pkg.tar.lzo|*.pkg.tar.lrz|*.pkg.tar.lz|*.pkg.tar.Z) : ;;\n        *) die built_bad_name \"$built\" ;;\n    esac\n    printf '%s' \"$name\" | grep -Eq '^[A-Za-z0-9@_+][A-Za-z0-9@._+:-]*$' || die built_bad_name \"$built\"\n    case \"$built\" in\n        /?*/*) : ;;\n        *) die built_outside \"$built\" ;;\n    esac\n    home=\"$(getent passwd \"$PKEXEC_UID\" | cut -d: -f6 || true)\"\n    case \"$home\" in\n        /?*) : ;;\n        *) die built_no_home \"$PKEXEC_UID\" ;;\n    esac\n    # Корень пересборок — свой у вызвавшего; ~/.cache может быть ссылкой\n    # на другой диск, поэтому сравниваются настоящие пути.\n    rebuild_root=\"$(cd -P -- \"$home/.cache/rexon/rebuild\" 2>/dev/null && pwd -P)\" \\\n        || die built_outside \"$built\"\n    [ \"$(stat -c %u -- \"$rebuild_root\")\" = \"$PKEXEC_UID\" ] || die built_outside \"$built\"\n    # Сначала ВХОДИМ в каталог файла: дальше имя без '/' считается от него,\n    # и подмена части пути ссылкой уже ничего не меняет.\n    cd -P -- \"${built%/*}\" 2>/dev/null || die built_unreachable \"$built\"\n    here=\"$(pwd -P)\"\n    case \"$here\" in\n        \"$rebuild_root\"/?*) : ;;\n        *) die built_outside \"$built\" ;;\n    esac\n    [ \"$(stat -c %u .)\" = \"$PKEXEC_UID\" ] || die built_not_callers \"$built\"\n    # Предварительно — чтобы cp не повис на FIFO; решает проверка копии.\n    { [ -f \"./$name\" ] && [ ! -L \"./$name\" ]; } || die built_not_file \"$built\"\n    work=\"$(mktemp -d /var/tmp/rexon-pkg-helper.XXXXXXXX)\" || die no_work_dir\n    trap 'rm -rf -- \"$work\"' EXIT\n    cp -P --preserve=ownership -- \"./$name\" \"$work/$name\" 2>/dev/null || die built_copy_failed \"$built\"\n    cd /\n    { [ -f \"$work/$name\" ] && [ ! -L \"$work/$name\" ]; } || die built_not_file \"$built\"\n    [ \"$(stat -c %u -- \"$work/$name\")\" = \"$PKEXEC_UID\" ] || die built_not_callers \"$built\"\n    chown 0:0 -- \"$work/$name\"\n    chmod 0600 -- \"$work/$name\"\n    rc=0\n    if [ \"$built_mode\" = replace ]; then\n        pacman -U --noconfirm --ask=4 -- \"$work/$name\" || rc=$?\n    else\n        pacman -U --noconfirm -- \"$work/$name\" || rc=$?\n    fi\n    [ \"$rc\" -eq 0 ] || exit \"$rc\"\n    rec=\"$REC_DIR/$PKEXEC_UID\"\n    drop=()\n    if [ \"$#\" -gt 0 ]; then\n        ours=\"\"; asdeps=\"\"\n        if [ -f \"$rec\" ] && [ ! -L \"$rec\" ]; then\n            ours=\"$(cat -- \"$rec\")\"\n            asdeps=\"$(pacman -Qqd 2>/dev/null || true)\"\n        fi\n        for a in \"$@\"; do\n            # here-string, не конвейер: при pipefail ранний выход grep -q\n            # мог бы уронить printf (SIGPIPE) и «не найти» найденное.\n            if grep -Fxq -- \"$a\" <<<\"$ours\" && grep -Fxq -- \"$a\" <<<\"$asdeps\"; then\n                drop+=(\"$a\")\n            else\n                rx_say build_only_not_ours \"$a\"\n            fi\n        done\n    fi\n    rm -f -- \"$rec\"\n    if [ \"${#drop[@]}\" -gt 0 ]; then\n        pacman -Rns --noconfirm -- \"${drop[@]}\" || rx_say build_only_kept\n    fi\n    exit 0\nfi\n\nif [ \"$op\" = \"update\" ]; then\n    [ \"$#\" -eq 0 ] || die update_no_pkgs\n    case \"$family\" in\n        arch) cmd=(pacman -Sy --noconfirm) ;;\n        debian) cmd=(apt-get update -q) ;;\n        fedora) cmd=(dnf makecache -q) ;;\n        suse) cmd=(zypper refresh -q) ;;\n        gentoo) cmd=(emerge --sync --quiet) ;;\n        alpine) cmd=(apk update) ;;\n        void) cmd=(xbps-install -S) ;;\n        solus) cmd=(eopkg ur) ;;\n        clear) cmd=(swupd update --download) ;;\n        alt) cmd=(apt-get update -q) ;;\n    esac\n    run_cmd\n    exit $?\nfi\n\nif [ \"$op\" = \"enable-dm\" ]; then\n    [ \"$#\" -eq 1 ] || die enable_dm_one\n    dm=\"$1\"\n    case \"$dm\" in\n        plasmalogin|cosmic-greeter|lightdm|gdm|sddm) : ;;\n        *) die bad_dm \"$dm\" ;;\n    esac\n    have systemctl || die no_systemctl\n    # --force для DM, не Provides display-manager.service (Plasma Login\n    # Manager: иначе enable отказывается из-за alias-конфликта).\n    cmd=(systemctl enable)\n    case \"$dm\" in\n        plasmalogin) cmd+=(--force) ;;\n    esac\n    cmd+=(\"$dm.service\")\n    \"${cmd[@]}\"\n    exit $?\nfi\n\n# ── switch-dm: «Сделать основным» экран входа ────────────────────────\n# Только systemd. Помощник САМ определяет прежний экран входа и механизм\n# выбора, САМ повторяет критичные проверки (между пробой интерфейса и\n# паролем мог пройти час) и сверяет результат; при расхождении — откат.\n# ⛔ Только enable: никаких запусков и остановок служб в живом сеансе —\n# новый экран входа появится после перезагрузки. Запускает\n# display-manager.service лишь служба-откат, и только при загрузке,\n# когда новый экран входа упал.\nif [ \"$op\" = \"switch-dm\" ]; then\n    [ \"$#\" -ge 1 ] && [ \"$#\" -le 2 ] || die switch_dm_args\n    new=\"$1\"; greeter=\"${2:-}\"\n    case \"$new\" in\n        plasmalogin|sddm|gdm|gdm3|lightdm|greetd|cosmic-greeter) : ;;\n        *) die bad_dm \"$new\" ;;\n    esac\n    have systemctl || die no_systemctl\n    [ -d /run/systemd/system ] || die no_systemd\n    DM_LINK=\"/etc/systemd/system/display-manager.service\"\n    GREETER_CONF=\"/etc/lightdm/lightdm.conf.d/50-rexon-greeter.conf\"\n    REXON_ETC=\"/etc/rexon\"\n\n    # Механизм выбора — по этой машине (то же решение, что dm_switch_backend).\n    backend=systemd\n    for p in \"$DM_LINK\" /usr/lib/systemd/system/display-manager.service; do\n        if [ -f \"$p\" ] && [ \"$(basename \"$(readlink -f \"$p\")\")\" = display-manager.service ]; then\n            die dm_backend_unsupported\n        fi\n    done\n    if [ \"$family\" = debian ] && [ -f /etc/X11/default-display-manager ]; then\n        backend=debian\n    fi\n\n    unit_path() {\n        local d\n        for d in /etc/systemd/system /usr/local/lib/systemd/system /usr/lib/systemd/system /lib/systemd/system; do\n            if [ -e \"$d/$1.service\" ] || [ -L \"$d/$1.service\" ]; then\n                printf '%s' \"$d/$1.service\"; return 0\n            fi\n        done\n        return 1\n    }\n    unit_file=\"$(unit_path \"$new\" || true)\"\n    [ -n \"$unit_file\" ] || die dm_no_unit \"$new\"\n    [ \"$(readlink -f \"$unit_file\")\" != /dev/null ] || die dm_masked \"$new\"\n    unit_real=\"$(readlink -f \"$unit_file\")\"\n\n    # Программа из ExecStart (префиксы systemd -@:+! снимаются).\n    exec_line=\"$(sed -n 's/^[[:space:]]*ExecStart=//p' \"$unit_real\" | tail -n1)\"\n    exec_bin=\"$(printf '%s\\n' \"$exec_line\" | sed 's/^[-@:+!]*//' | awk '{print $1}')\"\n    [ -n \"$exec_bin\" ] || die dm_no_program \"$new\"\n    have \"$exec_bin\" || die dm_no_program \"$exec_bin\"\n    bin_path=\"$(command -v \"$exec_bin\")\"\n\n    pam=\"\"\n    case \"$new\" in\n        plasmalogin) pam=plasmalogin ;;\n        sddm) pam=sddm ;;\n        gdm) pam=gdm-password ;;\n        gdm3) pam=gdm-password ;;\n        lightdm) pam=lightdm ;;\n        greetd) pam=greetd ;;\n        cosmic-greeter) pam=greetd ;;\n    esac\n    if [ -n \"$pam\" ] && [ ! -f \"/etc/pam.d/$pam\" ] && [ ! -f \"/usr/lib/pam.d/$pam\" ]; then\n        die dm_no_pam \"$pam\"\n    fi\n\n    # greetd и всё, что идёт через него (cosmic-greeter): приветствие — из\n    # СВОЕГО конфига. Текстовый вход (agreety, голая оболочка) не годится.\n    if [ \"$(basename \"$exec_bin\")\" = greetd ]; then\n        cfg=\"$(printf '%s\\n' \"$exec_line\" | sed -n 's/.*\\(--config\\|-c\\)[= ]\\([^ ]*\\).*/\\2/p')\"\n        [ -n \"$cfg\" ] || cfg=/etc/greetd/config.toml\n        gcmd=\"$(sed -n '/^\\[default_session\\]/,/^\\[/{s/^[[:space:]]*command[[:space:]]*=[[:space:]]*//p}' \"$cfg\" 2>/dev/null | head -n1)\"\n        gcmd=\"${gcmd#\\\"}\"; gcmd=\"${gcmd%\\\"}\"; gcmd=\"${gcmd#\\'}\"; gcmd=\"${gcmd%\\'}\"\n        gprog=\"\"\n        set -f\n        for w in $gcmd; do\n            case \"$w\" in\n                env) continue ;;\n                /*) gprog=\"$w\"; break ;;\n                *=*) continue ;;\n                *) gprog=\"$w\"; break ;;\n            esac\n        done\n        set +f\n        case \"$(basename \"${gprog:-agreety}\")\" in\n            agreety|login|sh|bash|dash|zsh|fish) die dm_text_login ;;\n        esac\n        have \"$gprog\" || die dm_no_greeter_prog \"$gprog\"\n    fi\n\n    if [ -n \"$greeter\" ]; then\n        [ \"$new\" = lightdm ] || die greeter_not_lightdm\n        printf '%s' \"$greeter\" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' || die bad_greeter \"$greeter\"\n        gfile=\"/usr/share/xgreeters/$greeter.desktop\"\n        [ -f \"$gfile\" ] || die dm_no_greeter_prog \"$greeter\"\n        gexec=\"$(sed -n 's/^Exec=//p' \"$gfile\" | head -n1 | awk '{print $1}')\"\n        { [ -n \"$gexec\" ] && have \"$gexec\"; } || die dm_no_greeter_prog \"$greeter\"\n    fi\n    if [ \"$new\" = lightdm ]; then\n        ls /usr/share/xgreeters/*.desktop >/dev/null 2>&1 || die lightdm_no_greeter\n        { have Xorg || [ -x /usr/lib/Xorg ]; } || die dm_no_xorg\n    fi\n\n    # Прежний экран входа — только по живой ссылке.\n    old=\"\"; old_real=\"\"\n    if [ -L \"$DM_LINK\" ] && [ -e \"$DM_LINK\" ]; then\n        old_real=\"$(readlink -f \"$DM_LINK\")\"\n        old=\"$(basename \"$old_real\" .service)\"\n        printf '%s' \"$old\" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' || { old=\"\"; old_real=\"\"; }\n    fi\n    if [ -n \"$old_real\" ] && [ \"$old_real\" = \"$unit_real\" ]; then\n        rx_say dm_already_default \"$new\"\n        exit 0\n    fi\n\n    debian_pkg() {\n        case \"$1\" in\n            gdm) printf '%s' gdm3 ;;\n            plasmalogin) printf '%s' plasma-login-manager ;;\n            *) printf '%s' \"$1\" ;;\n        esac\n    }\n    old_x11=\"\"; old_pkg=\"\"\n    if [ \"$backend\" = debian ]; then\n        old_x11=\"$(head -n1 /etc/X11/default-display-manager 2>/dev/null || true)\"\n        [ -z \"$old\" ] || old_pkg=\"$(debian_pkg \"$old\")\"\n    fi\n\n    # Прежняя страховка снимается: она относилась к прошлому переключению.\n    for f in /etc/systemd/system/*.service.d/50-rexon-fallback.conf; do\n        [ -e \"$f\" ] || continue\n        rm -f \"$f\"\n        rmdir \"$(dirname \"$f\")\" 2>/dev/null || true\n    done\n    rm -f \"$REXON_ETC/dm-fallback.done\" \"$REXON_ETC/dm-fallback.conf\" \"$REXON_ETC/dm-fallback.greeter-prev\"\n\n    greeter_written=0\n    if [ -n \"$greeter\" ]; then\n        mkdir -p \"$(dirname \"$GREETER_CONF\")\" \"$REXON_ETC\"\n        [ ! -f \"$GREETER_CONF\" ] || cp -p \"$GREETER_CONF\" \"$REXON_ETC/dm-fallback.greeter-prev\"\n        printf '[Seat:*]\\ngreeter-session=%s\\n' \"$greeter\" > \"$GREETER_CONF\"\n        greeter_written=1\n    fi\n\n    debconf_set() {\n        if have debconf-communicate; then\n            printf 'set shared/default-x-display-manager %s\\n' \"$1\" | debconf-communicate >/dev/null 2>&1 || true\n        fi\n    }\n    rollback() {\n        if [ -n \"$old\" ]; then\n            systemctl enable --force \"$old.service\" >/dev/null 2>&1 || true\n        fi\n        if [ \"$backend\" = debian ] && [ -n \"$old_x11\" ]; then\n            printf '%s\\n' \"$old_x11\" > /etc/X11/default-display-manager || true\n            [ -z \"$old_pkg\" ] || debconf_set \"$old_pkg\"\n        fi\n        if [ \"$greeter_written\" = 1 ]; then\n            if [ -f \"$REXON_ETC/dm-fallback.greeter-prev\" ]; then\n                cp -p \"$REXON_ETC/dm-fallback.greeter-prev\" \"$GREETER_CONF\" || true\n            else\n                rm -f \"$GREETER_CONF\"\n            fi\n        fi\n    }\n\n    if [ \"$backend\" = debian ]; then\n        new_pkg=\"$(debian_pkg \"$new\")\"\n        debconf_set \"$new_pkg\"\n        printf '%s\\n' \"$bin_path\" > /etc/X11/default-display-manager\n        if have dpkg-reconfigure; then\n            # policy-rc.d: сценарий пакета не должен запустить службу в\n            # живом сеансе.\n            own_policy=0\n            if [ ! -e /usr/sbin/policy-rc.d ]; then\n                printf '#!/bin/sh\\nexit 101\\n' > /usr/sbin/policy-rc.d\n                chmod 0755 /usr/sbin/policy-rc.d\n                own_policy=1\n            fi\n            DEBIAN_FRONTEND=noninteractive dpkg-reconfigure \"$new_pkg\" >/dev/null 2>&1 || true\n            [ \"$own_policy\" = 0 ] || rm -f /usr/sbin/policy-rc.d\n        fi\n    fi\n\n    if ! out=\"$(systemctl enable --force \"$new.service\" 2>&1)\"; then\n        rollback\n        die dm_switch_failed \"$new\" \"$out\"\n    fi\n\n    # Проверка «после»: ссылка, состояние юнита, на Debian — файл выбора.\n    ok=1\n    [ \"$(readlink -f \"$DM_LINK\" 2>/dev/null || true)\" = \"$unit_real\" ] || ok=0\n    case \"$(systemctl is-enabled \"$new.service\" 2>/dev/null || true)\" in\n        enabled|enabled-runtime|alias) : ;;\n        *) ok=0 ;;\n    esac\n    if [ \"$backend\" = debian ] && [ \"$(head -n1 /etc/X11/default-display-manager 2>/dev/null || true)\" != \"$bin_path\" ]; then\n        ok=0\n    fi\n    if [ \"$ok\" = 0 ]; then\n        rollback\n        die dm_switch_mismatch \"$new\"\n    fi\n\n    # Прежний с WantedBy= (самодельный юнит) иначе поднялся бы вторым.\n    if [ -n \"$old\" ] && grep -Eq '^[[:space:]]*WantedBy=' \"$old_real\" 2>/dev/null; then\n        systemctl disable \"$old.service\" >/dev/null 2>&1 || true\n    fi\n\n    # Страховка: новый экран входа упал при загрузке (в том числе\n    # start-limit-hit) — служба-откат вернёт прежний. Только когда есть,\n    # к чему возвращаться.\n    mkdir -p \"$REXON_ETC\"\n    if [ -n \"$old\" ]; then\n        {\n            printf 'old=%s\\n' \"$old\"\n            printf 'old_real=%s\\n' \"$old_real\"\n            printf 'new=%s\\n' \"$new\"\n            printf 'new_real=%s\\n' \"$unit_real\"\n            printf 'old_x11=%s\\n' \"$old_x11\"\n            printf 'old_pkg=%s\\n' \"$old_pkg\"\n            printf 'greeter_written=%s\\n' \"$greeter_written\"\n        } > \"$REXON_ETC/dm-fallback.conf\"\n        cat > \"/etc/rexon/dm-fallback\" <<'REXON_DM_FALLBACK'\n#!/bin/bash\n# Rexon: bring back the previous login screen when the new one failed to\n# start (systemd OnFailure= of the new login screen). Runs once.\nset -u\nexport LC_ALL=C LANG=C\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\nconf=/etc/rexon/dm-fallback.conf\nstamp=/etc/rexon/dm-fallback.done\nlink=/etc/systemd/system/display-manager.service\nval() { sed -n \"s/^$1=//p\" \"$conf\" 2>/dev/null | head -n1; }\nname_ok() { printf '%s' \"$1\" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; }\n[ -r \"$conf\" ] || exit 0\n[ ! -e \"$stamp\" ] || exit 0\nold=\"$(val old)\"; new=\"$(val new)\"; new_real=\"$(val new_real)\"\nname_ok \"$old\" && name_ok \"$new\" || exit 0\ncase \"$(systemctl is-system-running 2>/dev/null || true)\" in\n    stopping) exit 0 ;;\nesac\n[ \"$(readlink -f \"$link\" 2>/dev/null || true)\" = \"$new_real\" ] || exit 0\n# systemd triggers OnFailure= on every failed run, also when it is about to\n# restart the unit itself. Wait until it gives up (start-limit-hit or no\n# more restarts): the unit is then \"failed\" and this runs again.\nstate=\"$(systemctl show -p ActiveState --value \"$new.service\" 2>/dev/null || true)\"\nsub=\"$(systemctl show -p SubState --value \"$new.service\" 2>/dev/null || true)\"\nif [ \"$state\" != failed ] || [ \"$sub\" = auto-restart ] || [ \"$sub\" = auto-restart-queued ]; then\n    echo \"rexon-dm-fallback: $new is $state/$sub, waiting for systemd to give up\"\n    exit 0\nfi\ndate > \"$stamp\"\necho \"rexon-dm-fallback: $new failed to start, bringing back $old\"\nif ! systemctl enable --force \"$old.service\"; then\n    echo \"rexon-dm-fallback: could not enable $old; see /etc/rexon/previous-display-manager\"\n    exit 1\nfi\nrm -f \"/etc/systemd/system/$new.service.d/50-rexon-fallback.conf\"\nrmdir \"/etc/systemd/system/$new.service.d\" 2>/dev/null || true\nold_x11=\"$(val old_x11)\"\nif [ -n \"$old_x11\" ] && [ -f /etc/X11/default-display-manager ]; then\n    printf '%s\\n' \"$old_x11\" > /etc/X11/default-display-manager\nfi\nold_pkg=\"$(val old_pkg)\"\nif [ -n \"$old_pkg\" ] && name_ok \"$old_pkg\" && command -v debconf-communicate >/dev/null 2>&1; then\n    printf 'set shared/default-x-display-manager %s\\n' \"$old_pkg\" | debconf-communicate >/dev/null 2>&1 || true\nfi\nif [ \"$(val greeter_written)\" = 1 ]; then\n    if [ -f /etc/rexon/dm-fallback.greeter-prev ]; then\n        cp -p /etc/rexon/dm-fallback.greeter-prev /etc/lightdm/lightdm.conf.d/50-rexon-greeter.conf\n    else\n        rm -f /etc/lightdm/lightdm.conf.d/50-rexon-greeter.conf\n    fi\nfi\nsystemctl daemon-reload\nsystemctl reset-failed \"$new.service\" display-manager.service 2>/dev/null || true\nsystemctl start --no-block display-manager.service\nREXON_DM_FALLBACK\n        chmod 0755 \"/etc/rexon/dm-fallback\"\n        cat > \"/etc/systemd/system/rexon-dm-fallback.service\" <<'REXON_DM_FALLBACK_UNIT'\n[Unit]\nDescription=Rexon: bring back the previous login screen\nDefaultDependencies=no\nAfter=sysinit.target\nStartLimitIntervalSec=0\n\n[Service]\nType=oneshot\nExecStart=/etc/rexon/dm-fallback\nREXON_DM_FALLBACK_UNIT\n        mkdir -p \"/etc/systemd/system/$new.service.d\"\n        printf '[Unit]\\nOnFailure=rexon-dm-fallback.service\\n' > \"/etc/systemd/system/$new.service.d/50-rexon-fallback.conf\"\n        if [ \"$backend\" = debian ]; then\n            back=\"sudo dpkg-reconfigure $old_pkg && sudo systemctl enable --force $old.service && sudo reboot\"\n        else\n            back=\"sudo systemctl enable --force $old.service && sudo reboot\"\n        fi\n        # Строки для человека — без имени помощника в начале.\n        line() { printf '%s\\n' \"${1#rexon-pkg-helper: }\"; }\n        {\n            line \"$(rx_say prev_dm_header \"$old\" \"$new\")\"\n            line \"$(rx_say prev_dm_back \"$old\")\"\n            printf '    %s\\n' \"$back\"\n            line \"$(rx_say prev_dm_auto \"$new\" \"$old\")\"\n        } > \"/etc/rexon/previous-display-manager\"\n        rx_say dm_switched \"$new\" \"$old\"\n    else\n        rm -f \"/etc/rexon/previous-display-manager\"\n        rx_say dm_switched_first \"$new\"\n    fi\n    exit 0\nfi\n\n# install / remove — нужен хотя бы один пакет.\n[ \"$#\" -ge 1 ] || die op_needs_pkg \"$op\"\ncase \"$op\" in\n    install)\n        case \"$family\" in\n        arch) cmd=(pacman -S --needed --noconfirm) ;;\n        debian) cmd=(apt-get install -y --no-install-recommends) ;;\n        fedora) cmd=(dnf install -y) ;;\n        suse) cmd=(zypper install -y --no-recommends) ;;\n        gentoo) cmd=(emerge --ask=n --quiet) ;;\n        alpine) cmd=(apk add --no-progress) ;;\n        void) cmd=(xbps-install -y) ;;\n        solus) cmd=(eopkg it -y) ;;\n        clear) cmd=(swupd bundle-add) ;;\n        alt) cmd=(apt-get install -y) ;;\n        esac ;;\n    remove)\n        case \"$family\" in\n        arch) cmd=(pacman -Rns --noconfirm) ;;\n        debian) cmd=(apt-get remove -y --purge) ;;\n        fedora) cmd=(dnf remove -y) ;;\n        suse) cmd=(zypper remove -y) ;;\n        gentoo) cmd=(emerge --unmerge) ;;\n        alpine) cmd=(apk del) ;;\n        void) cmd=(xbps-remove -y) ;;\n        solus) cmd=(eopkg rm -y) ;;\n        clear) cmd=(swupd bundle-remove) ;;\n        alt) cmd=(apt-get remove -y) ;;\n        esac ;;\nesac\nrun_cmd \"$@\"\nexit $?\n",
+  "pkg_policy_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE policyconfig PUBLIC\n \"-//freedesktop//DTD polkit Policy Configuration 1.0//EN\"\n \"http://www.freedesktop.org/software/polkit/policyconfig-1.dtd\">\n<policyconfig>\n  <vendor>Rexon</vendor>\n  <vendor_url>https://github.com/Wehrwolfmann</vendor_url>\n  <action id=\"org.rexon.pkg\">\n    <description>Install, remove or update packages</description>\n    <description xml:lang=\"ru\">Установка, удаление или обновление пакетов</description>\n    <message>Authentication is required to manage packages</message>\n    <message xml:lang=\"ru\">Для управления пакетами требуется аутентификация</message>\n    <defaults>\n      <allow_any>auth_admin</allow_any>\n      <allow_inactive>auth_admin</allow_inactive>\n      <allow_active>auth_admin_keep</allow_active>\n    </defaults>\n    <annotate key=\"org.freedesktop.policykit.exec.path\">/usr/local/lib/rexon-pkg-helper</annotate>\n    <annotate key=\"org.freedesktop.policykit.exec.allow_gui\">true</annotate>\n    <annotate key=\"org.freedesktop.policykit.imply\">org.rexon.de-install org.rexon.stage org.rexon.system-install</annotate>\n  </action>\n</policyconfig>\n",
+  "stage_helper_script": "#!/bin/bash\n# Rexon stage helper — привилегированный file-staging в /usr/share.\n# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.stage,\n# auth_admin_keep: подтверждённый пароль держится несколько минут для окна\n# Rexon; в правило «без пароля» не входит с 28.09.2026). Копирует\n# ВАЛИДИРОВАННЫЙ staged-каталог в ФИКСИРОВАННЫЙ путь по category. НЕ\n# принимает произвольный dest. НЕ выполняет произвольный код.\nset -euo pipefail\nexport LC_ALL=C LANG=C\n\n# ── Язык сообщений ─────────────────────────────────────────────────\n# Отметка ниже говорит Rexon, что помощник понимает --lang.\n# REXON_HELPER_LANG_ARG=1\n# Первый аргумент --lang=<код> необязателен; код сверяется с белым\n# списком из po/LINGUAS, всё прочее — английский. Тексты — ТОЛЬКО из\n# таблицы ниже (вшиты при генерации); вставки %1..%9 подставляются как\n# данные, а не как формат printf и не как команды.\nrx_lang=en\ncase \"${1:-}\" in\n    --lang=*)\n        case \"${1#--lang=}\" in\n            ru) rx_lang=ru ;;\n        esac\n        shift ;;\nesac\nrx_text() {\n    case \"$rx_lang:$1\" in\n        ru:bad_category) rx_t='недопустимая категория: %1' ;;\n        *:bad_category) rx_t='invalid category: %1' ;;\n        ru:bad_name) rx_t='недопустимое имя: %1' ;;\n        *:bad_name) rx_t='invalid name: %1' ;;\n        ru:bad_name_chars) rx_t='недопустимые символы в имени: %1' ;;\n        *:bad_name_chars) rx_t='invalid characters in the name: %1' ;;\n        ru:bg_installed) rx_t='фон установлен: %1' ;;\n        *:bg_installed) rx_t='background installed: %1' ;;\n        ru:layouts_installed) rx_t='mate-layouts установлены' ;;\n        *:layouts_installed) rx_t='mate-layouts installed' ;;\n        ru:no_greeter_dir) rx_t='не найден каталог тем приветствия (нужен lightdm-webkit2-greeter или web-greeter)' ;;\n        *:no_greeter_dir) rx_t='greeter theme folder not found (lightdm-webkit2-greeter or web-greeter is required)' ;;\n        ru:no_image) rx_t='в staged нет файла-картинки' ;;\n        *:no_image) rx_t='staged has no image file' ;;\n        ru:no_layouts) rx_t='в staged нет .layout/.dock' ;;\n        *:no_layouts) rx_t='staged has no .layout/.dock files' ;;\n        ru:no_work_dir) rx_t='не создать рабочий каталог' ;;\n        *:no_work_dir) rx_t='cannot create a working directory' ;;\n        ru:not_via_pkexec) rx_t='запуск не через pkexec' ;;\n        *:not_via_pkexec) rx_t='not started through pkexec' ;;\n        ru:stage_args) rx_t='ожидается 3 аргумента: category name staged' ;;\n        *:stage_args) rx_t='expected 3 arguments: category name staged' ;;\n        ru:staged_copy_failed) rx_t='не скопировать staged' ;;\n        *:staged_copy_failed) rx_t='cannot copy staged' ;;\n        ru:staged_not_callers) rx_t='staged принадлежит не вызвавшему: %1' ;;\n        *:staged_not_callers) rx_t='staged does not belong to the caller: %1' ;;\n        ru:staged_not_dir) rx_t='staged не каталог: %1' ;;\n        *:staged_not_dir) rx_t='staged is not a directory: %1' ;;\n        ru:staged_odd) rx_t='в staged есть ссылка или особый файл: %1' ;;\n        *:staged_odd) rx_t='staged contains a link or a special file: %1' ;;\n        ru:staged_outside_tmp) rx_t='staged вне /tmp|/var/tmp: %1' ;;\n        *:staged_outside_tmp) rx_t='staged is outside /tmp|/var/tmp: %1' ;;\n        ru:staged_unreachable) rx_t='staged недоступен: %1' ;;\n        *:staged_unreachable) rx_t='staged is not accessible: %1' ;;\n        ru:webkit_theme) rx_t='lightdm-webkit тема: %1' ;;\n        *:webkit_theme) rx_t='lightdm-webkit theme: %1' ;;\n        *) rx_t=\"$1\" ;;\n    esac\n}\nrx_say() {\n    local rx_t rx_out=\"\" rx_n\n    rx_text \"$1\"; shift\n    while [ -n \"$rx_t\" ]; do\n        case \"$rx_t\" in\n            %[1-9]*) rx_n=\"${rx_t:1:1}\"; rx_out+=\"${!rx_n-}\"; rx_t=\"${rx_t:2}\" ;;\n            *) rx_out+=\"${rx_t:0:1}\"; rx_t=\"${rx_t:1}\" ;;\n        esac\n    done\n    printf '%s: %s\\n' rexon-stage-helper \"$rx_out\"\n}\ndie() { rx_say \"$@\" >&2; exit 2; }\n\n[ \"$#\" -eq 3 ] || die stage_args\ncategory=\"$1\"; name=\"$2\"; staged=\"$3\"\n\n# 1) category — строгий allowlist.\ncase \"$category\" in\n    gdm-bg|lightdm-bg|cosmic-greeter|login-bg|lightdm-webkit|mate-layouts) : ;;\n    *) die bad_category \"$category\" ;;\nesac\n\n# 2) name — только безопасные символы; без / .. и ведущего '-'/'.'/пустоты.\ncase \"$name\" in\n    \"\"|-*|.*|*/*|*..*) die bad_name \"$name\" ;;\nesac\nprintf '%s' \"$name\" | grep -Eq '^[A-Za-z0-9._-]+$' \\\n    || die bad_name_chars \"$name\"\n\n# 3) staged — каталог вызвавшего под /tmp|/var/tmp (Rexon создаёт его через\n#    mkdtemp). Сначала ВХОДИМ в него: дальше работаем с тем самым каталогом,\n#    и подмена части пути ссылкой уже ничего не меняет. Место и владельца\n#    проверяем у входа, копию «.» кладём в свой каталог 0700 и дальше\n#    работаем ТОЛЬКО с ней — её пользователь не тронет. Прежде: realpath,\n#    затем cp по строке пути — окно подменить путь и унести root'ом чужой\n#    каталог в общедоступный /usr/share.\n[ -n \"${PKEXEC_UID:-}\" ] || die not_via_pkexec\n[ -d \"$staged\" ] || die staged_not_dir \"$staged\"\ncd -P -- \"$staged\" 2>/dev/null || die staged_unreachable \"$staged\"\nhere=\"$(pwd -P)\"\ncase \"$here\" in\n    /tmp/?*|/var/tmp/?*) : ;;\n    *) die staged_outside_tmp \"$here\" ;;\nesac\n[ \"$(stat -c %u .)\" = \"$PKEXEC_UID\" ] || die staged_not_callers \"$here\"\nwork=\"$(mktemp -d /var/tmp/rexon-stage-helper.XXXXXXXX)\" || die no_work_dir\ntrap 'rm -rf -- \"$work\"' EXIT\nreal_staged=\"$work/staged\"\ncp -R -P -- . \"$real_staged\" || die staged_copy_failed\ncd /\nodd=\"$(find \"$real_staged\" -mindepth 1 ! -type f ! -type d -print -quit)\"\n[ -z \"$odd\" ] || die staged_odd \"${odd#\"$real_staged\"/}\"\n\n# ── Обработка по category ────────────────────────────────────────────\ncase \"$category\" in\n    gdm-bg|lightdm-bg|cosmic-greeter|login-bg)\n        # staged содержит РОВНО один файл-картинку. Имя файла берём из\n        # каталога, расширение нормализуем (только [A-Za-z0-9]).\n        img=\"$(find \"$real_staged\" -maxdepth 1 -type f \\\n            \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \\\n               -o -iname '*.webp' -o -iname '*.bmp' \\) | head -n1)\"\n        [ -n \"$img\" ] || die no_image\n        ext=\"${img##*.}\"\n        printf '%s' \"$ext\" | grep -Eq '^[A-Za-z0-9]+$' || ext=\"png\"\n        dest_bg=\"/usr/share/backgrounds/rexon-login.$ext\"\n        install -d /usr/share/backgrounds\n        # Удаляем прошлые rexon-login.* (расширение могло смениться).\n        rm -f /usr/share/backgrounds/rexon-login.* 2>/dev/null || true\n        cp -f \"$img\" \"$dest_bg\"\n        chmod 644 \"$dest_bg\"\n        case \"$category\" in\n            gdm-bg)\n                install -d /etc/dconf/db/gdm.d\n                cat > /etc/dconf/db/gdm.d/02-rexon-login <<REXON_EOF\n[org/gnome/desktop/background]\npicture-uri='file://$dest_bg'\npicture-uri-dark='file://$dest_bg'\npicture-options='zoom'\nREXON_EOF\n                dconf update 2>/dev/null || true\n                ;;\n            lightdm-bg)\n                # slick-greeter.\n                if [ -f /etc/lightdm/slick-greeter.conf ]; then\n                    sed -i \"s|^background=.*|background=$dest_bg|\" \\\n                        /etc/lightdm/slick-greeter.conf\n                elif [ -d /etc/lightdm ]; then\n                    cat >> /etc/lightdm/slick-greeter.conf <<REXON_EOF\n[Greeter]\nbackground=$dest_bg\nREXON_EOF\n                fi\n                # gtk-greeter.\n                if [ -f /etc/lightdm/lightdm-gtk-greeter.conf ]; then\n                    sed -i \"s|^background=.*|background=$dest_bg|\" \\\n                        /etc/lightdm/lightdm-gtk-greeter.conf\n                fi\n                ;;\n            cosmic-greeter|login-bg)\n                : # только фон скопирован (login-bg — фон берёт учётная запись)\n                ;;\n        esac\n        rx_say bg_installed \"$dest_bg\"\n        ;;\n    lightdm-webkit)\n        # Корень выбираем по факту: тот, который в системе реально есть\n        # (оба пути фиксированы здесь же — произвольный dest по-прежнему\n        # не принимается).\n        if [ -d \"/usr/share/lightdm-webkit/themes\" ]; then\n            root=\"/usr/share/lightdm-webkit/themes\"\n        elif [ -d \"/usr/share/web-greeter/themes\" ]; then\n            root=\"/usr/share/web-greeter/themes\"\n        else\n            die no_greeter_dir\n        fi\n        dest=\"$root/$name\"\n        install -d \"$dest\"\n        cp -rT \"$real_staged\" \"$dest\"\n        chmod -R a+rX \"$dest\"\n        rx_say webkit_theme \"$name\"\n        ;;\n    mate-layouts)\n        # staged = каталог с .layout/.dock (+ опц. sed-адаптация snap-путей\n        # выполнена Rexon ДО staging, helper только копирует). Файлы кладём\n        # прямо в корень layouts (без <name>-подкаталога). name здесь —\n        # технический маркер ('rexon'), уже провалидирован выше.\n        dst=\"/usr/share/mate-panel/layouts\"\n        install -d \"$dst\"\n        # Копируем ТОЛЬКО .layout/.dock (anti-«лишние файлы»).\n        found=0\n        for f in \"$real_staged\"/*.layout \"$real_staged\"/*.dock; do\n            [ -e \"$f\" ] || continue\n            cp -f \"$f\" \"$dst/\"\n            found=1\n        done\n        [ \"$found\" = \"1\" ] || die no_layouts\n        chmod -R a+rX \"$dst\"\n        rx_say layouts_installed\n        ;;\nesac\nexit 0\n",
+  "stage_policy_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE policyconfig PUBLIC\n \"-//freedesktop//DTD polkit Policy Configuration 1.0//EN\"\n \"http://www.freedesktop.org/software/polkit/policyconfig-1.dtd\">\n<policyconfig>\n  <vendor>Rexon</vendor>\n  <vendor_url>https://github.com/Wehrwolfmann</vendor_url>\n  <action id=\"org.rexon.stage\">\n    <description>Install a system login-screen or panel layout</description>\n    <description xml:lang=\"ru\">Установка экрана входа или раскладки панели</description>\n    <message>Authentication is required to install a system theme</message>\n    <message xml:lang=\"ru\">Для установки системной темы требуется аутентификация</message>\n    <defaults>\n      <allow_any>auth_admin</allow_any>\n      <allow_inactive>auth_admin</allow_inactive>\n      <allow_active>auth_admin_keep</allow_active>\n    </defaults>\n    <annotate key=\"org.freedesktop.policykit.exec.path\">/usr/local/lib/rexon-stage-helper</annotate>\n    <annotate key=\"org.freedesktop.policykit.exec.allow_gui\">true</annotate>\n  </action>\n</policyconfig>\n"
+ },
+ "nixos_de_snippets": {
+  "kde": "services.desktopManager.plasma6.enable = true;\nservices.displayManager.sddm.enable = true;",
+  "gnome": "services.xserver.desktopManager.gnome.enable = true;\nservices.xserver.displayManager.gdm.enable = true;",
+  "xfce": "services.xserver.desktopManager.xfce.enable = true;\nservices.displayManager.lightdm.enable = true;",
+  "cinnamon-mint": "services.xserver.desktopManager.cinnamon.enable = true;\nservices.displayManager.lightdm.enable = true;",
+  "mate": "services.xserver.desktopManager.mate.enable = true;\nservices.displayManager.lightdm.enable = true;",
+  "budgie": "services.xserver.desktopManager.budgie.enable = true;\nservices.displayManager.lightdm.enable = true;",
+  "pantheon": "services.xserver.enable = true;\nservices.xserver.displayManager.lightdm.enable = true;\nservices.desktopManager.pantheon.enable = true;",
+  "cosmic": "services.desktopManager.cosmic.enable = true;\nservices.displayManager.cosmic-greeter.enable = true;",
+  "hyprland": "programs.hyprland.enable = true;\n# + настройте waybar, wofi, kitty и т.д.",
+  "lxqt": "services.xserver.desktopManager.lxqt.enable = true;\nservices.displayManager.sddm.enable = true;"
+ },
+ "gentoo_overlays": {
+  "budgie": "sarahmiaoverlay",
+  "cosmic": "cosmic-overlay"
+ },
+ "lock_paths": {
+  "arch": [
+   "/var/lib/pacman/db.lck"
+  ],
+  "debian": [
+   "/var/lib/dpkg/lock-frontend",
+   "/var/lib/dpkg/lock"
+  ],
+  "fedora": [
+   "/var/lib/rpm/.rpm.lock"
+  ],
+  "suse": [
+   "/var/run/zypp.pid"
+  ],
+  "gentoo": [
+   "/var/lock/portage"
+  ],
+  "void": [
+   "/var/lock/xbps"
+  ],
+  "alpine": [
+   "/var/lib/apk/db.lock"
+  ],
+  "solus": [
+   "/var/lib/eopkg/lock"
+  ]
+ },
+ "cmd_tables": {
+  "install": {
+   "arch": [
+    "pacman",
+    "-S",
+    "--needed",
+    "--noconfirm",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "debian": [
+    "apt-get",
+    "install",
+    "-y",
+    "--no-install-recommends",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "fedora": [
+    "dnf",
+    "install",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "suse": [
+    "zypper",
+    "install",
+    "-y",
+    "--no-recommends",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "gentoo": [
+    "emerge",
+    "--ask=n",
+    "--quiet",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "alpine": [
+    "apk",
+    "add",
+    "--no-progress",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "void": [
+    "xbps-install",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "nix": [
+    "nix-env",
+    "-iA",
+    "nixpkgs.pkg-a",
+    "nixpkgs.pkg-b"
+   ],
+   "solus": [
+    "eopkg",
+    "it",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "clear": [
+    "swupd",
+    "bundle-add",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "alt": [
+    "apt-get",
+    "install",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "unknown": {
+    "error": "Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: pkg-a pkg-b"
+   }
+  },
+  "remove": {
+   "arch": [
+    "pacman",
+    "-Rns",
+    "--noconfirm",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "debian": [
+    "apt-get",
+    "remove",
+    "-y",
+    "--purge",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "fedora": [
+    "dnf",
+    "remove",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "suse": [
+    "zypper",
+    "remove",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "gentoo": [
+    "emerge",
+    "--unmerge",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "alpine": [
+    "apk",
+    "del",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "void": [
+    "xbps-remove",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "nix": [
+    "nix-env",
+    "-e",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "solus": [
+    "eopkg",
+    "rm",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "clear": [
+    "swupd",
+    "bundle-remove",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "alt": [
+    "apt-get",
+    "remove",
+    "-y",
+    "pkg-a",
+    "pkg-b"
+   ],
+   "unknown": {
+    "error": "Пакетный менеджер не определён (PkgFamily.UNKNOWN). Удалите пакеты вручную: pkg-a pkg-b"
+   }
+  },
+  "query": {
+   "arch": [
+    "pacman",
+    "-Q",
+    "pkg-a"
+   ],
+   "debian": [
+    "dpkg",
+    "-s",
+    "pkg-a"
+   ],
+   "fedora": [
+    "rpm",
+    "-q",
+    "pkg-a"
+   ],
+   "suse": [
+    "rpm",
+    "-q",
+    "pkg-a"
+   ],
+   "gentoo": [
+    "equery",
+    "list",
+    "pkg-a"
+   ],
+   "alpine": [
+    "apk",
+    "info",
+    "-e",
+    "pkg-a"
+   ],
+   "void": [
+    "xbps-query",
+    "pkg-a"
+   ],
+   "nix": [
+    "nix-env",
+    "-q",
+    "pkg-a"
+   ],
+   "solus": [
+    "eopkg",
+    "info",
+    "pkg-a"
+   ],
+   "clear": [
+    "swupd",
+    "bundle-info",
+    "pkg-a"
+   ],
+   "alt": [
+    "rpm",
+    "-q",
+    "pkg-a"
+   ],
+   "unknown": {
+    "error": "Пакетный менеджер не определён (PkgFamily.UNKNOWN). Проверьте пакет вручную: pkg-a"
+   }
+  },
+  "update_db": {
+   "arch": [
+    "pacman",
+    "-Sy",
+    "--noconfirm"
+   ],
+   "debian": [
+    "apt-get",
+    "update",
+    "-q"
+   ],
+   "fedora": [
+    "dnf",
+    "makecache",
+    "-q"
+   ],
+   "suse": [
+    "zypper",
+    "refresh",
+    "-q"
+   ],
+   "gentoo": [
+    "emerge",
+    "--sync"
+   ],
+   "alpine": [
+    "apk",
+    "update"
+   ],
+   "void": [
+    "xbps-install",
+    "-S"
+   ],
+   "nix": [
+    "nix-channel",
+    "--update"
+   ],
+   "solus": [
+    "eopkg",
+    "ur"
+   ],
+   "clear": [
+    "swupd",
+    "update",
+    "--download"
+   ],
+   "alt": [
+    "apt-get",
+    "update",
+    "-q"
+   ],
+   "unknown": null
+  },
+  "pkg_manager_name": {
+   "arch": "pacman",
+   "debian": "apt",
+   "fedora": "dnf",
+   "suse": "zypper",
+   "gentoo": "emerge",
+   "alpine": "apk",
+   "void": "xbps",
+   "nix": "nix-env",
+   "solus": "eopkg",
+   "clear": "swupd",
+   "alt": "apt-get (APT-RPM)",
+   "unknown": "unknown",
+   "arch+yay": "pacman + yay"
+  }
+ },
+ "de_helper_supports": {
+  "cinnamon-mint|arch": true,
+  "cinnamon-mint|debian": true,
+  "cinnamon-mint|fedora": true,
+  "cinnamon-mint|suse": true,
+  "cinnamon-mint|gentoo": false,
+  "cinnamon-mint|alpine": true,
+  "cinnamon-mint|void": true,
+  "cinnamon-mint|nix": false,
+  "cinnamon-mint|solus": true,
+  "cinnamon-mint|clear": false,
+  "cinnamon-mint|alt": true,
+  "cinnamon-mint|unknown": false,
+  "xfce|arch": true,
+  "xfce|debian": true,
+  "xfce|fedora": true,
+  "xfce|suse": true,
+  "xfce|gentoo": false,
+  "xfce|alpine": true,
+  "xfce|void": true,
+  "xfce|nix": false,
+  "xfce|solus": true,
+  "xfce|clear": true,
+  "xfce|alt": true,
+  "xfce|unknown": false,
+  "mate|arch": true,
+  "mate|debian": true,
+  "mate|fedora": true,
+  "mate|suse": true,
+  "mate|gentoo": false,
+  "mate|alpine": true,
+  "mate|void": true,
+  "mate|nix": false,
+  "mate|solus": false,
+  "mate|clear": false,
+  "mate|alt": true,
+  "mate|unknown": false,
+  "gnome|arch": true,
+  "gnome|debian": true,
+  "gnome|fedora": true,
+  "gnome|suse": true,
+  "gnome|gentoo": false,
+  "gnome|alpine": true,
+  "gnome|void": true,
+  "gnome|nix": false,
+  "gnome|solus": true,
+  "gnome|clear": true,
+  "gnome|alt": true,
+  "gnome|unknown": false,
+  "kde|arch": true,
+  "kde|debian": true,
+  "kde|fedora": true,
+  "kde|suse": true,
+  "kde|gentoo": false,
+  "kde|alpine": true,
+  "kde|void": true,
+  "kde|nix": false,
+  "kde|solus": true,
+  "kde|clear": true,
+  "kde|alt": true,
+  "kde|unknown": false,
+  "budgie|arch": true,
+  "budgie|debian": true,
+  "budgie|fedora": true,
+  "budgie|suse": true,
+  "budgie|gentoo": false,
+  "budgie|alpine": false,
+  "budgie|void": true,
+  "budgie|nix": false,
+  "budgie|solus": true,
+  "budgie|clear": false,
+  "budgie|alt": true,
+  "budgie|unknown": false,
+  "cosmic|arch": true,
+  "cosmic|debian": false,
+  "cosmic|fedora": true,
+  "cosmic|suse": true,
+  "cosmic|gentoo": false,
+  "cosmic|alpine": true,
+  "cosmic|void": true,
+  "cosmic|nix": false,
+  "cosmic|solus": false,
+  "cosmic|clear": false,
+  "cosmic|alt": false,
+  "cosmic|unknown": false,
+  "hyprland|arch": true,
+  "hyprland|debian": true,
+  "hyprland|fedora": true,
+  "hyprland|suse": true,
+  "hyprland|gentoo": false,
+  "hyprland|alpine": true,
+  "hyprland|void": true,
+  "hyprland|nix": false,
+  "hyprland|solus": false,
+  "hyprland|clear": false,
+  "hyprland|alt": true,
+  "hyprland|unknown": false,
+  "lxqt|arch": true,
+  "lxqt|debian": true,
+  "lxqt|fedora": true,
+  "lxqt|suse": true,
+  "lxqt|gentoo": false,
+  "lxqt|alpine": true,
+  "lxqt|void": true,
+  "lxqt|nix": false,
+  "lxqt|solus": false,
+  "lxqt|clear": false,
+  "lxqt|alt": true,
+  "lxqt|unknown": false,
+  "nonexistent-de|arch": false,
+  "nonexistent-de|debian": false,
+  "nonexistent-de|fedora": false,
+  "nonexistent-de|suse": false,
+  "nonexistent-de|gentoo": false,
+  "nonexistent-de|alpine": false,
+  "nonexistent-de|void": false,
+  "nonexistent-de|nix": false,
+  "nonexistent-de|solus": false,
+  "nonexistent-de|clear": false,
+  "nonexistent-de|alt": false,
+  "nonexistent-de|unknown": false,
+  "bad de id!|arch": false,
+  "bad de id!|debian": false,
+  "bad de id!|fedora": false,
+  "bad de id!|suse": false,
+  "bad de id!|gentoo": false,
+  "bad de id!|alpine": false,
+  "bad de id!|void": false,
+  "bad de id!|nix": false,
+  "bad de id!|solus": false,
+  "bad de id!|clear": false,
+  "bad de id!|alt": false,
+  "bad de id!|unknown": false
+ },
+ "privileged_pkg_cmd": [
+  {
+   "label": "install-arch",
+   "family": "arch",
+   "op": "install",
+   "packages": [
+    "mate",
+    "mate-extra"
+   ],
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-pkg-helper",
+    "arch",
+    "install",
+    "mate",
+    "mate-extra"
+   ]
+  },
+  {
+   "label": "install-helper-off",
+   "family": "arch",
+   "op": "install",
+   "packages": [
+    "mate"
+   ],
+   "helper_available": false,
+   "expected": null
+  },
+  {
+   "label": "remove-debian",
+   "family": "debian",
+   "op": "remove",
+   "packages": [
+    "xfce4",
+    "lightdm"
+   ],
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-pkg-helper",
+    "debian",
+    "remove",
+    "xfce4",
+    "lightdm"
+   ]
+  },
+  {
+   "label": "update-suse",
+   "family": "suse",
+   "op": "update",
+   "packages": null,
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-pkg-helper",
+    "suse",
+    "update"
+   ]
+  },
+  {
+   "label": "update-with-pkgs",
+   "family": "arch",
+   "op": "update",
+   "packages": [
+    "mate"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "enable-dm-ok",
+   "family": "arch",
+   "op": "enable-dm",
+   "packages": [
+    "plasmalogin"
+   ],
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-pkg-helper",
+    "arch",
+    "enable-dm",
+    "plasmalogin"
+   ]
+  },
+  {
+   "label": "enable-dm-bad-name",
+   "family": "arch",
+   "op": "enable-dm",
+   "packages": [
+    "evil-dm"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "enable-dm-two",
+   "family": "arch",
+   "op": "enable-dm",
+   "packages": [
+    "sddm",
+    "gdm"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-op",
+   "family": "arch",
+   "op": "reinstall",
+   "packages": [
+    "mate"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-family",
+   "family": "nix",
+   "op": "install",
+   "packages": [
+    "mate"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "unknown-family",
+   "family": "unknown",
+   "op": "install",
+   "packages": [
+    "mate"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "flag-injection",
+   "family": "arch",
+   "op": "install",
+   "packages": [
+    "-Rns"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-chars",
+   "family": "arch",
+   "op": "install",
+   "packages": [
+    "mate;rm -rf /"
+   ],
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "gentoo-slash-colon",
+   "family": "gentoo",
+   "op": "install",
+   "packages": [
+    "gnome-extra/cinnamon",
+    "dev-lang/python:3.12"
+   ],
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-pkg-helper",
+    "gentoo",
+    "install",
+    "gnome-extra/cinnamon",
+    "dev-lang/python:3.12"
+   ]
+  },
+  {
+   "label": "empty-pkgs",
+   "family": "arch",
+   "op": "install",
+   "packages": [],
+   "helper_available": true,
+   "expected": null
+  }
+ ],
+ "privileged_stage_cmd": [
+  {
+   "label": "ok-webkit",
+   "category": "lightdm-webkit",
+   "name": "Sequoia",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-stage-helper",
+    "lightdm-webkit",
+    "Sequoia",
+    "__STAGED__"
+   ]
+  },
+  {
+   "label": "ok-mate",
+   "category": "mate-layouts",
+   "name": "rexon",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": [
+    "pkexec",
+    "/usr/local/lib/rexon-stage-helper",
+    "mate-layouts",
+    "rexon",
+    "__STAGED__"
+   ]
+  },
+  {
+   "label": "helper-off",
+   "category": "mate-layouts",
+   "name": "rexon",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": false,
+   "expected": null
+  },
+  {
+   "label": "bad-category",
+   "category": "sddm-theme",
+   "name": "Sequoia",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-name-dots",
+   "category": "lightdm-webkit",
+   "name": "..evil",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-name-slash",
+   "category": "lightdm-webkit",
+   "name": "a/b",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "bad-name-dash",
+   "category": "lightdm-webkit",
+   "name": "-flag",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "empty-name",
+   "category": "lightdm-webkit",
+   "name": "",
+   "staged": "__STAGED__",
+   "staged_is_dir": true,
+   "staged_realpath": "__STAGED__",
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "staged-not-dir",
+   "category": "lightdm-webkit",
+   "name": "Sequoia",
+   "staged": "/tmp/definitely-missing-rexon",
+   "staged_is_dir": false,
+   "staged_realpath": null,
+   "helper_available": true,
+   "expected": null
+  },
+  {
+   "label": "staged-outside-tmp",
+   "category": "lightdm-webkit",
+   "name": "Sequoia",
+   "staged": "/usr/share",
+   "staged_is_dir": true,
+   "staged_realpath": "/usr/share",
+   "helper_available": true,
+   "expected": null
+  }
+ ],
+ "pacman_progress": [
+  {
+   "line": "",
+   "result": null
+  },
+  {
+   "line": "   ",
+   "result": null
+  },
+  {
+   "line": "(1/5) installing plasma-desktop...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (1/5) Установка: plasma-desktop",
+    "current": 1,
+    "total": 5,
+    "action": "installing",
+    "package": "plasma-desktop"
+   }
+  },
+  {
+   "line": "( 1/ 5) installing plasma-desktop...",
+   "result": null
+  },
+  {
+   "line": "(12/34) upgrading libplasma...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (12/34) Обновление: libplasma",
+    "current": 12,
+    "total": 34,
+    "action": "upgrading",
+    "package": "libplasma"
+   }
+  },
+  {
+   "line": "(2/9) removing mate-panel...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (2/9) Удаление: mate-panel",
+    "current": 2,
+    "total": 9,
+    "action": "removing",
+    "package": "mate-panel"
+   }
+  },
+  {
+   "line": "(3/9) reinstalling sddm...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (3/9) Переустановка: sddm",
+    "current": 3,
+    "total": 9,
+    "action": "reinstalling",
+    "package": "sddm"
+   }
+  },
+  {
+   "line": "(4/9) downgrading kwin...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (4/9) Откат: kwin",
+    "current": 4,
+    "total": 9,
+    "action": "downgrading",
+    "package": "kwin"
+   }
+  },
+  {
+   "line": "(1/3) checking keys in keyring...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 (1/3) checking keys in keyring",
+    "current": 1,
+    "total": 3,
+    "action": "checking keys in",
+    "package": "keyring"
+   }
+  },
+  {
+   "line": "(2/3) checking package integrity...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 (2/3) checking package integrity",
+    "current": 2,
+    "total": 3,
+    "action": "checking package",
+    "package": "integrity"
+   }
+  },
+  {
+   "line": "(3/3) loading package files...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 (3/3) loading package files",
+    "current": 3,
+    "total": 3,
+    "action": "loading package",
+    "package": "files"
+   }
+  },
+  {
+   "line": "(1/1) checking available disk space...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 (1/1) checking available disk space",
+    "current": 1,
+    "total": 1,
+    "action": "checking available disk",
+    "package": "space"
+   }
+  },
+  {
+   "line": "(1/2) installing pkg-with-dots...in-name...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (1/2) Установка: pkg-with-dots...in-name",
+    "current": 1,
+    "total": 2,
+    "action": "installing",
+    "package": "pkg-with-dots...in-name"
+   }
+  },
+  {
+   "line": "(0/0) installing edge...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (0/0) Установка: edge",
+    "current": 0,
+    "total": 0,
+    "action": "installing",
+    "package": "edge"
+   }
+  },
+  {
+   "line": "(1/1) installing   ...",
+   "result": {
+    "stage": "pkg_install",
+    "message": "📦 (1/1) Установка:  ",
+    "current": 1,
+    "total": 1,
+    "action": "installing",
+    "package": " "
+   }
+  },
+  {
+   "line": "(7/7) Arming ConditionNeedsUpdate...",
+   "result": {
+    "stage": "hook",
+    "message": "🔧 (7/7) Arming ConditionNeedsUpdate",
+    "current": 7,
+    "total": 7
+   }
+  },
+  {
+   "line": "(1/4) Reloading system manager configuration...",
+   "result": {
+    "stage": "hook",
+    "message": "🔧 (1/4) Reloading system manager configuration",
+    "current": 1,
+    "total": 4
+   }
+  },
+  {
+   "line": "downloading plasma-desktop-6.5.1-1-x86_64.pkg.tar.zst...",
+   "result": {
+    "stage": "download",
+    "message": "⬇️  Скачивание: plasma-desktop-6.5.1-1-x86_64.pkg.tar.zst",
+    "filename": "plasma-desktop-6.5.1-1-x86_64.pkg.tar.zst"
+   }
+  },
+  {
+   "line": "  downloading core.db...",
+   "result": {
+    "stage": "download",
+    "message": "⬇️  Скачивание: core.db",
+    "filename": "core.db"
+   }
+  },
+  {
+   "line": "DOWNLOADING Mixed-Case.pkg...",
+   "result": {
+    "stage": "download",
+    "message": "⬇️  Скачивание: Mixed-Case.pkg",
+    "filename": "Mixed-Case.pkg"
+   }
+  },
+  {
+   "line": "Packages (12) plasma-desktop-6.5.1-1  kwin-6.5.1-1",
+   "result": {
+    "stage": "summary",
+    "message": "📋 Всего пакетов: 12",
+    "count": 12
+   }
+  },
+  {
+   "line": "packages (3) a b c",
+   "result": {
+    "stage": "summary",
+    "message": "📋 Всего пакетов: 3",
+    "count": 3
+   }
+  },
+  {
+   "line": "Packages (abc) nope",
+   "result": null
+  },
+  {
+   "line": "Total Download Size:   123.45 MiB",
+   "result": {
+    "stage": "summary",
+    "message": "⬇️  Загрузка: 123.45 MiB"
+   }
+  },
+  {
+   "line": "total download size:   0.02 MiB",
+   "result": {
+    "stage": "summary",
+    "message": "⬇️  Загрузка: 0.02 MiB"
+   }
+  },
+  {
+   "line": "Total Installed Size:  1024 MiB",
+   "result": {
+    "stage": "summary",
+    "message": "💾 Установка: 1024 MiB"
+   }
+  },
+  {
+   "line": "Total Removed Size:  5 MiB",
+   "result": null
+  },
+  {
+   "line": ":: Retrieving packages...",
+   "result": {
+    "stage": "section",
+    "message": "📌 Retrieving packages..."
+   }
+  },
+  {
+   "line": ":: Proceed with installation? [Y/n]",
+   "result": {
+    "stage": "section",
+    "message": "📌 Proceed with installation? [Y/n]"
+   }
+  },
+  {
+   "line": "::nospace",
+   "result": null
+  },
+  {
+   "line": "error: target not found: nosuchpkg",
+   "result": {
+    "stage": "error",
+    "message": "❌ target not found: nosuchpkg"
+   }
+  },
+  {
+   "line": "ERROR: failed to commit transaction",
+   "result": {
+    "stage": "error",
+    "message": "❌ failed to commit transaction"
+   }
+  },
+  {
+   "line": "warning: plasma-desktop-6.5.1-1 is up to date -- skipping",
+   "result": {
+    "stage": "skip",
+    "message": "✅ уже установлено: plasma-desktop",
+    "package": "plasma-desktop"
+   }
+  },
+  {
+   "line": "warning: kwin-6.5.1-1 is up to date--skipping",
+   "result": {
+    "stage": "skip",
+    "message": "✅ уже установлено: kwin",
+    "package": "kwin"
+   }
+  },
+  {
+   "line": "warning: foo is up to date  --  skipping",
+   "result": {
+    "stage": "skip",
+    "message": "✅ уже установлено: foo",
+    "package": "foo"
+   }
+  },
+  {
+   "line": "warning: bar-1 is up to date -- skipping",
+   "result": {
+    "stage": "skip",
+    "message": "✅ уже установлено: bar-1",
+    "package": "bar-1"
+   }
+  },
+  {
+   "line": "warning: nover is up to date -- skipping",
+   "result": {
+    "stage": "skip",
+    "message": "✅ уже установлено: nover",
+    "package": "nover"
+   }
+  },
+  {
+   "line": "warning: /etc/foo.conf installed as /etc/foo.conf.pacnew",
+   "result": {
+    "stage": "warning",
+    "message": "⚠️  /etc/foo.conf installed as /etc/foo.conf.pacnew"
+   }
+  },
+  {
+   "line": "resolving dependencies...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 resolving dependencies..."
+   }
+  },
+  {
+   "line": "looking for conflicting packages...",
+   "result": {
+    "stage": "check",
+    "message": "🔍 looking for conflicting packages..."
+   }
+  },
+  {
+   "line": ":: Retrieving Packages...",
+   "result": {
+    "stage": "section",
+    "message": "📌 Retrieving Packages..."
+   }
+  },
+  {
+   "line": "Retrieving packages",
+   "result": {
+    "stage": "download",
+    "message": "⬇️  Скачивание пакетов…"
+   }
+  },
+  {
+   "line": "какая-то русская строка",
+   "result": null
+  },
+  {
+   "line": "(1/1) checking keys in keyring",
+   "result": null
+  },
+  {
+   "line": "(1/1) installing foo..",
+   "result": null
+  },
+  {
+   "line": "(a/b) installing foo...",
+   "result": null
+  },
+  {
+   "line": "(1/1)installing foo...",
+   "result": null
+  },
+  {
+   "line": "warning:",
+   "result": null
+  },
+  {
+   "line": "error:   ",
+   "result": null
+  },
+  {
+   "line": ":: ",
+   "result": null
+  },
+  {
+   "line": "error: failed retrieving file 'cachyos.db' from cachyos-mirror.m1k.cloud : Connection timed out after 10000 ms",
+   "result": {
+    "stage": "mirror",
+    "message": "🌐 зеркало не ответило (cachyos-mirror.m1k.cloud), берём другое",
+    "package": "cachyos-mirror.m1k.cloud"
+   }
+  },
+  {
+   "line": "error: failed retrieving file 'core.db' from archlinux.cachyos.org : Connection timed out",
+   "result": {
+    "stage": "mirror",
+    "message": "🌐 зеркало не ответило (archlinux.cachyos.org), берём другое",
+    "package": "archlinux.cachyos.org"
+   }
+  },
+  {
+   "line": "error: failed retrieving file 'qps-2.13.0-1.1-x86_64_v4.pkg.tar.zst' from cdn.cachyos.org : OpenSSL SSL_read: unexpected eof while reading",
+   "result": {
+    "stage": "mirror",
+    "message": "🌐 зеркало не ответило (cdn.cachyos.org), берём другое",
+    "package": "cdn.cachyos.org"
+   }
+  },
+  {
+   "line": "warning: too many errors from cachyos-mirror.m1k.cloud, skipping for the remainder of this transaction",
+   "result": {
+    "stage": "mirror",
+    "message": "🌐 зеркало cachyos-mirror.m1k.cloud больше не спрашиваем до конца установки",
+    "package": "cachyos-mirror.m1k.cloud"
+   }
+  },
+  {
+   "line": "error: failed to retrieve some files",
+   "result": {
+    "stage": "error",
+    "message": "❌ failed to retrieve some files"
+   }
+  },
+  {
+   "line": "error: failed to commit transaction (failed to retrieve some files)",
+   "result": {
+    "stage": "error",
+    "message": "❌ failed to commit transaction (failed to retrieve some files)"
+   }
+  },
+  {
+   "line": "error: failed retrieving file",
+   "result": {
+    "stage": "error",
+    "message": "❌ failed retrieving file"
+   }
+  },
+  {
+   "line": ":: There are 25 members in group lxqt:",
+   "result": {
+    "stage": "prompt",
+    "message": "🧩 Группа lxqt (25 пакетов) — ставим целиком, вопрос не задаётся",
+    "package": "lxqt",
+    "count": 25
+   }
+  },
+  {
+   "line": ":: There are 2 providers available for libQt6Xdg.so=4-64:",
+   "result": {
+    "stage": "prompt",
+    "message": "🔀 libQt6Xdg.so=4-64: поставщиков 2 — берём из первого репозитория по приоритету pacman.conf",
+    "package": "libQt6Xdg.so=4-64",
+    "count": 2
+   }
+  },
+  {
+   "line": "Enter a selection (default=all): ",
+   "result": {
+    "stage": "prompt",
+    "message": ""
+   }
+  },
+  {
+   "line": "Enter a number (default=1): ",
+   "result": {
+    "stage": "prompt",
+    "message": ""
+   }
+  },
+  {
+   "line": ":: Repository extra",
+   "result": {
+    "stage": "section",
+    "message": "📌 Repository extra"
+   }
+  }
+ ],
+ "ensure_dm": [
+  {
+   "family": "arch",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "arch",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "arch",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "debian",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "install",
+      "-y",
+      "--no-install-recommends",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "debian",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "debian",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "debian",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "fedora",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "dnf",
+      "install",
+      "-y",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "fedora",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "fedora",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "fedora",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "suse",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "zypper",
+      "install",
+      "-y",
+      "--no-recommends",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "suse",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "suse",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "suse",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "gentoo",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "emerge",
+      "--ask=n",
+      "--quiet",
+      "x11-misc/sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "gentoo",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "gentoo",
+      "install",
+      "x11-misc/sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "gentoo",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "alpine",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "apk",
+      "add",
+      "--no-progress",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "alpine",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "alpine",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "alpine",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "void",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "xbps-install",
+      "-y",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "void",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "void",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "void",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "solus",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "eopkg",
+      "it",
+      "-y",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "solus",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "solus",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "solus",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "clear",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "clear",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "alt",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "apt-get",
+      "install",
+      "-y",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "alt",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "installed",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "dm_ensure",
+     "✅ SDDM установлен и включён",
+     0.92
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "alt",
+      "install",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "alt",
+      "enable-dm",
+      "sddm"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "nix",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "nix",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "unknown",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "unknown",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа: автоустановка для этого дистрибутива недоступна",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "arch",
+   "dm_present": true,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "present",
+   "emits": [
+    [
+     "dm_ensure",
+     "⚙️ Экран входа уже настроен — пропуск",
+     null
+    ]
+   ],
+   "calls": []
+  },
+  {
+   "family": "arch",
+   "dm_present": false,
+   "systemctl": false,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 0,
+   "ok": true,
+   "code": "skipped",
+   "emits": [],
+   "calls": []
+  },
+  {
+   "family": "arch",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 1,
+   "enable_rc": 0,
+   "ok": false,
+   "code": "error:install:1",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "warning",
+     "ensure_display_manager: установка sddm код 1",
+     null
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "sddm"
+     ],
+     "timeout": 1800
+    }
+   ]
+  },
+  {
+   "family": "arch",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": false,
+   "install_rc": 0,
+   "enable_rc": 1,
+   "ok": false,
+   "code": "error:enable:1",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "warning",
+     "ensure_display_manager: enable sddm код 1",
+     null
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "pacman",
+      "-S",
+      "--needed",
+      "--noconfirm",
+      "sddm"
+     ],
+     "timeout": 1800
+    },
+    {
+     "argv": [
+      "pkexec",
+      "systemctl",
+      "enable",
+      "sddm.service"
+     ],
+     "timeout": 30
+    }
+   ]
+  },
+  {
+   "family": "gentoo",
+   "dm_present": false,
+   "systemctl": true,
+   "helper": true,
+   "install_rc": 4,
+   "enable_rc": 0,
+   "ok": false,
+   "code": "error:install:4",
+   "emits": [
+    [
+     "dm_ensure",
+     "🖥️ Нет экрана входа — устанавливаю SDDM…",
+     0.9
+    ],
+    [
+     "warning",
+     "ensure_display_manager: установка x11-misc/sddm код 4",
+     null
+    ]
+   ],
+   "calls": [
+    {
+     "argv": [
+      "pkexec",
+      "/usr/local/lib/rexon-pkg-helper",
+      "gentoo",
+      "install",
+      "x11-misc/sddm"
+     ],
+     "timeout": 1800
+    }
+   ]
+  }
+ ],
+ "batch_main": [
+  {
+   "family": "arch",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "done_main",
+     "✅ Основные пакеты установлены (2 пакета)"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "steamos_done",
+     "✅ Рабочий стол установлен на SteamOS"
+    ],
+    [
+     "steamos_warn",
+     "⚠️ При обновлении SteamOS пакеты могут быть удалены."
+    ],
+    [
+     "steamos_warn",
+     "   Рекомендация: закрепите пакеты через pacman -D --asexplicit"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\n\nВозможные причины:\n• окно ввода пароля не появилось;\n• пароль введён неверно;\n• окно ввода пароля закрыли.\n\nПопробуйте установить из терминала:\n  sudo pacman -S --needed --noconfirm plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУстановить можно из терминала:\n  sudo steamos-readonly disable\n  sudo pacman -S --needed --noconfirm plasma-desktop sddm\n  sudo steamos-readonly enable",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 1,
+    "stderr": "Not authorized",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": false,
+   "ok": false,
+   "message": "Не запущена служба, которая показывает окно ввода пароля.\n\nТакой службы здесь не установлено. Установите её для своего рабочего стола (например, polkit-gnome) — после этого Rexon покажет здесь, как её запустить.\n\nИли установите из терминала:\n  sudo pacman -S --needed --noconfirm plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 1,
+    "stderr": "target not found",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "target not found",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 1,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Ошибка установки",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "done_main",
+     "✅ Основные пакеты установлены (2 пакета)"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "steamos_done",
+     "✅ Рабочий стол установлен на SteamOS"
+    ],
+    [
+     "steamos_warn",
+     "⚠️ При обновлении SteamOS пакеты могут быть удалены."
+    ],
+    [
+     "steamos_warn",
+     "   Рекомендация: закрепите пакеты через pacman -D --asexplicit"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\n\nВозможные причины:\n• окно ввода пароля не появилось;\n• пароль введён неверно;\n• окно ввода пароля закрыли.\n\nПопробуйте установить из терминала:\n  sudo apt-get install -y --no-install-recommends plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУстановить можно из терминала:\n  sudo steamos-readonly disable\n  sudo apt-get install -y --no-install-recommends plasma-desktop sddm\n  sudo steamos-readonly enable",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 1,
+    "stderr": "Not authorized",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": false,
+   "ok": false,
+   "message": "Не запущена служба, которая показывает окно ввода пароля.\n\nТакой службы здесь не установлено. Установите её для своего рабочего стола (например, polkit-gnome) — после этого Rexon покажет здесь, как её запустить.\n\nИли установите из терминала:\n  sudo apt-get install -y --no-install-recommends plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 1,
+    "stderr": "target not found",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "target not found",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "debian",
+   "result": {
+    "rc": 1,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Ошибка установки",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "done_main",
+     "✅ Основные пакеты установлены (2 пакета)"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "steamos_done",
+     "✅ Рабочий стол установлен на SteamOS"
+    ],
+    [
+     "steamos_warn",
+     "⚠️ При обновлении SteamOS пакеты могут быть удалены."
+    ],
+    [
+     "steamos_warn",
+     "   Рекомендация: закрепите пакеты через pacman -D --asexplicit"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\n\nВозможные причины:\n• окно ввода пароля не появилось;\n• пароль введён неверно;\n• окно ввода пароля закрыли.\n\nПопробуйте установить из терминала:\n  sudo dnf install -y plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУстановить можно из терминала:\n  sudo steamos-readonly disable\n  sudo dnf install -y plasma-desktop sddm\n  sudo steamos-readonly enable",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 1,
+    "stderr": "Not authorized",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": false,
+   "ok": false,
+   "message": "Не запущена служба, которая показывает окно ввода пароля.\n\nТакой службы здесь не установлено. Установите её для своего рабочего стола (например, polkit-gnome) — после этого Rexon покажет здесь, как её запустить.\n\nИли установите из терминала:\n  sudo dnf install -y plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 1,
+    "stderr": "target not found",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "target not found",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "fedora",
+   "result": {
+    "rc": 1,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Ошибка установки",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "done_main",
+     "✅ Основные пакеты установлены (2 пакета)"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "steamos_done",
+     "✅ Рабочий стол установлен на SteamOS"
+    ],
+    [
+     "steamos_warn",
+     "⚠️ При обновлении SteamOS пакеты могут быть удалены."
+    ],
+    [
+     "steamos_warn",
+     "   Рекомендация: закрепите пакеты через pacman -D --asexplicit"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\n\nВозможные причины:\n• окно ввода пароля не появилось;\n• пароль введён неверно;\n• окно ввода пароля закрыли.\n\nПопробуйте установить из терминала:\n  sudo emerge --ask=n --quiet plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Пароль администратора не подтверждён.\nУстановить можно из терминала:\n  sudo steamos-readonly disable\n  sudo emerge --ask=n --quiet plasma-desktop sddm\n  sudo steamos-readonly enable",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 1,
+    "stderr": "Not authorized",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": false,
+   "ok": false,
+   "message": "Не запущена служба, которая показывает окно ввода пароля.\n\nТакой службы здесь не установлено. Установите её для своего рабочего стола (например, polkit-gnome) — после этого Rexon покажет здесь, как её запустить.\n\nИли установите из терминала:\n  sudo emerge --ask=n --quiet plasma-desktop sddm",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 1,
+    "stderr": "target not found",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "target not found",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "gentoo",
+   "result": {
+    "rc": 1,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Ошибка установки",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "done_main",
+     "✅ Основные пакеты установлены (2 пакета)"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [
+    [
+     "steamos_done",
+     "✅ Рабочий стол установлен на SteamOS"
+    ],
+    [
+     "steamos_warn",
+     "⚠️ При обновлении SteamOS пакеты могут быть удалены."
+    ],
+    [
+     "steamos_warn",
+     "   Рекомендация: закрепите пакеты через pacman -D --asexplicit"
+    ]
+   ],
+   "raised": null
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": null,
+   "message": null,
+   "logs": [],
+   "raised": "RuntimeError: Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: plasma-desktop sddm"
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 126,
+    "stderr": "Not authorized to perform operation",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": true,
+   "polkit_agent": true,
+   "ok": null,
+   "message": null,
+   "logs": [],
+   "raised": "RuntimeError: Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: plasma-desktop sddm"
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 1,
+    "stderr": "Not authorized",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": false,
+   "ok": null,
+   "message": null,
+   "logs": [],
+   "raised": "RuntimeError: Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: plasma-desktop sddm"
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 1,
+    "stderr": "target not found",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": null,
+   "message": null,
+   "logs": [],
+   "raised": "RuntimeError: Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: plasma-desktop sddm"
+  },
+  {
+   "family": "unknown",
+   "result": {
+    "rc": 1,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": null,
+   "message": null,
+   "logs": [],
+   "raised": "RuntimeError: Пакетный менеджер не определён (PkgFamily.UNKNOWN). Установите пакеты вручную: plasma-desktop sddm"
+  },
+  {
+   "family": "arch",
+   "result": null,
+   "main_seen": true,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": false,
+   "message": "Команда не найдена",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": false,
+   "packages": [
+    "plasma-desktop",
+    "sddm"
+   ],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [],
+   "raised": null
+  },
+  {
+   "family": "arch",
+   "result": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "main_seen": true,
+   "packages": [],
+   "steamos": false,
+   "polkit_agent": true,
+   "ok": true,
+   "message": "",
+   "logs": [],
+   "raised": null
+  }
+ ],
+ "batch_aur": [
+  {
+   "steamos": false,
+   "rc": 0,
+   "installed": [
+    "aerothemeplasma-desktop",
+    "kvantum-theme-x",
+    "uac-polkit-agent-git"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка 3 пакетов из AUR…"
+    ],
+    [
+     "aur_done",
+     "✅ AUR пакеты установлены"
+    ]
+   ]
+  },
+  {
+   "steamos": false,
+   "rc": 1,
+   "installed": [],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка 3 пакетов из AUR…"
+    ],
+    [
+     "aur_warn",
+     "⚠️ Не установились AUR (3 из 3): aerothemeplasma-desktop, uac-polkit-agent-git, kvantum-theme-x"
+    ]
+   ]
+  },
+  {
+   "steamos": false,
+   "rc": 1,
+   "installed": [
+    "aerothemeplasma-desktop"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка 3 пакетов из AUR…"
+    ],
+    [
+     "aur_warn",
+     "⚠️ Не установились AUR (2 из 3): uac-polkit-agent-git, kvantum-theme-x"
+    ],
+    [
+     "aur_warn",
+     "   ✅ Установлены: aerothemeplasma-desktop"
+    ]
+   ]
+  },
+  {
+   "steamos": false,
+   "rc": 1,
+   "installed": [
+    "aerothemeplasma-desktop",
+    "kvantum-theme-x",
+    "uac-polkit-agent-git"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка 3 пакетов из AUR…"
+    ],
+    [
+     "aur_done",
+     "✅ AUR пакеты установлены"
+    ]
+   ]
+  },
+  {
+   "steamos": false,
+   "rc": null,
+   "installed": [],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка 3 пакетов из AUR…"
+    ],
+    [
+     "aur_warn",
+     "⚠️ Не установились AUR (3 из 3): aerothemeplasma-desktop, uac-polkit-agent-git, kvantum-theme-x"
+    ]
+   ]
+  },
+  {
+   "steamos": true,
+   "rc": 0,
+   "installed": [
+    "aerothemeplasma-desktop",
+    "kvantum-theme-x",
+    "uac-polkit-agent-git"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка AUR (3)..."
+    ],
+    [
+     "aur_done",
+     "✅ AUR пакеты установлены"
+    ]
+   ]
+  },
+  {
+   "steamos": true,
+   "rc": 1,
+   "installed": [],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка AUR (3)..."
+    ],
+    [
+     "aur_warn",
+     "⚠️ AUR-пакеты не установились"
+    ]
+   ]
+  },
+  {
+   "steamos": true,
+   "rc": 1,
+   "installed": [
+    "aerothemeplasma-desktop"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка AUR (3)..."
+    ],
+    [
+     "aur_warn",
+     "⚠️ AUR-пакеты не установились"
+    ]
+   ]
+  },
+  {
+   "steamos": true,
+   "rc": 1,
+   "installed": [
+    "aerothemeplasma-desktop",
+    "kvantum-theme-x",
+    "uac-polkit-agent-git"
+   ],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка AUR (3)..."
+    ],
+    [
+     "aur_warn",
+     "⚠️ AUR-пакеты не установились"
+    ]
+   ]
+  },
+  {
+   "steamos": true,
+   "rc": null,
+   "installed": [],
+   "aur": [
+    "aerothemeplasma-desktop",
+    "uac-polkit-agent-git",
+    "kvantum-theme-x"
+   ],
+   "logs": [
+    [
+     "aur",
+     "🎨 Установка AUR (3)..."
+    ],
+    [
+     "aur_warn",
+     "⚠️ AUR-пакеты не установились"
+    ]
+   ]
+  }
+ ],
+ "mate_post_install": {
+  "locale_actions": {
+   "ru": "['Изменить тему;mate-appearance-properties.desktop', 'Предпочтительные приложения;mate-default-applications-properties.desktop', 'Информация о системе MATE;mate-system-info.desktop']",
+   "de": "['Design ändern;mate-appearance-properties.desktop', 'Bevorzugte Anwendungen;mate-default-applications-properties.desktop', 'MATE-Systeminformation;mate-system-info.desktop']"
+  },
+  "snap_map": [
+   [
+    "firefox_firefox.desktop",
+    "firefox.desktop"
+   ],
+   [
+    "thunderbird_thunderbird.desktop",
+    "thunderbird.desktop"
+   ],
+   [
+    "snap-store_snap-store.desktop",
+    "org.gnome.Software.desktop"
+   ],
+   [
+    "snap-store_ubuntu-mate-welcome.desktop",
+    "org.gnome.Software.desktop"
+   ],
+   [
+    "software-properties-drivers.desktop",
+    "cachyos-hello.desktop"
+   ]
+  ],
+  "gschema_path": "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override",
+  "gschema_content": "# Rexon — Ubuntu MATE experience на Arch/CachyOS\n# /usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override\n\n[org.mate.interface]\ngtk-theme='Yaru-MATE-dark'\nicon-theme='Yaru-MATE'\nfont-name='Ubuntu 11'\ndocument-font-name='Ubuntu 11'\nmonospace-font-name='Ubuntu Mono 13'\ngtk-decoration-layout='close,minimize,maximize:'\n\n[org.mate.Marco.general]\ntheme='Yaru-MATE-dark'\ntitlebar-font='Ubuntu Bold 11'\ncompositing-manager=true\ncenter-new-windows=false\nallow-tiling=true\n\n[org.mate.peripherals-mouse]\ncursor-theme='Yaru'\ncursor-size=24\n\n[org.mate.background]\nshow-desktop-icons=true\n\n[org.mate.caja.desktop]\ncomputer-icon-visible=true\nhome-icon-visible=true\ntrash-icon-visible=true\n\n[org.mate.panel]\ndefault-layout='familiar'\n\n[org.mate.session]\nrequired-components-list=['windowmanager', 'panel', 'filemanager']\n\n[org.mate.session.required-components]\nwindowmanager='marco'\npanel='mate-panel'\nfilemanager='caja'\n\n[org.mate.NotificationDaemon]\ntheme='slider'\n\n[org.mate.pluma]\neditor-font='Ubuntu Mono 13'\nuse-default-font=false\n\n[org.mate.terminal.profile:/org/mate/terminal/profiles/default/]\nfont='Ubuntu Mono 13'\nuse-system-font=false\n",
+  "gschema_script": "#!/bin/bash\nset -e\ncp '/tmp/rexon_gschema_abc.override' '/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override'\nglib-compile-schemas /usr/share/glib-2.0/schemas/\n",
+  "gschema_script_tmp": "/tmp/rexon_gschema_abc.override",
+  "layouts_script": {
+   "dst": "/usr/share/mate-panel/layouts",
+   "files": [
+    "/tmp/stage/familiar.layout",
+    "/tmp/stage/mutiny.dock"
+   ],
+   "text": "#!/bin/bash\nset -e\ninstall -d /usr/share/mate-panel/layouts\ncp -f /tmp/stage/familiar.layout /usr/share/mate-panel/layouts/\ncp -f /tmp/stage/mutiny.dock /usr/share/mate-panel/layouts/\nchmod -R a+rX /usr/share/mate-panel/layouts\n"
+  }
+ }
+}

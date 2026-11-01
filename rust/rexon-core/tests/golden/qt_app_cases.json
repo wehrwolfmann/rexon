@@ -1,0 +1,827 @@
+{
+  "banners": {
+    "platform_empty": {
+      "out": "[QT] platform='', QT_QPA_PLATFORM=''",
+      "platform": "",
+      "qpa": ""
+    },
+    "platform_none": {
+      "out": "[QT] platform='xcb', QT_QPA_PLATFORM=None",
+      "platform": "xcb",
+      "qpa": null
+    },
+    "platform_wayland": {
+      "out": "[QT] platform='wayland', QT_QPA_PLATFORM='wayland'",
+      "platform": "wayland",
+      "qpa": "wayland"
+    },
+    "window": {
+      "flags": 35651585,
+      "out": "[QT] flags=0x2200001, frameGeom=(10, -5, 1280, 800)",
+      "rect": [
+        10,
+        -5,
+        1280,
+        800
+      ]
+    },
+    "window_hex_letters": {
+      "flags": 2164304847,
+      "out": "[QT] flags=0x8100abcf, frameGeom=(-1, -1, 1, 1)",
+      "rect": [
+        -1,
+        -1,
+        1,
+        1
+      ]
+    },
+    "window_zero": {
+      "flags": 0,
+      "out": "[QT] flags=0x0, frameGeom=(0, 0, 0, 0)",
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "crash_dir_expanded": "/home/user/.config/rexon/crashes",
+  "crash_dir_literal": "~/.config/rexon/crashes",
+  "crash_keep": 20,
+  "dialog": {
+    "no_log_open": {
+      "calls": [
+        [
+          "QMessageBox()",
+          null
+        ],
+        [
+          "setIcon",
+          "Icon.Critical"
+        ],
+        [
+          "setWindowTitle",
+          "Rexon — произошла ошибка"
+        ],
+        [
+          "setText",
+          "Rexon неожиданно завершился.\n\nОтчёт об ошибке можно скопировать кнопкой «Скопировать отчёт» и приложить к сообщению, если будете обращаться к разработчику."
+        ],
+        [
+          "setDetailedText",
+          "HDR\nTraceback...\nValueError: боом\n"
+        ],
+        [
+          "addButton",
+          [
+            "Скопировать отчёт",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Открыть папку",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Закрыть",
+            "ButtonRole.RejectRole"
+          ]
+        ],
+        [
+          "exec",
+          null
+        ]
+      ],
+      "clicked": 1,
+      "log_path": null
+    },
+    "with_log_close": {
+      "calls": [
+        [
+          "QMessageBox()",
+          null
+        ],
+        [
+          "setIcon",
+          "Icon.Critical"
+        ],
+        [
+          "setWindowTitle",
+          "Rexon — произошла ошибка"
+        ],
+        [
+          "setText",
+          "Rexon неожиданно завершился.\n\nОтчёт об ошибке можно скопировать кнопкой «Скопировать отчёт» и приложить к сообщению, если будете обращаться к разработчику."
+        ],
+        [
+          "setInformativeText",
+          "Отчёт сохранён:\n/tmp/crashes/crash_1.log"
+        ],
+        [
+          "setDetailedText",
+          "HDR\nTraceback...\nValueError: боом\n"
+        ],
+        [
+          "addButton",
+          [
+            "Скопировать отчёт",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Открыть папку",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Закрыть",
+            "ButtonRole.RejectRole"
+          ]
+        ],
+        [
+          "exec",
+          null
+        ]
+      ],
+      "clicked": 2,
+      "log_path": "/tmp/crashes/crash_1.log"
+    },
+    "with_log_copy": {
+      "calls": [
+        [
+          "QMessageBox()",
+          null
+        ],
+        [
+          "setIcon",
+          "Icon.Critical"
+        ],
+        [
+          "setWindowTitle",
+          "Rexon — произошла ошибка"
+        ],
+        [
+          "setText",
+          "Rexon неожиданно завершился.\n\nОтчёт об ошибке можно скопировать кнопкой «Скопировать отчёт» и приложить к сообщению, если будете обращаться к разработчику."
+        ],
+        [
+          "setInformativeText",
+          "Отчёт сохранён:\n/tmp/crashes/crash_1.log"
+        ],
+        [
+          "setDetailedText",
+          "HDR\nTraceback...\nValueError: боом\n"
+        ],
+        [
+          "addButton",
+          [
+            "Скопировать отчёт",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Открыть папку",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Закрыть",
+            "ButtonRole.RejectRole"
+          ]
+        ],
+        [
+          "exec",
+          null
+        ],
+        [
+          "clipboard.setText",
+          "HDR\nTraceback...\nValueError: боом\n"
+        ]
+      ],
+      "clicked": 0,
+      "log_path": "/tmp/crashes/crash_1.log"
+    },
+    "with_log_open": {
+      "calls": [
+        [
+          "QMessageBox()",
+          null
+        ],
+        [
+          "setIcon",
+          "Icon.Critical"
+        ],
+        [
+          "setWindowTitle",
+          "Rexon — произошла ошибка"
+        ],
+        [
+          "setText",
+          "Rexon неожиданно завершился.\n\nОтчёт об ошибке можно скопировать кнопкой «Скопировать отчёт» и приложить к сообщению, если будете обращаться к разработчику."
+        ],
+        [
+          "setInformativeText",
+          "Отчёт сохранён:\n/tmp/crashes/crash_1.log"
+        ],
+        [
+          "setDetailedText",
+          "HDR\nTraceback...\nValueError: боом\n"
+        ],
+        [
+          "addButton",
+          [
+            "Скопировать отчёт",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Открыть папку",
+            "ButtonRole.ActionRole"
+          ]
+        ],
+        [
+          "addButton",
+          [
+            "Закрыть",
+            "ButtonRole.RejectRole"
+          ]
+        ],
+        [
+          "exec",
+          null
+        ],
+        [
+          "Popen",
+          [
+            "xdg-open",
+            "/tmp/crashes"
+          ]
+        ]
+      ],
+      "clicked": 1,
+      "log_path": "/tmp/crashes/crash_1.log"
+    }
+  },
+  "excepthook": {
+    "main_keyboard_interrupt": [
+      [
+        "stderr",
+        "KeyboardInterrupt"
+      ]
+    ],
+    "main_system_exit": [
+      [
+        "stderr",
+        "SystemExit"
+      ],
+      [
+        "save",
+        "SystemExit: 3\n"
+      ],
+      [
+        "dialog",
+        [
+          "SystemExit: 3\n",
+          "/tmp/c/crash_1.log"
+        ]
+      ]
+    ],
+    "main_value_error": [
+      [
+        "stderr",
+        "ValueError"
+      ],
+      [
+        "save",
+        "ValueError: боом\n"
+      ],
+      [
+        "dialog",
+        [
+          "ValueError: боом\n",
+          "/tmp/c/crash_1.log"
+        ]
+      ]
+    ],
+    "thread_keyboard_interrupt": [],
+    "thread_value_error": [
+      [
+        "stderr",
+        "ValueError"
+      ],
+      [
+        "save",
+        "ValueError: боом\n"
+      ],
+      [
+        "dialog",
+        [
+          "ValueError: боом\n",
+          "/tmp/c/crash_1.log"
+        ]
+      ]
+    ]
+  },
+  "headers": {
+    "desktop_session": {
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "ru_RU.UTF-8",
+        "XDG_SESSION_TYPE": "wayland"
+      },
+      "os": "Linux",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  6.11.1\nOS:       Linux\nDE:       plasma (wayland)\nLocale:   ru_RU.UTF-8\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.11.1",
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "empty_desktop": {
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "ru_RU.UTF-8",
+        "XDG_CURRENT_DESKTOP": "",
+        "XDG_SESSION_TYPE": "wayland"
+      },
+      "os": "Linux",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  6.11.1\nOS:       Linux\nDE:       plasma (wayland)\nLocale:   ru_RU.UTF-8\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.11.1",
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "empty_session_and_lang": {
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "",
+        "XDG_CURRENT_DESKTOP": "KDE",
+        "XDG_SESSION_TYPE": ""
+      },
+      "os": "Linux",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  6.11.1\nOS:       Linux\nDE:       KDE ()\nLocale:   \n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.11.1",
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "full": {
+      "dt": "2026-07-30T14:05:09.123456",
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "ru_RU.UTF-8",
+        "XDG_CURRENT_DESKTOP": "KDE",
+        "XDG_SESSION_TYPE": "wayland"
+      },
+      "os": "Linux-7.1.5-1-cachyos-x86_64-with-glibc2.44",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  6.11.1\nOS:       Linux-7.1.5-1-cachyos-x86_64-with-glibc2.44\nDE:       KDE (wayland)\nLocale:   ru_RU.UTF-8\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.11.1",
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "no_env": {
+      "env": {},
+      "os": "Linux",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  6.11.1\nOS:       Linux\nDE:       ? (?)\nLocale:   ?\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.11.1",
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "no_microseconds": {
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "ru_RU.UTF-8",
+        "XDG_CURRENT_DESKTOP": "KDE",
+        "XDG_SESSION_TYPE": "wayland"
+      },
+      "os": "Linux-6.6.0-x86_64",
+      "out": "Rexon crash report\nTime:     2026-01-02T03:04:05\nPython:   3.12.0\nPySide6:  6.6.0\nOS:       Linux-6.6.0-x86_64\nDE:       KDE (wayland)\nLocale:   ru_RU.UTF-8\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": "6.6.0",
+      "python": "3.12.0",
+      "ts": [
+        2026,
+        1,
+        2,
+        3,
+        4,
+        5,
+        0
+      ]
+    },
+    "no_pyside": {
+      "env": {
+        "DESKTOP_SESSION": "plasma",
+        "LANG": "ru_RU.UTF-8",
+        "XDG_CURRENT_DESKTOP": "KDE",
+        "XDG_SESSION_TYPE": "wayland"
+      },
+      "os": "Linux",
+      "out": "Rexon crash report\nTime:     2026-07-30T14:05:09.123456\nPython:   3.14.6\nPySide6:  ?\nOS:       Linux\nDE:       KDE (wayland)\nLocale:   ru_RU.UTF-8\n────────────────────────────────────────────────────────────\n\n",
+      "pyside": null,
+      "python": "3.14.6",
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    }
+  },
+  "identities": {
+    "rexon.app_wallpaper": {
+      "application_name": "RexonAppWallpaper",
+      "desktop_file_name": "rexon",
+      "display_name": null,
+      "organization_name": null
+    },
+    "rexon.appearance_page": {
+      "application_name": "Rexon Appearance",
+      "desktop_file_name": "rexon",
+      "display_name": "Rexon — Оформление",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.parallax_engine": {
+      "application_name": "RexonSceneEngine",
+      "desktop_file_name": "rexon",
+      "display_name": null,
+      "organization_name": null
+    },
+    "rexon.qt_compare.app": {
+      "application_name": "Rexon Compare",
+      "desktop_file_name": "rexon",
+      "display_name": "Rexon — Сравнение рабочих столов",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.qt_desktops.app": {
+      "application_name": "Rexon Desktops",
+      "desktop_file_name": "rexon",
+      "display_name": "Rexon — Рабочие столы",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.qt_extensions.app": {
+      "application_name": "Rexon Extensions",
+      "desktop_file_name": "rexon",
+      "display_name": "Rexon — Расширения",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.qt_main.app": {
+      "application_name": "Rexon",
+      "desktop_file_name": "rexon",
+      "display_name": "",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.qt_settings.app": {
+      "application_name": "Rexon Settings",
+      "desktop_file_name": "rexon",
+      "display_name": "Rexon — Настройки",
+      "organization_name": "OpenAxon"
+    },
+    "rexon.scene_wallpaper": {
+      "application_name": "RexonSceneWallpaper",
+      "desktop_file_name": "rexon",
+      "display_name": null,
+      "organization_name": null
+    },
+    "rexon.video_wallpaper": {
+      "application_name": "RexonVideoWallpaper",
+      "desktop_file_name": "rexon",
+      "display_name": null,
+      "organization_name": null
+    },
+    "rexon.wallpaper_mmap": {
+      "application_name": "RexonWallpaperHeadless",
+      "desktop_file_name": null,
+      "display_name": null,
+      "organization_name": null
+    },
+    "rexon.web_wallpaper": {
+      "application_name": "RexonWebWallpaper",
+      "desktop_file_name": "rexon",
+      "display_name": null,
+      "organization_name": null
+    }
+  },
+  "qt_qpa_platform": {
+    "absent": {
+      "in": null,
+      "out": null
+    },
+    "empty": {
+      "in": "",
+      "out": null
+    },
+    "wayland": {
+      "in": "wayland",
+      "out": "wayland"
+    },
+    "xcb": {
+      "in": "xcb",
+      "out": "xcb"
+    }
+  },
+  "rotation": {
+    "empty": {
+      "names": [],
+      "victims": []
+    },
+    "mixed": {
+      "names": [
+        "README.txt",
+        "crash_b.log",
+        "crash_a.log",
+        "zz.log"
+      ],
+      "victims": []
+    },
+    "twenty_two": {
+      "names": [
+        "crash_000.log",
+        "crash_001.log",
+        "crash_002.log",
+        "crash_003.log",
+        "crash_004.log",
+        "crash_005.log",
+        "crash_006.log",
+        "crash_007.log",
+        "crash_008.log",
+        "crash_009.log",
+        "crash_010.log",
+        "crash_011.log",
+        "crash_012.log",
+        "crash_013.log",
+        "crash_014.log",
+        "crash_015.log",
+        "crash_016.log",
+        "crash_017.log",
+        "crash_018.log",
+        "crash_019.log",
+        "crash_020.log",
+        "crash_021.log",
+        "note.md"
+      ],
+      "victims": [
+        "crash_000.log",
+        "crash_001.log"
+      ]
+    }
+  },
+  "saves": {
+    "empty_dir": {
+      "content": "HDR\nTraceback...\nValueError: боом\n",
+      "crash_text": "Traceback...\nValueError: боом\n",
+      "existing": [],
+      "name": "crash_20260730_140509.log",
+      "rest": [
+        "crash_20260730_140509.log"
+      ],
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "exactly_keep": {
+      "content": "HDR\nT\n",
+      "crash_text": "T\n",
+      "existing": [
+        "crash_20260101_000000.log",
+        "crash_20260101_000001.log",
+        "crash_20260101_000002.log",
+        "crash_20260101_000003.log",
+        "crash_20260101_000004.log",
+        "crash_20260101_000005.log",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log",
+        "crash_20260101_000019.log"
+      ],
+      "name": "crash_20260730_140509.log",
+      "rest": [
+        "crash_20260101_000001.log",
+        "crash_20260101_000002.log",
+        "crash_20260101_000003.log",
+        "crash_20260101_000004.log",
+        "crash_20260101_000005.log",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log",
+        "crash_20260101_000019.log",
+        "crash_20260730_140509.log"
+      ],
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "over_keep": {
+      "content": "HDR\nT\n",
+      "crash_text": "T\n",
+      "existing": [
+        "crash_20260101_000000.log",
+        "crash_20260101_000001.log",
+        "crash_20260101_000002.log",
+        "crash_20260101_000003.log",
+        "crash_20260101_000004.log",
+        "crash_20260101_000005.log",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log",
+        "crash_20260101_000019.log",
+        "crash_20260101_000020.log",
+        "crash_20260101_000021.log",
+        "crash_20260101_000022.log",
+        "crash_20260101_000023.log",
+        "crash_20260101_000024.log",
+        "README.txt",
+        "old.log",
+        "zz_crash_9.log"
+      ],
+      "name": "crash_20260730_140509.log",
+      "rest": [
+        "README.txt",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log",
+        "crash_20260101_000019.log",
+        "crash_20260101_000020.log",
+        "crash_20260101_000021.log",
+        "crash_20260101_000022.log",
+        "crash_20260101_000023.log",
+        "crash_20260101_000024.log",
+        "crash_20260730_140509.log",
+        "old.log",
+        "zz_crash_9.log"
+      ],
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    },
+    "under_keep": {
+      "content": "HDR\nT\n",
+      "crash_text": "T\n",
+      "existing": [
+        "crash_20260101_000000.log",
+        "crash_20260101_000001.log",
+        "crash_20260101_000002.log",
+        "crash_20260101_000003.log",
+        "crash_20260101_000004.log",
+        "crash_20260101_000005.log",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log"
+      ],
+      "name": "crash_20260730_140509.log",
+      "rest": [
+        "crash_20260101_000000.log",
+        "crash_20260101_000001.log",
+        "crash_20260101_000002.log",
+        "crash_20260101_000003.log",
+        "crash_20260101_000004.log",
+        "crash_20260101_000005.log",
+        "crash_20260101_000006.log",
+        "crash_20260101_000007.log",
+        "crash_20260101_000008.log",
+        "crash_20260101_000009.log",
+        "crash_20260101_000010.log",
+        "crash_20260101_000011.log",
+        "crash_20260101_000012.log",
+        "crash_20260101_000013.log",
+        "crash_20260101_000014.log",
+        "crash_20260101_000015.log",
+        "crash_20260101_000016.log",
+        "crash_20260101_000017.log",
+        "crash_20260101_000018.log",
+        "crash_20260730_140509.log"
+      ],
+      "ts": [
+        2026,
+        7,
+        30,
+        14,
+        5,
+        9,
+        123456
+      ]
+    }
+  }
+}

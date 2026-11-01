@@ -1,0 +1,169 @@
+{
+  "format_version": 5,
+  "id": "garuda-dr460nized",
+  "version": "1.0.0",
+  "name": {
+    "en": "Like Garuda Linux (Dr460nized)",
+    "ru": "Как в Garuda Linux (Dr460nized)",
+    "de": "Wie Garuda Linux (Dr460nized)"
+  },
+  "description": {
+    "en": "The dark Dr460nized look of Garuda Linux for Plasma: Sweet colours and window frames, BeautyLine icons, a top panel with a dock, wobbly windows. Only the look is taken: Garuda's system settings, shell, browser and login screen stay as they are. On other desktops Rexon applies what they understand — GTK theme, window frames, icons, cursors, fonts, wallpaper, the Kvantum style and Sweet colours for Qt programs — and builds the panels and window settings close to Garuda's from the desktop's own parts.",
+    "ru": "Тёмный вид Dr460nized из Garuda Linux для Plasma: цвета и рамки окон Sweet, значки BeautyLine, верхняя панель с доком, «желейные» окна. Берётся только внешний вид: системные настройки Garuda, командная оболочка, браузер и экран входа не меняются. На других рабочих столах Rexon применяет то, что они понимают, — тему GTK, рамки окон, значки, курсоры, шрифты, обои, стиль Kvantum и цвета Sweet для Qt-программ, — а панели и настройки окон собирает близко к Garuda из частей самого стола.",
+    "de": "Der dunkle Dr460nized-Look von Garuda Linux für Plasma: Sweet-Farben und -Fensterrahmen, BeautyLine-Symbole, eine obere Leiste mit Dock, wabbelnde Fenster. Übernommen wird nur das Aussehen: Garudas Systemeinstellungen, Shell, Browser und Anmeldebildschirm bleiben unverändert. Auf anderen Arbeitsflächen wendet Rexon an, was sie verstehen — GTK-Thema, Fensterrahmen, Symbole, Mauszeiger, Schriften, Hintergrundbild, den Kvantum-Stil und die Sweet-Farben für Qt-Programme — und baut Leisten und Fenstereinstellungen aus den eigenen Teilen der Arbeitsfläche nah an Garuda nach."
+  },
+  "authors": [{"name": "Wehrwolfmann"}],
+  "license": "Apache-2.0",
+  "tags": ["distro-look", "dark", "plasma"],
+  "sources": [
+    {
+      "what": "Garuda Dr460nized settings: global theme, Plasma theme, Kvantum theme, panel templates, Panel Colorizer presets, Maldrakor wallpaper",
+      "id": "garuda",
+      "url": "https://gitlab.com/garuda-linux/themes-and-settings/settings/garuda-dr460nized.git",
+      "rev": "1280f411dc307847332ecab2f578ed984d33498c",
+      "author": "Garuda Linux (dr460nf1r3, FGD)",
+      "license": "GPL-3.0-only AND CC-BY-SA-4.0"
+    },
+    {
+      "what": "Sweet: colour scheme, Aurorae window frames, cursors",
+      "id": "sweet",
+      "url": "https://github.com/EliverLara/Sweet.git",
+      "rev": "46e3802d3f4d9e992f94264f1d834f5f9621c03b",
+      "author": "Eliver Lara",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "what": "Sweet-Dark: GTK, GNOME Shell, Cinnamon, xfwm4 and Metacity themes (release v6.0)",
+      "id": "sweet-gtk",
+      "url": "https://github.com/EliverLara/Sweet/releases/download/v6.0/Sweet-Dark.tar.xz",
+      "sha256": "123f69effb71acc846502c834c01101c84bfa62f76a5f2eb095d4be07c567599",
+      "author": "Eliver Lara",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "what": "BeautyLine icons",
+      "id": "beautyline",
+      "url": "https://gitlab.com/garuda-linux/themes-and-settings/artwork/beautyline",
+      "package": "icons-beautyline",
+      "author": "Garuda Linux",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "what": "Fira Sans and Fira Code Nerd Font",
+      "id": "fira",
+      "package": "fonts-fira",
+      "license": "OFL-1.1"
+    },
+    {
+      "what": "Maldrakor wallpaper (inside the Garuda settings repository, no separate licence)",
+      "author": "Mior_D_Miro",
+      "license": "GPL-3.0-only"
+    }
+  ],
+  "items": [
+    {
+      "kind": "global-look",
+      "native": {"kde-lnf": "sources/garuda/usr/share/plasma/look-and-feel/Dr460nized"},
+      "required": false,
+      "permissions": ["exec"]
+    },
+    {
+      "kind": "palette",
+      "native": {"kde-colors": "sources/sweet/kde/colorschemes/Sweet.colors"},
+      "required": false
+    },
+    {
+      "kind": "window-decoration",
+      "native": {
+        "aurorae": "sources/sweet/kde/aurorae/Sweet-Dark",
+        "xfwm4": "sources/sweet-gtk/Sweet-Dark",
+        "metacity-1": "sources/sweet-gtk/Sweet-Dark",
+        "gtk-ssd": "sources/sweet-gtk/Sweet-Dark"
+      },
+      "required": false
+    },
+    {
+      "kind": "shell-theme",
+      "native": {
+        "plasma": "sources/garuda/usr/share/plasma/desktoptheme/Dr460nized",
+        "gnome-shell": "sources/sweet-gtk/Sweet-Dark",
+        "cinnamon": "sources/sweet-gtk/Sweet-Dark"
+      },
+      "required": false
+    },
+    {
+      "kind": "qt-style",
+      "native": {"kvantum": "sources/garuda/usr/share/Kvantum/Dr460nized"},
+      "required": false
+    },
+    {
+      "kind": "gtk-theme",
+      "native": {"gtk": "sources/sweet-gtk/Sweet-Dark"}
+    },
+    {
+      "kind": "icons",
+      "native": {"freedesktop": "sources/beautyline/usr/share/icons/BeautyLine"},
+      "required": false
+    },
+    {
+      "kind": "cursors",
+      "native": {"freedesktop": "sources/sweet/kde/cursors/Sweet-cursors"}
+    },
+    {
+      "kind": "fonts",
+      "native": {"freedesktop": "sources/fira/usr/share/fonts"},
+      "required": false
+    },
+    {
+      "kind": "wallpaper",
+      "native": {"any": "sources/garuda/usr/share/wallpapers/Maldrakor"},
+      "required": false
+    },
+    {
+      "kind": "panel-layout",
+      "native": {"kde-layout": "sources/garuda/usr/share/plasma/layout-templates"},
+      "model": "native/desktop-model.json",
+      "required": false,
+      "permissions": ["exec"]
+    },
+    {
+      "kind": "behaviour",
+      "native": {"kconfig": "native/plasma-settings.json"},
+      "model": "native/desktop-model.json",
+      "required": false
+    }
+  ],
+  "requires": {
+    "packages": [
+      {"role": "kvantum", "for": ["qt-style"], "required": false,
+       "arch": ["kvantum"], "fedora": ["kvantum"], "debian": ["qt-style-kvantum"]},
+      {"role": "icons-beautyline", "for": ["icons"], "required": false,
+       "arch": ["beautyline"], "fedora": null, "debian": null,
+       "fallback": ["aur"], "aur": ["beautyline"]},
+      {"role": "fonts-fira", "for": ["fonts"], "required": false,
+       "arch": ["ttf-fira-sans", "ttf-firacode-nerd"], "fedora": null, "debian": null},
+      {"role": "user-theme", "for": ["shell-theme"], "consumers": ["gnome-shell"], "required": false,
+       "source": "gnome-extensions", "uuid": "user-theme@gnome-shell-extensions.gcampax.github.com"},
+      {"role": "window-buttons", "for": ["panel-layout"], "consumers": ["kde-layout"], "required": false,
+       "arch": ["plasma-applet-window-buttons"], "fedora": null, "debian": null},
+      {"role": "panel-colorizer", "for": ["panel-layout"], "consumers": ["kde-layout"], "required": false, "source": "aur",
+       "aur": ["plasma6-applets-panel-colorizer"]},
+      {"role": "window-title", "for": ["panel-layout"], "consumers": ["kde-layout"], "required": false, "source": "aur",
+       "aur": ["plasma6-applets-window-title"]},
+      {"role": "blurred-wallpaper", "for": ["global-look"], "required": false, "source": "aur",
+       "aur": ["plasma6-wallpapers-blurredwallpaper"]},
+      {"role": "compiz", "for": ["behaviour"], "consumers": ["marco", "xfwm4"], "required": false, "source": "aur",
+       "aur": ["compiz"]},
+      {"role": "cover-switch", "for": ["behaviour"], "consumers": ["kconfig"], "required": false,
+       "arch": ["kdeplasma-addons"], "fedora": ["kdeplasma-addons"], "debian": ["kdeplasma-addons"]}
+    ],
+    "targets": {"kde-lnf": ">=6.0", "kde-layout": ">=6.0", "plasma": ">=6.0"},
+    "forbid": ["garuda-common-settings", "garuda-fish-config", "garuda-dr460nized", "plasma-login-manager"],
+    "preconditions": [{"name": "libplasma", "owners": ["libplasma"],
+       "message": {
+         "en": "Plasma's libplasma has been replaced here by another build (a fork such as AeroShell). Plasma looks do not apply on top of it: put the regular libplasma back first.",
+         "ru": "Здесь libplasma из Plasma заменена другой сборкой (форком вроде AeroShell). Оформление Plasma поверх неё не применяется: сначала верните обычную libplasma.",
+         "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her."
+       }}]
+  }
+}

@@ -1,0 +1,1812 @@
+{
+  "Full": {
+    "dir": "/usr/share/plasma/look-and-feel/Full",
+    "contents": {
+      "appearance": true,
+      "layout": {
+        "desktop": true,
+        "buttons": [
+          "MS",
+          "IAX"
+        ],
+        "placement": "Centered",
+        "borderless": "true"
+      },
+      "parts": [
+        "colors",
+        "icons",
+        "splashScreen",
+        "desktopLayout",
+        "titlebarLayout",
+        "windowPlacement"
+      ],
+      "values": {
+        "kdeglobals/General/ColorScheme": "BreezeDark",
+        "kdeglobals/Icons/Theme": "breeze-dark"
+      },
+      "own_colors": false
+    },
+    "badge": true,
+    "question": {
+      "title": "Apply “Full”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "checkbox",
+      "layoutText": "Desktop and widget layout",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "desktopLayout",
+          "mask": 327680,
+          "text": "Desktop layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "titlebarLayout",
+          "mask": 131072,
+          "text": "Titlebar Buttons layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "colors",
+          "mask": 1,
+          "text": "Colors",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "icons",
+          "mask": 8,
+          "text": "Icons",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "splashScreen",
+          "mask": 256,
+          "text": "Splash Screen",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “Full”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "titlebarLayout",
+          "mask": 131072,
+          "text": "Titlebar Buttons layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "colors",
+          "mask": 1,
+          "text": "Colors",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "icons",
+          "mask": 8,
+          "text": "Icons",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "splashScreen",
+          "mask": 256,
+          "text": "Splash Screen",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "plans": {
+      "appearance=true layout=false": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"Full\"], timeout: Some(15) }))"
+      ],
+      "appearance=true layout=true": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"Full\", \"--resetLayout\"], timeout: Some(15) }))"
+      ],
+      "appearance=false layout=true": [
+        "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Full\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:Full\"], timeout: Some(30) }))",
+        "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"ButtonsOnLeft\", \"--notify\", \"MS\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"ButtonsOnRight\", \"--notify\", \"IAX\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"Windows\", \"--key\", \"BorderlessMaximizedWindows\", \"--notify\", \"true\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"Windows\", \"--key\", \"Placement\", \"--notify\", \"Centered\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KWin\", \"org.kde.KWin.reloadConfig\"], timeout: None }))"
+      ],
+      "appearance=false layout=false": {
+        "refused": "Nothing is selected to apply."
+      }
+    }
+  },
+  "LooksOnly": {
+    "dir": "/home/t/.local/share/plasma/look-and-feel/LooksOnly",
+    "contents": {
+      "appearance": true,
+      "layout": {
+        "desktop": false,
+        "buttons": null,
+        "placement": null,
+        "borderless": null
+      },
+      "parts": [
+        "plasmaTheme"
+      ],
+      "values": {
+        "plasmarc/Theme/name": "Sweet"
+      },
+      "own_colors": false
+    },
+    "badge": false,
+    "question": {
+      "title": "Apply “LooksOnly”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "checkbox",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "desktopLayout",
+          "mask": 65536,
+          "text": "Desktop layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "plasmaTheme",
+          "mask": 16,
+          "text": "Plasma Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “LooksOnly”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "plasmaTheme",
+          "mask": 16,
+          "text": "Plasma Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "plans": {
+      "appearance=true layout=false": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"LooksOnly\"], timeout: Some(15) }))"
+      ],
+      "appearance=true layout=true": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"LooksOnly\", \"--resetLayout\"], timeout: Some(15) }))"
+      ],
+      "appearance=false layout=true": [
+        "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"LooksOnly\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:LooksOnly\"], timeout: Some(30) }))"
+      ],
+      "appearance=false layout=false": {
+        "refused": "Nothing is selected to apply."
+      }
+    }
+  },
+  "LayoutOnly": {
+    "dir": "/home/t/.local/share/plasma/look-and-feel/LayoutOnly",
+    "contents": {
+      "appearance": false,
+      "layout": {
+        "desktop": true,
+        "buttons": null,
+        "placement": null,
+        "borderless": null
+      },
+      "parts": [
+        "desktopLayout"
+      ],
+      "values": {},
+      "own_colors": false
+    },
+    "badge": true,
+    "question": {
+      "title": "Apply “LayoutOnly”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "hidden",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": false,
+      "layoutRow": "bullet",
+      "layoutText": "Desktop and widget layout",
+      "layoutChecked": true,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "desktopLayout",
+          "mask": 65536,
+          "text": "Desktop layout",
+          "layout": true,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": false,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “LayoutOnly”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "hidden",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": false,
+      "layoutRow": "bullet",
+      "layoutText": "Desktop and widget layout",
+      "layoutChecked": true,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": false,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "plans": {
+      "appearance=true layout=false": {
+        "refused": "Nothing is selected to apply."
+      },
+      "appearance=true layout=true": [
+        "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"LayoutOnly\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:LayoutOnly\"], timeout: Some(30) }))"
+      ],
+      "appearance=false layout=true": [
+        "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"LayoutOnly\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:LayoutOnly\"], timeout: Some(30) }))"
+      ],
+      "appearance=false layout=false": {
+        "refused": "Nothing is selected to apply."
+      }
+    }
+  },
+  "Empty": {
+    "dir": "/home/t/.local/share/plasma/look-and-feel/Empty",
+    "contents": {
+      "appearance": false,
+      "layout": {
+        "desktop": false,
+        "buttons": null,
+        "placement": null,
+        "borderless": null
+      },
+      "parts": [],
+      "values": {},
+      "own_colors": false
+    },
+    "badge": false,
+    "question": {
+      "title": "Apply “Empty”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "hidden",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": false,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "This Global Theme provides no settings that can be applied. It may be broken — please tell its author.",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": false,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “Empty”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "hidden",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": false,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "This Global Theme provides no settings that can be applied. It may be broken — please tell its author.",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": false,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "plans": {
+      "appearance=true layout=false": {
+        "refused": "Nothing is selected to apply."
+      },
+      "appearance=true layout=true": {
+        "refused": "Nothing is selected to apply."
+      },
+      "appearance=false layout=true": {
+        "refused": "Nothing is selected to apply."
+      },
+      "appearance=false layout=false": {
+        "refused": "Nothing is selected to apply."
+      }
+    }
+  },
+  "Shadowed": {
+    "dir": "/home/t/.local/share/plasma/look-and-feel/Shadowed",
+    "contents": {
+      "appearance": true,
+      "layout": {
+        "desktop": false,
+        "buttons": null,
+        "placement": null,
+        "borderless": null
+      },
+      "parts": [
+        "wallpaper"
+      ],
+      "values": {
+        "Wallpaper/Image": "Next"
+      },
+      "own_colors": false
+    },
+    "badge": false,
+    "question": {
+      "title": "Apply “Shadowed”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "checkbox",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "desktopLayout",
+          "mask": 65536,
+          "text": "Desktop layout",
+          "layout": true,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “Shadowed”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "plans": {
+      "appearance=true layout=false": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"Shadowed\"], timeout: Some(15) }))"
+      ],
+      "appearance=true layout=true": [
+        "Apply(Primary(Cmd { argv: [\"plasma-apply-lookandfeel\", \"-a\", \"Shadowed\", \"--resetLayout\"], timeout: Some(15) }))"
+      ],
+      "appearance=false layout=true": [
+        "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Shadowed\"], timeout: None }))",
+        "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:Shadowed\"], timeout: Some(30) }))"
+      ],
+      "appearance=false layout=false": {
+        "refused": "Nothing is selected to apply."
+      }
+    }
+  },
+  "Rich": {
+    "contents": {
+      "appearance": true,
+      "layout": {
+        "desktop": false,
+        "buttons": [
+          "MS",
+          "HIAX"
+        ],
+        "placement": null,
+        "borderless": ""
+      },
+      "parts": [
+        "colors",
+        "widgetStyle",
+        "windowDecoration",
+        "borderSize",
+        "icons",
+        "plasmaTheme",
+        "cursors",
+        "fonts",
+        "windowSwitcher",
+        "splashScreen",
+        "wallpaper",
+        "desktopLayout",
+        "titlebarLayout"
+      ],
+      "values": {
+        "Wallpaper/Image": "Sweet",
+        "kcminputrc/Mouse/cursorTheme": "Sweet-cursors",
+        "kdeglobals/General/ColorScheme": "SweetDark",
+        "kdeglobals/General/fixed": "Hack,9,-1,5,50,0,0,0,0,0",
+        "kdeglobals/General/font": "Noto Sans,10,-1,5,50,0,0,0,0,0",
+        "kdeglobals/Icons/Theme": "candy-icons",
+        "kdeglobals/KDE/widgetStyle": "kvantum",
+        "kdeglobals/WM/activeFont": "Noto Sans,11,-1,5,75,0,0,0,0,0",
+        "ksplashrc/KSplash/Theme": "Sweet",
+        "kwinrc/WindowSwitcher/LayoutName": "thumbnail_grid",
+        "kwinrc/org.kde.kdecoration2/BorderSize": "None",
+        "kwinrc/org.kde.kdecoration2/library": "org.kde.kwin.aurorae",
+        "kwinrc/org.kde.kdecoration2/theme": "__aurorae__svg__Sweet",
+        "plasmarc/Theme/name": "Sweet"
+      },
+      "own_colors": false
+    },
+    "question": {
+      "title": "Apply “Rich”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "checkbox",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "desktopLayout",
+          "mask": 65536,
+          "text": "Desktop layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "titlebarLayout",
+          "mask": 131072,
+          "text": "Titlebar Buttons layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "colors",
+          "mask": 1,
+          "text": "Colors",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "widgetStyle",
+          "mask": 2,
+          "text": "Application Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "windowDecoration",
+          "mask": 4,
+          "text": "Window Decoration Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "borderSize",
+          "mask": 2048,
+          "text": "Window Decoration Size",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "icons",
+          "mask": 8,
+          "text": "Icons",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "plasmaTheme",
+          "mask": 16,
+          "text": "Plasma Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "cursors",
+          "mask": 32,
+          "text": "Pointers",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "fonts",
+          "mask": 64,
+          "text": "Fonts",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "windowSwitcher",
+          "mask": 128,
+          "text": "Task Switcher",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "splashScreen",
+          "mask": 256,
+          "text": "Splash Screen",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "question_plasma_locked": {
+      "title": "Apply “Rich”?",
+      "heading": "The following will be applied by this Global Theme:",
+      "appearanceRow": "checkbox",
+      "appearanceText": "Appearance settings",
+      "appearanceChecked": true,
+      "layoutRow": "hidden",
+      "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+      "layoutChecked": false,
+      "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+      "emptyText": "",
+      "applyText": "Apply",
+      "cancelText": "Cancel",
+      "parts": [
+        {
+          "id": "titlebarLayout",
+          "mask": 131072,
+          "text": "Titlebar Buttons layout",
+          "layout": true,
+          "checked": false,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "colors",
+          "mask": 1,
+          "text": "Colors",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "widgetStyle",
+          "mask": 2,
+          "text": "Application Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "windowDecoration",
+          "mask": 4,
+          "text": "Window Decoration Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "borderSize",
+          "mask": 2048,
+          "text": "Window Decoration Size",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "icons",
+          "mask": 8,
+          "text": "Icons",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "plasmaTheme",
+          "mask": 16,
+          "text": "Plasma Style",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "cursors",
+          "mask": 32,
+          "text": "Pointers",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "fonts",
+          "mask": 64,
+          "text": "Fonts",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "windowSwitcher",
+          "mask": 128,
+          "text": "Task Switcher",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "splashScreen",
+          "mask": 256,
+          "text": "Splash Screen",
+          "layout": false,
+          "checked": true,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "layoutHeading": "Layout settings:",
+      "appearanceHeading": "Appearance settings:",
+      "moreText": "Choose what to apply…",
+      "fewerText": "Show fewer options…",
+      "moreEnabled": true,
+      "detailed": false,
+      "outsideNote": ""
+    },
+    "kde_each_part": {
+      "Colors": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"plasma-apply-colorscheme\", \"SweetDark\"], timeout: Some(10) }))"
+        ],
+        "say": "Plain"
+      },
+      "WidgetStyle": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"widgetStyle\", \"kvantum\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--type=signal\", \"/KGlobalSettings\", \"org.kde.KGlobalSettings.notifyChange\", \"int32:2\", \"int32:0\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "WindowDecoration": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"library\", \"org.kde.kwin.aurorae\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"theme\", \"--notify\", \"__aurorae__svg__Sweet\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"NoPlugin\", \"--notify\", \"false\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KWin\", \"org.kde.KWin.reloadConfig\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "BorderSize": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"BorderSize\", \"--notify\", \"None\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KWin\", \"org.kde.KWin.reloadConfig\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "Icons": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"Icons\", \"--key\", \"Theme\", \"--notify\", \"candy-icons\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--type=signal\", \"/KIconLoader\", \"org.kde.KIconLoader.iconChanged\", \"int32:0\"], timeout: None }))",
+          "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+          "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+          "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+          "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })"
+        ],
+        "say": "Plain"
+      },
+      "PlasmaTheme": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"plasma-apply-desktoptheme\", \"Sweet\"], timeout: Some(10) }))"
+        ],
+        "say": "Plain"
+      },
+      "Cursors": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"plasma-apply-cursortheme\", \"Sweet-cursors\"], timeout: None }))",
+          "Apply(IfNotOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kcminputrc\", \"--group\", \"Mouse\", \"--key\", \"cursorTheme\", \"Sweet-cursors\"], timeout: None }))",
+          "Apply(IfNotOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"Mouse\", \"--key\", \"cursorTheme\", \"Sweet-cursors\"], timeout: None }))",
+          "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+          "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+          "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })"
+        ],
+        "say": "Plain"
+      },
+      "Fonts": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"General\", \"--key\", \"font\", \"--notify\", \"Noto Sans,10,-1,5,50,0,0,0,0,0\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"General\", \"--key\", \"fixed\", \"--notify\", \"Hack,9,-1,5,50,0,0,0,0,0\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"WM\", \"--key\", \"activeFont\", \"--notify\", \"Noto Sans,11,-1,5,75,0,0,0,0,0\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KDEPlatformTheme\", \"org.kde.KDEPlatformTheme.refreshFonts\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "WindowSwitcher": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"TabBox\", \"--key\", \"LayoutName\", \"thumbnail_grid\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KWin\", \"org.kde.KWin.reloadConfig\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "SplashScreen": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"ksplashrc\", \"--group\", \"KSplash\", \"--key\", \"Theme\", \"Sweet\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"ksplashrc\", \"--group\", \"KSplash\", \"--key\", \"Engine\", \"KSplashQML\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "Wallpaper": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "DesktopLayout": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--print-reply\", \"--dest=org.kde.plasmashell\", \"/PlasmaShell\", \"org.kde.PlasmaShell.loadLookAndFeelDefaultLayout\", \"string:Rich\"], timeout: Some(30) }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"Windows\", \"--key\", \"BorderlessMaximizedWindows\", \"--notify\", \"false\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      },
+      "TitlebarLayout": {
+        "steps": [
+          "Apply(Primary(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kdeglobals\", \"--group\", \"KDE\", \"--key\", \"LookAndFeelPackage\", \"Rich\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"ButtonsOnLeft\", \"--notify\", \"MS\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"kwriteconfig6\", \"--file\", \"kwinrc\", \"--group\", \"org.kde.kdecoration2\", \"--key\", \"ButtonsOnRight\", \"--notify\", \"HIAX\"], timeout: None }))",
+          "Apply(IfOk(Cmd { argv: [\"dbus-send\", \"--session\", \"--type=signal\", \"/KWin\", \"org.kde.KWin.reloadConfig\"], timeout: None }))"
+        ],
+        "say": "Plain"
+      }
+    },
+    "outside": {
+      "mate": {
+        "question": {
+          "title": "Apply “Rich”?",
+          "heading": "The following will be applied by this Global Theme:",
+          "appearanceRow": "bullet",
+          "appearanceText": "Appearance settings",
+          "appearanceChecked": true,
+          "layoutRow": "hidden",
+          "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+          "layoutChecked": false,
+          "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+          "emptyText": "",
+          "applyText": "Apply",
+          "cancelText": "Cancel",
+          "parts": [
+            {
+              "id": "desktopLayout",
+              "mask": 65536,
+              "text": "Desktop layout",
+              "layout": true,
+              "checked": false,
+              "enabled": false,
+              "reason": "the desktop and panel layout is a Plasma script that only Plasma can run"
+            },
+            {
+              "id": "titlebarLayout",
+              "mask": 131072,
+              "text": "Titlebar Buttons layout",
+              "layout": true,
+              "checked": false,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "colors",
+              "mask": 1,
+              "text": "Colors",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "widgetStyle",
+              "mask": 2,
+              "text": "Application Style",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowDecoration",
+              "mask": 4,
+              "text": "Window Decoration Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "borderSize",
+              "mask": 2048,
+              "text": "Window Decoration Size",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "icons",
+              "mask": 8,
+              "text": "Icons",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "plasmaTheme",
+              "mask": 16,
+              "text": "Plasma Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "a Plasma Style draws Plasma's own panels and widgets, and this desktop has none of them"
+            },
+            {
+              "id": "cursors",
+              "mask": 32,
+              "text": "Pointers",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "fonts",
+              "mask": 64,
+              "text": "Fonts",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowSwitcher",
+              "mask": 128,
+              "text": "Task Switcher",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this task switcher (Alt+Tab) belongs to KWin, the Plasma window manager"
+            },
+            {
+              "id": "splashScreen",
+              "mask": 256,
+              "text": "Splash Screen",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this splash screen is shown only when Plasma starts"
+            }
+          ],
+          "layoutHeading": "Layout settings:",
+          "appearanceHeading": "Appearance settings:",
+          "moreText": "Choose what to apply…",
+          "fewerText": "Show fewer options…",
+          "moreEnabled": true,
+          "detailed": true,
+          "outsideNote": "Outside Plasma, Rexon applies the parts of the theme one by one — the ones this desktop can use."
+        },
+        "plan_simple": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.peripherals-mouse\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.Marco.general\", \"titlebar-font\", \"Noto Sans Bold 11\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        },
+        "plan_every_part": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.peripherals-mouse\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.Marco.general\", \"titlebar-font\", \"Noto Sans Bold 11\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.Marco.general\", \"button-layout\", \"'menu,stick:minimize,maximize,close'\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.mate.interface\", \"gtk-decoration-layout\", \"'menu:minimize,maximize,close'\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        }
+      },
+      "xfce": {
+        "question": {
+          "title": "Apply “Rich”?",
+          "heading": "The following will be applied by this Global Theme:",
+          "appearanceRow": "bullet",
+          "appearanceText": "Appearance settings",
+          "appearanceChecked": true,
+          "layoutRow": "hidden",
+          "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+          "layoutChecked": false,
+          "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+          "emptyText": "",
+          "applyText": "Apply",
+          "cancelText": "Cancel",
+          "parts": [
+            {
+              "id": "desktopLayout",
+              "mask": 65536,
+              "text": "Desktop layout",
+              "layout": true,
+              "checked": false,
+              "enabled": false,
+              "reason": "the desktop and panel layout is a Plasma script that only Plasma can run"
+            },
+            {
+              "id": "titlebarLayout",
+              "mask": 131072,
+              "text": "Titlebar Buttons layout",
+              "layout": true,
+              "checked": false,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "colors",
+              "mask": 1,
+              "text": "Colors",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "widgetStyle",
+              "mask": 2,
+              "text": "Application Style",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowDecoration",
+              "mask": 4,
+              "text": "Window Decoration Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "borderSize",
+              "mask": 2048,
+              "text": "Window Decoration Size",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "icons",
+              "mask": 8,
+              "text": "Icons",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "plasmaTheme",
+              "mask": 16,
+              "text": "Plasma Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "a Plasma Style draws Plasma's own panels and widgets, and this desktop has none of them"
+            },
+            {
+              "id": "cursors",
+              "mask": 32,
+              "text": "Pointers",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "fonts",
+              "mask": 64,
+              "text": "Fonts",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowSwitcher",
+              "mask": 128,
+              "text": "Task Switcher",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this task switcher (Alt+Tab) belongs to KWin, the Plasma window manager"
+            },
+            {
+              "id": "splashScreen",
+              "mask": 256,
+              "text": "Splash Screen",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this splash screen is shown only when Plasma starts"
+            }
+          ],
+          "layoutHeading": "Layout settings:",
+          "appearanceHeading": "Appearance settings:",
+          "moreText": "Choose what to apply…",
+          "fewerText": "Show fewer options…",
+          "moreEnabled": true,
+          "detailed": true,
+          "outsideNote": "Outside Plasma, Rexon applies the parts of the theme one by one — the ones this desktop can use."
+        },
+        "plan_simple": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Net/IconThemeName\", \"-s\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/CursorThemeName\", \"-s\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/FontName\", \"-n\", \"-t\", \"string\", \"-s\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/MonospaceFontName\", \"-n\", \"-t\", \"string\", \"-s\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"xfconf-query\", \"-c\", \"xfwm4\", \"-p\", \"/general/title_font\", \"-n\", \"-t\", \"string\", \"-s\", \"Noto Sans Bold 11\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        },
+        "plan_every_part": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Net/IconThemeName\", \"-s\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/CursorThemeName\", \"-s\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/FontName\", \"-n\", \"-t\", \"string\", \"-s\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"xfconf-query\", \"-c\", \"xsettings\", \"-p\", \"/Gtk/MonospaceFontName\", \"-n\", \"-t\", \"string\", \"-s\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"xfconf-query\", \"-c\", \"xfwm4\", \"-p\", \"/general/title_font\", \"-n\", \"-t\", \"string\", \"-s\", \"Noto Sans Bold 11\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"xfconf-query\", \"-c\", \"xfwm4\", \"-p\", \"/general/button_layout\", \"-n\", \"-t\", \"string\", \"-s\", \"OT|HMC\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        }
+      },
+      "gnome": {
+        "question": {
+          "title": "Apply “Rich”?",
+          "heading": "The following will be applied by this Global Theme:",
+          "appearanceRow": "bullet",
+          "appearanceText": "Appearance settings",
+          "appearanceChecked": true,
+          "layoutRow": "hidden",
+          "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+          "layoutChecked": false,
+          "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+          "emptyText": "",
+          "applyText": "Apply",
+          "cancelText": "Cancel",
+          "parts": [
+            {
+              "id": "desktopLayout",
+              "mask": 65536,
+              "text": "Desktop layout",
+              "layout": true,
+              "checked": false,
+              "enabled": false,
+              "reason": "the desktop and panel layout is a Plasma script that only Plasma can run"
+            },
+            {
+              "id": "titlebarLayout",
+              "mask": 131072,
+              "text": "Titlebar Buttons layout",
+              "layout": true,
+              "checked": false,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "colors",
+              "mask": 1,
+              "text": "Colors",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "widgetStyle",
+              "mask": 2,
+              "text": "Application Style",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowDecoration",
+              "mask": 4,
+              "text": "Window Decoration Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "borderSize",
+              "mask": 2048,
+              "text": "Window Decoration Size",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "icons",
+              "mask": 8,
+              "text": "Icons",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "plasmaTheme",
+              "mask": 16,
+              "text": "Plasma Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "a Plasma Style draws Plasma's own panels and widgets, and this desktop has none of them"
+            },
+            {
+              "id": "cursors",
+              "mask": 32,
+              "text": "Pointers",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "fonts",
+              "mask": 64,
+              "text": "Fonts",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowSwitcher",
+              "mask": 128,
+              "text": "Task Switcher",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this task switcher (Alt+Tab) belongs to KWin, the Plasma window manager"
+            },
+            {
+              "id": "splashScreen",
+              "mask": 256,
+              "text": "Splash Screen",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this splash screen is shown only when Plasma starts"
+            }
+          ],
+          "layoutHeading": "Layout settings:",
+          "appearanceHeading": "Appearance settings:",
+          "moreText": "Choose what to apply…",
+          "fewerText": "Show fewer options…",
+          "moreEnabled": true,
+          "detailed": true,
+          "outsideNote": "Outside Plasma, Rexon applies the parts of the theme one by one — the ones this desktop can use."
+        },
+        "plan_simple": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.wm.preferences\", \"titlebar-font\", \"Noto Sans Bold 11\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        },
+        "plan_every_part": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.wm.preferences\", \"titlebar-font\", \"Noto Sans Bold 11\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.wm.preferences\", \"button-layout\", \"'menu,stick:minimize,maximize,close'\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        }
+      },
+      "hyprland": {
+        "question": {
+          "title": "Apply “Rich”?",
+          "heading": "The following will be applied by this Global Theme:",
+          "appearanceRow": "bullet",
+          "appearanceText": "Appearance settings",
+          "appearanceChecked": true,
+          "layoutRow": "hidden",
+          "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+          "layoutChecked": false,
+          "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+          "emptyText": "",
+          "applyText": "Apply",
+          "cancelText": "Cancel",
+          "parts": [
+            {
+              "id": "desktopLayout",
+              "mask": 65536,
+              "text": "Desktop layout",
+              "layout": true,
+              "checked": false,
+              "enabled": false,
+              "reason": "the desktop and panel layout is a Plasma script that only Plasma can run"
+            },
+            {
+              "id": "titlebarLayout",
+              "mask": 131072,
+              "text": "Titlebar Buttons layout",
+              "layout": true,
+              "checked": false,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "colors",
+              "mask": 1,
+              "text": "Colors",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "widgetStyle",
+              "mask": 2,
+              "text": "Application Style",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowDecoration",
+              "mask": 4,
+              "text": "Window Decoration Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "borderSize",
+              "mask": 2048,
+              "text": "Window Decoration Size",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "icons",
+              "mask": 8,
+              "text": "Icons",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "plasmaTheme",
+              "mask": 16,
+              "text": "Plasma Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "a Plasma Style draws Plasma's own panels and widgets, and this desktop has none of them"
+            },
+            {
+              "id": "cursors",
+              "mask": 32,
+              "text": "Pointers",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "fonts",
+              "mask": 64,
+              "text": "Fonts",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "windowSwitcher",
+              "mask": 128,
+              "text": "Task Switcher",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this task switcher (Alt+Tab) belongs to KWin, the Plasma window manager"
+            },
+            {
+              "id": "splashScreen",
+              "mask": 256,
+              "text": "Splash Screen",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this splash screen is shown only when Plasma starts"
+            }
+          ],
+          "layoutHeading": "Layout settings:",
+          "appearanceHeading": "Appearance settings:",
+          "moreText": "Choose what to apply…",
+          "fewerText": "Show fewer options…",
+          "moreEnabled": true,
+          "detailed": true,
+          "outsideNote": "Outside Plasma, Rexon applies the parts of the theme one by one — the ones this desktop can use."
+        },
+        "plan_simple": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(ForceOk)",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(BestEffort(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteSetsOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(HyprctlCursor { theme: \"Sweet-cursors\", size: None })",
+            "Apply(WmConfig(WmConfigPlan { wm: Hyprland, candidates: [WmConfigFile { path: \"/home/t/.config/hypr/hyprland.lua\", syntax: HyprLua, own_path: \"/home/t/.config/hypr/rexon-cursor.lua\", own_content: \"-- Rexon: cursor theme. This file is rewritten by Rexon; set the cursor in Rexon instead.\\nhl.env(\\\"XCURSOR_THEME\\\", \\\"Sweet-cursors\\\")\\nhl.env(\\\"HYPRCURSOR_THEME\\\", \\\"Sweet-cursors\\\")\\n\", include_line: \"pcall(require, \\\"rexon-cursor\\\")\" }, WmConfigFile { path: \"/home/t/.config/hypr/hyprland.conf\", syntax: HyprConf, own_path: \"/home/t/.config/hypr/rexon-cursor.conf\", own_content: \"# Rexon: cursor theme. This file is rewritten by Rexon; set the cursor in Rexon instead.\\nenv = XCURSOR_THEME,Sweet-cursors\\nenv = HYPRCURSOR_THEME,Sweet-cursors\\n\", include_line: \"source = /home/t/.config/hypr/rexon-cursor.conf\" }], foreign: [], seed: None, validate: [\"Hyprland\", \"--verify-config\", \"--config\"], min_version: None }))",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))"
+          ],
+          "say": "Plain"
+        },
+        "plan_every_part": {
+          "steps": [
+            "Apply(Primary(Cmd { argv: [\"section-Colors\", \"SweetDark\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"section-WidgetStyle\", \"kvantum\"], timeout: None }))",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"icon-theme\", \"candy-icons\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-icon-theme-name\", value: \"candy-icons\" })",
+            "Apply(ForceOk)",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/kdeglobals\", section: \"[Icons]\", key: \"Theme\", value: \"candy-icons\", only_if_file: false, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(IniSetGuarded { path: \"/home/t/.config/qt5ct/qt5ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"candy-icons\", only_if_file: true, keep_existing: false })",
+            "Apply(BestEffort(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"cursor-theme\", \"Sweet-cursors\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-cursor-theme-name\", value: \"Sweet-cursors\" })",
+            "Apply(WriteSetsOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-cursor.conf\", content: \"XCURSOR_THEME=Sweet-cursors\\n\" })",
+            "Apply(HyprctlCursor { theme: \"Sweet-cursors\", size: None })",
+            "Apply(WmConfig(WmConfigPlan { wm: Hyprland, candidates: [WmConfigFile { path: \"/home/t/.config/hypr/hyprland.lua\", syntax: HyprLua, own_path: \"/home/t/.config/hypr/rexon-cursor.lua\", own_content: \"-- Rexon: cursor theme. This file is rewritten by Rexon; set the cursor in Rexon instead.\\nhl.env(\\\"XCURSOR_THEME\\\", \\\"Sweet-cursors\\\")\\nhl.env(\\\"HYPRCURSOR_THEME\\\", \\\"Sweet-cursors\\\")\\n\", include_line: \"pcall(require, \\\"rexon-cursor\\\")\" }, WmConfigFile { path: \"/home/t/.config/hypr/hyprland.conf\", syntax: HyprConf, own_path: \"/home/t/.config/hypr/rexon-cursor.conf\", own_content: \"# Rexon: cursor theme. This file is rewritten by Rexon; set the cursor in Rexon instead.\\nenv = XCURSOR_THEME,Sweet-cursors\\nenv = HYPRCURSOR_THEME,Sweet-cursors\\n\", include_line: \"source = /home/t/.config/hypr/rexon-cursor.conf\" }], foreign: [], seed: None, validate: [\"Hyprland\", \"--verify-config\", \"--config\"], min_version: None }))",
+            "Apply(WriteIfOk { dir: \"/home/t/.icons/default\", path: \"/home/t/.icons/default/index.theme\", content: \"[Icon Theme]\\nInherits=Sweet-cursors\\n\" })",
+            "Apply(Primary(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"font-name\", \"Noto Sans 10\"], timeout: None }))",
+            "Apply(IfOk(Cmd { argv: [\"gsettings\", \"set\", \"org.gnome.desktop.interface\", \"monospace-font-name\", \"Hack 9\"], timeout: None }))",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-decoration-layout\", value: \"menu:minimize,maximize,close\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-decoration-layout\", value: \"menu:minimize,maximize,close\" })"
+          ],
+          "say": "Plain"
+        }
+      },
+      "deepin": {
+        "question": {
+          "title": "Apply “Rich”?",
+          "heading": "The following will be applied by this Global Theme:",
+          "appearanceRow": "bullet",
+          "appearanceText": "Appearance settings",
+          "appearanceChecked": true,
+          "layoutRow": "hidden",
+          "layoutText": "Desktop and widget layout (from Breeze — the theme has none of its own)",
+          "layoutChecked": false,
+          "layoutWarning": "Applying the layout will delete the current desktops, panels, docks and widgets and replace them with the ones from the theme.",
+          "emptyText": "",
+          "applyText": "Apply",
+          "cancelText": "Cancel",
+          "parts": [
+            {
+              "id": "desktopLayout",
+              "mask": 65536,
+              "text": "Desktop layout",
+              "layout": true,
+              "checked": false,
+              "enabled": false,
+              "reason": "the desktop and panel layout is a Plasma script that only Plasma can run"
+            },
+            {
+              "id": "titlebarLayout",
+              "mask": 131072,
+              "text": "Titlebar Buttons layout",
+              "layout": true,
+              "checked": false,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "colors",
+              "mask": 1,
+              "text": "Colors",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "Deepin programs are drawn by its own Chameleon style, and Rexon does not replace it"
+            },
+            {
+              "id": "widgetStyle",
+              "mask": 2,
+              "text": "Application Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "Deepin programs are drawn by its own Chameleon style, and Rexon does not replace it"
+            },
+            {
+              "id": "windowDecoration",
+              "mask": 4,
+              "text": "Window Decoration Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "borderSize",
+              "mask": 2048,
+              "text": "Window Decoration Size",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "these window frames are drawn only by KWin, the Plasma window manager"
+            },
+            {
+              "id": "icons",
+              "mask": 8,
+              "text": "Icons",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "plasmaTheme",
+              "mask": 16,
+              "text": "Plasma Style",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "a Plasma Style draws Plasma's own panels and widgets, and this desktop has none of them"
+            },
+            {
+              "id": "cursors",
+              "mask": 32,
+              "text": "Pointers",
+              "layout": false,
+              "checked": true,
+              "enabled": true,
+              "reason": ""
+            },
+            {
+              "id": "fonts",
+              "mask": 64,
+              "text": "Fonts",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "In Deepin, fonts are changed only in its Control Center"
+            },
+            {
+              "id": "windowSwitcher",
+              "mask": 128,
+              "text": "Task Switcher",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this task switcher (Alt+Tab) belongs to KWin, the Plasma window manager"
+            },
+            {
+              "id": "splashScreen",
+              "mask": 256,
+              "text": "Splash Screen",
+              "layout": false,
+              "checked": false,
+              "enabled": false,
+              "reason": "this splash screen is shown only when Plasma starts"
+            }
+          ],
+          "layoutHeading": "Layout settings:",
+          "appearanceHeading": "Appearance settings:",
+          "moreText": "Choose what to apply…",
+          "fewerText": "Show fewer options…",
+          "moreEnabled": true,
+          "detailed": true,
+          "outsideNote": "Outside Plasma, Rexon applies the parts of the theme one by one — the ones this desktop can use."
+        },
+        "plan_simple": {
+          "steps": [
+            "Apply(DdeTreelandGate)",
+            "Apply(DdeTreelandGate)"
+          ],
+          "say": "Plain"
+        },
+        "plan_every_part": {
+          "steps": [
+            "Apply(DdeTreelandGate)",
+            "Apply(DdeTreelandGate)",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-3.0/settings.ini\", key: \"gtk-decoration-layout\", value: \"menu:minimize,maximize,close\" })",
+            "Apply(GtkIni { path: \"/home/t/.config/gtk-4.0/settings.ini\", key: \"gtk-decoration-layout\", value: \"menu:minimize,maximize,close\" })"
+          ],
+          "say": "Plain"
+        }
+      }
+    }
+  }
+}

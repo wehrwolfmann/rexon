@@ -1,0 +1,421 @@
+Rexon
+Copyright 2026 Wehrwolfmann
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this software except in compliance with the License. You may obtain a copy
+of the License in the LICENSE file or at http://www.apache.org/licenses/LICENSE-2.0
+
+"Rexon" and the Rexon logo are trademarks of Wehrwolfmann. The License does
+not grant permission to use them (Apache License 2.0, section 6).
+
+This product includes or distributes third-party software listed below, each
+under its own license. The waywallen KDE wallpaper plugin is a separate program
+shipped alongside Rexon and is not covered by the Apache License; it is the
+unmodified official upstream release archive downloaded when the package is
+built, not part of the Rexon source tree. (Its license is recorded two ways
+upstream, MIT and GPL-2.0-or-later; both texts are shipped until upstream
+clarifies.) The wallpaper engine itself (the waywallen daemon and the Open
+Wallpaper Engine plugin) is by default not shipped with Rexon: the
+distribution package depends on the separate system packages waywallen and
+open-wallpaper-engine, which carry their own licenses and sources. Only the
+bundled-engine build (REXON_BUNDLED_ENGINE=1: Steam, manual installation)
+ships both as separate programs alongside Rexon: the unmodified upstream
+waywallen AppImage (MIT) and the unmodified Open Wallpaper Engine plugin
+release (GPL-2.0-only) together with its complete corresponding source code
+in /usr/share/rexon/sources; neither is covered by the Apache License. The
+login splash program
+rexon-splash-overlay links the system libmpv (GPL-2.0-or-later); as a built
+binary it is distributed under GPL-3.0-or-later, while its source code, like
+the rest of Rexon, stays under the Apache License 2.0.
+
+================================================================
+
+Rexon — атрибуции стороннего программного обеспечения (NOTICE)
+================================================================
+
+waywallen
+---------
+https://github.com/hypengw/waywallen
+Copyright (c) 2026 hypengw
+Лицензия: MIT
+
+Использование в Rexon:
+  * Вкладка «Wallpaper Engine» (data/qt_wallpaper_engine/ и крейт rust/rexon-gui) воспроизводит
+    дизайн интерфейса waywallen-ui (реимплементация на Rust/QML, собственный код).
+  * Вендоренные QML-файлы и русский каталог перевода интерфейса
+    waywallen @v0.4.4 (data/qt_wallpaper_engine/qml_ui/waywallen/ui/) —
+    дословно, поверх них наша серия правок отдельными файлами
+    (data/qt_wallpaper_engine/qml_ui/waywallen/patches/, разбор каждой —
+    в ATTRIBUTION.md рядом).
+  * Порт модели редактора фильтров ui/src/model/filter_rule_model.cpp
+    на Rust через cxx-qt (rust/rexon-qt-filter/). Прежняя промежуточная
+    C++-копия (qml_ui/cpp/filter_rule_model.cpp) удалена 2026-07-27 —
+    атрибуция относится к Rust-порту как производной работе от того же
+    исходника.
+  * Порт QML-синглтона Notify (ui/src/notify.cpp: разбор событий демона
+    и переход состояния) на Rust (rust/rexon-core/src/we_notify.rs) —
+    производная работа от того же исходника; в порт внесены починки
+    (см. шапку модуля).
+  * Порт утилит QML-синглтона Util (ui/src/util.cpp: BBCode→HTML описаний
+    Steam Workshop, проводной формат цвета, детект рабочего стола) на Rust
+    (rust/rexon-core/src/we_util.rs) — производная работа от того же
+    исходника; в порт внесены починки (см. шапку модуля).
+  * Порт базы запросов qextra::QAsyncResult/qextra::Query (async.cpp,
+    query.cpp: автомат статуса асинхронного результата) и простых
+    запросов вкладки (ui/src/query/health_query.cpp, renderer_query.cpp,
+    tag_query.cpp) на Rust (rust/rexon-core/src/we_query.rs) —
+    производная работа от тех же исходников; расхождения с оригиналом
+    перечислены в шапке модуля.
+  * Порт конвертера настроек (ui/src/query/settings_query.cpp:
+    global_to_map/map_to_global, plugins_to_map/map_to_plugins) на Rust
+    (rust/rexon-core/src/we_settings.rs) — производная работа от того же
+    исходника; в порт внесены починки (см. шапку модуля).
+  * Порт страницы «Обои» (ui/src/query/wallpaper_query.cpp:
+    WallpaperListQuery, WallpaperGetQuery и карта записи библиотеки)
+    на Rust (rust/rexon-core/src/we_wallpaper.rs) — производная работа
+    от того же исходника; в порт внесены починки (см. шапку модуля).
+  * Копии protobuf-схем control plane демона waywallen
+    (data/qt_wallpaper_engine/proto/control.proto, filter.proto).
+    Структуры Rust печатаются из них на сборке (prost); прежние
+    Python-биндинги (*_pb2.py) — в архиве _archived/tools/we_proto/, в
+    поставку не входят.
+  * Сам демон waywallen — ОТДЕЛЬНЫЙ процесс (D-Bus + WebSocket), и с
+    30.10.2026 Rexon его НЕ поставляет: пакет Rexon для дистрибутивов
+    зависит от системного пакета waywallen (не старше 0.5.0 — тега, с
+    которого сняты протокол и интерфейс выше), который ставит и обновляет
+    пакетный менеджер; лицензию и исходники демона несёт его пакет. Rexon
+    запускает его как отдельную программу (/usr/bin/waywallen).
+  * Исключение — сборка с вшитым движком (REXON_BUNDLED_ENGINE=1: поставка
+    Steam, ручная установка). Она везёт выпуск v0.5.0 без изменений:
+    /usr/lib/rexon/engine/waywallen.AppImage (официальный
+    waywallen-0.5.0-x86_64.AppImage, sha256 e6216c5f…90083). Текст MIT
+    ниже; отдельным файлом — /usr/share/licenses/rexon-git/LICENSE.waywallen-MIT.
+    ⚠️ Внутри AppImage апстрим везёт сторонние библиотеки со своими
+    лицензиями: Qt 6 (LGPL-3.0), GLib (LGPL-2.1+), FFmpeg (libavcodec,
+    libavformat, libavutil, libswresample, libswscale — LGPL-2.1+), libiconv
+    (LGPL-2.1+), libva, dav1d, libwebp, libpng, libjpeg, libtiff, ICU,
+    OpenSSL, zstd, brotli, xcb и другие. Rexon распространяет их в составе
+    неизменённого образа апстрима; исходники этих библиотек — у их проектов
+    (версии определяются содержимым образа).
+
+Текст лицензии MIT:
+
+  MIT License
+
+  Copyright (c) 2026 hypengw
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+waywallen-display (Plasma-плагин обоев org.waywallen.kde)
+---------------------------------------------------------
+https://github.com/waywallen/waywallen-display (выпуск v0.4.1)
+Copyright (c) 2026 hypengw
+Лицензия: у апстрима записана двояко — файл extensions/kde/LICENSE несёт
+MIT, а metadata.json плазмоида объявляет GPL-2.0-or-later. Уточнение
+запрошено у автора (waywallen/waywallen-display#70); до ответа пакет ставит
+оба текста: /usr/share/licenses/rexon-git/LICENSE.waywallen-kde-MIT и
+LICENSE.waywallen-kde-GPL-2.0.
+
+Использование в Rexon:
+  * Плазмоид `org.waywallen.kde` в репозитории Rexon не лежит. Пакет при
+    сборке скачивает официальный архив выпуска
+    `waywallen-kde-0.4.1-x86_64-embed.zip` (sha256 = digest выпуска на
+    GitHub: 5358ce1693a23b69c7fe1751d1b8afb976ef4c96574875ee845a38df01383743),
+    распаковывает его в
+    /usr/lib/rexon/rexon/kpackage/ и ставит БЕЗ ИЗМЕНЕНИЙ: наших правок
+    поверх нет, двоичный файл не стрипуется. Рядом кладётся только наш
+    файл-описание vendor.toml (версия и сумма архива). Ставит плазмоид в
+    Plasma не Rexon, а `kpackagetool6`; исполняет его `plasmashell`, не
+    наш процесс.
+  * Вложенная в плазмоид `contents/ui/Plugin/WaywallenDisplayEmbed/
+    libwaywallen-display-qml.so` — **MIT**: это сборка их библиотеки
+    waywallen-display (Cargo.toml: `license = "MIT"`, корневой LICENSE —
+    MIT © 2026 hypengw) из plugins/qml/ + src/, линкуется она только с
+    Qt6 (`objdump -p`: libQt6Quick/DBus/Qml/Gui/Core, libstdc++, libc).
+  * Если верна запись GPL-2.0-or-later, копилефт на код Rexon (Apache-2.0)
+    не переходит: плазмоид — ОТДЕЛЬНАЯ работа, которую грузит и исполняет
+    plasmashell; Rexon её не линкует и не включает в свои двоичные файлы,
+    а в пакете это «простое объединение» (mere aggregation, GPL-2 §2,
+    последний абзац). Работа передаётся неизменённой, с текстом лицензии.
+  Текст лицензии MIT — как у waywallen выше, та же строка
+  Copyright (c) 2026 hypengw.
+
+QmlMaterial (QML-плагин оформления вкладки обоев; в дереве НЕТ, в поставке ЕСТЬ)
+-------------------------------------------------------------------------------
+https://github.com/hypengw/QmlMaterial
+(коммит f1464c52d42732acb1363122b9b1a2360fd505b3 — пин
+data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN)
+Copyright (c) 2024-2025 hypengw (hypengwip@gmail.com)
+Лицензия: MIT
+
+Использование в Rexon:
+  * Модуль Qcm.Material, на котором построена вендорная разметка waywallen
+    (кнопки, списки, значки вкладки обоев). Исходников в дереве Rexon нет:
+    пакет при сборке берёт их по пину выше, собирает БЕЗ ИЗМЕНЕНИЙ
+    (tools/build_qml_material.sh) и ставит в
+    /usr/lib/rexon/qml_modules/Qcm/Material/.
+  * Вместе с плагином едут шрифты значков Material Symbols из того же
+    репозитория на ту же ревизию (MaterialSymbolsRounded, без изменений) —
+    работа Google (https://github.com/google/material-design-icons),
+    лицензия Apache-2.0; её текст — LICENSE в корне Rexon.
+  * Текст лицензии — /usr/share/licenses/rexon-git/LICENSE.QmlMaterial
+    (MIT, та же строка Copyright).
+
+QExtra (QML-плагин картинок вкладки обоев; в дереве НЕТ, в поставке ЕСТЬ)
+-----------------------------------------------------------------------
+https://github.com/hypengw/QExtra
+(коммит b3fd790bb4a5c5cf7c0cc0384cc140e78e627609)
+Copyright (c) 2026 hypengw
+Лицензия: MIT OR Apache-2.0 (по выбору; Rexon использует на условиях MIT)
+
+Использование в Rexon:
+  * Типы QE.AnimatedImage и QE.ImageCache, которые зовёт вендорная разметка
+    waywallen (миниатюры и анимации библиотеки обоев), даёт плагин автора.
+    Исходников QExtra в дереве Rexon нет: пакет при сборке берёт их по
+    ревизии из tools/qextra_plugin/lito.lock (срез lito.lock того выпуска
+    waywallen, с которого вендорена разметка) и собирает БЕЗ ИЗМЕНЕНИЙ в
+    общую библиотеку
+    /usr/lib/rexon/qml_modules/QExtra/libqextraplugin.so. Наш код в ней —
+    только склейка плагина (tools/qextra_plugin/: класс
+    QQmlEngineExtensionPlugin, около 20 строк, Apache-2.0).
+  * Плагин грузит движок QML в процесс окна Rexon. Когда плагина нет или
+    он собран под другую версию Qt, вместо него работает наша QML-подмена
+    data/qt_wallpaper_engine/qml_ui/QExtra/ — собственный код, не
+    производная работа от QExtra.
+  * В плагин СТАТИЧЕСКИ входят библиотеки, от которых зависит QExtra — все
+    без изменений, ревизии и суммы закреплены тем же lito.lock:
+      - wavsen — https://github.com/hypengw/wavsen
+        (коммит 756437443d84905a027f115c75ec6ae6b19692e7),
+        Copyright (c) 2026 hypengw, MIT OR Apache-2.0;
+      - ncrequest — https://github.com/hypengw/ncrequest
+        (коммит 2ba60ef6321f5e7f5bccc5fe086d2682bcaccf40),
+        Copyright (c) 2024-2025 hypengw (hypengwip@gmail.com), MIT;
+      - rstd 0.1.9 (пакеты rstd-alloc, rstd-basic, rstd-core, rstd-cppstd,
+        rstd-dlopn, rstd-log, rstd-parse, rstd-runtime, rstd-std) —
+        https://github.com/litocpp/rstd, Copyright (c) 2025 hypengw,
+        MIT OR Apache-2.0;
+      - lihttpto 0.1.1 — реестр https://registry.litocpp.org/,
+        Copyright (c) 2025 hypengw, MIT OR Apache-2.0;
+      - liwebsocketo 0.1.0 — тот же реестр, Copyright (c) 2025 hypengw,
+        MIT OR Apache-2.0;
+      - licrypto 0.1.2 — тот же реестр, Copyright (c) 2026 hypengw,
+        MIT OR Apache-2.0;
+      - vvk 0.1.1 — тот же реестр, Copyright (c) 2026 hypengw,
+        MIT OR Apache-2.0.
+    Все они, как и QExtra, используются на условиях MIT. Сборочные
+    сценарии lito-qt 0.1.1 (MIT OR Apache-2.0) в двоичный файл не входят.
+  * С Qt 6, FFmpeg (libavcodec, libavformat, libavutil, libswresample,
+    libswscale), libva и libcurl плагин линкуется ДИНАМИЧЕСКИ: это
+    зависимости пакета (packaging/aur/PKGBUILD), в пакет Rexon они не
+    входят, их ставит пакетный менеджер.
+  * Тексты лицензий в пакете, /usr/share/licenses/rexon-git/:
+    LICENSE.QExtra-MIT (тот же текст и та же строка Copyright (c) 2026
+    hypengw — у wavsen, vvk и licrypto), LICENSE.ncrequest-MIT,
+    LICENSE.lihttpto-MIT (тот же текст и та же строка Copyright (c) 2025
+    hypengw — у liwebsocketo и у rstd, архивы которого своего файла
+    лицензии не несут).
+
+open-wallpaper-engine (плагин org.waywallen.open-wallpaper-engine)
+------------------------------------------------------------------
+https://github.com/waywallen/open-wallpaper-engine
+Лицензия: GPL-2.0-only (уточнено апстримом 24.09.2026)
+
+Использование в Rexon:
+  * Рендер scene- и web-обоев Wallpaper Engine выполняют рендереры
+    waywallen-wescene-renderer и waywallen-weweb-renderer этого плагина.
+    Это ОТДЕЛЬНЫЕ исполняемые процессы, которые запускает демон waywallen
+    (fork/exec); Rexon их код не линкует и не включает в свои бинари.
+  * С 30.10.2026 Rexon плагин НЕ поставляет: пакет Rexon для дистрибутивов
+    зависит от системного пакета open-wallpaper-engine (не старше 0.3.2),
+    который ставит плагин в /usr/share/waywallen/plugins/ и несёт его
+    лицензию, исходники и зависимости (CEF и др.).
+  * Исключение — сборка с вшитым движком (REXON_BUNDLED_ENGINE=1). Она
+    везёт официальный выпуск плагина без изменений (v0.3.2, коммит
+    dd07afa79d3e8c34daa61391cc641954d3d01fe0):
+    /usr/lib/rexon/engine/plugins/org.waywallen.open-wallpaper-engine/
+    (org.waywallen.open-wallpaper-engine-0.3.2-linux-x86_64.zip,
+    sha256 282c97fc…6ad0). В пакете это «простое объединение» (mere
+    aggregation, GPL-2 §2).
+    GPL-2 §3(a): полный соответствующий исходник того же тега — вместе с
+    зависимостями сборки из lito.lock и исходниками обёртки CEF — лежит
+    рядом, /usr/share/rexon/sources/open-wallpaper-engine-0.3.2-src.tar.xz
+    (перечень — SOURCES.txt внутри архива). Текст лицензии —
+    /usr/share/licenses/rexon-git/LICENSE.open-wallpaper-engine-GPL-2.0.
+    Внутри плагина апстрим везёт CEF (Chromium Embedded Framework,
+    BSD-3-Clause, © Marshall A. Greenblatt; Chromium — © The Chromium
+    Authors) — /usr/share/licenses/rexon-git/LICENSE.CEF-BSD-3-Clause;
+    а также ANGLE (libEGL, libGLESv2), SwiftShader и загрузчик Vulkan.
+
+Ruffle
+------
+https://github.com/ruffle-rs/ruffle (ревизия 9525d0fb8773a0d1868940918385e66360927a07)
+Copyright (c) 2018-2022 Ruffle LLC <ruffle@ruffle.rs> and Ruffle contributors
+Лицензия: MIT OR Apache-2.0 (по выбору; Rexon использует на условиях MIT)
+
+Использование в Rexon:
+  * Flash-обои (SWF): режим `rexon-wallpaper-host --mode swf`. Крейты
+    ruffle_core и ruffle_render_wgpu подключены как библиотека
+    (rust/rexon-swf/, git-зависимость на указанную ревизию) и статически
+    линкуются в хост обоев. Код Ruffle не изменён.
+  * Тестовые ролики rust/rexon-swf/tests/data/*.swf взяты из тестов Ruffle
+    (tests/tests/swfs/avm2/morph_shape, audio/stream_incomplete_loop);
+    в поставку не входят.
+  Текст лицензии MIT — как у waywallen выше, со строкой Copyright Ruffle.
+
+fxtranslate (движок автоперевода описаний)
+------------------------------------------
+https://crates.io/crates/fxtranslate (версия 0.4.2)
+Репозиторий в метаданных крейта: https://github.com/gregtatum/translations
+(каталог inference-rs/crates/fxtranslate ветки inference-rs)
+Лицензия: MPL-2.0
+
+Использование в Rexon:
+  * Автоперевод описаний оформления (en→ru) выполняет реализация движка
+    переводов Firefox на Rust. Крейт ВЕНДОРЕН в дерево
+    (rust/vendor/fxtranslate/crate — побайтово опубликованный на crates.io
+    архив, sha256 прибита в scripts/sync-fxtranslate.py) и статически
+    линкуется в ядро; пересборка вендора — той же одной командой.
+  * Наши правки крейта лежат ОДНИМ файлом
+    rust/vendor/fxtranslate/patches/0001-*.patch и тронуто ими шесть файлов:
+    build.rs, src/engine.rs, src/gemm.rs, src/gemmology_shim.cpp,
+    src/ops.rs, src/shortlist.rs. Главные — выбор набора инструкций по
+    CPUID (без него движок падает с SIGILL на x86-64 без AVX2, причём уже
+    после загрузки модели) и починка первого токена декодирования.
+  * MPL-2.0 — копилефт ПОФАЙЛОВЫЙ: он распространяется на изменённые нами
+    файлы самого крейта, а не на остальной код Rexon (Apache-2.0), который с ним
+    линкуется. Обязанность «выложить исходники изменённых файлов»
+    закрывается публикацией того самого патча: пакет ставит его в
+    /usr/share/licenses/rexon-git/fxtranslate-0.4.2-rexon.patch рядом с
+    текстом лицензии (LICENSE.fxtranslate-MPL-2.0).
+  * Фичи download/net/discovery НЕ включены: движок никуда не ходит, модель
+    прибита гвоздями в поставке.
+  Полный текст MPL-2.0: rust/vendor/fxtranslate/crate/LICENSE.
+  Разбор обязанностей и порядок вендоринга:
+  rust/vendor/fxtranslate/ATTRIBUTION.md.
+
+gemmology (внутри fxtranslate)
+------------------------------
+Copyright (c) 2023 Serge Guelton
+Лицензия: MIT
+
+Использование в Rexon:
+  * Заголовочная библиотека ядра умножения int8, вендоренная АПСТРИМОМ
+    внутрь крейта fxtranslate (rust/vendor/fxtranslate/crate/vendor/
+    gemmology/). Не изменялась. Собирается в составе шима
+    src/gemmology_shim.cpp — четырьмя копиями под разные наборы инструкций
+    (см. выше). Текст лицензии — там же, LICENSE; в пакете —
+    /usr/share/licenses/rexon-git/LICENSE.gemmology-MIT.
+
+xsimd (внутри fxtranslate)
+--------------------------
+Copyright (c) 2016, Johan Mabille, Sylvain Corlay, Wolf Vollprecht and Martin Renou
+Copyright (c) 2016, QuantStack
+Copyright (c) 2018, Serge Guelton
+All rights reserved.
+Лицензия: BSD-3-Clause
+
+Использование в Rexon:
+  * Заголовки SIMD-абстракции, вендоренные АПСТРИМОМ внутрь крейта
+    fxtranslate (rust/vendor/fxtranslate/crate/vendor/xsimd/). Не
+    изменялись; без них шим ядра умножения не собрать. BSD-3-Clause требует
+    воспроизвести уведомление в документации — этим уведомлением оно и
+    воспроизведено; полный текст — там же, LICENSE, в пакете —
+    /usr/share/licenses/rexon-git/LICENSE.xsimd-BSD-3-Clause.
+
+Модель перевода Firefox en→ru (в дереве НЕТ, в поставке ЕСТЬ)
+-------------------------------------------------------------
+https://github.com/mozilla/translations
+Файлы модели: ведро Mozilla
+https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data
+/models/en-ru/student_base_AYqN3ysXRp2EGkEqeaA5Rg/exported
+Лицензия: MPL-2.0 (заявлено в README апстрима: «The model files are
+distributed under the MPL 2.0 license»)
+
+Использование в Rexon:
+  * Автоперевод описаний оформления (en→ru) грузит эти файлы движком
+    fxtranslate (см. выше). Редакция — архитектура `base`, статус
+    «Release Desktop»; короткий список (lex.*.bin) не везётся.
+  * Файлы модели идут НЕИЗМЕНЁННЫМИ — менять их нам нечем, поэтому
+    пофайлового копилефта MPL-2.0 они не задевают и раскрывать по ним
+    нечего. Их источник — ведро Mozilla по ссылке выше; sha256 и
+    архивов, и распакованных файлов прибиты в packaging/aur/PKGBUILD.
+  * В дерево репозитория модель НЕ кладётся (43 МБ): поставка качает
+    архивы и распаковывает их в каталог данных продукта,
+    <данные>/translate/enru/{model.enru.intgemm.alphas.bin,
+    vocab.enru.spm} — там же, где ядро её ищет
+    (translator_engine::MODEL_DIR_REL). У пакета дистрибутива это
+    /usr/lib/rexon/rexon/translate/enru.
+  * Текст лицензии в пакете —
+    /usr/share/licenses/rexon-git/LICENSE.translations-model-MPL-2.0
+    (тот же дословный документ MPL-2.0, что у крейта: своего файла
+    лицензии ведро модели не отдаёт).
+
+mpv / libmpv (заставка входа)
+-----------------------------
+https://mpv.io, https://github.com/mpv-player/mpv
+Лицензия: GPL-2.0-or-later (сборка дистрибутива; mpv в Arch/CachyOS —
+GPL-2.0-or-later AND LGPL-2.1-or-later)
+
+Использование в Rexon:
+  * Программа заставки входа rexon-splash-overlay (rust/rexon-splash-overlay/)
+    динамически линкуется с системной libmpv (render API) и через неё — с
+    FFmpeg дистрибутива. libmpv в пакет Rexon НЕ входит: это зависимость
+    пакета (`mpv` в packaging/aur/PKGBUILD), её ставит пакетный менеджер.
+  * Исходный код rexon-splash-overlay — наш и остаётся под Apache-2.0.
+    Собранный двоичный файл rexon-splash-overlay как объединённая работа с
+    libmpv распространяется на условиях GPL-3.0-or-later (Apache-2.0
+    совместима с GPL-3.0; libmpv допускает «or later»). Полный
+    соответствующий исходник — исходный код Rexon (этот репозиторий) и
+    исходники mpv/FFmpeg у их проектов и в дистрибутиве.
+  * Остальные программы Rexon с libmpv не линкуются. Steamworks SDK в
+    rexon-splash-overlay нет.
+
+Noto Sans (подмножество шрифта)
+-------------------------------
+https://github.com/notofonts/latin-greek-cyrillic
+Copyright 2022 The Noto Project Authors
+Лицензия: SIL Open Font License 1.1
+
+Использование в Rexon:
+  * Ruffle (фича default_font крейта ruffle_core) встраивает подмножество
+    Noto Sans в хост обоев — шрифт для текста Flash-роликов, у которых нет
+    своего. Полный текст лицензии: rust/rexon-swf/NotoSans-OFL-1.1.txt,
+    в пакете — /usr/share/licenses/rexon-git/LICENSE.NotoSans-OFL-1.1.
+
+Снимки рабочих столов (карусель вкладки «Рабочие столы»)
+--------------------------------------------------------
+Чужие снимки в пакет НЕ входят: Rexon скачивает их по адресам из
+rust/rexon-core/src/screenshots.rs (`SCREENSHOT_URLS`) в кэш пользователя
+(~/.config/rexon/screenshots) и показывает как есть. Источники — Wikimedia
+Commons (лицензия и автор — на странице файла), официальные сайты и
+репозитории окружений. Для Wayfire:
+  * https://github.com/WayfireWM/wf-shell, каталог gallery/ (default.png,
+    legacy.png) — лицензия репозитория MIT, Copyright (c) 2018 Ilia Bozhinov;
+  * https://github.com/WayfireWM/wayfire-wiki, каталог images/
+    (cube-normal.png, switcher.png) — официальная вики проекта Wayfire
+    (зеркало вики репозитория WayfireWM/wayfire); своей лицензии у вики
+    не указано, у самого репозитория Wayfire — MIT.
+
+Свои снимки River (data/assets/screenshots/river*.png) В ПАКЕТ ВХОДЯТ.
+Сняты Wehrwolfmann 24.10.2026 во вложенном сеансе river-classic 0.3.17
+(снимки ни у проекта, ни на Commons нет) и распространяются на условиях
+Apache-2.0 вместе с Rexon. На экране — интерфейсы свободных программ
+(river, rivertile, waybar, foot, Thunar, btop, vim, micro, fastfetch) со
+значками темы Adwaita (LGPL-3.0-or-later / CC BY-SA 3.0); фон — наш
+сплошной градиент, личных данных и чужих товарных знаков в кадре нет.

@@ -1,0 +1,3816 @@
+{
+ "_source": "Замер на KDE: палитра схемы KColorScheme::createApplicationPalette (KF6ColorScheme 6.31), заголовок — [Colors:Header], иначе [WM] activeBackground/activeForeground, иначе выделение; тёмная — qGray(фон окна) < 192. Снято 31.10.2026 программой на KColorScheme. real — схемы из local_preview_cases.json (parse_colors_real, тексты там); plasma_styles — стили Plasma машины, где снимали (нет файла colors — follows).",
+ "synthetic": [
+  {
+   "label": "empty",
+   "text": "",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "window_only_dark",
+   "text": "[Colors:Window]\nBackgroundNormal=30,30,30\nForegroundNormal=220,220,220\n",
+   "gray": 30,
+   "dark": true,
+   "window": [
+    30,
+    30,
+    30
+   ],
+   "window_text": [
+    220,
+    220,
+    220
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "wm_title",
+   "text": "[Colors:Window]\nBackgroundNormal=200,200,200\nForegroundNormal=20,20,20\n[WM]\nactiveBackground=10,100,200\nactiveForeground=250,250,250\n",
+   "gray": 200,
+   "dark": false,
+   "window": [
+    200,
+    200,
+    200
+   ],
+   "window_text": [
+    20,
+    20,
+    20
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    10,
+    100,
+    200
+   ],
+   "title_text": [
+    250,
+    250,
+    250
+   ]
+  },
+  {
+   "label": "header_wins_over_wm",
+   "text": "[Colors:Window]\nBackgroundNormal=60,60,60\nForegroundNormal=200,200,200\n[WM]\nactiveBackground=10,100,200\n[Colors:Header]\nBackgroundNormal=1,2,3\nForegroundNormal=4,5,6\n",
+   "gray": 60,
+   "dark": true,
+   "window": [
+    60,
+    60,
+    60
+   ],
+   "window_text": [
+    200,
+    200,
+    200
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    1,
+    2,
+    3
+   ],
+   "title_text": [
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "label": "header_group_without_colors",
+   "text": "[Colors:Header]\nDecorationFocus=1,1,1\n",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    222,
+    224,
+    226
+   ],
+   "title_text": [
+    35,
+    38,
+    41
+   ]
+  },
+  {
+   "label": "no_title_uses_selection",
+   "text": "[Colors:Window]\nBackgroundNormal=10,20,30\n[Colors:Selection]\nBackgroundNormal=7,8,9\nForegroundNormal=10,11,12\n",
+   "gray": 18,
+   "dark": true,
+   "window": [
+    10,
+    20,
+    30
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    7,
+    8,
+    9
+   ],
+   "selection_text": [
+    10,
+    11,
+    12
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    7,
+    8,
+    9
+   ],
+   "title_text": [
+    10,
+    11,
+    12
+   ]
+  },
+  {
+   "label": "full_sets",
+   "text": "[Colors:Window]\nBackgroundNormal=10,20,30\nForegroundNormal=200,200,200\n[Colors:View]\nBackgroundNormal=1,2,3\nForegroundNormal=4,5,6\n[Colors:Selection]\nBackgroundNormal=7,8,9\nForegroundNormal=10,11,12\n[Colors:Button]\nBackgroundNormal=13,14,15\nForegroundNormal=16,17,18\n",
+   "gray": 18,
+   "dark": true,
+   "window": [
+    10,
+    20,
+    30
+   ],
+   "window_text": [
+    200,
+    200,
+    200
+   ],
+   "view": [
+    1,
+    2,
+    3
+   ],
+   "view_text": [
+    4,
+    5,
+    6
+   ],
+   "selection": [
+    7,
+    8,
+    9
+   ],
+   "selection_text": [
+    10,
+    11,
+    12
+   ],
+   "button": [
+    13,
+    14,
+    15
+   ],
+   "button_text": [
+    16,
+    17,
+    18
+   ],
+   "title": [
+    7,
+    8,
+    9
+   ],
+   "title_text": [
+    10,
+    11,
+    12
+   ]
+  },
+  {
+   "label": "hex",
+   "text": "[Colors:Window]\nBackgroundNormal=#c0c0c0\nForegroundNormal=#101010\n",
+   "gray": 192,
+   "dark": false,
+   "window": [
+    192,
+    192,
+    192
+   ],
+   "window_text": [
+    16,
+    16,
+    16
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "gray_192_light",
+   "text": "[Colors:Window]\nBackgroundNormal=192,192,192\n",
+   "gray": 192,
+   "dark": false,
+   "window": [
+    192,
+    192,
+    192
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "gray_191_dark",
+   "text": "[Colors:Window]\nBackgroundNormal=191,191,191\n",
+   "gray": 191,
+   "dark": true,
+   "window": [
+    191,
+    191,
+    191
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "rounding_193_192_190",
+   "text": "[Colors:Window]\nBackgroundNormal=193,192,190\n",
+   "gray": 192,
+   "dark": false,
+   "window": [
+    193,
+    192,
+    190
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "spaces",
+   "text": "[Colors:Window]\nBackgroundNormal = 40 , 50 , 60 \n",
+   "gray": 48,
+   "dark": true,
+   "window": [
+    40,
+    50,
+    60
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "alpha",
+   "text": "[Colors:Window]\nBackgroundNormal=10,20,30,128\n",
+   "gray": 18,
+   "dark": true,
+   "window": [
+    10,
+    20,
+    30
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "out_of_range",
+   "text": "[Colors:Window]\nBackgroundNormal=300,20,30\n",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "two_parts",
+   "text": "[Colors:Window]\nBackgroundNormal=20,30\n",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "other_group_same_key",
+   "text": "[Colors:View]\nBackgroundNormal=1,1,1\n[Colors:Window]\nForegroundNormal=9,9,9\n",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    9,
+    9,
+    9
+   ],
+   "view": [
+    1,
+    1,
+    1
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "label": "last_entry_wins",
+   "text": "[Colors:Window]\nBackgroundNormal=250,250,250\nBackgroundNormal=20,20,20\n",
+   "gray": 20,
+   "dark": true,
+   "window": [
+    20,
+    20,
+    20
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    61,
+    174,
+    233
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  }
+ ],
+ "real": [
+  {
+   "file": "BreezeClassic.colors",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    39
+   ],
+   "view": [
+    252,
+    252,
+    252
+   ],
+   "view_text": [
+    35,
+    38,
+    39
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    239,
+    240,
+    241
+   ],
+   "button_text": [
+    35,
+    38,
+    39
+   ],
+   "title": [
+    71,
+    80,
+    87
+   ],
+   "title_text": [
+    252,
+    252,
+    252
+   ]
+  },
+  {
+   "file": "BreezeDark.colors",
+   "gray": 34,
+   "dark": true,
+   "window": [
+    32,
+    35,
+    38
+   ],
+   "window_text": [
+    252,
+    252,
+    252
+   ],
+   "view": [
+    20,
+    22,
+    24
+   ],
+   "view_text": [
+    252,
+    252,
+    252
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    41,
+    44,
+    48
+   ],
+   "button_text": [
+    252,
+    252,
+    252
+   ],
+   "title": [
+    41,
+    44,
+    48
+   ],
+   "title_text": [
+    252,
+    252,
+    252
+   ]
+  },
+  {
+   "file": "BreezeLight.colors",
+   "gray": 239,
+   "dark": false,
+   "window": [
+    239,
+    240,
+    241
+   ],
+   "window_text": [
+    35,
+    38,
+    41
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    35,
+    38,
+    41
+   ],
+   "selection": [
+    61,
+    174,
+    233
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    35,
+    38,
+    41
+   ],
+   "title": [
+    222,
+    224,
+    226
+   ],
+   "title_text": [
+    35,
+    38,
+    41
+   ]
+  },
+  {
+   "file": "CachyOSNord.colors",
+   "gray": 28,
+   "dark": true,
+   "window": [
+    24,
+    27,
+    40
+   ],
+   "window_text": [
+    102,
+    194,
+    242
+   ],
+   "view": [
+    22,
+    25,
+    37
+   ],
+   "view_text": [
+    71,
+    173,
+    218
+   ],
+   "selection": [
+    71,
+    173,
+    214
+   ],
+   "selection_text": [
+    10,
+    11,
+    12
+   ],
+   "button": [
+    30,
+    34,
+    51
+   ],
+   "button_text": [
+    49,
+    181,
+    235
+   ],
+   "title": [
+    30,
+    34,
+    51
+   ],
+   "title_text": [
+    49,
+    181,
+    235
+   ]
+  },
+  {
+   "file": "CachyOSNordLightly.colors",
+   "gray": 35,
+   "dark": true,
+   "window": [
+    30,
+    34,
+    51
+   ],
+   "window_text": [
+    102,
+    194,
+    242
+   ],
+   "view": [
+    22,
+    25,
+    37
+   ],
+   "view_text": [
+    71,
+    173,
+    218
+   ],
+   "selection": [
+    71,
+    173,
+    214
+   ],
+   "selection_text": [
+    10,
+    11,
+    12
+   ],
+   "button": [
+    30,
+    34,
+    51
+   ],
+   "button_text": [
+    49,
+    181,
+    235
+   ],
+   "title": [
+    30,
+    34,
+    51
+   ],
+   "title_text": [
+    49,
+    181,
+    235
+   ]
+  },
+  {
+   "file": "Emerald.colors",
+   "gray": 255,
+   "dark": false,
+   "window": [
+    255,
+    255,
+    255
+   ],
+   "window_text": [
+    1,
+    1,
+    1
+   ],
+   "view": [
+    250,
+    251,
+    252
+   ],
+   "view_text": [
+    1,
+    1,
+    1
+   ],
+   "selection": [
+    0,
+    144,
+    20
+   ],
+   "selection_text": [
+    250,
+    251,
+    252
+   ],
+   "button": [
+    255,
+    255,
+    255
+   ],
+   "button_text": [
+    1,
+    1,
+    1
+   ],
+   "title": [
+    12,
+    14,
+    20
+   ],
+   "title_text": [
+    211,
+    218,
+    227
+   ]
+  },
+  {
+   "file": "EmeraldDark.colors",
+   "gray": 28,
+   "dark": true,
+   "window": [
+    24,
+    27,
+    40
+   ],
+   "window_text": [
+    0,
+    199,
+    144
+   ],
+   "view": [
+    22,
+    25,
+    37
+   ],
+   "view_text": [
+    2,
+    189,
+    136
+   ],
+   "selection": [
+    0,
+    144,
+    20
+   ],
+   "selection_text": [
+    254,
+    254,
+    254
+   ],
+   "button": [
+    30,
+    34,
+    51
+   ],
+   "button_text": [
+    33,
+    255,
+    180
+   ],
+   "title": [
+    30,
+    34,
+    51
+   ],
+   "title_text": [
+    33,
+    255,
+    180
+   ]
+  },
+  {
+   "file": "EmeraldLight.colors",
+   "gray": 255,
+   "dark": false,
+   "window": [
+    255,
+    255,
+    255
+   ],
+   "window_text": [
+    1,
+    1,
+    1
+   ],
+   "view": [
+    250,
+    251,
+    252
+   ],
+   "view_text": [
+    1,
+    1,
+    1
+   ],
+   "selection": [
+    0,
+    144,
+    20
+   ],
+   "selection_text": [
+    250,
+    251,
+    252
+   ],
+   "button": [
+    255,
+    255,
+    255
+   ],
+   "button_text": [
+    1,
+    1,
+    1
+   ],
+   "title": [
+    255,
+    255,
+    255
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "EmeraldSmooth.colors",
+   "gray": 27,
+   "dark": true,
+   "window": [
+    26,
+    28,
+    32
+   ],
+   "window_text": [
+    211,
+    218,
+    227
+   ],
+   "view": [
+    30,
+    32,
+    36
+   ],
+   "view_text": [
+    211,
+    218,
+    227
+   ],
+   "selection": [
+    0,
+    144,
+    20
+   ],
+   "selection_text": [
+    254,
+    254,
+    254
+   ],
+   "button": [
+    29,
+    31,
+    35
+   ],
+   "button_text": [
+    195,
+    199,
+    209
+   ],
+   "title": [
+    26,
+    28,
+    32
+   ],
+   "title_text": [
+    211,
+    218,
+    227
+   ]
+  },
+  {
+   "file": "IridescentLightly.colors",
+   "gray": 7,
+   "dark": true,
+   "window": [
+    8,
+    4,
+    19
+   ],
+   "window_text": [
+    23,
+    147,
+    209
+   ],
+   "view": [
+    6,
+    3,
+    15
+   ],
+   "view_text": [
+    23,
+    147,
+    209
+   ],
+   "selection": [
+    16,
+    158,
+    230
+   ],
+   "selection_text": [
+    22,
+    14,
+    33
+   ],
+   "button": [
+    17,
+    10,
+    38
+   ],
+   "button_text": [
+    80,
+    178,
+    255
+   ],
+   "title": [
+    6,
+    3,
+    15
+   ],
+   "title_text": [
+    23,
+    147,
+    209
+   ]
+  },
+  {
+   "file": "IridescentLightly2.colors",
+   "gray": 7,
+   "dark": true,
+   "window": [
+    8,
+    4,
+    19
+   ],
+   "window_text": [
+    23,
+    147,
+    209
+   ],
+   "view": [
+    6,
+    3,
+    15
+   ],
+   "view_text": [
+    23,
+    147,
+    209
+   ],
+   "selection": [
+    16,
+    158,
+    230
+   ],
+   "selection_text": [
+    22,
+    14,
+    33
+   ],
+   "button": [
+    17,
+    10,
+    38
+   ],
+   "button_text": [
+    80,
+    178,
+    255
+   ],
+   "title": [
+    6,
+    3,
+    15
+   ],
+   "title_text": [
+    23,
+    147,
+    209
+   ]
+  },
+  {
+   "file": "IridescentLightly3.colors",
+   "gray": 8,
+   "dark": true,
+   "window": [
+    1,
+    11,
+    18
+   ],
+   "window_text": [
+    23,
+    147,
+    209
+   ],
+   "view": [
+    1,
+    14,
+    23
+   ],
+   "view_text": [
+    23,
+    147,
+    209
+   ],
+   "selection": [
+    16,
+    158,
+    230
+   ],
+   "selection_text": [
+    22,
+    14,
+    33
+   ],
+   "button": [
+    17,
+    10,
+    38
+   ],
+   "button_text": [
+    80,
+    178,
+    255
+   ],
+   "title": [
+    1,
+    14,
+    23
+   ],
+   "title_text": [
+    23,
+    147,
+    209
+   ]
+  },
+  {
+   "file": "KvAdapta.colors",
+   "gray": 250,
+   "dark": false,
+   "window": [
+    250,
+    251,
+    252
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    0,
+    188,
+    212
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    251,
+    251,
+    252
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    34,
+    45,
+    50
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvAdaptaDark.colors",
+   "gray": 46,
+   "dark": true,
+   "window": [
+    38,
+    50,
+    56
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    42,
+    53,
+    59
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    0,
+    188,
+    212
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    45,
+    57,
+    63
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    34,
+    45,
+    50
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvAmbiance.colors",
+   "gray": 241,
+   "dark": false,
+   "window": [
+    242,
+    241,
+    240
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    220,
+    100,
+    52
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    242,
+    241,
+    240
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    60,
+    59,
+    55
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvAmbience.colors",
+   "gray": 229,
+   "dark": false,
+   "window": [
+    230,
+    229,
+    228
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    250,
+    250,
+    250
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    220,
+    100,
+    52
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    230,
+    229,
+    228
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    83,
+    81,
+    73
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvArc.colors",
+   "gray": 245,
+   "dark": false,
+   "window": [
+    245,
+    246,
+    247
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    82,
+    148,
+    226
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    251,
+    251,
+    252
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    231,
+    232,
+    235
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvArcDark.colors",
+   "gray": 60,
+   "dark": true,
+   "window": [
+    56,
+    60,
+    74
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    64,
+    69,
+    82
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    82,
+    148,
+    226
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    65,
+    70,
+    84
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    47,
+    52,
+    63
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvBeige.colors",
+   "gray": 235,
+   "dark": false,
+   "window": [
+    239,
+    235,
+    231
+   ],
+   "window_text": [
+    20,
+    19,
+    18
+   ],
+   "view": [
+    251,
+    251,
+    251
+   ],
+   "view_text": [
+    20,
+    19,
+    18
+   ],
+   "selection": [
+    129,
+    117,
+    106
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    239,
+    235,
+    231
+   ],
+   "button_text": [
+    20,
+    19,
+    18
+   ],
+   "title": [
+    239,
+    235,
+    231
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvBlender.colors",
+   "gray": 128,
+   "dark": true,
+   "window": [
+    128,
+    128,
+    128
+   ],
+   "window_text": [
+    0,
+    0,
+    0
+   ],
+   "view": [
+    177,
+    177,
+    177
+   ],
+   "view_text": [
+    0,
+    0,
+    0
+   ],
+   "selection": [
+    85,
+    85,
+    85
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    150,
+    150,
+    150
+   ],
+   "button_text": [
+    0,
+    0,
+    0
+   ],
+   "title": [
+    110,
+    110,
+    110
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvBrown.colors",
+   "gray": 72,
+   "dark": true,
+   "window": [
+    80,
+    70,
+    64
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    34,
+    30
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    200,
+    194,
+    174
+   ],
+   "selection_text": [
+    0,
+    0,
+    0
+   ],
+   "button": [
+    80,
+    70,
+    64
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    80,
+    70,
+    64
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvCurves.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    140,
+    16,
+    17
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    61,
+    61,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvCurves3d1.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    195,
+    195,
+    195
+   ],
+   "selection_text": [
+    0,
+    0,
+    0
+   ],
+   "button": [
+    61,
+    61,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvCurvesLight.colors",
+   "gray": 229,
+   "dark": false,
+   "window": [
+    229,
+    229,
+    230
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    251,
+    251,
+    251
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    93,
+    134,
+    197
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    229,
+    229,
+    230
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    229,
+    229,
+    230
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvCyan.colors",
+   "gray": 79,
+   "dark": true,
+   "window": [
+    56,
+    87,
+    104
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    35,
+    35,
+    50
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    0,
+    124,
+    160
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    56,
+    87,
+    104
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    56,
+    87,
+    104
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvDark.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    195,
+    195,
+    195
+   ],
+   "selection_text": [
+    0,
+    0,
+    0
+   ],
+   "button": [
+    61,
+    61,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvDarkRed.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    140,
+    16,
+    17
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    61,
+    61,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvFlat.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    63,
+    103,
+    165
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    85,
+    85,
+    85
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvFlatLight.colors",
+   "gray": 234,
+   "dark": false,
+   "window": [
+    234,
+    234,
+    235
+   ],
+   "window_text": [
+    0,
+    0,
+    0
+   ],
+   "view": [
+    252,
+    252,
+    252
+   ],
+   "view_text": [
+    0,
+    0,
+    0
+   ],
+   "selection": [
+    45,
+    130,
+    173
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    220,
+    220,
+    220
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvFlatRed.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    162,
+    18,
+    21
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    85,
+    85,
+    85
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvGnome.colors",
+   "gray": 245,
+   "dark": false,
+   "window": [
+    246,
+    245,
+    244
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    53,
+    132,
+    228
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    241,
+    239,
+    238
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    225,
+    222,
+    219
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvGnomeAlt.colors",
+   "gray": 233,
+   "dark": false,
+   "window": [
+    233,
+    233,
+    233
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    74,
+    144,
+    217
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    233,
+    233,
+    233
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    233,
+    233,
+    233
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvGnomeDark.colors",
+   "gray": 53,
+   "dark": true,
+   "window": [
+    53,
+    53,
+    53
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    45,
+    45,
+    45
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    21,
+    83,
+    158
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    53,
+    53,
+    53
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    45,
+    45,
+    45
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvGnomish.colors",
+   "gray": 60,
+   "dark": true,
+   "window": [
+    57,
+    63,
+    63
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    33,
+    93,
+    156
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    57,
+    63,
+    63
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    57,
+    63,
+    63
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvGray.colors",
+   "gray": 235,
+   "dark": false,
+   "window": [
+    235,
+    235,
+    237
+   ],
+   "window_text": [
+    20,
+    19,
+    18
+   ],
+   "view": [
+    240,
+    240,
+    240
+   ],
+   "view_text": [
+    20,
+    19,
+    18
+   ],
+   "selection": [
+    100,
+    100,
+    100
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    235,
+    235,
+    237
+   ],
+   "button_text": [
+    20,
+    19,
+    18
+   ],
+   "title": [
+    235,
+    235,
+    237
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvMojave.colors",
+   "gray": 50,
+   "dark": true,
+   "window": [
+    51,
+    50,
+    48
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    195,
+    195,
+    198
+   ],
+   "selection_text": [
+    0,
+    0,
+    0
+   ],
+   "button": [
+    102,
+    102,
+    105
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    62,
+    67
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvMojaveLight.colors",
+   "gray": 235,
+   "dark": false,
+   "window": [
+    235,
+    235,
+    235
+   ],
+   "window_text": [
+    5,
+    5,
+    5
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    5,
+    5,
+    5
+   ],
+   "selection": [
+    105,
+    105,
+    105
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    235,
+    235,
+    235
+   ],
+   "button_text": [
+    5,
+    5,
+    5
+   ],
+   "title": [
+    220,
+    220,
+    220
+   ],
+   "title_text": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "file": "KvMojaveMixed.colors",
+   "gray": 235,
+   "dark": false,
+   "window": [
+    235,
+    235,
+    235
+   ],
+   "window_text": [
+    5,
+    5,
+    5
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    5,
+    5,
+    5
+   ],
+   "selection": [
+    85,
+    85,
+    85
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    235,
+    235,
+    235
+   ],
+   "button_text": [
+    5,
+    5,
+    5
+   ],
+   "title": [
+    61,
+    62,
+    67
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvMojaveMixed1.colors",
+   "gray": 235,
+   "dark": false,
+   "window": [
+    235,
+    235,
+    235
+   ],
+   "window_text": [
+    5,
+    5,
+    5
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    5,
+    5,
+    5
+   ],
+   "selection": [
+    56,
+    109,
+    140
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    235,
+    235,
+    235
+   ],
+   "button_text": [
+    5,
+    5,
+    5
+   ],
+   "title": [
+    61,
+    62,
+    67
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvOxygen.colors",
+   "gray": 219,
+   "dark": false,
+   "window": [
+    222,
+    219,
+    218
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    250,
+    250,
+    250
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    49,
+    118,
+    191
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    230,
+    228,
+    226
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    222,
+    219,
+    218
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvRoughGlass.colors",
+   "gray": 220,
+   "dark": false,
+   "window": [
+    220,
+    220,
+    220
+   ],
+   "window_text": [
+    20,
+    19,
+    18
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    20,
+    19,
+    18
+   ],
+   "selection": [
+    100,
+    100,
+    100
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    230,
+    230,
+    230
+   ],
+   "button_text": [
+    20,
+    19,
+    18
+   ],
+   "title": [
+    220,
+    220,
+    220
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvSimplicity.colors",
+   "gray": 240,
+   "dark": false,
+   "window": [
+    240,
+    240,
+    240
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    49,
+    118,
+    191
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    240,
+    240,
+    240
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    240,
+    240,
+    240
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "KvSimplicityDark.colors",
+   "gray": 62,
+   "dark": true,
+   "window": [
+    62,
+    62,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    65,
+    111,
+    161
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    62,
+    62,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    62,
+    62,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvSimplicityDarkLight.colors",
+   "gray": 62,
+   "dark": true,
+   "window": [
+    62,
+    62,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    40,
+    40,
+    40
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    195,
+    195,
+    195
+   ],
+   "selection_text": [
+    0,
+    0,
+    0
+   ],
+   "button": [
+    62,
+    62,
+    62
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    62,
+    62,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvSimplicityTurquoise.colors",
+   "gray": 240,
+   "dark": false,
+   "window": [
+    240,
+    240,
+    240
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    250,
+    250,
+    250
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    56,
+    109,
+    120
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    240,
+    240,
+    240
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    62,
+    62,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvYaru.colors",
+   "gray": 247,
+   "dark": false,
+   "window": [
+    247,
+    247,
+    247
+   ],
+   "window_text": [
+    49,
+    54,
+    59
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    49,
+    54,
+    59
+   ],
+   "selection": [
+    233,
+    84,
+    32
+   ],
+   "selection_text": [
+    252,
+    252,
+    252
+   ],
+   "button": [
+    252,
+    252,
+    252
+   ],
+   "button_text": [
+    49,
+    54,
+    59
+   ],
+   "title": [
+    247,
+    247,
+    247
+   ],
+   "title_text": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "file": "Kvantum.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    115,
+    115,
+    115
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    73,
+    73,
+    73
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "KvantumAlt.colors",
+   "gray": 61,
+   "dark": true,
+   "window": [
+    61,
+    61,
+    62
+   ],
+   "window_text": [
+    255,
+    255,
+    255
+   ],
+   "view": [
+    46,
+    46,
+    46
+   ],
+   "view_text": [
+    255,
+    255,
+    255
+   ],
+   "selection": [
+    0,
+    90,
+    180
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    73,
+    73,
+    73
+   ],
+   "button_text": [
+    255,
+    255,
+    255
+   ],
+   "title": [
+    61,
+    61,
+    62
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "Oxygen.colors",
+   "gray": 211,
+   "dark": false,
+   "window": [
+    214,
+    210,
+    208
+   ],
+   "window_text": [
+    34,
+    31,
+    30
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    31,
+    28,
+    27
+   ],
+   "selection": [
+    67,
+    172,
+    232
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    223,
+    220,
+    217
+   ],
+   "button_text": [
+    34,
+    31,
+    30
+   ],
+   "title": [
+    48,
+    174,
+    232
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "OxygenCold.colors",
+   "gray": 223,
+   "dark": false,
+   "window": [
+    224,
+    223,
+    222
+   ],
+   "window_text": [
+    20,
+    19,
+    18
+   ],
+   "view": [
+    255,
+    255,
+    255
+   ],
+   "view_text": [
+    20,
+    19,
+    18
+   ],
+   "selection": [
+    65,
+    139,
+    212
+   ],
+   "selection_text": [
+    255,
+    255,
+    255
+   ],
+   "button": [
+    232,
+    231,
+    230
+   ],
+   "button_text": [
+    20,
+    19,
+    18
+   ],
+   "title": [
+    96,
+    148,
+    207
+   ],
+   "title_text": [
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "file": "OxygenDark.colors",
+   "gray": 36,
+   "dark": true,
+   "window": [
+    38,
+    36,
+    35
+   ],
+   "window_text": [
+    255,
+    232,
+    223
+   ],
+   "view": [
+    30,
+    29,
+    29
+   ],
+   "view_text": [
+    255,
+    230,
+    222
+   ],
+   "selection": [
+    247,
+    159,
+    82
+   ],
+   "selection_text": [
+    38,
+    36,
+    35
+   ],
+   "button": [
+    57,
+    53,
+    50
+   ],
+   "button_text": [
+    255,
+    234,
+    225
+   ],
+   "title": [
+    56,
+    51,
+    49
+   ],
+   "title_text": [
+    59,
+    57,
+    55
+   ]
+  }
+ ],
+ "plasma_styles": [
+  {
+   "name": "CachyOS-Nord-round",
+   "colors": null,
+   "tone": "follows"
+  },
+  {
+   "name": "Iridescent-round",
+   "colors": null,
+   "tone": "follows"
+  },
+  {
+   "name": "air",
+   "colors": "[Colors:Button]\nBackgroundAlternate=218,221,215\nBackgroundNormal=218,221,215\nForegroundActive=255,0,0\nForegroundInactive=152,154,149\nForegroundLink=0,0,255\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=50,50,50\nForegroundPositive=0,95,0\nForegroundVisited=88,55,150\n\n[Colors:Selection]\nForegroundActive=255,128,224\nForegroundInactive=165,193,228\nForegroundLink=0,49,110\nForegroundNegative=156,14,14\nForegroundNeutral=255,221,0\nForegroundNormal=50,50,50\nForegroundPositive=128,255,128\nForegroundVisited=69,40,134\n\n[Colors:Tooltip]\nBackgroundAlternate=255,248,209\nBackgroundNormal=255,255,255\nDecorationFocus=239,132,65\nDecorationHover=72,177,60\nForegroundActive=255,0,0\nForegroundInactive=232,185,149\nForegroundLink=0,0,255\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=50,50,50\nForegroundPositive=0,95,0\nForegroundVisited=88,55,150\n\n[Colors:View]\nBackgroundAlternate=248,247,246\nBackgroundNormal=255,255,255\nForegroundActive=255,128,224\nForegroundInactive=36,35,34\nForegroundLink=0,87,174\nForegroundNegative=191,3,3\nForegroundNeutral=176,128,0\nForegroundNormal=50,50,50\nForegroundPositive=0,110,40\nForegroundVisited=100,74,155\n\n[Colors:Window]\nBackgroundAlternate=218,217,216\nBackgroundNormal=255,255,255\nDecorationFocus=43,116,199\nDecorationHover=119,183,255\nForegroundActive=10,128,224\nForegroundInactive=36,35,34\nForegroundLink=0,87,174\nForegroundNegative=191,3,3\nForegroundNeutral=176,128,0\nForegroundNormal=40,40,40\nForegroundPositive=0,110,40\nForegroundVisited=100,74,155\n\n[Colors:Complementary]\nBackgroundAlternate=59,64,69\nBackgroundNormal=49,54,59\nDecorationFocus=30,146,255\nDecorationHover=61,174,230\nForegroundActive=246,116,0\nForegroundInactive=175,176,179\nForegroundLink=61,174,230\nForegroundNegative=237,21,21\nForegroundNeutral=201,206,59\nForegroundNormal=239,240,241\nForegroundPositive=17,209,22\nForegroundVisited=61,174,230\n\n[Colors:Header]\nBackgroundAlternate=218,217,216\nBackgroundNormal=255,255,255\nDecorationFocus=43,116,199\nDecorationHover=119,183,255\nForegroundActive=10,128,224\nForegroundInactive=36,35,34\nForegroundLink=0,87,174\nForegroundNegative=191,3,3\nForegroundNeutral=176,128,0\nForegroundNormal=50,50,50\nForegroundPositive=0,110,40\nForegroundVisited=100,74,155\n\n[General]\nshadeSortColumn=true\n\n[KDE]\ncontrast=7\n\n[WM]\nactiveBackground=65,142,220\nactiveForeground=255,255,255\ninactiveBackground=157,170,186\ninactiveForeground=65,142,220\n",
+   "tone": "light"
+  },
+  {
+   "name": "breeze-dark",
+   "colors": "[ColorEffects:Disabled]\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=30,87,116\nBackgroundNormal=41,44,48\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=30,87,116\nBackgroundNormal=32,35,38\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=30,87,116\nForegroundActive=252,252,252\nForegroundInactive=161,169,177\nForegroundLink=253,188,75\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=32,35,38\nBackgroundNormal=41,44,48\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=29,31,34\nBackgroundNormal=20,22,24\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=41,44,48\nBackgroundNormal=32,35,38\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorScheme=Breeze Dark\nName=Breeze Dark\nshadeSortColumn=true\n\n[KDE]\ncontrast=4\n\n[WM]\nactiveBackground=39,44,49\nactiveBlend=252,252,252\nactiveForeground=252,252,252\ninactiveBackground=32,36,40\ninactiveBlend=161,169,177\ninactiveForeground=161,169,177\n",
+   "tone": "dark"
+  },
+  {
+   "name": "breeze-light",
+   "colors": "[ColorEffects:Disabled]\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=163,212,250\nBackgroundNormal=247,247,247\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=27,30,32\nBackgroundNormal=42,46,50\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=239,240,241\nBackgroundNormal=222,224,226\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=227,229,231\nBackgroundNormal=239,240,241\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=163,212,250\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=255,255,255\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=239,240,241\nBackgroundNormal=247,247,247\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=247,247,247\nBackgroundNormal=255,255,255\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=227,229,231\nBackgroundNormal=239,240,241\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorScheme=Breeze Light\nName=Breeze Light\nshadeSortColumn=true\n\n[KDE]\ncontrast=4\n\n[WM]\nactiveBackground=227,229,231\nactiveBlend=227,229,231\nactiveForeground=35,38,41\ninactiveBackground=239,240,241\ninactiveBlend=239,240,241\ninactiveForeground=112,125,138\n",
+   "tone": "light"
+  },
+  {
+   "name": "cachyos-emerald",
+   "colors": null,
+   "tone": "follows"
+  },
+  {
+   "name": "cachyos-emerald-color",
+   "colors": "[ColorEffects:Disabled]\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=64,69,82\nBackgroundNormal=30,34,51\nDecorationFocus=10,112,78\nDecorationHover=12,130,90\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=0,168,255\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=33,255,180\nForegroundPositive=113,247,159\nForegroundVisited=77,0,250\n\n[Colors:Complementary]\nBackgroundAlternate=64,69,82\nBackgroundNormal=30,34,51\nDecorationFocus=16,81,87\nDecorationHover=16,53,56\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=41,128,185\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=0,132,91\nForegroundPositive=113,247,159\nForegroundVisited=69,40,134\n\n[Colors:Header]\nBackgroundAlternate=64,69,82\nBackgroundNormal=30,34,51\nDecorationFocus=16,81,87\nDecorationHover=16,53,56\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=41,128,185\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=0,132,91\nForegroundPositive=113,247,159\nForegroundVisited=69,40,134\n\n[Colors:Header][Inactive]\nBackgroundAlternate=64,69,82\nBackgroundNormal=30,34,51\nDecorationFocus=16,81,87\nDecorationHover=16,53,56\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=41,128,185\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=0,132,91\nForegroundPositive=113,247,159\nForegroundVisited=69,40,134\n\n[Colors:Selection]\nBackgroundAlternate=0,109,12\nBackgroundNormal=0,144,20\nDecorationFocus=66,14,210\nDecorationHover=66,14,210\nForegroundActive=252,252,252\nForegroundInactive=211,218,227\nForegroundLink=253,188,75\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=254,254,254\nForegroundPositive=113,247,159\nForegroundVisited=189,195,199\n\n[Colors:Tooltip]\nBackgroundAlternate=22,25,37\nBackgroundNormal=53,57,69\nDecorationFocus=0,109,12\nDecorationHover=0,144,20\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=0,168,255\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=11,212,135\nForegroundPositive=113,247,159\nForegroundVisited=77,0,250\n\n[Colors:View]\nBackgroundAlternate=20,26,33\nBackgroundNormal=22,25,37\nDecorationFocus=0,109,12\nDecorationHover=0,144,20\nForegroundActive=0,193,228\nForegroundInactive=102,106,115\nForegroundLink=69,149,255\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=2,189,136\nForegroundPositive=113,247,159\nForegroundVisited=124,183,255\n\n[Colors:Window]\nBackgroundAlternate=22,25,37\nBackgroundNormal=24,27,40\nDecorationFocus=0,109,12\nDecorationHover=0,144,20\nForegroundActive=61,174,233\nForegroundInactive=102,106,115\nForegroundLink=0,168,255\nForegroundNegative=41,189,13\nForegroundNeutral=255,106,0\nForegroundNormal=0,199,144\nForegroundPositive=113,247,159\nForegroundVisited=179,13,191\n\n[General]\nColorScheme=EmeraldDark\nName=EmeraldDark\nshadeSortColumn=true\n\n[KDE]\ncontrast=0\n\n[WM]\nactiveBackground=12,14,20\nactiveBlend=22,25,37\nactiveForeground=0,188,128\ninactiveBackground=22,25,37\ninactiveBlend=22,25,37\ninactiveForeground=1,77,52\n",
+   "tone": "dark"
+  },
+  {
+   "name": "cachyos-emerald-light",
+   "colors": "[ColorEffects:Disabled]\nColor=56,56,56\nColorAmount=0\nColorEffect=0\nContrastAmount=0.65\nContrastEffect=1\nIntensityAmount=0.1\nIntensityEffect=2\n\n[ColorEffects:Inactive]\nChangeSelectionColor=true\nColor=112,111,110\nColorAmount=0.025\nColorEffect=2\nContrastAmount=0.1\nContrastEffect=2\nEnable=false\nIntensityAmount=0\nIntensityEffect=0\n\n[Colors:Button]\nBackgroundAlternate=163,212,250\nBackgroundNormal=247,247,247\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Complementary]\nBackgroundAlternate=27,30,32\nBackgroundNormal=42,46,50\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=161,169,177\nForegroundLink=29,153,243\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=252,252,252\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header]\nBackgroundAlternate=239,240,241\nBackgroundNormal=222,224,226\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Header][Inactive]\nBackgroundAlternate=227,229,231\nBackgroundNormal=239,240,241\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Selection]\nBackgroundAlternate=163,212,250\nBackgroundNormal=61,174,233\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=255,255,255\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Tooltip]\nBackgroundAlternate=239,240,241\nBackgroundNormal=247,247,247\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:View]\nBackgroundAlternate=247,247,247\nBackgroundNormal=255,255,255\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[Colors:Window]\nBackgroundAlternate=227,229,231\nBackgroundNormal=239,240,241\nDecorationFocus=61,174,233\nDecorationHover=61,174,233\nForegroundActive=61,174,233\nForegroundInactive=112,125,138\nForegroundLink=41,128,185\nForegroundNegative=218,68,83\nForegroundNeutral=246,116,0\nForegroundNormal=35,38,41\nForegroundPositive=39,174,96\nForegroundVisited=155,89,182\n\n[General]\nColorScheme=EmeraldLight\nName=EmeraldLight\nshadeSortColumn=true\n\n[KDE]\ncontrast=4\n\n[WM]\nactiveBackground=227,229,231\nactiveBlend=227,229,231\nactiveForeground=35,38,41\ninactiveBackground=239,240,241\ninactiveBlend=239,240,241\ninactiveForeground=112,125,138\n",
+   "tone": "light"
+  },
+  {
+   "name": "default",
+   "colors": null,
+   "tone": "follows"
+  },
+  {
+   "name": "oxygen",
+   "colors": "[Colors:Button]\nBackgroundAlternate=0,0,0\nBackgroundNormal=40,40,40\nForegroundActive=255,255,255\nForegroundInactive=152,154,149\nForegroundLink=164,192,228\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=230,231,232\nForegroundPositive=0,95,0\nForegroundVisited=97,147,207\n\n[Colors:Selection]\nForegroundActive=255,0,0\nForegroundInactive=177,202,232\nForegroundLink=0,0,255\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=255,248,209\nForegroundPositive=0,95,0\nForegroundVisited=88,55,150\n\n[Colors:Tooltip]\nBackgroundAlternate=40,40,40\nBackgroundNormal=50,50,50\nDecorationFocus=239,132,65\nDecorationHover=119,183,255\nForegroundActive=255,255,255\nForegroundInactive=152,152,152\nForegroundLink=164,192,228\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=230,231,232\nForegroundPositive=0,95,0\nForegroundVisited=97,147,207\n\n[Colors:View]\nBackgroundAlternate=0,0,0\nBackgroundNormal=30,30,30\nForegroundActive=246,116,0\nForegroundInactive=152,152,152\nForegroundLink=61,174,230\nForegroundNegative=237,21,21\nForegroundNeutral=201,206,59\nForegroundNormal=230,231,232\nForegroundPositive=17,209,22\nForegroundVisited=97,147,207\n\n[Colors:Window]\nBackgroundAlternate=40,40,40\nBackgroundNormal=0,0,0\nDecorationFocus=239,132,65\nDecorationHover=119,183,255\nForegroundActive=255,255,255\nForegroundInactive=152,152,152\nForegroundLink=164,192,228\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=230,231,232\nForegroundPositive=0,95,0\nForegroundVisited=97,147,207\n\n[Colors:Header]\nBackgroundAlternate=40,40,40\nBackgroundNormal=0,0,0\nDecorationFocus=239,132,65\nDecorationHover=119,183,255\nForegroundActive=255,255,255\nForegroundInactive=152,152,152\nForegroundLink=164,192,228\nForegroundNegative=107,0,0\nForegroundNeutral=0,90,95\nForegroundNormal=230,231,232\nForegroundPositive=0,95,0\nForegroundVisited=97,147,207\n\n[General]\nshadeSortColumn=true\n\n[KDE]\ncontrast=7\n\n[WM]\nactiveBackground=65,142,220\nactiveForeground=255,255,255\ninactiveBackground=157,170,186\ninactiveForeground=65,142,220\n",
+   "tone": "dark"
+  }
+ ]
+}

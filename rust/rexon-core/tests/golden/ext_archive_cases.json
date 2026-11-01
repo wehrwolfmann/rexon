@@ -1,0 +1,87 @@
+{
+ "absolute_member.rxn": {
+  "what": "абсолютный путь записи",
+  "extract": {
+   "error": "ValueError",
+   "msg": "ZipSlip: опасный путь в архиве: '/abs.txt'"
+  },
+  "read_manifest_text": {
+   "error": "KeyError",
+   "msg": "'manifest.json отсутствует в архиве absolute_member.rxn'"
+  }
+ },
+ "dotdot_middle.rxn": {
+  "what": "`..` в середине пути",
+  "extract": {
+   "files": [
+    "a/b.txt",
+    "c.txt",
+    "d/e/f.txt",
+    "manifest.json"
+   ]
+  },
+  "read_manifest_text": {
+   "text": "{\"id\":\"x\"}"
+  }
+ },
+ "manifest_cp1251.rxn": {
+  "what": "cp1251-манифест",
+  "extract": {
+   "files": [
+    "data/video/1080p.mp4",
+    "manifest.json"
+   ]
+  },
+  "read_manifest_text": {
+   "text": "{\"format_version\": 4, \"type\": \"wallpaper-video-adaptive\", \"title\": \"������ ����\"}"
+  }
+ },
+ "no_manifest.rxn": {
+  "what": "нет manifest.json",
+  "extract": {
+   "files": [
+    "data/x.txt"
+   ]
+  },
+  "read_manifest_text": {
+   "error": "KeyError",
+   "msg": "'manifest.json отсутствует в архиве no_manifest.rxn'"
+  }
+ },
+ "sample.rxn": {
+  "what": "существующий эталон",
+  "extract": {
+   "files": [
+    "data/audio/ru.mp3",
+    "data/video/1080p.mp4",
+    "icon.png",
+    "manifest.json"
+   ]
+  },
+  "read_manifest_text": {
+   "text": "{\"format_version\": 4, \"type\": \"wallpaper-video-adaptive\", \"title\": \"Demo\"}"
+  }
+ },
+ "truncated.rxn": {
+  "what": "обрезанный ZIP",
+  "extract": {
+   "error": "BadZipFile",
+   "msg": "File is not a zip file"
+  },
+  "read_manifest_text": {
+   "error": "BadZipFile",
+   "msg": "File is not a zip file"
+  }
+ },
+ "zipslip.rxn": {
+  "what": "существующий эталон",
+  "extract": {
+   "error": "ValueError",
+   "msg": "ZipSlip: опасный путь в архиве: '../evil.txt'"
+  },
+  "read_manifest_text": {
+   "error": "KeyError",
+   "msg": "'manifest.json отсутствует в архиве zipslip.rxn'"
+  }
+ }
+}

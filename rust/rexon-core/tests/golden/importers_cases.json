@@ -1,0 +1,5430 @@
+{
+ "tp_ci_ok": {
+  "fn": "themepack_can_import",
+  "args": {
+   "path": "/sb/a/Pack.THEMEPACK"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/a/Pack.THEMEPACK",
+    "n": 4,
+    "result_b64": "TVNDRg=="
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "tp_ci_badmagic": {
+  "fn": "themepack_can_import",
+  "args": {
+   "path": "/sb/a/pack.deskthemepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/a/pack.deskthemepack",
+    "n": 4,
+    "result_b64": "UEsDBA=="
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "tp_ci_wrongext": {
+  "fn": "themepack_can_import",
+  "args": {
+   "path": "/sb/a/pack.zip"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "ok": false
+  }
+ },
+ "tp_ci_unreadable": {
+  "fn": "themepack_can_import",
+  "args": {
+   "path": "/sb/a/nope.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "open_fail",
+    "path": "/sb/a/nope.themepack",
+    "binary": true
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "tp_ci_short": {
+  "fn": "themepack_can_import",
+  "args": {
+   "path": "/sb/a/tiny.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/a/tiny.themepack",
+    "n": 4,
+    "result_b64": "TVM="
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_theme_ok": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/luna.Theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_text",
+    "path": "/sb/b/luna.Theme",
+    "n": 500,
+    "result": "; comment\n[Theme]\nDisplayName=Luna\n"
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_theme_cp": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/old.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_text",
+    "path": "/sb/b/old.theme",
+    "n": 500,
+    "result": "[Control Panel\\Colors]\nBackground=0 0 0\n"
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_theme_no": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/notheme.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_text",
+    "path": "/sb/b/notheme.theme",
+    "n": 500,
+    "result": "just text, no sections\n"
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_theme_unreadable": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/ghost.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "open_fail",
+    "path": "/sb/b/ghost.theme",
+    "binary": false
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_dream_yes": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/aurora.dream"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "isfile",
+    "path": "/sb/b/aurora.dream",
+    "result": true
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_wmv_no_file": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/ghost.wmv"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "isfile",
+    "path": "/sb/b/ghost.wmv",
+    "result": false
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_gadget_yes": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/clock.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "is_zipfile",
+    "path": "/sb/b/clock.gadget",
+    "result": true
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_gadget_no": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/fake.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "is_zipfile",
+    "path": "/sb/b/fake.gadget",
+    "result": false
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_gadget_missing": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/ghost.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "is_zipfile",
+    "path": "/sb/b/ghost.gadget",
+    "result": null
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_msstyles_yes": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/luna.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/b/luna.msstyles",
+    "n": 2,
+    "result_b64": "TVo="
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_msstyles_no": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/bad.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/b/bad.msstyles",
+    "n": 2,
+    "result_b64": "RUw="
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "wt_ci_cursor": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/point.ANI"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_icons": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/icons.ip"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "ok": true
+  }
+ },
+ "wt_ci_unknown": {
+  "fn": "wt_can_import",
+  "args": {
+   "path": "/sb/b/what.xyz"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "ok": false
+  }
+ },
+ "cur_ci_dir_yes": {
+  "fn": "cursor_can_import",
+  "args": {
+   "path": "/sb/c/curdir"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "isdir",
+    "path": "/sb/c/curdir",
+    "result": true
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/c/curdir",
+    "result": [
+     "readme.txt",
+     "Arrow.CUR"
+    ]
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "cur_ci_dir_no": {
+  "fn": "cursor_can_import",
+  "args": {
+   "path": "/sb/c/empty"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "isdir",
+    "path": "/sb/c/empty",
+    "result": true
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/c/empty",
+    "result": [
+     "readme.txt"
+    ]
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "ico_ci_dir_yes": {
+  "fn": "icon_can_import",
+  "args": {
+   "path": "/sb/c/icodir"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "isdir",
+    "path": "/sb/c/icodir",
+    "result": true
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/c/icodir",
+    "result": [
+     "app.ICO"
+    ]
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "ico_ci_dll_no_wrestool": {
+  "fn": "icon_can_import",
+  "args": {
+   "path": "/sb/c/shell32.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "ico_ci_dll_rc1": {
+  "fn": "icon_can_import",
+  "args": {
+   "path": "/sb/c/shell32.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-l",
+     "/sb/c/shell32.dll"
+    ],
+    "timeout": 10,
+    "rc": 1,
+    "stdout_b64": ""
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "ico_ci_dll_empty_stdout": {
+  "fn": "icon_can_import",
+  "args": {
+   "path": "/sb/c/shell32.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-l",
+     "/sb/c/shell32.dll"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "ico_ci_dll_group_icon": {
+  "fn": "icon_can_import",
+  "args": {
+   "path": "/sb/c/shell32.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-l",
+     "/sb/c/shell32.dll"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": "LS10eXBlPTE0IC0tbmFtZT1ncm91cF9pY29uIHgK"
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "tp_full": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/My Theme.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/My Theme.themepack"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [
+       "wall",
+       "icons"
+      ],
+      [
+       "MyTheme.theme"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/wall",
+      [],
+      [
+       "img1.jpg",
+       "img2.BMP"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/icons",
+      [],
+      [
+       "mypc.ico",
+       "small_logo.png",
+       "dot.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/MyTheme.theme",
+    "result": "; Windows Theme\n[Theme]\nDisplayName=My Theme XP!\n\n[Control Panel\\Colors]\nBackground=58 110 165\nInactiveTitle=10 20 30\n\n[Control Panel\\Desktop]\nWallpaper=%WinDir%\\Web\\wall.jpg\n\n[CLSID\\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\\DefaultIcon]\nDefaultValue=%WinDir%\\explorer.exe,0\n\n[CLSID\\{BADBAD00-0000-0000-0000-000000000000}\\DefaultIcon]\nDefaultValue=\"mypc.ico\",3\n"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [
+       "wall",
+       "icons"
+      ],
+      [
+       "MyTheme.theme"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/wall",
+      [],
+      [
+       "img1.jpg",
+       "img2.BMP"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/icons",
+      [],
+      [
+       "mypc.ico",
+       "small_logo.png",
+       "dot.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/wall/img1.jpg",
+    "result": 150000
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/wall/img2.BMP",
+    "result": 150001
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/icons/small_logo.png",
+    "result": 5000
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/icons/dot.png",
+    "result": 500
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/MyTheme.theme",
+    "result": "; Windows Theme\n[Theme]\nDisplayName=My Theme XP!\n\n[Control Panel\\Colors]\nBackground=58 110 165\nInactiveTitle=10 20 30\n\n[Control Panel\\Desktop]\nWallpaper=%WinDir%\\Web\\wall.jpg\n\n[CLSID\\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\\DefaultIcon]\nDefaultValue=%WinDir%\\explorer.exe,0\n\n[CLSID\\{BADBAD00-0000-0000-0000-000000000000}\\DefaultIcon]\nDefaultValue=\"mypc.ico\",3\n"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [
+       "wall",
+       "icons"
+      ],
+      [
+       "MyTheme.theme"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/wall",
+      [],
+      [
+       "img1.jpg",
+       "img2.BMP"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/icons",
+      [],
+      [
+       "mypc.ico",
+       "small_logo.png",
+       "dot.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [
+       "wall",
+       "icons"
+      ],
+      [
+       "MyTheme.theme"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/wall",
+      [],
+      [
+       "img1.jpg",
+       "img2.BMP"
+      ]
+     ],
+     [
+      "/sb/tmp/rexon_themepack_0/extracted/icons",
+      [],
+      [
+       "mypc.ico",
+       "small_logo.png",
+       "dot.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_themepack_0/extracted/wall/img1.jpg",
+    "dest": "/sb/tmp/rexon_themepack_0/rxn_content/data/wallpaper_1.jpg"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/wall/img2.BMP",
+     "/sb/tmp/rexon_themepack_0/rxn_content/data/wallpaper_2.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "upscale_wallpapers",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data",
+    "result": 0
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/64x64/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/64x64/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/64x64/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/64x64/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/128x128/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/128x128/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/128x128/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/128x128/status"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/icons/mypc.ico[0]",
+     "-resize",
+     "48x48",
+     "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/places/mypc.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/icons/mypc.ico[0]",
+     "-resize",
+     "48x48",
+     "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/places/icon-badbad00.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_themepack_0/extracted/icons/small_logo.png",
+    "dest": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/48x48/places/small_logo.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data/my-theme-xp-icons/index.theme",
+    "content": "[Icon Theme]\nName=My Theme XP! Icons\nComment=Icons imported from Windows .themepack\nInherits=hicolor\nDirectories=48x48/places,64x64/places,128x128/places\n\n[48x48/places]\nSize=48\nContext=Places\nType=Fixed\n\n[64x64/places]\nSize=64\nContext=Places\nType=Fixed\n\n[128x128/places]\nSize=128\nContext=Places\nType=Fixed\n"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/wall/img1.jpg",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_themepack_0/rxn_content/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"themepack-my-theme-xp\",\n  \"name\": \"My Theme XP!\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импортировано из Windows .themepack | 2 картинки обоев | 3 иконки | цвет: 58 110 165\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"themepack\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.jpg\",\n      \"format\": \"static\"\n    },\n    {\n      \"file\": \"data/wallpaper_2.png\",\n      \"format\": \"static\"\n    }\n  ],\n  \"icons\": [\n    \"data/my-theme-xp-icons/48x48/places/mypc.png\"\n  ],\n  \"icon_theme_dir\": \"data/my-theme-xp-icons\",\n  \"accent_color\": \"58 110 165\"\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_themepack_0/rxn_content",
+    "dest": "/sb/tp/my-theme-xp.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/tp/my-theme-xp.rxn"
+  }
+ },
+ "tp_7z_fallback": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/Cool-Pack_2026.deskthemepack",
+   "output_dir": "/sb/out"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/Cool-Pack_2026.deskthemepack"
+    ],
+    "timeout": 30,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "7z",
+     "x",
+     "-o/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/Cool-Pack_2026.deskthemepack"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "bg.jpeg"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "bg.jpeg"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/bg.jpeg",
+    "result": 150000
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_themepack_0/extracted/bg.jpeg",
+    "dest": "/sb/tmp/rexon_themepack_0/rxn_content/data/wallpaper_1.jpeg"
+   },
+   {
+    "op": "upscale_wallpapers",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data",
+    "result": 0
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/bg.jpeg",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_themepack_0/rxn_content/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"themepack-cool-pack-2026\",\n  \"name\": \"Cool-Pack_2026\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импортировано из Windows .themepack | 1 картинка обоев\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"themepack\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.jpeg\",\n      \"format\": \"static\"\n    }\n  ]\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_themepack_0/rxn_content",
+    "dest": "/sb/out/cool-pack-2026.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/out/cool-pack-2026.rxn"
+  }
+ },
+ "tp_unpack_fail": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/broken.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/broken.themepack"
+    ],
+    "timeout": 30,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "7z",
+     "x",
+     "-o/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/broken.themepack"
+    ],
+    "timeout": 30,
+    "rc": 2,
+    "stdout_b64": ""
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "RuntimeError",
+    "message": "Не удалось распаковать .themepack. Установите: sudo pacman -S cabextract"
+   }
+  }
+ },
+ "tp_empty": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/empty.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/empty.themepack"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "readme.txt"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "readme.txt"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Ни обои, ни иконки не найдены в .themepack"
+   }
+  }
+ },
+ "tp_displayname_at": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/aero.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/aero.themepack"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "t.theme",
+       "img.bmp"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/t.theme",
+    "result": "[Theme]\nDisplayName=@themeui.dll,-2013\n"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "t.theme",
+       "img.bmp"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/img.bmp",
+    "result": 150000
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/t.theme",
+    "result": "[Theme]\nDisplayName=@themeui.dll,-2013\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/img.bmp",
+     "/sb/tmp/rexon_themepack_0/rxn_content/data/wallpaper_1.png"
+    ],
+    "timeout": 15,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_themepack_0/extracted/img.bmp",
+    "dest": "/sb/tmp/rexon_themepack_0/rxn_content/data/wallpaper_1.bmp"
+   },
+   {
+    "op": "upscale_wallpapers",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/data",
+    "result": 0
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_themepack_0/extracted/img.bmp",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_themepack_0/rxn_content/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_themepack_0/extracted/img.bmp",
+    "dest": "/sb/tmp/rexon_themepack_0/rxn_content/preview.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_themepack_0/rxn_content/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"themepack-aero\",\n  \"name\": \"aero\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импортировано из Windows .themepack | 1 картинка обоев\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"themepack\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.bmp\",\n      \"format\": \"static\"\n    }\n  ]\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_themepack_0/rxn_content",
+    "dest": "/sb/tp/aero.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/tp/aero.rxn"
+  }
+ },
+ "tp_interp_error": {
+  "fn": "themepack_import",
+  "args": {
+   "path": "/sb/tp/gray.themepack"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_themepack_",
+    "result": "/sb/tmp/rexon_themepack_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_themepack_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "cabextract",
+     "-d",
+     "/sb/tmp/rexon_themepack_0/extracted",
+     "/sb/tp/gray.themepack"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_themepack_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_themepack_0/extracted",
+      [],
+      [
+       "g.theme",
+       "img.jpg"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/tmp/rexon_themepack_0/extracted/g.theme",
+    "result": "[MyColors]\nBackground=50% gray\n"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_themepack_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "InterpolationSyntaxError",
+    "message": "'%' must be followed by '%' or '(', found: '% gray'"
+   }
+  }
+ },
+ "wt_dispatch_unsupported": {
+  "fn": "wt_import",
+  "args": {
+   "path": "/sb/b/what.xyz"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Неподдерживаемый формат: .xyz"
+   }
+  }
+ },
+ "th_ok": {
+  "fn": "theme_file_import",
+  "args": {
+   "path": "/sb/th/Luna Blue.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_wintheme_",
+    "result": "/sb/tmp/rexon_wintheme_0"
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/th/Luna Blue.theme",
+    "result": "[Theme]\nDisplayName=Luna (Blue)\n\n[Control Panel\\Colors]\nBackground=58 110 165\n\n[Slideshow]\nInterval=1800000\nShuffle=1\n"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/th",
+    "result": [
+     [
+      "/sb/th",
+      [
+       "sub"
+      ],
+      [
+       "Luna Blue.theme",
+       "img_a.jpg",
+       "thumb.png"
+      ]
+     ],
+     [
+      "/sb/th/sub",
+      [],
+      [
+       "img_b.BMP"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/th/img_a.jpg",
+    "result": 60000
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/th/thumb.png",
+    "result": 900
+   },
+   {
+    "op": "getsize",
+    "path": "/sb/th/sub/img_b.BMP",
+    "result": 60005
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_wintheme_0/rxn/data"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/th/img_a.jpg",
+    "dest": "/sb/tmp/rexon_wintheme_0/rxn/data/wallpaper_1.jpg"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/th/sub/img_b.BMP",
+     "/sb/tmp/rexon_wintheme_0/rxn/data/wallpaper_2.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "upscale_wallpapers",
+    "path": "/sb/tmp/rexon_wintheme_0/rxn/data",
+    "result": 0
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/th/img_a.jpg",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_wintheme_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_wintheme_0/rxn/preview.png",
+    "result": true
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_wintheme_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"win-theme-luna-blue\",\n  \"name\": \"Luna (Blue)\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импорт из Windows .theme | 2 картинки обоев\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.jpg\",\n      \"format\": \"static\"\n    },\n    {\n      \"file\": \"data/wallpaper_2.png\",\n      \"format\": \"static\"\n    }\n  ],\n  \"accent_color\": \"58 110 165\",\n  \"slideshow\": {\n    \"interval_ms\": 1800000,\n    \"shuffle\": true\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_wintheme_0/rxn",
+    "dest": "/sb/th/luna-blue.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_wintheme_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/th/luna-blue.rxn"
+  }
+ },
+ "th_no_walls": {
+  "fn": "theme_file_import",
+  "args": {
+   "path": "/sb/th2/bare.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_wintheme_",
+    "result": "/sb/tmp/rexon_wintheme_0"
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/th2/bare.theme",
+    "result": "[Theme]\nDisplayName=Bare\n"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/th2",
+    "result": [
+     [
+      "/sb/th2",
+      [],
+      [
+       "bare.theme"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_wintheme_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Обои не найдены рядом с .theme файлом"
+   }
+  }
+ },
+ "th_missing_header": {
+  "fn": "theme_file_import",
+  "args": {
+   "path": "/sb/th3/broken.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_wintheme_",
+    "result": "/sb/tmp/rexon_wintheme_0"
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/th3/broken.theme",
+    "result": "DisplayName=NoSection\n[Theme]\nx=1\n"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_wintheme_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "MissingSectionHeaderError",
+    "message": "File contains no section headers.\nfile: '<string>', line: 1\n'DisplayName=NoSection\\n'"
+   }
+  }
+ },
+ "th_parsing_error": {
+  "fn": "theme_file_import",
+  "args": {
+   "path": "/sb/th4/bad.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_wintheme_",
+    "result": "/sb/tmp/rexon_wintheme_0"
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/th4/bad.theme",
+    "result": "[Theme]\nDisplayName=Ok\nBAD LINE WITHOUT DELIM\nanother bad\n"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_wintheme_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "ParsingError",
+    "message": "Source contains parsing errors: '<string>'\n\t[line  3]: 'BAD LINE WITHOUT DELIM\\n'\n\t[line  4]: 'another bad\\n'"
+   }
+  }
+ },
+ "th_interp_error": {
+  "fn": "theme_file_import",
+  "args": {
+   "path": "/sb/th5/pct.theme"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_wintheme_",
+    "result": "/sb/tmp/rexon_wintheme_0"
+   },
+   {
+    "op": "read_text",
+    "path": "/sb/th5/pct.theme",
+    "result": "[Colors]\nbackground=50% gray\n"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_wintheme_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "InterpolationSyntaxError",
+    "message": "'%' must be followed by '%' or '(', found: '% gray'"
+   }
+  }
+ },
+ "ds_wmv_ok": {
+  "fn": "dreamscene_import",
+  "args": {
+   "path": "/sb/ds/Aurora Sky.wmv"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_dreamscene_",
+    "result": "/sb/tmp/rexon_dreamscene_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_dreamscene_0/rxn/data"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/ds/Aurora Sky.wmv",
+    "dest": "/sb/tmp/rexon_dreamscene_0/rxn/data/aurora-sky.wmv"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "ffmpeg",
+     "-i",
+     "/sb/tmp/rexon_dreamscene_0/rxn/data/aurora-sky.wmv",
+     "-ss",
+     "00:00:02",
+     "-vframes",
+     "1",
+     "-vf",
+     "scale=620:348:force_original_aspect_ratio=increase,crop=620:348",
+     "-y",
+     "/sb/tmp/rexon_dreamscene_0/rxn/preview.png"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_dreamscene_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"dreamscene-aurora-sky\",\n  \"name\": \"DreamScene: Aurora Sky\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows DreamScene\",\n  \"description\": \"Видеообои из Windows Vista DreamScene\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"dreamscene\",\n    \"video\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/aurora-sky.wmv\",\n      \"format\": \"video\"\n    }\n  ]\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_dreamscene_0/rxn",
+    "dest": "/sb/ds/dreamscene-aurora-sky.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_dreamscene_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ds/dreamscene-aurora-sky.rxn"
+  }
+ },
+ "ds_wmv_ffmpeg_fail": {
+  "fn": "dreamscene_import",
+  "args": {
+   "path": "/sb/ds/Old Clip.mpg",
+   "output_dir": "/sb/out"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_dreamscene_",
+    "result": "/sb/tmp/rexon_dreamscene_0"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_dreamscene_0/rxn/data"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/ds/Old Clip.mpg",
+    "dest": "/sb/tmp/rexon_dreamscene_0/rxn/data/old-clip.mpg"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "ffmpeg",
+     "-i",
+     "/sb/tmp/rexon_dreamscene_0/rxn/data/old-clip.mpg",
+     "-ss",
+     "00:00:02",
+     "-vframes",
+     "1",
+     "-vf",
+     "scale=620:348:force_original_aspect_ratio=increase,crop=620:348",
+     "-y",
+     "/sb/tmp/rexon_dreamscene_0/rxn/preview.png"
+    ],
+    "timeout": 30,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_dreamscene_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"dreamscene-old-clip\",\n  \"name\": \"DreamScene: Old Clip\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows DreamScene\",\n  \"description\": \"Видеообои из Windows Vista DreamScene\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"dreamscene\",\n    \"video\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/old-clip.mpg\",\n      \"format\": \"video\"\n    }\n  ]\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_dreamscene_0/rxn",
+    "dest": "/sb/out/dreamscene-old-clip.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_dreamscene_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/out/dreamscene-old-clip.rxn"
+  }
+ },
+ "ds_dream_ok": {
+  "fn": "dreamscene_import",
+  "args": {
+   "path": "/sb/ds/aqua.dream"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Файлы «.dream» пока не поддерживаются. Поддержка появится в будущих версиях."
+   }
+  }
+ },
+ "ds_dream_fail": {
+  "fn": "dreamscene_import",
+  "args": {
+   "path": "/sb/ds/aqua2.dream"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Файлы «.dream» пока не поддерживаются. Поддержка появится в будущих версиях."
+   }
+  }
+ },
+ "gd_ok": {
+  "fn": "gadget_import",
+  "args": {
+   "path": "/sb/gd/Fancy Clock.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_gadget_",
+    "result": "/sb/tmp/rexon_gadget_0"
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/gd/Fancy Clock.gadget",
+    "ok": true
+   },
+   {
+    "op": "extract_zip",
+    "archive": "/sb/gd/Fancy Clock.gadget",
+    "dest": "/sb/tmp/rexon_gadget_0/extracted"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_gadget_0/extracted/gadget.xml",
+    "result": true
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_gadget_0/extracted/gadget.xml",
+    "result_b64": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiID8+CjxnYWRnZXQgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vR2FkZ2V0cy9HYWRnZXQiPgogIDxuYW1lPkNsb2NrIEdhZGdldDwvbmFtZT4KICA8bmFtZXNwYWNlPm1pY3Jvc29mdC53aW5kb3dzPC9uYW1lc3BhY2U+CiAgPHZlcnNpb24+MS4wLjAuMDwvdmVyc2lvbj4KICA8YXV0aG9yIG5hbWU9Ik1pY3Jvc29mdCI+CiAgICA8aW5mbyB1cmw9Imh0dHA6Ly9nby5taWNyb3NvZnQuY29tIiAvPgogIDwvYXV0aG9yPgogIDxkZXNjcmlwdGlvbj5TaG93cyB0aGUgdGltZS48L2Rlc2NyaXB0aW9uPgo8L2dhZGdldD4K"
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_gadget_0/extracted",
+    "dest": "/sb/tmp/rexon_gadget_0/rxn/data"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/data",
+    "result": [
+     "gadget.xml",
+     "settings.html",
+     "clock.HTML",
+     "images"
+    ]
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"gadget-clock-gadget\",\n  \"name\": \"Clock Gadget\",\n  \"version\": \"1.0\",\n  \"author\": \"Microsoft\",\n  \"description\": \"Shows the time. | Импорт из .gadget\",\n  \"type\": \"theme-conky\",\n  \"tags\": [\n    \"windows\",\n    \"gadget\",\n    \"widget\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"web_entry\": \"data/clock.HTML\"\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_gadget_0/rxn",
+    "dest": "/sb/gd/gadget-clock-gadget.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_gadget_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/gd/gadget-clock-gadget.rxn"
+  }
+ },
+ "gd_noxml_nohtml": {
+  "fn": "gadget_import",
+  "args": {
+   "path": "/sb/gd/bare.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_gadget_",
+    "result": "/sb/tmp/rexon_gadget_0"
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/gd/bare.gadget",
+    "ok": true
+   },
+   {
+    "op": "extract_zip",
+    "archive": "/sb/gd/bare.gadget",
+    "dest": "/sb/tmp/rexon_gadget_0/extracted"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_gadget_0/extracted/gadget.xml",
+    "result": false
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_gadget_0/extracted",
+    "dest": "/sb/tmp/rexon_gadget_0/rxn/data"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/data",
+    "result": [
+     "style.css"
+    ]
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"gadget-bare\",\n  \"name\": \"bare\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Gadget\",\n  \"description\": \"Windows Gadget | Импорт из .gadget\",\n  \"type\": \"theme-conky\",\n  \"tags\": [\n    \"windows\",\n    \"gadget\",\n    \"widget\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_gadget_0/rxn",
+    "dest": "/sb/gd/gadget-bare.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_gadget_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/gd/gadget-bare.rxn"
+  }
+ },
+ "gd_badxml": {
+  "fn": "gadget_import",
+  "args": {
+   "path": "/sb/gd/badxml.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_gadget_",
+    "result": "/sb/tmp/rexon_gadget_0"
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/gd/badxml.gadget",
+    "ok": true
+   },
+   {
+    "op": "extract_zip",
+    "archive": "/sb/gd/badxml.gadget",
+    "dest": "/sb/tmp/rexon_gadget_0/extracted"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_gadget_0/extracted/gadget.xml",
+    "result": true
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_gadget_0/extracted/gadget.xml",
+    "result_b64": "PGdhZGdldD48bmFtZT5Ccm9rZW4="
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_gadget_0/extracted",
+    "dest": "/sb/tmp/rexon_gadget_0/rxn/data"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/data",
+    "result": [
+     "gadget.xml",
+     "main.html"
+    ]
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_gadget_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"gadget-badxml\",\n  \"name\": \"badxml\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Gadget\",\n  \"description\": \"Windows Gadget | Импорт из .gadget\",\n  \"type\": \"theme-conky\",\n  \"tags\": [\n    \"windows\",\n    \"gadget\",\n    \"widget\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"web_entry\": \"data/main.html\"\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_gadget_0/rxn",
+    "dest": "/sb/gd/gadget-badxml.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_gadget_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/gd/gadget-badxml.rxn"
+  }
+ },
+ "gd_badzip": {
+  "fn": "gadget_import",
+  "args": {
+   "path": "/sb/gd/corrupt.gadget"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_gadget_",
+    "result": "/sb/tmp/rexon_gadget_0"
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/gd/corrupt.gadget",
+    "ok": false
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_gadget_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "BadZipFile",
+    "message": "File is not a zip file"
+   }
+  }
+ },
+ "ico_single": {
+  "fn": "icon_import",
+  "args": {
+   "path": "/sb/ico/My Computer.ico"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_winico_",
+    "result": "/sb/tmp/rexon_winico_0"
+   },
+   {
+    "op": "which",
+    "name": "icotool",
+    "result": true
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/My Computer.ico",
+    "result": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/ico/My Computer.ico",
+    "result": false
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/_ico_my computer"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "icotool",
+     "-x",
+     "-o",
+     "/sb/tmp/rexon_winico_0/_ico_my computer",
+     "/sb/ico/My Computer.ico"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/_ico_my computer",
+    "result": [
+     "my computer_1_32x32x32.png",
+     "my computer_2_48x48x32.png",
+     "my computer_3_20x20x32.png"
+    ]
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_winico_0/_ico_my computer/my computer_1_32x32x32.png",
+    "dest": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places/computer.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_winico_0/_ico_my computer/my computer_2_48x48x32.png",
+    "dest": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places/computer.png"
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places/computer.png",
+    "result": true
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places/computer.png",
+    "result": true
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places/user-desktop.png",
+    "result": false
+   },
+   {
+    "op": "symlink",
+    "target": "computer.png",
+    "link": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places/user-desktop.png",
+    "ok": true
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places/computer.png",
+    "result": true
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places/user-desktop.png",
+    "result": false
+   },
+   {
+    "op": "symlink",
+    "target": "computer.png",
+    "link": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places/user-desktop.png",
+    "ok": true
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/places/computer.png",
+    "result": false
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/16x16/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/22x22/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/24x24/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/places",
+    "result": [
+     "computer.png",
+     "user-desktop.png"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/32x32/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/places",
+    "result": [
+     "computer.png",
+     "user-desktop.png"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/48x48/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/64x64/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/128x128/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/256x256/mimetypes",
+    "result": []
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/theme/my-computer/index.theme",
+    "content": "[Icon Theme]\nName=my computer\nComment=Imported from Windows (1 icons)\nInherits=hicolor\nDirectories=32x32/places,48x48/places\n\n[32x32/places]\nSize=32\nContext=Places\nType=Fixed\n\n[48x48/places]\nSize=48\nContext=Places\nType=Fixed\n\n"
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_winico_0/theme/my-computer",
+    "dest": "/sb/tmp/rexon_winico_0/rxn/data/my-computer"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/ico/My Computer.ico[0]",
+     "-resize",
+     "128x128",
+     "-gravity",
+     "center",
+     "-background",
+     "none",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_winico_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-my-computer\",\n  \"name\": \"my computer\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/My Computer.ico",
+    "result": true
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_winico_0/rxn",
+    "dest": "/sb/ico/winico-my-computer.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_winico_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ico/winico-my-computer.rxn"
+  }
+ },
+ "ico_pkg_no_icos": {
+  "fn": "icon_import",
+  "args": {
+   "path": "/sb/ico/pack.iconpackage"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_winico_",
+    "result": "/sb/tmp/rexon_winico_0"
+   },
+   {
+    "op": "which",
+    "name": "icotool",
+    "result": false
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/pack.iconpackage",
+    "result": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/ico/pack.iconpackage",
+    "result": false
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/ico/pack.iconpackage",
+    "ok": true
+   },
+   {
+    "op": "extract_zip",
+    "archive": "/sb/ico/pack.iconpackage",
+    "dest": "/sb/tmp/rexon_winico_0/extracted"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_winico_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_winico_0/extracted",
+      [],
+      [
+       "readme.txt"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_winico_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Иконки .ico не найдены"
+   }
+  }
+ },
+ "ico_icl_no_wrestool": {
+  "fn": "icon_import",
+  "args": {
+   "path": "/sb/ico/lib.icl"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_winico_",
+    "result": "/sb/tmp/rexon_winico_0"
+   },
+   {
+    "op": "which",
+    "name": "icotool",
+    "result": false
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/lib.icl",
+    "result": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/ico/lib.icl",
+    "result": false
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_winico_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "RuntimeError",
+    "message": "wrestool не найден. Установите: sudo pacman -S icoutils"
+   }
+  }
+ },
+ "ico_7tsp_badzip_7z": {
+  "fn": "icon_import",
+  "args": {
+   "path": "/sb/ico/pack.7tsp"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_winico_",
+    "result": "/sb/tmp/rexon_winico_0"
+   },
+   {
+    "op": "which",
+    "name": "icotool",
+    "result": true
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/pack.7tsp",
+    "result": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/ico/pack.7tsp",
+    "result": false
+   },
+   {
+    "op": "zip_open",
+    "path": "/sb/ico/pack.7tsp",
+    "ok": false
+   },
+   {
+    "op": "run",
+    "argv": [
+     "7z",
+     "x",
+     "-o/sb/tmp/rexon_winico_0/extracted",
+     "/sb/ico/pack.7tsp"
+    ],
+    "timeout": 60,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_winico_0/extracted",
+    "result": [
+     [
+      "/sb/tmp/rexon_winico_0/extracted",
+      [
+       "sub"
+      ],
+      []
+     ],
+     [
+      "/sb/tmp/rexon_winico_0/extracted/sub",
+      [],
+      [
+       "Folder.ICO"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/_ico_folder"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "icotool",
+     "-x",
+     "-o",
+     "/sb/tmp/rexon_winico_0/_ico_folder",
+     "/sb/tmp/rexon_winico_0/extracted/sub/Folder.ICO"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/_ico_folder",
+    "result": [
+     "folder_1_48x48x32.png"
+    ]
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_winico_0/_ico_folder/folder_1_48x48x32.png",
+    "dest": "/sb/tmp/rexon_winico_0/theme/pack/48x48/places/folder.png"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/16x16/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/22x22/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/24x24/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/32x32/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/places",
+    "result": [
+     "folder.png"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/48x48/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/64x64/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/128x128/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/256x256/mimetypes",
+    "result": []
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/theme/pack/index.theme",
+    "content": "[Icon Theme]\nName=pack\nComment=Imported from Windows (1 icons)\nInherits=hicolor\nDirectories=48x48/places\n\n[48x48/places]\nSize=48\nContext=Places\nType=Fixed\n\n"
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_winico_0/theme/pack",
+    "dest": "/sb/tmp/rexon_winico_0/rxn/data/pack"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_winico_0/extracted/sub/Folder.ICO[0]",
+     "-resize",
+     "128x128",
+     "-gravity",
+     "center",
+     "-background",
+     "none",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_winico_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-pack\",\n  \"name\": \"pack\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/pack.7tsp",
+    "result": true
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_winico_0/rxn",
+    "dest": "/sb/ico/winico-pack.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_winico_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ico/winico-pack.rxn"
+  }
+ },
+ "ico_dll_wrestool": {
+  "fn": "icon_import",
+  "args": {
+   "path": "/sb/ico/shell32.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_winico_",
+    "result": "/sb/tmp/rexon_winico_0"
+   },
+   {
+    "op": "which",
+    "name": "icotool",
+    "result": true
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/shell32.dll",
+    "result": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/ico/shell32.dll",
+    "result": false
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/extracted"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "group_icon",
+     "-o",
+     "/sb/tmp/rexon_winico_0/extracted",
+     "/sb/ico/shell32.dll"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/extracted",
+    "result": [
+     "shell32_1.ico"
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/places"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/devices"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/apps"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/actions"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/status"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/mimetypes"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_winico_0/_ico_shell32_1"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "icotool",
+     "-x",
+     "-o",
+     "/sb/tmp/rexon_winico_0/_ico_shell32_1",
+     "/sb/tmp/rexon_winico_0/extracted/shell32_1.ico"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/_ico_shell32_1",
+    "result": [
+     "shell32_1_1_16x16x32.png"
+    ]
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_winico_0/_ico_shell32_1/shell32_1_1_16x16x32.png",
+    "dest": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/places/shell32_1.png"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/places",
+    "result": [
+     "shell32_1.png"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/16x16/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/22x22/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/24x24/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/32x32/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/48x48/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/64x64/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/128x128/mimetypes",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/places",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/devices",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/apps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/actions",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/status",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/256x256/mimetypes",
+    "result": []
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/theme/shell32/index.theme",
+    "content": "[Icon Theme]\nName=shell32\nComment=Imported from Windows (1 icons)\nInherits=hicolor\nDirectories=16x16/places\n\n[16x16/places]\nSize=16\nContext=Places\nType=Fixed\n\n"
+   },
+   {
+    "op": "copytree",
+    "src": "/sb/tmp/rexon_winico_0/theme/shell32",
+    "dest": "/sb/tmp/rexon_winico_0/rxn/data/shell32"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_winico_0/extracted/shell32_1.ico[0]",
+     "-resize",
+     "128x128",
+     "-gravity",
+     "center",
+     "-background",
+     "none",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_winico_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-shell32\",\n  \"name\": \"shell32\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/ico/shell32.dll",
+    "result": true
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_winico_0/rxn",
+    "dest": "/sb/ico/winico-shell32.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_winico_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ico/winico-shell32.rxn"
+  }
+ },
+ "mss_ci_yes": {
+  "fn": "msstyles_can_import",
+  "args": {
+   "path": "/sb/ms/luna.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "read_head_bytes",
+    "path": "/sb/ms/luna.msstyles",
+    "n": 2,
+    "result_b64": "TVo="
+   }
+  ],
+  "result": {
+   "ok": true
+  }
+ },
+ "mss_ci_no_ext": {
+  "fn": "msstyles_can_import",
+  "args": {
+   "path": "/sb/ms/luna.dll"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [],
+  "result": {
+   "ok": false
+  }
+ },
+ "mss_ci_unreadable": {
+  "fn": "msstyles_can_import",
+  "args": {
+   "path": "/sb/ms/ghost.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "open_fail",
+    "path": "/sb/ms/ghost.msstyles",
+    "binary": true
+   }
+  ],
+  "result": {
+   "ok": false
+  }
+ },
+ "mss_ok": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/Luna Style.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "bitmap",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/Luna Style.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "14",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/Luna Style.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Caption_1.BMP",
+     "CloseButton_2.bmp",
+     "PushButton_3.bmp",
+     "ToolTip_9.bmp",
+     "StartButton_11.bmp",
+     "TaskBar_5.bmp",
+     "StartMenu_6.bmp",
+     "TaskItem_8.bmp",
+     "WeirdThing_12.bmp",
+     "averyveryverylongresourcename_taskitemactive_77.bmp"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Caption_1.BMP",
+     "CloseButton_2.bmp",
+     "PushButton_3.bmp",
+     "ToolTip_9.bmp",
+     "StartButton_11.bmp",
+     "TaskBar_5.bmp",
+     "StartMenu_6.bmp",
+     "TaskItem_8.bmp",
+     "WeirdThing_12.bmp",
+     "averyveryverylongresourcename_taskitemactive_77.bmp"
+    ]
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.BMP",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.BMP"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/WeirdThing_12.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/WeirdThing_12.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/WeirdThing_12.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/WeirdThing_12.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.bmp"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Caption_1.png",
+     "CloseButton_2.png",
+     "PushButton_3.png",
+     "ToolTip_9.png",
+     "StartButton_11.png",
+     "TaskBar_5.png",
+     "StartMenu_6.png",
+     "TaskItem_8.png",
+     "WeirdThing_12.png",
+     "averyveryverylongresourcename_taskitemactive_77.png"
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/aurorae/luna-style"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/aurorae/luna-style/window-titlebar.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/aurorae/luna-style/window-close.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/aurorae/luna-style/luna-stylerc",
+    "content": "[General]\nName=Luna Style\nComment=Imported from Windows XP .msstyles\nAnimation=0\nActiveTextColor=255,255,255\nInactiveTextColor=180,180,180\nUseTextShadow=true\nTextShadowColor=0,0,0\nHaloActive=true\nHaloInactive=false\n\n[Layout]\nTitleEdgeTop=4\nTitleEdgeBottom=2\nTitleEdgeLeft=4\nTitleEdgeRight=4\nTitleBorderBottom=2\nTitleHeight=22\nButtonWidth=22\nButtonHeight=18\nPaddingTop=0\nPaddingBottom=0\nPaddingLeft=0\nPaddingRight=0\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets/gtk-button.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets/gtk-tooltip.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/WeirdThing_12.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets/WeirdThing_12.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/gtk.css",
+    "content": "/* Luna Style — imported from Windows XP .msstyles */\n/* Generated by Rexon v5 */\n\nbutton {\n  background-image: url('assets/gtk-button.png');\n  background-size: 100% 100%;\n  border: none;\n  border-radius: 0;\n}\n\ntooltip, .tooltip {\n  background-image: url('assets/gtk-tooltip.png');\n  background-size: cover;\n  border-radius: 0;\n}\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-4.0"
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/gtk.css",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-4.0/gtk.css",
+    "ok": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets",
+    "result": true
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-3.0/assets",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/gtk-4.0/assets",
+    "ok": true
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/luna-style/index.theme",
+    "content": "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=Luna Style\nComment=Imported from Windows .msstyles\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme=luna-style\nMetacityTheme=luna-style\nIconTheme=hicolor\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/icons"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/metadata.desktop",
+    "content": "[Desktop Entry]\nName=Luna Style\nComment=Imported from Windows XP .msstyles\nX-KDE-PluginInfo-Author=Rexon Import\nX-KDE-PluginInfo-Name=luna-style\nX-KDE-PluginInfo-Version=1.0\nX-KDE-PluginInfo-License=GPL\nX-Plasma-API=5.0\nX-KDE-PluginInfo-Category=\ntype=Service\nServiceTypes=Plasma/Theme\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png",
+     "-crop",
+     "0x33%+0+0",
+     "+repage",
+     "-resize",
+     "48x48",
+     "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/icons/start.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/icons/start.png",
+    "result": true
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.png",
+    "result": true
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/panel-background.png"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/panel-background.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "identify",
+     "-format",
+     "%w %h",
+     "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/panel-background.png"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": "NjQgMjQ="
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/panel-background.png",
+    "result_b64": "Q09OVjpUYXNrQmFyXzUuYm1w"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/panel-background.svg",
+    "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"\n     xmlns:xlink=\"http://www.w3.org/1999/xlink\"\n     width=\"64\" height=\"24\">\n  <defs>\n    <pattern id=\"bg\" width=\"64\" height=\"24\" patternUnits=\"userSpaceOnUse\">\n      <image width=\"64\" height=\"24\"\n             xlink:href=\"data:image/png;base64,Q09OVjpUYXNrQmFyXzUuYm1w\"/>\n    </pattern>\n  </defs>\n  <!-- panel background from Windows XP .msstyles -->\n  <rect id=\"center\" width=\"64\" height=\"24\" fill=\"url(#bg)\"/>\n</svg>\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.png",
+    "result": true
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/StartMenu_6.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/kickoff.png"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.png",
+    "result": true
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskItem_8.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks.png"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "identify",
+     "-format",
+     "%w %h",
+     "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks.png"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": "NjQgMjQ="
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks.png",
+    "result_b64": "Q09OVjpUYXNrSXRlbV84LmJtcA=="
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks.svg",
+    "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"\n     xmlns:xlink=\"http://www.w3.org/1999/xlink\"\n     width=\"64\" height=\"24\">\n  <defs>\n    <pattern id=\"bg\" width=\"64\" height=\"24\" patternUnits=\"userSpaceOnUse\">\n      <image width=\"64\" height=\"24\"\n             xlink:href=\"data:image/png;base64,Q09OVjpUYXNrSXRlbV84LmJtcA==\"/>\n    </pattern>\n  </defs>\n  <!-- task background from Windows XP .msstyles -->\n  <rect id=\"center\" width=\"64\" height=\"24\" fill=\"url(#bg)\"/>\n</svg>\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.png",
+    "result": true
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/averyveryverylongresourcename_taskitemactive_77.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/widgets/tasks-active.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/TaskBar_5.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs/background.png"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs/background.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "identify",
+     "-format",
+     "%w %h",
+     "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs/background.png"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": "NjQgMjQ="
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs/background.png",
+    "result_b64": "Q09OVjpUYXNrQmFyXzUuYm1w"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/luna-style/dialogs/background.svg",
+    "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"\n     xmlns:xlink=\"http://www.w3.org/1999/xlink\"\n     width=\"64\" height=\"24\">\n  <defs>\n    <pattern id=\"bg\" width=\"64\" height=\"24\" patternUnits=\"userSpaceOnUse\">\n      <image width=\"64\" height=\"24\"\n             xlink:href=\"data:image/png;base64,Q09OVjpUYXNrQmFyXzUuYm1w\"/>\n    </pattern>\n  </defs>\n  <!-- dialog background from Windows XP .msstyles -->\n  <rect id=\"center\" width=\"64\" height=\"24\" fill=\"url(#bg)\"/>\n</svg>\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/StartButton_11.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Caption_1.png",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/CloseButton_2.png",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_3.png",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/ToolTip_9.png",
+     "+append",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_msstyles_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"msstyles-luna-style\",\n  \"name\": \"Luna Style\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme (msstyles)\",\n  \"description\": \"Импорт из .msstyles | окна: 2, панель и «Пуск»: 5, GTK: 2, текстуры: 1\",\n  \"type\": \"theme-bundle\",\n  \"tags\": [\n    \"windows\",\n    \"xp\",\n    \"msstyles\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"bundle\": {\n    \"theme-window-decoration\": \"data/aurorae\",\n    \"theme-gtk\": \"data/gtk\",\n    \"theme-kde-plasma\": \"data/plasma\"\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_msstyles_0/rxn",
+    "dest": "/sb/ms/msstyles-luna-style.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ms/msstyles-luna-style.rxn"
+  }
+ },
+ "mss_colors_crash": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/crash.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "bitmap",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/crash.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "14",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/crash.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "PushButton_1.bmp"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "PushButton_1.bmp"
+    ]
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.bmp"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "PushButton_1.png"
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/assets"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/assets/gtk-button.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/gtk.css",
+    "content": "/* crash — imported from Windows XP .msstyles */\n/* Generated by Rexon v5 */\n\nbutton {\n  background-image: url('assets/gtk-button.png');\n  background-size: 100% 100%;\n  border: none;\n  border-radius: 0;\n}\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-4.0"
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/gtk.css",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-4.0/gtk.css",
+    "ok": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/assets",
+    "result": true
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-3.0/assets",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/gtk-4.0/assets",
+    "ok": true
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/crash/index.theme",
+    "content": "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=crash\nComment=Imported from Windows .msstyles\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme=crash\nMetacityTheme=crash\nIconTheme=hicolor\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": "MzM2Njk5QUI="
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/colors"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/colors/crash.colors",
+    "content": "[ColorEffects:Disabled]\nColor=51,102,153\n[ColorEffects:Inactive]\nColor=51,102,153\n\n[Colors:Window]\nBackgroundNormal=51,102,153\nForegroundNormal=255,255,255\n\n[Colors:View]\nBackgroundNormal=51,102,153\nForegroundNormal=255,255,255\n\n[Colors:Selection]\nBackgroundNormal=70,130,200\nForegroundNormal=255,255,255\n\n[Colors:Button]\nBackgroundNormal=51,102,153\nForegroundNormal=255,255,255\nDecorationFocus=70,130,200\n\n[General]\nName=crash\nColorScheme=crash\n"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PushButton_1.png",
+     "+append",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_msstyles_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"msstyles-crash\",\n  \"name\": \"crash\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme (msstyles)\",\n  \"description\": \"Импорт из .msstyles | окна: 0, панель и «Пуск»: 0, GTK: 1, текстуры: 0\",\n  \"type\": \"theme-bundle\",\n  \"tags\": [\n    \"windows\",\n    \"xp\",\n    \"msstyles\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"bundle\": {\n    \"theme-gtk\": \"data/gtk\",\n    \"theme-kde-colors\": \"data/colors\"\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_msstyles_0/rxn",
+    "dest": "/sb/ms/msstyles-crash.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ms/msstyles-crash.rxn"
+  }
+ },
+ "mss_no_bitmaps": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/hollow.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "bitmap",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/hollow.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "14",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/hollow.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": []
+   },
+   {
+    "op": "which",
+    "name": "7z",
+    "result": false
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": []
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": []
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "error": {
+    "kind": "ValueError",
+    "message": "Bitmap-ресурсы не найдены в .msstyles. Установите: sudo pacman -S icoutils"
+   }
+  }
+ },
+ "mss_no_wrestool_7z": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/alt.msstyles",
+   "output_dir": "/sb/out"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": []
+   },
+   {
+    "op": "which",
+    "name": "7z",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "7z",
+     "x",
+     "-o/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/alt.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps",
+      [],
+      [
+       "PROGRESS_4.bmp",
+       "Track_2.bmp"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.bmp"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.bmp"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps",
+      [],
+      [
+       "PROGRESS_4.png",
+       "Track_2.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/assets"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/assets/gtk-progressbar.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/assets/gtk-scrollbar-track.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/gtk.css",
+    "content": "/* alt — imported from Windows XP .msstyles */\n/* Generated by Rexon v5 */\n\nprogressbar trough progress {\n  background-image: url('assets/gtk-progressbar.png');\n  background-size: 100% 100%;\n}\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-4.0"
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/gtk.css",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-4.0/gtk.css",
+    "ok": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/assets",
+    "result": true
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-3.0/assets",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/gtk-4.0/assets",
+    "ok": true
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/alt/index.theme",
+    "content": "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=alt\nComment=Imported from Windows .msstyles\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme=alt\nMetacityTheme=alt\nIconTheme=hicolor\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/PROGRESS_4.png",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Track_2.png",
+     "+append",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_msstyles_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"msstyles-alt\",\n  \"name\": \"alt\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme (msstyles)\",\n  \"description\": \"Импорт из .msstyles | окна: 0, панель и «Пуск»: 0, GTK: 2, текстуры: 0\",\n  \"type\": \"theme-bundle\",\n  \"tags\": [\n    \"windows\",\n    \"xp\",\n    \"msstyles\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"bundle\": {\n    \"theme-gtk\": \"data/gtk\"\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_msstyles_0/rxn",
+    "dest": "/sb/out/msstyles-alt.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/out/msstyles-alt.rxn"
+  }
+ },
+ "mss_convert_bmp_fail": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/keepbmp.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": true
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "bitmap",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/keepbmp.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "wrestool",
+     "-x",
+     "-t",
+     "14",
+     "-o",
+     "/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/keepbmp.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Balloon_2.bmp"
+    ]
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Balloon_2.bmp"
+    ]
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.png"
+    ],
+    "timeout": 10,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.png",
+    "result": false
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     "Balloon_2.bmp"
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/assets"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.bmp",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/assets/gtk-tooltip.png"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/gtk.css",
+    "content": "/* keepbmp — imported from Windows XP .msstyles */\n/* Generated by Rexon v5 */\n\ntooltip, .tooltip {\n  background-image: url('assets/gtk-tooltip.png');\n  background-size: cover;\n  border-radius: 0;\n}\n"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-4.0"
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/gtk.css",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-4.0/gtk.css",
+    "ok": true
+   },
+   {
+    "op": "isdir",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/assets",
+    "result": true
+   },
+   {
+    "op": "symlink",
+    "target": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-3.0/assets",
+    "link": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/gtk-4.0/assets",
+    "ok": true
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/gtk/keepbmp/index.theme",
+    "content": "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=keepbmp\nComment=Imported from Windows .msstyles\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme=keepbmp\nMetacityTheme=keepbmp\nIconTheme=hicolor\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.bmp",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.bmp",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/Balloon_2.bmp",
+     "+append",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_msstyles_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"msstyles-keepbmp\",\n  \"name\": \"keepbmp\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme (msstyles)\",\n  \"description\": \"Импорт из .msstyles | окна: 0, панель и «Пуск»: 0, GTK: 1, текстуры: 0\",\n  \"type\": \"theme-bundle\",\n  \"tags\": [\n    \"windows\",\n    \"xp\",\n    \"msstyles\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"bundle\": {\n    \"theme-gtk\": \"data/gtk\"\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_msstyles_0/rxn",
+    "dest": "/sb/ms/msstyles-keepbmp.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ms/msstyles-keepbmp.rxn"
+  }
+ },
+ "mss_7z_subdir": {
+  "fn": "msstyles_import",
+  "args": {
+   "path": "/sb/ms/deep.msstyles"
+  },
+  "tmp_base": "/sb/tmp",
+  "journal": [
+   {
+    "op": "mkdtemp",
+    "prefix": "rexon_msstyles_",
+    "result": "/sb/tmp/rexon_msstyles_0"
+   },
+   {
+    "op": "which",
+    "name": "wrestool",
+    "result": false
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps"
+   },
+   {
+    "op": "listdir",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": []
+   },
+   {
+    "op": "which",
+    "name": "7z",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "7z",
+     "x",
+     "-o/sb/tmp/rexon_msstyles_0/bitmaps",
+     "/sb/ms/deep.msstyles"
+    ],
+    "timeout": 30,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps",
+      [
+       "res"
+      ],
+      []
+     ],
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps/res",
+      [],
+      [
+       "StartMenu_3.bmp"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.bmp",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png"
+    ],
+    "timeout": 10,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "exists",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+    "result": true
+   },
+   {
+    "op": "remove",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.bmp"
+   },
+   {
+    "op": "walk",
+    "root": "/sb/tmp/rexon_msstyles_0/bitmaps",
+    "result": [
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps",
+      [
+       "res"
+      ],
+      []
+     ],
+     [
+      "/sb/tmp/rexon_msstyles_0/bitmaps/res",
+      [],
+      [
+       "StartMenu_3.png"
+      ]
+     ]
+    ]
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/widgets"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs"
+   },
+   {
+    "op": "makedirs",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/icons"
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/metadata.desktop",
+    "content": "[Desktop Entry]\nName=deep\nComment=Imported from Windows XP .msstyles\nX-KDE-PluginInfo-Author=Rexon Import\nX-KDE-PluginInfo-Name=deep\nX-KDE-PluginInfo-Version=1.0\nX-KDE-PluginInfo-License=GPL\nX-Plasma-API=5.0\nX-KDE-PluginInfo-Category=\ntype=Service\nServiceTypes=Plasma/Theme\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+    "result": true
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/widgets/kickoff.png"
+   },
+   {
+    "op": "copy2",
+    "src": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+    "dest": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs/background.png"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs/background.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "identify",
+     "-format",
+     "%w %h",
+     "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs/background.png"
+    ],
+    "timeout": 5,
+    "rc": 0,
+    "stdout_b64": "MzIgMzI="
+   },
+   {
+    "op": "read_bytes",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs/background.png",
+    "result_b64": "Q09OVjpTdGFydE1lbnVfMy5ibXA="
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/data/plasma/deep/dialogs/background.svg",
+    "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"\n     xmlns:xlink=\"http://www.w3.org/1999/xlink\"\n     width=\"32\" height=\"32\">\n  <defs>\n    <pattern id=\"bg\" width=\"32\" height=\"32\" patternUnits=\"userSpaceOnUse\">\n      <image width=\"32\" height=\"32\"\n             xlink:href=\"data:image/png;base64,Q09OVjpTdGFydE1lbnVfMy5ibXA=\"/>\n    </pattern>\n  </defs>\n  <!-- dialog background from Windows XP .msstyles -->\n  <rect id=\"center\" width=\"32\" height=\"32\" fill=\"url(#bg)\"/>\n</svg>\n"
+   },
+   {
+    "op": "isfile",
+    "path": "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+    "result": true
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+     "-resize",
+     "1x1!",
+     "-format",
+     "%[hex:u]",
+     "info:"
+    ],
+    "timeout": 5,
+    "rc": 1,
+    "stdout_b64": ""
+   },
+   {
+    "op": "run",
+    "argv": [
+     "convert",
+     "/sb/tmp/rexon_msstyles_0/bitmaps/res/StartMenu_3.png",
+     "+append",
+     "-resize",
+     "620x348^",
+     "-gravity",
+     "center",
+     "-extent",
+     "620x348",
+     "/sb/tmp/rexon_msstyles_0/rxn/preview.png"
+    ],
+    "timeout": 15,
+    "rc": 0,
+    "stdout_b64": ""
+   },
+   {
+    "op": "write_file",
+    "path": "/sb/tmp/rexon_msstyles_0/rxn/manifest.json",
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"msstyles-deep\",\n  \"name\": \"deep\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme (msstyles)\",\n  \"description\": \"Импорт из .msstyles | окна: 0, панель и «Пуск»: 1, GTK: 0, текстуры: 0\",\n  \"type\": \"theme-bundle\",\n  \"tags\": [\n    \"windows\",\n    \"xp\",\n    \"msstyles\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"bundle\": {\n    \"theme-kde-plasma\": \"data/plasma\"\n  }\n}"
+   },
+   {
+    "op": "pack_rxn",
+    "src": "/sb/tmp/rexon_msstyles_0/rxn",
+    "dest": "/sb/ms/msstyles-deep.rxn"
+   },
+   {
+    "op": "rmtree",
+    "path": "/sb/tmp/rexon_msstyles_0"
+   }
+  ],
+  "result": {
+   "ok": "/sb/ms/msstyles-deep.rxn"
+  }
+ }
+}

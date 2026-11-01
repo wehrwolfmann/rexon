@@ -1,0 +1,1196 @@
+{
+ "источник": "rexon/qt_wallpaper_engine/qml_ui/bridge.py:UserPropertyListModel",
+ "как_пересобрать": "python3 rust/rexon-gui/tests/golden/user_property_cases.py",
+ "cases": [
+  {
+   "name": "полная схема без оверрайдов",
+   "schemaJson": "{\"waywallen.scheme_color\": {\"text\": \"Цвет схемы\", \"type\": \"color\", \"value\": [0.2, 0.4, 0.6, 1.0]}, \"waywallen.enable_audio\": {\"text\": \"\", \"type\": \"bool\", \"value\": true}, \"brightness\": {\"text\": \"Яркость\", \"type\": \"slider\", \"value\": 0.5, \"min\": 0, \"max\": 2, \"order\": 2}, \"speed\": {\"type\": \"slider\", \"value\": 1234567, \"min\": 0.5, \"max\": 0, \"order\": 1}, \"mode\": {\"text\": \"Режим\", \"type\": \"combo\", \"value\": \"day\", \"order\": 3, \"options\": [{\"label\": \"День\", \"value\": \"day\"}, {\"value\": \"night\"}, {\"label\": \"\", \"value\": 3}]}, \"caption\": {\"text\": \"Надпись\", \"type\": \"textinput\", \"value\": \"привет\", \"order\": 3}, \"tint\": {\"text\": \"Оттенок\", \"type\": \"color\", \"value\": \"0.1 0.2 0.3\", \"order\": 0}, \"hidden\": {\"text\": \"Странный\", \"type\": \"scenetexture\", \"value\": {\"a\": 1}, \"order\": -1}, \"flag\": {\"type\": \"bool\", \"value\": 0, \"order\": 5}, \"broken\": \"не объект\", \"listval\": {\"type\": \"text\", \"value\": [1, 2.5], \"order\": 4}, \"combo_empty\": {\"text\": \"Пустой список\", \"type\": \"combo\", \"value\": \"x\", \"order\": 6}}",
+   "overridesJson": "",
+   "actions": [],
+   "count": 12,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Цвет схемы",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.2000 0.4000 0.6000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "waywallen.enable_audio",
+     "label": "Enable audio",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "hidden",
+     "label": "Странный",
+     "type": "scenetexture",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "tint",
+     "label": "Оттенок",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.1 0.2 0.3",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "broken",
+     "label": "broken",
+     "type": "",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "speed",
+     "label": "speed",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.5,
+     "maxVal": 1.0,
+     "currentValue": "1.23457e+06",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "brightness",
+     "label": "Яркость",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 2.0,
+     "currentValue": "0.5",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "mode",
+     "label": "Режим",
+     "type": "combo",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "day",
+     "hasAlpha": false,
+     "optionLabels": [
+      "День",
+      "night",
+      "3"
+     ],
+     "optionValues": [
+      "day",
+      "night",
+      "3"
+     ],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "caption",
+     "label": "Надпись",
+     "type": "textinput",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "привет",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "listval",
+     "label": "listval",
+     "type": "text",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 2.5000",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "flag",
+     "label": "flag",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "false",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "combo_empty",
+     "label": "Пустой список",
+     "type": "combo",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "x",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [],
+   "valueChanged": [],
+   "resetRequested": [],
+   "overrideStateChangedCount": 0
+  },
+  {
+   "name": "оверрайды из JSON (в том числе пустая строка — валидное значение)",
+   "schemaJson": "{\"waywallen.scheme_color\": {\"text\": \"Цвет схемы\", \"type\": \"color\", \"value\": [0.2, 0.4, 0.6, 1.0]}, \"waywallen.enable_audio\": {\"text\": \"\", \"type\": \"bool\", \"value\": true}, \"brightness\": {\"text\": \"Яркость\", \"type\": \"slider\", \"value\": 0.5, \"min\": 0, \"max\": 2, \"order\": 2}, \"speed\": {\"type\": \"slider\", \"value\": 1234567, \"min\": 0.5, \"max\": 0, \"order\": 1}, \"mode\": {\"text\": \"Режим\", \"type\": \"combo\", \"value\": \"day\", \"order\": 3, \"options\": [{\"label\": \"День\", \"value\": \"day\"}, {\"value\": \"night\"}, {\"label\": \"\", \"value\": 3}]}, \"caption\": {\"text\": \"Надпись\", \"type\": \"textinput\", \"value\": \"привет\", \"order\": 3}, \"tint\": {\"text\": \"Оттенок\", \"type\": \"color\", \"value\": \"0.1 0.2 0.3\", \"order\": 0}, \"hidden\": {\"text\": \"Странный\", \"type\": \"scenetexture\", \"value\": {\"a\": 1}, \"order\": -1}, \"flag\": {\"type\": \"bool\", \"value\": 0, \"order\": 5}, \"broken\": \"не объект\", \"listval\": {\"type\": \"text\", \"value\": [1, 2.5], \"order\": 4}, \"combo_empty\": {\"text\": \"Пустой список\", \"type\": \"combo\", \"value\": \"x\", \"order\": 6}}",
+   "overridesJson": "{\"waywallen.scheme_color\": \"1.0000 0.0000 0.0000 0.5000\", \"caption\": \"\", \"brightness\": \"0.75\", \"неизвестный\": \"мимо\"}",
+   "actions": [],
+   "count": 12,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Цвет схемы",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 0.0000 0.0000 0.5000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "waywallen.enable_audio",
+     "label": "Enable audio",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "hidden",
+     "label": "Странный",
+     "type": "scenetexture",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "tint",
+     "label": "Оттенок",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.1 0.2 0.3",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "broken",
+     "label": "broken",
+     "type": "",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "speed",
+     "label": "speed",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.5,
+     "maxVal": 1.0,
+     "currentValue": "1.23457e+06",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "brightness",
+     "label": "Яркость",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 2.0,
+     "currentValue": "0.75",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "mode",
+     "label": "Режим",
+     "type": "combo",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "day",
+     "hasAlpha": false,
+     "optionLabels": [
+      "День",
+      "night",
+      "3"
+     ],
+     "optionValues": [
+      "day",
+      "night",
+      "3"
+     ],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "caption",
+     "label": "Надпись",
+     "type": "textinput",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "listval",
+     "label": "listval",
+     "type": "text",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 2.5000",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "flag",
+     "label": "flag",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "false",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "combo_empty",
+     "label": "Пустой список",
+     "type": "combo",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "x",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": true,
+   "hasUserPropertyOverrides": true,
+   "dataChanged": [
+    {
+     "first": 0,
+     "last": 11,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    }
+   ],
+   "valueChanged": [],
+   "resetRequested": [],
+   "overrideStateChangedCount": 1
+  },
+  {
+   "name": "правки пользователя и сброс пользовательских свойств",
+   "schemaJson": "{\"waywallen.scheme_color\": {\"text\": \"Цвет схемы\", \"type\": \"color\", \"value\": [0.2, 0.4, 0.6, 1.0]}, \"waywallen.enable_audio\": {\"text\": \"\", \"type\": \"bool\", \"value\": true}, \"brightness\": {\"text\": \"Яркость\", \"type\": \"slider\", \"value\": 0.5, \"min\": 0, \"max\": 2, \"order\": 2}, \"speed\": {\"type\": \"slider\", \"value\": 1234567, \"min\": 0.5, \"max\": 0, \"order\": 1}, \"mode\": {\"text\": \"Режим\", \"type\": \"combo\", \"value\": \"day\", \"order\": 3, \"options\": [{\"label\": \"День\", \"value\": \"day\"}, {\"value\": \"night\"}, {\"label\": \"\", \"value\": 3}]}, \"caption\": {\"text\": \"Надпись\", \"type\": \"textinput\", \"value\": \"привет\", \"order\": 3}, \"tint\": {\"text\": \"Оттенок\", \"type\": \"color\", \"value\": \"0.1 0.2 0.3\", \"order\": 0}, \"hidden\": {\"text\": \"Странный\", \"type\": \"scenetexture\", \"value\": {\"a\": 1}, \"order\": -1}, \"flag\": {\"type\": \"bool\", \"value\": 0, \"order\": 5}, \"broken\": \"не объект\", \"listval\": {\"type\": \"text\", \"value\": [1, 2.5], \"order\": 4}, \"combo_empty\": {\"text\": \"Пустой список\", \"type\": \"combo\", \"value\": \"x\", \"order\": 6}}",
+   "overridesJson": "{\"waywallen.scheme_color\": \"0.5000 0.5000 0.5000 1.0000\"}",
+   "actions": [
+    {
+     "op": "setValue",
+     "key": "tint",
+     "value": "0.9 0.8 0.7 0.6"
+    },
+    {
+     "op": "setValue",
+     "key": "mode",
+     "value": "night"
+    },
+    {
+     "op": "setValue",
+     "key": "тоже мимо",
+     "value": "нет такой строки"
+    },
+    {
+     "op": "resetUserProperties"
+    }
+   ],
+   "count": 12,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Цвет схемы",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.5000 0.5000 0.5000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "waywallen.enable_audio",
+     "label": "Enable audio",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "hidden",
+     "label": "Странный",
+     "type": "scenetexture",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "tint",
+     "label": "Оттенок",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.1 0.2 0.3",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "broken",
+     "label": "broken",
+     "type": "",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "speed",
+     "label": "speed",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.5,
+     "maxVal": 1.0,
+     "currentValue": "1.23457e+06",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "brightness",
+     "label": "Яркость",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 2.0,
+     "currentValue": "0.5",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "mode",
+     "label": "Режим",
+     "type": "combo",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "day",
+     "hasAlpha": false,
+     "optionLabels": [
+      "День",
+      "night",
+      "3"
+     ],
+     "optionValues": [
+      "day",
+      "night",
+      "3"
+     ],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "caption",
+     "label": "Надпись",
+     "type": "textinput",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "привет",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "listval",
+     "label": "listval",
+     "type": "text",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 2.5000",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "flag",
+     "label": "flag",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "false",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "combo_empty",
+     "label": "Пустой список",
+     "type": "combo",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "x",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": true,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [
+    {
+     "first": 0,
+     "last": 11,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 3,
+     "last": 3,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 7,
+     "last": 7,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 3,
+     "last": 3,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 7,
+     "last": 7,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    }
+   ],
+   "valueChanged": [
+    {
+     "key": "tint",
+     "value": "0.9 0.8 0.7 0.6"
+    },
+    {
+     "key": "mode",
+     "value": "night"
+    },
+    {
+     "key": "тоже мимо",
+     "value": "нет такой строки"
+    }
+   ],
+   "resetRequested": [
+    "tint",
+    "mode"
+   ],
+   "overrideStateChangedCount": 5
+  },
+  {
+   "name": "сброс предопределённых свойств",
+   "schemaJson": "{\"waywallen.scheme_color\": {\"text\": \"Цвет схемы\", \"type\": \"color\", \"value\": [0.2, 0.4, 0.6, 1.0]}, \"waywallen.enable_audio\": {\"text\": \"\", \"type\": \"bool\", \"value\": true}, \"brightness\": {\"text\": \"Яркость\", \"type\": \"slider\", \"value\": 0.5, \"min\": 0, \"max\": 2, \"order\": 2}, \"speed\": {\"type\": \"slider\", \"value\": 1234567, \"min\": 0.5, \"max\": 0, \"order\": 1}, \"mode\": {\"text\": \"Режим\", \"type\": \"combo\", \"value\": \"day\", \"order\": 3, \"options\": [{\"label\": \"День\", \"value\": \"day\"}, {\"value\": \"night\"}, {\"label\": \"\", \"value\": 3}]}, \"caption\": {\"text\": \"Надпись\", \"type\": \"textinput\", \"value\": \"привет\", \"order\": 3}, \"tint\": {\"text\": \"Оттенок\", \"type\": \"color\", \"value\": \"0.1 0.2 0.3\", \"order\": 0}, \"hidden\": {\"text\": \"Странный\", \"type\": \"scenetexture\", \"value\": {\"a\": 1}, \"order\": -1}, \"flag\": {\"type\": \"bool\", \"value\": 0, \"order\": 5}, \"broken\": \"не объект\", \"listval\": {\"type\": \"text\", \"value\": [1, 2.5], \"order\": 4}, \"combo_empty\": {\"text\": \"Пустой список\", \"type\": \"combo\", \"value\": \"x\", \"order\": 6}}",
+   "overridesJson": "{\"waywallen.enable_audio\": \"false\", \"flag\": \"true\"}",
+   "actions": [
+    {
+     "op": "resetPredefinedProperties"
+    }
+   ],
+   "count": 12,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Цвет схемы",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.2000 0.4000 0.6000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "waywallen.enable_audio",
+     "label": "Enable audio",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "hidden",
+     "label": "Странный",
+     "type": "scenetexture",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "tint",
+     "label": "Оттенок",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.1 0.2 0.3",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "broken",
+     "label": "broken",
+     "type": "",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "speed",
+     "label": "speed",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.5,
+     "maxVal": 1.0,
+     "currentValue": "1.23457e+06",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "brightness",
+     "label": "Яркость",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 2.0,
+     "currentValue": "0.5",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "mode",
+     "label": "Режим",
+     "type": "combo",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "day",
+     "hasAlpha": false,
+     "optionLabels": [
+      "День",
+      "night",
+      "3"
+     ],
+     "optionValues": [
+      "day",
+      "night",
+      "3"
+     ],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "caption",
+     "label": "Надпись",
+     "type": "textinput",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "привет",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "listval",
+     "label": "listval",
+     "type": "text",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 2.5000",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "flag",
+     "label": "flag",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "combo_empty",
+     "label": "Пустой список",
+     "type": "combo",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "x",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": true,
+   "dataChanged": [
+    {
+     "first": 0,
+     "last": 11,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 1,
+     "last": 1,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    }
+   ],
+   "valueChanged": [],
+   "resetRequested": [
+    "waywallen.enable_audio"
+   ],
+   "overrideStateChangedCount": 2
+  },
+  {
+   "name": "сброс всего",
+   "schemaJson": "{\"waywallen.scheme_color\": {\"text\": \"Цвет схемы\", \"type\": \"color\", \"value\": [0.2, 0.4, 0.6, 1.0]}, \"waywallen.enable_audio\": {\"text\": \"\", \"type\": \"bool\", \"value\": true}, \"brightness\": {\"text\": \"Яркость\", \"type\": \"slider\", \"value\": 0.5, \"min\": 0, \"max\": 2, \"order\": 2}, \"speed\": {\"type\": \"slider\", \"value\": 1234567, \"min\": 0.5, \"max\": 0, \"order\": 1}, \"mode\": {\"text\": \"Режим\", \"type\": \"combo\", \"value\": \"day\", \"order\": 3, \"options\": [{\"label\": \"День\", \"value\": \"day\"}, {\"value\": \"night\"}, {\"label\": \"\", \"value\": 3}]}, \"caption\": {\"text\": \"Надпись\", \"type\": \"textinput\", \"value\": \"привет\", \"order\": 3}, \"tint\": {\"text\": \"Оттенок\", \"type\": \"color\", \"value\": \"0.1 0.2 0.3\", \"order\": 0}, \"hidden\": {\"text\": \"Странный\", \"type\": \"scenetexture\", \"value\": {\"a\": 1}, \"order\": -1}, \"flag\": {\"type\": \"bool\", \"value\": 0, \"order\": 5}, \"broken\": \"не объект\", \"listval\": {\"type\": \"text\", \"value\": [1, 2.5], \"order\": 4}, \"combo_empty\": {\"text\": \"Пустой список\", \"type\": \"combo\", \"value\": \"x\", \"order\": 6}}",
+   "overridesJson": "{\"waywallen.enable_audio\": \"false\", \"flag\": \"true\"}",
+   "actions": [
+    {
+     "op": "resetAll"
+    }
+   ],
+   "count": 12,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Цвет схемы",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.2000 0.4000 0.6000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "waywallen.enable_audio",
+     "label": "Enable audio",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "true",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "hidden",
+     "label": "Странный",
+     "type": "scenetexture",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "tint",
+     "label": "Оттенок",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.1 0.2 0.3",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "broken",
+     "label": "broken",
+     "type": "",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "speed",
+     "label": "speed",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.5,
+     "maxVal": 1.0,
+     "currentValue": "1.23457e+06",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "brightness",
+     "label": "Яркость",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 2.0,
+     "currentValue": "0.5",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "mode",
+     "label": "Режим",
+     "type": "combo",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "day",
+     "hasAlpha": false,
+     "optionLabels": [
+      "День",
+      "night",
+      "3"
+     ],
+     "optionValues": [
+      "day",
+      "night",
+      "3"
+     ],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "caption",
+     "label": "Надпись",
+     "type": "textinput",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "привет",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "listval",
+     "label": "listval",
+     "type": "text",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "1.0000 2.5000",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "flag",
+     "label": "flag",
+     "type": "bool",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "false",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    },
+    {
+     "key": "combo_empty",
+     "label": "Пустой список",
+     "type": "combo",
+     "supported": false,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "x",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [
+    {
+     "first": 0,
+     "last": 11,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 1,
+     "last": 1,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    },
+    {
+     "first": 10,
+     "last": 10,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    }
+   ],
+   "valueChanged": [],
+   "resetRequested": [
+    "waywallen.enable_audio",
+    "flag"
+   ],
+   "overrideStateChangedCount": 2
+  },
+  {
+   "name": "минимальная схема: цвет схемы по умолчанию, аудио нет",
+   "schemaJson": "{\"gain\": {\"text\": \"Усиление\", \"type\": \"slider\", \"value\": 2, \"max\": 10}}",
+   "overridesJson": "",
+   "actions": [],
+   "count": 2,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Scheme color",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.0000 0.0000 0.0000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    },
+    {
+     "key": "gain",
+     "label": "Усиление",
+     "type": "slider",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 10.0,
+     "currentValue": "2",
+     "hasAlpha": false,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "User properties",
+     "kind": "user"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [],
+   "valueChanged": [],
+   "resetRequested": [],
+   "overrideStateChangedCount": 0
+  },
+  {
+   "name": "пустая схема",
+   "schemaJson": "",
+   "overridesJson": "",
+   "actions": [],
+   "count": 0,
+   "rows": [],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [],
+   "valueChanged": [],
+   "resetRequested": [],
+   "overrideStateChangedCount": 0
+  },
+  {
+   "name": "битый JSON схемы",
+   "schemaJson": "{это не json",
+   "overridesJson": "{тоже не json",
+   "actions": [],
+   "count": 1,
+   "rows": [
+    {
+     "key": "waywallen.scheme_color",
+     "label": "Scheme color",
+     "type": "color",
+     "supported": true,
+     "minVal": 0.0,
+     "maxVal": 1.0,
+     "currentValue": "0.0000 0.0000 0.0000 1.0000",
+     "hasAlpha": true,
+     "optionLabels": [],
+     "optionValues": [],
+     "section": "Properties",
+     "kind": "property"
+    }
+   ],
+   "hasPredefinedPropertyOverrides": false,
+   "hasUserPropertyOverrides": false,
+   "dataChanged": [
+    {
+     "first": 0,
+     "last": 0,
+     "roles": [
+      "currentValue",
+      "hasAlpha"
+     ]
+    }
+   ],
+   "valueChanged": [],
+   "resetRequested": [],
+   "overrideStateChangedCount": 1
+  }
+ ]
+}

@@ -1,0 +1,2262 @@
+{
+ "bar5": {
+  "0": "░░░░░░░░░░",
+  "1": "██░░░░░░░░",
+  "2": "████░░░░░░",
+  "3": "██████░░░░",
+  "4": "████████░░",
+  "5": "██████████"
+ },
+ "card_qss_dark": {
+  "deCard": "QFrame#deCard { background-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; } QFrame#deCard QLabel { border: none; background: transparent; } QFrame#deCard QWidget { border: none; background: transparent; }",
+  "legendFrame": "QFrame#legendFrame { background-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; } QFrame#legendFrame QLabel { border: none; background: transparent; } QFrame#legendFrame QWidget { border: none; background: transparent; }",
+  "recRow": "QFrame#recRow { background-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; } QFrame#recRow QLabel { border: none; background: transparent; } QFrame#recRow QWidget { border: none; background: transparent; }"
+ },
+ "card_qss_light": {
+  "deCard": "QFrame#deCard { background-color: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; } QFrame#deCard QLabel { border: none; background: transparent; } QFrame#deCard QWidget { border: none; background: transparent; }",
+  "legendFrame": "QFrame#legendFrame { background-color: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; } QFrame#legendFrame QLabel { border: none; background: transparent; } QFrame#legendFrame QWidget { border: none; background: transparent; }",
+  "recRow": "QFrame#recRow { background-color: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; } QFrame#recRow QLabel { border: none; background: transparent; } QFrame#recRow QWidget { border: none; background: transparent; }"
+ },
+ "cards": {
+  "budgie": {
+   "body_buttons": [
+    "📦 Установить"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  550 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐☆☆",
+    "<b>Гейминг:</b>  🎮🎮🎮☆☆",
+    "🧰 Тулкит",
+    "<b>GTK3 → GTK4</b>",
+    "🖥️ Сессия",
+    "<b>X11 (Wayland WIP)</b>",
+    "🪟 Композитор",
+    "<b>Budgie WM / Magpie</b>",
+    "📊 Панель",
+    "<b>Budgie Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>Nautilus</b>",
+    "⌨️ Терминал",
+    "<b>GNOME Terminal</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Среднее</b>",
+    "Элегантный рабочий стол от Buddies of Budgie"
+   ],
+   "collapsed": "▶  🐦  Budgie   ·   Память 550 МБ   ·   Процессор Среднее   ·   GTK3 → GTK4   ·   Budgie WM / Magpie",
+   "expanded": "▼  🐦  Budgie   ·   Память 550 МБ   ·   Процессор Среднее   ·   GTK3 → GTK4   ·   Budgie WM / Magpie"
+  },
+  "cinnamon-mint": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  650 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐⭐",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>GTK3</b>",
+    "🖥️ Сессия",
+    "<b>X11</b>",
+    "🪟 Композитор",
+    "<b>Muffin</b>",
+    "📊 Панель",
+    "<b>Cinnamon Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>Nemo</b>",
+    "⌨️ Терминал",
+    "<b>gnome-terminal</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Среднее</b>",
+    "🍃 Рабочий стол Cinnamon с полным набором компонентов Linux Mint"
+   ],
+   "collapsed": "▶  🍃  Cinnamon  ✅   ·   Память 650 МБ   ·   Процессор Среднее   ·   GTK3   ·   Muffin",
+   "expanded": "▼  🍃  Cinnamon  ✅   ·   Память 650 МБ   ·   Процессор Среднее   ·   GTK3   ·   Muffin"
+  },
+  "cosmic": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  500 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐☆",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>iced (Rust)</b>",
+    "🖥️ Сессия",
+    "<b>Wayland</b>",
+    "🪟 Композитор",
+    "<b>cosmic-comp</b>",
+    "📊 Панель",
+    "<b>COSMIC Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>COSMIC Files</b>",
+    "⌨️ Терминал",
+    "<b>COSMIC Term</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Среднее</b>",
+    "Новый Wayland-native DE от System76 на Rust"
+   ],
+   "collapsed": "▶  🪐  COSMIC  ✅   ·   Память 500 МБ   ·   Процессор Среднее   ·   iced (Rust)   ·   cosmic-comp",
+   "expanded": "▼  🪐  COSMIC  ✅   ·   Память 500 МБ   ·   Процессор Среднее   ·   iced (Rust)   ·   cosmic-comp"
+  },
+  "gnome": {
+   "body_buttons": [
+    "📦 Установить"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  800 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐☆☆",
+    "<b>Гейминг:</b>  🎮🎮🎮☆☆",
+    "🧰 Тулкит",
+    "<b>GTK4</b>",
+    "🖥️ Сессия",
+    "<b>Wayland + X11</b>",
+    "🪟 Композитор",
+    "<b>Mutter</b>",
+    "📊 Панель",
+    "<b>GNOME Shell</b>",
+    "📁 Файловый менеджер",
+    "<b>Nautilus</b>",
+    "⌨️ Терминал",
+    "<b>GNOME Console</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Высокое</b>",
+    "Современный рабочий стол с минималистичным дизайном"
+   ],
+   "collapsed": "▶  🦶  GNOME   ·   Память 800 МБ   ·   Процессор Высокое   ·   GTK4   ·   Mutter",
+   "expanded": "▼  🦶  GNOME   ·   Память 800 МБ   ·   Процессор Высокое   ·   GTK4   ·   Mutter"
+  },
+  "hyprland": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  250 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐⭐",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮🎮",
+    "🧰 Тулкит",
+    "<b>—</b>",
+    "🖥️ Сессия",
+    "<b>Wayland</b>",
+    "🪟 Композитор",
+    "<b>Hyprland</b>",
+    "📊 Панель",
+    "<b>Waybar / Eww</b>",
+    "📁 Файловый менеджер",
+    "<b>Thunar / Dolphin</b>",
+    "⌨️ Терминал",
+    "<b>kitty / foot</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "🪟 Тайловый Wayland-композитор с анимациями и высокой производительностью"
+   ],
+   "collapsed": "▶  🪟  Hyprland  ✅   ·   Память 250 МБ   ·   Процессор Низкое   ·   —   ·   Hyprland",
+   "expanded": "▼  🪟  Hyprland  ✅   ·   Память 250 МБ   ·   Процессор Низкое   ·   —   ·   Hyprland"
+  },
+  "kde": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  700 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐⭐",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮🎮",
+    "🧰 Тулкит",
+    "<b>Qt6</b>",
+    "🖥️ Сессия",
+    "<b>Wayland + X11</b>",
+    "🪟 Композитор",
+    "<b>KWin</b>",
+    "📊 Панель",
+    "<b>Plasma Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>Dolphin</b>",
+    "⌨️ Терминал",
+    "<b>Konsole</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Среднее</b>",
+    "Мощный и настраиваемый рабочий стол с красивыми эффектами"
+   ],
+   "collapsed": "▶  💎  KDE Plasma  ✅   ·   Память 700 МБ   ·   Процессор Среднее   ·   Qt6   ·   KWin",
+   "expanded": "▼  💎  KDE Plasma  ✅   ·   Память 700 МБ   ·   Процессор Среднее   ·   Qt6   ·   KWin"
+  },
+  "lxqt": {
+   "body_buttons": [
+    "📦 Установить"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  350 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐☆",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>Qt6</b>",
+    "🖥️ Сессия",
+    "<b>X11 (Wayland WIP)</b>",
+    "🪟 Композитор",
+    "<b>нет (Openbox WM; labwc опц.)</b>",
+    "📊 Панель",
+    "<b>LXQt Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>PCManFM-Qt</b>",
+    "⌨️ Терминал",
+    "<b>QTerminal</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "🪶 Лёгкий Qt-десктоп, преемник LXDE — Qt-аналог XFCE"
+   ],
+   "collapsed": "▶  🪶  LXQt   ·   Память 350 МБ   ·   Процессор Низкое   ·   Qt6   ·   нет (Openbox WM; labwc опц.)",
+   "expanded": "▼  🪶  LXQt   ·   Память 350 МБ   ·   Процессор Низкое   ·   Qt6   ·   нет (Openbox WM; labwc опц.)"
+  },
+  "mate": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  400 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐☆☆",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>GTK3</b>",
+    "🖥️ Сессия",
+    "<b>X11</b>",
+    "🪟 Композитор",
+    "<b>Marco</b>",
+    "📊 Панель",
+    "<b>MATE Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>Caja</b>",
+    "⌨️ Терминал",
+    "<b>mate-terminal</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "Традиционный рабочий стол, продолжение GNOME 2"
+   ],
+   "collapsed": "▶  🦣  MATE  ✅   ·   Память 400 МБ   ·   Процессор Низкое   ·   GTK3   ·   Marco",
+   "expanded": "▼  🦣  MATE  ✅   ·   Память 400 МБ   ·   Процессор Низкое   ·   GTK3   ·   Marco"
+  },
+  "niri": {
+   "body_buttons": [
+    "🔄 Переключиться"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  200 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐☆",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>—</b>",
+    "🖥️ Сессия",
+    "<b>Wayland</b>",
+    "🪟 Композитор",
+    "<b>niri (Smithay)</b>",
+    "📊 Панель",
+    "<b>Waybar</b>",
+    "📁 Файловый менеджер",
+    "<b>Thunar</b>",
+    "⌨️ Терминал",
+    "<b>Alacritty / foot</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "🎞️ Скроллируемый тайловый Wayland-композитор — окна в бесконечной горизонтальной ленте"
+   ],
+   "collapsed": "▶  🎞️  niri  ✅   ·   Память 200 МБ   ·   Процессор Низкое   ·   —   ·   niri (Smithay)",
+   "expanded": "▼  🎞️  niri  ✅   ·   Память 200 МБ   ·   Процессор Низкое   ·   —   ·   niri (Smithay)"
+  },
+  "sway": {
+   "body_buttons": [
+    "📦 Установить"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  150 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐⭐",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮☆",
+    "🧰 Тулкит",
+    "<b>—</b>",
+    "🖥️ Сессия",
+    "<b>Wayland</b>",
+    "🪟 Композитор",
+    "<b>Sway (wlroots)</b>",
+    "📊 Панель",
+    "<b>Waybar</b>",
+    "📁 Файловый менеджер",
+    "<b>Thunar</b>",
+    "⌨️ Терминал",
+    "<b>foot</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "🧩 Тайловый Wayland-композитор — drop-in замена i3, читает его конфиг"
+   ],
+   "collapsed": "▶  🧩  Sway   ·   Память 150 МБ   ·   Процессор Низкое   ·   —   ·   Sway (wlroots)",
+   "expanded": "▼  🧩  Sway   ·   Память 150 МБ   ·   Процессор Низкое   ·   —   ·   Sway (wlroots)"
+  },
+  "xfce": {
+   "body_buttons": [
+    "📦 Установить"
+   ],
+   "body_labels": [
+    "<b>Память:</b>  300 МБ",
+    "<b>Настройка:</b>  ⭐⭐⭐⭐☆",
+    "<b>Гейминг:</b>  🎮🎮🎮🎮🎮",
+    "🧰 Тулкит",
+    "<b>GTK3</b>",
+    "🖥️ Сессия",
+    "<b>X11</b>",
+    "🪟 Композитор",
+    "<b>Xfwm4</b>",
+    "📊 Панель",
+    "<b>Xfce Panel</b>",
+    "📁 Файловый менеджер",
+    "<b>Thunar</b>",
+    "⌨️ Терминал",
+    "<b>xfce4-terminal</b>",
+    "⚡ Нагрузка на процессор",
+    "<b>Низкое</b>",
+    "Лёгкий и быстрый рабочий стол с низким потреблением ресурсов"
+   ],
+   "collapsed": "▶  🐭  XFCE   ·   Память 300 МБ   ·   Процессор Низкое   ·   GTK3   ·   Xfwm4",
+   "expanded": "▼  🐭  XFCE   ·   Память 300 МБ   ·   Процессор Низкое   ·   GTK3   ·   Xfwm4"
+  }
+ },
+ "de_icon_probe": {
+  "": "🖥️",
+  "KDE": "🖥️",
+  "budgie": "🐦",
+  "cinnamon": "🍃",
+  "cinnamon-mint": "🍃",
+  "cosmic": "🪐",
+  "gnome": "🦶",
+  "hyprland": "🪟",
+  "kde": "💎",
+  "lxqt": "🪶",
+  "mate": "🦣",
+  "niri": "🎞️",
+  "sway": "🧩",
+  "xfce": "🐭",
+  "нет-такого": "🖥️"
+ },
+ "de_icons": {
+  "budgie": "🐦",
+  "pantheon": "🏛️",
+  "deepin": "🌊",
+  "cinnamon": "🍃",
+  "cinnamon-mint": "🍃",
+  "cosmic": "🪐",
+  "gnome": "🦶",
+  "hyprland": "🪟",
+  "kde": "💎",
+  "lxqt": "🪶",
+  "mate": "🦣",
+  "niri": "🎞️",
+  "sway": "🧩",
+  "xfce": "🐭",
+  "river": "🏞️",
+  "wayfire": "🔥"
+ },
+ "de_installed": {
+  "budgie": false,
+  "cinnamon-mint": true,
+  "cosmic": true,
+  "gnome": false,
+  "hyprland": true,
+  "kde": true,
+  "lxqt": false,
+  "mate": true,
+  "niri": true,
+  "sway": false,
+  "xfce": false
+ },
+ "de_order": [
+  "cinnamon-mint",
+  "xfce",
+  "mate",
+  "gnome",
+  "kde",
+  "budgie",
+  "cosmic",
+  "lxqt",
+  "hyprland",
+  "sway",
+  "niri"
+ ],
+ "pair_html": {
+  "gnome|cinnamon-mint": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>GNOME</th><th align='left'>Cinnamon</th></tr><tr><td><b>Память</b></td><td>800 МБ</td><td>650 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Высокое</td><td>Среднее</td></tr><tr><td><b>Настройка</b></td><td>██████░░░░</td><td>██████████</td></tr><tr><td><b>Гейминг</b></td><td>██████░░░░</td><td>████████░░</td></tr><tr><td><b>Тулкит</b></td><td>GTK4</td><td>GTK3</td></tr><tr><td><b>Сессия</b></td><td>Wayland + X11</td><td>X11</td></tr><tr><td><b>Композитор</b></td><td>Mutter</td><td>Muffin</td></tr><tr><td><b>Панель</b></td><td>GNOME Shell</td><td>Cinnamon Panel</td></tr><tr><td><b>Файлы</b></td><td>Nautilus</td><td>Nemo</td></tr><tr><td><b>Терминал</b></td><td>GNOME Console</td><td>gnome-terminal</td></tr></table><p><b>GNOME:</b> Современный рабочий стол с минималистичным дизайном</p><p><b>Cinnamon:</b> 🍃 Рабочий стол Cinnamon с полным набором компонентов Linux Mint</p>",
+  "hyprland|sway": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>Hyprland</th><th align='left'>Sway</th></tr><tr><td><b>Память</b></td><td>250 МБ</td><td>150 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Низкое</td><td>Низкое</td></tr><tr><td><b>Настройка</b></td><td>██████████</td><td>██████████</td></tr><tr><td><b>Гейминг</b></td><td>██████████</td><td>████████░░</td></tr><tr><td><b>Тулкит</b></td><td>—</td><td>—</td></tr><tr><td><b>Сессия</b></td><td>Wayland</td><td>Wayland</td></tr><tr><td><b>Композитор</b></td><td>Hyprland</td><td>Sway (wlroots)</td></tr><tr><td><b>Панель</b></td><td>Waybar / Eww</td><td>Waybar</td></tr><tr><td><b>Файлы</b></td><td>Thunar / Dolphin</td><td>Thunar</td></tr><tr><td><b>Терминал</b></td><td>kitty / foot</td><td>foot</td></tr></table><p><b>Hyprland:</b> 🪟 Тайловый Wayland-композитор с анимациями и высокой производительностью</p><p><b>Sway:</b> 🧩 Тайловый Wayland-композитор — drop-in замена i3, читает его конфиг</p>",
+  "kde|gnome": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>KDE Plasma</th><th align='left'>GNOME</th></tr><tr><td><b>Память</b></td><td>700 МБ</td><td>800 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Среднее</td><td>Высокое</td></tr><tr><td><b>Настройка</b></td><td>██████████</td><td>██████░░░░</td></tr><tr><td><b>Гейминг</b></td><td>██████████</td><td>██████░░░░</td></tr><tr><td><b>Тулкит</b></td><td>Qt6</td><td>GTK4</td></tr><tr><td><b>Сессия</b></td><td>Wayland + X11</td><td>Wayland + X11</td></tr><tr><td><b>Композитор</b></td><td>KWin</td><td>Mutter</td></tr><tr><td><b>Панель</b></td><td>Plasma Panel</td><td>GNOME Shell</td></tr><tr><td><b>Файлы</b></td><td>Dolphin</td><td>Nautilus</td></tr><tr><td><b>Терминал</b></td><td>Konsole</td><td>GNOME Console</td></tr></table><p><b>KDE Plasma:</b> Мощный и настраиваемый рабочий стол с красивыми эффектами</p><p><b>GNOME:</b> Современный рабочий стол с минималистичным дизайном</p>",
+  "lxqt|cosmic": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>LXQt</th><th align='left'>COSMIC</th></tr><tr><td><b>Память</b></td><td>350 МБ</td><td>500 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Низкое</td><td>Среднее</td></tr><tr><td><b>Настройка</b></td><td>████████░░</td><td>████████░░</td></tr><tr><td><b>Гейминг</b></td><td>████████░░</td><td>████████░░</td></tr><tr><td><b>Тулкит</b></td><td>Qt6</td><td>iced (Rust)</td></tr><tr><td><b>Сессия</b></td><td>X11 (Wayland WIP)</td><td>Wayland</td></tr><tr><td><b>Композитор</b></td><td>нет (Openbox WM; labwc опц.)</td><td>cosmic-comp</td></tr><tr><td><b>Панель</b></td><td>LXQt Panel</td><td>COSMIC Panel</td></tr><tr><td><b>Файлы</b></td><td>PCManFM-Qt</td><td>COSMIC Files</td></tr><tr><td><b>Терминал</b></td><td>QTerminal</td><td>COSMIC Term</td></tr></table><p><b>LXQt:</b> 🪶 Лёгкий Qt-десктоп, преемник LXDE — Qt-аналог XFCE</p><p><b>COSMIC:</b> Новый Wayland-native DE от System76 на Rust</p>",
+  "mate|budgie": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>MATE</th><th align='left'>Budgie</th></tr><tr><td><b>Память</b></td><td>400 МБ</td><td>550 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Низкое</td><td>Среднее</td></tr><tr><td><b>Настройка</b></td><td>██████░░░░</td><td>██████░░░░</td></tr><tr><td><b>Гейминг</b></td><td>████████░░</td><td>██████░░░░</td></tr><tr><td><b>Тулкит</b></td><td>GTK3</td><td>GTK3 → GTK4</td></tr><tr><td><b>Сессия</b></td><td>X11</td><td>X11 (Wayland WIP)</td></tr><tr><td><b>Композитор</b></td><td>Marco</td><td>Budgie WM / Magpie</td></tr><tr><td><b>Панель</b></td><td>MATE Panel</td><td>Budgie Panel</td></tr><tr><td><b>Файлы</b></td><td>Caja</td><td>Nautilus</td></tr><tr><td><b>Терминал</b></td><td>mate-terminal</td><td>GNOME Terminal</td></tr></table><p><b>MATE:</b> Традиционный рабочий стол, продолжение GNOME 2</p><p><b>Budgie:</b> Элегантный рабочий стол от Buddies of Budgie</p>",
+  "niri|niri": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>niri</th><th align='left'>niri</th></tr><tr><td><b>Память</b></td><td>200 МБ</td><td>200 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Низкое</td><td>Низкое</td></tr><tr><td><b>Настройка</b></td><td>████████░░</td><td>████████░░</td></tr><tr><td><b>Гейминг</b></td><td>████████░░</td><td>████████░░</td></tr><tr><td><b>Тулкит</b></td><td>—</td><td>—</td></tr><tr><td><b>Сессия</b></td><td>Wayland</td><td>Wayland</td></tr><tr><td><b>Композитор</b></td><td>niri (Smithay)</td><td>niri (Smithay)</td></tr><tr><td><b>Панель</b></td><td>Waybar</td><td>Waybar</td></tr><tr><td><b>Файлы</b></td><td>Thunar</td><td>Thunar</td></tr><tr><td><b>Терминал</b></td><td>Alacritty / foot</td><td>Alacritty / foot</td></tr></table><p><b>niri:</b> 🎞️ Скроллируемый тайловый Wayland-композитор — окна в бесконечной горизонтальной ленте</p><p><b>niri:</b> 🎞️ Скроллируемый тайловый Wayland-композитор — окна в бесконечной горизонтальной ленте</p>",
+  "xfce|kde": "<table cellpadding=\"6\" cellspacing=\"0\" border=\"0\"><tr><th align='left'>Параметр</th><th align='left'>XFCE</th><th align='left'>KDE Plasma</th></tr><tr><td><b>Память</b></td><td>300 МБ</td><td>700 МБ</td></tr><tr><td><b>Нагрузка на процессор</b></td><td>Низкое</td><td>Среднее</td></tr><tr><td><b>Настройка</b></td><td>████████░░</td><td>██████████</td></tr><tr><td><b>Гейминг</b></td><td>██████████</td><td>██████████</td></tr><tr><td><b>Тулкит</b></td><td>GTK3</td><td>Qt6</td></tr><tr><td><b>Сессия</b></td><td>X11</td><td>Wayland + X11</td></tr><tr><td><b>Композитор</b></td><td>Xfwm4</td><td>KWin</td></tr><tr><td><b>Панель</b></td><td>Xfce Panel</td><td>Plasma Panel</td></tr><tr><td><b>Файлы</b></td><td>Thunar</td><td>Dolphin</td></tr><tr><td><b>Терминал</b></td><td>xfce4-terminal</td><td>Konsole</td></tr></table><p><b>XFCE:</b> Лёгкий и быстрый рабочий стол с низким потреблением ресурсов</p><p><b>KDE Plasma:</b> Мощный и настраиваемый рабочий стол с красивыми эффектами</p>"
+ },
+ "pair_title": {
+  "gnome|cinnamon-mint": "⚔️ GNOME ↔ Cinnamon",
+  "hyprland|sway": "⚔️ Hyprland ↔ Sway",
+  "kde|gnome": "⚔️ KDE Plasma ↔ GNOME",
+  "lxqt|cosmic": "⚔️ LXQt ↔ COSMIC",
+  "mate|budgie": "⚔️ MATE ↔ Budgie",
+  "niri|niri": "⚔️ niri ↔ niri",
+  "xfce|kde": "⚔️ XFCE ↔ KDE Plasma"
+ },
+ "quick_pairs": [
+  [
+   "XFCE ↔ KDE",
+   "xfce",
+   "kde"
+  ],
+  [
+   "GNOME ↔ Cinnamon",
+   "gnome",
+   "cinnamon-mint"
+  ],
+  [
+   "MATE ↔ Budgie",
+   "mate",
+   "budgie"
+  ],
+  [
+   "Hyprland ↔ Sway",
+   "hyprland",
+   "sway"
+  ]
+ ],
+ "ram_bar": {
+  "0": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 0
+  },
+  "1": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 1
+  },
+  "1200": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 1200
+  },
+  "1201": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 1200
+  },
+  "150": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 150
+  },
+  "200": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 200
+  },
+  "250": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 250
+  },
+  "300": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 300
+  },
+  "350": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 350
+  },
+  "400": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 400
+  },
+  "419": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #22c55e; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 419
+  },
+  "420": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 420
+  },
+  "421": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 421
+  },
+  "500": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 500
+  },
+  "5000": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 1200
+  },
+  "550": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 550
+  },
+  "650": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 650
+  },
+  "700": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 700
+  },
+  "779": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #eab308; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 779
+  },
+  "780": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 780
+  },
+  "781": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 781
+  },
+  "800": {
+   "height": 8,
+   "max": 1200,
+   "qss": "QProgressBar { background: rgba(0,0,0,0.1); border-radius: 4px; }QProgressBar::chunk { background: #ef4444; border-radius: 4px; }",
+   "text_visible": false,
+   "value": 800
+  }
+ },
+ "recommendations": [
+  [
+   "🎮 Геймерам",
+   "Меньше всего нагружает компьютер → XFCE или KDE",
+   "xfce"
+  ],
+  [
+   "💻 Слабое железо",
+   "Меньше 2 ГБ памяти → MATE или XFCE",
+   "mate"
+  ],
+  [
+   "🎨 Любителям красоты",
+   "Анимации и виджеты → KDE Plasma",
+   "kde"
+  ],
+  [
+   "🟢 Новичкам",
+   "Простота из коробки → Cinnamon или GNOME",
+   "cinnamon-mint"
+  ],
+  [
+   "🔧 Опытным",
+   "Полная настройка → KDE Plasma",
+   "kde"
+  ],
+  [
+   "⚡ Максимальная скорость",
+   "Самый быстрый → XFCE",
+   "xfce"
+  ],
+  [
+   "⌨️ Клавиатурщикам",
+   "Управление окнами с клавиатуры → Hyprland",
+   "hyprland"
+  ],
+  [
+   "🧩 Тайлинг из коробки",
+   "Автораскладка окон → Sway, niri или River",
+   "sway"
+  ],
+  [
+   "🎞️ Скроллируемый тайлинг",
+   "Окна в бесконечной ленте → niri",
+   "niri"
+  ],
+  [
+   "✨ Эффекты как в Compiz",
+   "Желейные окна и куб рабочих столов → Wayfire",
+   "wayfire"
+  ]
+ ],
+ "stars": {
+  "0": [
+   "☆☆☆☆☆",
+   "☆☆☆☆☆"
+  ],
+  "1": [
+   "⭐☆☆☆☆",
+   "🎮☆☆☆☆"
+  ],
+  "2": [
+   "⭐⭐☆☆☆",
+   "🎮🎮☆☆☆"
+  ],
+  "3": [
+   "⭐⭐⭐☆☆",
+   "🎮🎮🎮☆☆"
+  ],
+  "4": [
+   "⭐⭐⭐⭐☆",
+   "🎮🎮🎮🎮☆"
+  ],
+  "5": [
+   "⭐⭐⭐⭐⭐",
+   "🎮🎮🎮🎮🎮"
+  ]
+ },
+ "value_style": {
+  "Budgie WM / Magpie": "",
+  "Dolphin": "",
+  "GTK3": "",
+  "GTK3 → GTK4": "",
+  "GTK4": "color: #22c55e;",
+  "Hyprland": "",
+  "KWin": "",
+  "Konsole": "",
+  "Marco": "",
+  "Muffin": "",
+  "Mutter": "",
+  "Qt6": "color: #22c55e;",
+  "Sway (wlroots)": "",
+  "Wayland": "color: #22c55e;",
+  "Wayland + X11": "color: #22c55e;",
+  "X11": "",
+  "X11 (Wayland WIP)": "color: #22c55e;",
+  "Xfwm4": "",
+  "cosmic-comp": "",
+  "iced (Rust)": "color: #22c55e;",
+  "niri (Smithay)": "",
+  "Высокое": "color: #ef4444;",
+  "Низкое": "color: #22c55e;",
+  "Среднее": "",
+  "нет (Openbox WM; labwc опц.)": "",
+  "чепуха": "",
+  "—": ""
+ },
+ "window_tree": [
+  {
+   "cls": "QWidget",
+   "depth": 0
+  },
+  {
+   "cls": "QScrollArea",
+   "depth": 1
+  },
+  {
+   "cls": "QWidget",
+   "depth": 2,
+   "name": "qt_scrollarea_viewport"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 3
+  },
+  {
+   "cls": "QLabel",
+   "depth": 4,
+   "text": "📊 Сравнение DE"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 4,
+   "text": "Быстрые пары:"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 4,
+   "text": "XFCE ↔ KDE"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 4,
+   "text": "GNOME ↔ Cinnamon"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 4,
+   "text": "MATE ↔ Budgie"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 4,
+   "text": "Hyprland ↔ Sway"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "legendFrame"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>Как читать таблицу</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>Память</b> — сколько занимает сразу после входа (зависит от компьютера)<br><b>Настройка ⭐</b> — от 1 (минимум) до 5 (максимум гибкости)<br><b>Игры 🎮</b> — насколько подходит для игр<br><b>Раскройте строку</b> → на чём построен, что рисует окна, панель, терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 4,
+   "text": "Все рабочие столы"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🍃  Cinnamon  ✅   ·   Память 650 МБ   ·   Процессор Среднее   ·   GTK3   ·   Muffin"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  650 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    650
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐⭐"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GTK3</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>X11</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Muffin</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Cinnamon Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Nemo</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>gnome-terminal</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Среднее</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🍃 Рабочий стол Cinnamon с полным набором компонентов Linux Mint"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🐭  XFCE   ·   Память 300 МБ   ·   Процессор Низкое   ·   GTK3   ·   Xfwm4"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  300 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    300
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮🎮"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GTK3</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>X11</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Xfwm4</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Xfce Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Thunar</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>xfce4-terminal</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Лёгкий и быстрый рабочий стол с низким потреблением ресурсов"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🦣  MATE  ✅   ·   Память 400 МБ   ·   Процессор Низкое   ·   GTK3   ·   Marco"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  400 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    400
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐☆☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GTK3</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>X11</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Marco</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>MATE Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Caja</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>mate-terminal</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Традиционный рабочий стол, продолжение GNOME 2"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🦶  GNOME   ·   Память 800 МБ   ·   Процессор Высокое   ·   GTK4   ·   Mutter"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  800 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    800
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐☆☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮☆☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GTK4</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland + X11</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Mutter</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GNOME Shell</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Nautilus</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GNOME Console</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Высокое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Современный рабочий стол с минималистичным дизайном"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  💎  KDE Plasma  ✅   ·   Память 700 МБ   ·   Процессор Среднее   ·   Qt6   ·   KWin"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  700 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    700
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐⭐"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮🎮"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Qt6</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland + X11</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>KWin</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Plasma Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Dolphin</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Konsole</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Среднее</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Мощный и настраиваемый рабочий стол с красивыми эффектами"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🐦  Budgie   ·   Память 550 МБ   ·   Процессор Среднее   ·   GTK3 → GTK4   ·   Budgie WM / Magpie"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  550 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    550
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐☆☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮☆☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GTK3 → GTK4</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>X11 (Wayland WIP)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Budgie WM / Magpie</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Budgie Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Nautilus</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>GNOME Terminal</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Среднее</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Элегантный рабочий стол от Buddies of Budgie"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🪐  COSMIC  ✅   ·   Память 500 МБ   ·   Процессор Среднее   ·   iced (Rust)   ·   cosmic-comp"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  500 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    500
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>iced (Rust)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>cosmic-comp</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>COSMIC Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>COSMIC Files</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>COSMIC Term</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Среднее</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "Новый Wayland-native DE от System76 на Rust"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🪶  LXQt   ·   Память 350 МБ   ·   Процессор Низкое   ·   Qt6   ·   нет (Openbox WM; labwc опц.)"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  350 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    350
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Qt6</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>X11 (Wayland WIP)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>нет (Openbox WM; labwc опц.)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>LXQt Panel</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>PCManFM-Qt</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>QTerminal</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪶 Лёгкий Qt-десктоп, преемник LXDE — Qt-аналог XFCE"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🪟  Hyprland  ✅   ·   Память 250 МБ   ·   Процессор Низкое   ·   —   ·   Hyprland"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  250 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    250
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐⭐"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮🎮"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>—</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Hyprland</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Waybar / Eww</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Thunar / Dolphin</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>kitty / foot</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Тайловый Wayland-композитор с анимациями и высокой производительностью"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🧩  Sway   ·   Память 150 МБ   ·   Процессор Низкое   ·   —   ·   Sway (wlroots)"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  150 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    150
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐⭐"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>—</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Sway (wlroots)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Waybar</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Thunar</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>foot</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧩 Тайловый Wayland-композитор — drop-in замена i3, читает его конфиг"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "DECard",
+   "depth": 4,
+   "name": "deCard"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "▶  🎞️  niri  ✅   ·   Память 200 МБ   ·   Процессор Низкое   ·   —   ·   niri (Smithay)"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 5
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Память:</b>  200 МБ"
+  },
+  {
+   "bar": [
+    1200,
+    200
+   ],
+   "cls": "QProgressBar",
+   "depth": 6
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Настройка:</b>  ⭐⭐⭐⭐☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Гейминг:</b>  🎮🎮🎮🎮☆"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🧰 Тулкит"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>—</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🖥️ Сессия"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Wayland</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🪟 Композитор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>niri (Smithay)</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📊 Панель"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Waybar</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "📁 Файловый менеджер"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Thunar</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⌨️ Терминал"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Alacritty / foot</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "⚡ Нагрузка на процессор"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "<b>Низкое</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 6,
+   "text": "🎞️ Скроллируемый тайловый Wayland-композитор — окна в бесконечной горизонтальной ленте"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 6,
+   "text": "🔄 Переключиться"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 4,
+   "text": "🎯 Быстрые рекомендации"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🎮 Геймерам</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Меньше всего нагружает компьютер → XFCE или KDE"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>💻 Слабое железо</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Меньше 2 ГБ памяти → MATE или XFCE"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🎨 Любителям красоты</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Анимации и виджеты → KDE Plasma"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🟢 Новичкам</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Простота из коробки → Cinnamon или GNOME"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🔧 Опытным</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Полная настройка → KDE Plasma"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>⚡ Максимальная скорость</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Самый быстрый → XFCE"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>⌨️ Клавиатурщикам</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Управление окнами с клавиатуры → Hyprland"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🧩 Тайлинг из коробки</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Автораскладка окон → Sway, niri или River"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>🎞️ Скроллируемый тайлинг</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Окна в бесконечной ленте → niri"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "✅"
+  },
+  {
+   "cls": "QFrame",
+   "depth": 4,
+   "name": "recRow"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "<b>✨ Эффекты как в Compiz</b>"
+  },
+  {
+   "cls": "QLabel",
+   "depth": 5,
+   "text": "Желейные окна и куб рабочих столов → Wayfire"
+  },
+  {
+   "cls": "QPushButton",
+   "depth": 5,
+   "text": "📦 Установить"
+  },
+  {
+   "cls": "QWidget",
+   "depth": 2,
+   "name": "qt_scrollarea_hcontainer"
+  },
+  {
+   "cls": "QScrollBar",
+   "depth": 3
+  },
+  {
+   "cls": "QWidget",
+   "depth": 2,
+   "name": "qt_scrollarea_vcontainer"
+  },
+  {
+   "cls": "QScrollBar",
+   "depth": 3
+  }
+ ]
+}

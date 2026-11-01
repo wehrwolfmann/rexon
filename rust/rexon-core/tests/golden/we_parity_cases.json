@@ -1,0 +1,1969 @@
+{
+ "registry": [
+  {
+   "key": "enable_audio",
+   "value_type": 4,
+   "choices": null,
+   "note": "",
+   "only_types": []
+  },
+  {
+   "key": "volume",
+   "value_type": 1,
+   "choices": null,
+   "note": "",
+   "only_types": []
+  },
+  {
+   "key": "fps",
+   "value_type": 1,
+   "choices": null,
+   "note": "",
+   "only_types": []
+  },
+  {
+   "key": "hwdec",
+   "value_type": 3,
+   "choices": [
+    "auto",
+    "vaapi",
+    "vulkan",
+    "none"
+   ],
+   "note": "",
+   "only_types": []
+  },
+  {
+   "key": "resolution",
+   "value_type": null,
+   "choices": null,
+   "note": "спец-виджет: чипы пресетов",
+   "only_types": []
+  },
+  {
+   "key": "custom_extent",
+   "value_type": 1,
+   "choices": null,
+   "note": "",
+   "only_types": [
+    "scene"
+   ]
+  },
+  {
+   "key": "msaa",
+   "value_type": 1,
+   "choices": null,
+   "note": "",
+   "only_types": [
+    "scene"
+   ]
+  },
+  {
+   "key": "render_node",
+   "value_type": 3,
+   "choices": null,
+   "note": "спец-виджет: выбор GPU",
+   "only_types": []
+  },
+  {
+   "key": "loop_file",
+   "value_type": 3,
+   "choices": [
+    "inf",
+    "no"
+   ],
+   "note": "",
+   "only_types": []
+  },
+  {
+   "key": "shared_texture_enabled",
+   "value_type": 4,
+   "choices": null,
+   "note": "",
+   "only_types": [
+    "web"
+   ]
+  },
+  {
+   "key": "remote_debugging_port",
+   "value_type": 1,
+   "choices": null,
+   "note": "ХУК weweb/Chromium (второй агент)",
+   "only_types": [
+    "web"
+   ]
+  }
+ ],
+ "known_value_types": {
+  "1": "u32",
+  "2": "f32",
+  "3": "string",
+  "4": "bool",
+  "5": "i32"
+ },
+ "special_keys": [
+  "render_node",
+  "resolution"
+ ],
+ "cases": {
+  "empty_response": {
+   "input": {
+    "supported_types": [],
+    "renderers": []
+   },
+   "report": {
+    "supported_types": [],
+    "renderers": [],
+    "engine_keys": {},
+    "issues": [
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "enable_audio",
+      "detail": "UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "volume",
+      "detail": "UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "fps",
+      "detail": "UI Rexon ожидает «fps», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "hwdec",
+      "detail": "UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "resolution",
+      "detail": "UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "render_node",
+      "detail": "UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "loop_file",
+      "detail": "UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 0,
+    "unchecked": [
+     {
+      "types": "scene",
+      "keys": [
+       "custom_extent",
+       "msaa"
+      ]
+     },
+     {
+      "types": "web",
+      "keys": [
+       "shared_texture_enabled",
+       "remote_debugging_port"
+      ]
+     }
+    ]
+   },
+   "text": "Типы обоев движка: —\nRenderer'ы: —\nРасхождений: 7 (предупреждений: 0)\n  • enable_audio: UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • volume: UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • fps: UI Rexon ожидает «fps», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • hwdec: UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • resolution: UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • render_node: UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • loop_file: UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\nНе проверено: у движка нет renderer'а для обоев «scene», поэтому сверить эти настройки не с чем: custom_extent, msaa\nНе проверено: у движка нет renderer'а для обоев «web», поэтому сверить эти настройки не с чем: shared_texture_enabled, remote_debugging_port"
+  },
+  "clean_full": {
+   "input": {
+    "supported_types": [
+     "video",
+     "web",
+     "scene"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video",
+     "web",
+     "scene"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [],
+    "has_drift": false,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video, web, scene\nRenderer'ы: mpv\nПаритет UI: расхождений не найдено ✅"
+  },
+  "unknown_type_regular": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 9,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "unknown_type",
+      "renderer": "mpv",
+      "key": "volume",
+      "detail": "тип значения 9 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле",
+      "severity": "warning"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 1,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nРасхождений: 1 (предупреждений: 1)\n  ⚠️ [mpv] volume: тип значения 9 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле"
+  },
+  "unspecified_type": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 0,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "unknown_type",
+      "renderer": "mpv",
+      "key": "fps",
+      "detail": "тип значения 0 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле",
+      "severity": "warning"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 1,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nРасхождений: 1 (предупреждений: 1)\n  ⚠️ [mpv] fps: тип значения 0 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле"
+  },
+  "unknown_type_special": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 77,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 77,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [],
+    "has_drift": false,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nПаритет UI: расхождений не найдено ✅"
+  },
+  "missing_in_ui": {
+   "input": {
+    "supported_types": [
+     "scene"
+    ],
+    "renderers": [
+     {
+      "name": "scene",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       },
+       {
+        "key": "bloom",
+        "type": 2,
+        "group": "Эффекты"
+       },
+       {
+        "key": "мыло",
+        "type": 3
+       },
+       {
+        "key": "новьё",
+        "type": 12,
+        "group": "Экспер."
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "scene"
+    ],
+    "renderers": [
+     "scene"
+    ],
+    "engine_keys": {
+     "scene": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port",
+      "bloom",
+      "мыло",
+      "новьё"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "missing_in_ui",
+      "renderer": "scene",
+      "key": "bloom",
+      "detail": "движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "missing_in_ui",
+      "renderer": "scene",
+      "key": "мыло",
+      "detail": "движок умеет «мыло» (тип string, группа —), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "unknown_type",
+      "renderer": "scene",
+      "key": "новьё",
+      "detail": "тип значения 12 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле",
+      "severity": "warning"
+     },
+     {
+      "kind": "missing_in_ui",
+      "renderer": "scene",
+      "key": "новьё",
+      "detail": "движок умеет «новьё» (тип 12, группа Экспер.), в реестре UI Rexon её нет",
+      "severity": "warning"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 4,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: scene\nRenderer'ы: scene\nРасхождений: 4 (предупреждений: 4)\n  ⚠️ [scene] bloom: движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет\n  ⚠️ [scene] мыло: движок умеет «мыло» (тип string, группа —), в реестре UI Rexon её нет\n  ⚠️ [scene] новьё: тип значения 12 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле\n  ⚠️ [scene] новьё: движок умеет «новьё» (тип 12, группа Экспер.), в реестре UI Rexon её нет"
+  },
+  "type_mismatch": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 2,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 1,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi",
+         "vulkan",
+         "none"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "type_mismatch",
+      "renderer": "mpv",
+      "key": "volume",
+      "detail": "UI ждёт тип u32, движок отдаёт f32",
+      "severity": "info"
+     },
+     {
+      "kind": "type_mismatch",
+      "renderer": "mpv",
+      "key": "hwdec",
+      "detail": "UI ждёт тип string, движок отдаёт u32",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nРасхождений: 2 (предупреждений: 0)\n  • [mpv] volume: UI ждёт тип u32, движок отдаёт f32\n  • [mpv] hwdec: UI ждёт тип string, движок отдаёт u32"
+  },
+  "choices_mismatch": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "vaapi"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "choices_mismatch",
+      "renderer": "mpv",
+      "key": "hwdec",
+      "detail": "UI ждёт choices ['auto', 'vaapi', 'vulkan', 'none'], движок отдаёт ['auto', 'vaapi']",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nРасхождений: 1 (предупреждений: 0)\n  • [mpv] hwdec: UI ждёт choices ['auto', 'vaapi', 'vulkan', 'none'], движок отдаёт ['auto', 'vaapi']"
+  },
+  "choices_empty_silent": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": []
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [],
+    "has_drift": false,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nПаритет UI: расхождений не найдено ✅"
+  },
+  "choices_reordered_silent": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "enable_audio",
+        "type": 4,
+        "group": "Audio"
+       },
+       {
+        "key": "volume",
+        "type": 1,
+        "group": "Audio"
+       },
+       {
+        "key": "fps",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "none",
+         "vulkan",
+         "vaapi",
+         "auto",
+         "auto"
+        ]
+       },
+       {
+        "key": "resolution",
+        "type": 5,
+        "group": "Render"
+       },
+       {
+        "key": "custom_extent",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "msaa",
+        "type": 1,
+        "group": "Render"
+       },
+       {
+        "key": "render_node",
+        "type": 3,
+        "group": "GPU"
+       },
+       {
+        "key": "loop_file",
+        "type": 3,
+        "group": "Playback",
+        "choices": [
+         "inf",
+         "no"
+        ]
+       },
+       {
+        "key": "shared_texture_enabled",
+        "type": 4,
+        "group": "Render"
+       },
+       {
+        "key": "remote_debugging_port",
+        "type": 1,
+        "group": "Web"
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "enable_audio",
+      "volume",
+      "fps",
+      "hwdec",
+      "resolution",
+      "custom_extent",
+      "msaa",
+      "render_node",
+      "loop_file",
+      "shared_texture_enabled",
+      "remote_debugging_port"
+     ]
+    },
+    "issues": [],
+    "has_drift": false,
+    "warning_count": 0,
+    "unchecked": []
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv\nПаритет UI: расхождений не найдено ✅"
+  },
+  "two_renderers": {
+   "input": {
+    "supported_types": [
+     "video",
+     "web"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "fps",
+        "type": 1
+       },
+       {
+        "key": "bloom",
+        "type": 2,
+        "group": "Эффекты"
+       }
+      ]
+     },
+     {
+      "name": "weweb",
+      "settings": [
+       {
+        "key": "remote_debugging_port",
+        "type": 1
+       },
+       {
+        "key": "bloom",
+        "type": 2
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video",
+     "web"
+    ],
+    "renderers": [
+     "mpv",
+     "weweb"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "fps",
+      "bloom"
+     ],
+     "weweb": [
+      "remote_debugging_port",
+      "bloom"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "missing_in_ui",
+      "renderer": "mpv",
+      "key": "bloom",
+      "detail": "движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "missing_in_ui",
+      "renderer": "weweb",
+      "key": "bloom",
+      "detail": "движок умеет «bloom» (тип f32, группа —), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "enable_audio",
+      "detail": "UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "volume",
+      "detail": "UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "hwdec",
+      "detail": "UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "resolution",
+      "detail": "UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "render_node",
+      "detail": "UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "loop_file",
+      "detail": "UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "shared_texture_enabled",
+      "detail": "UI Rexon ожидает «shared_texture_enabled», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 2,
+    "unchecked": [
+     {
+      "types": "scene",
+      "keys": [
+       "custom_extent",
+       "msaa"
+      ]
+     }
+    ]
+   },
+   "text": "Типы обоев движка: video, web\nRenderer'ы: mpv, weweb\nРасхождений: 9 (предупреждений: 2)\n  ⚠️ [mpv] bloom: движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет\n  ⚠️ [weweb] bloom: движок умеет «bloom» (тип f32, группа —), в реестре UI Rexon её нет\n  • enable_audio: UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • volume: UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • hwdec: UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • resolution: UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • render_node: UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • loop_file: UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • shared_texture_enabled: UI Rexon ожидает «shared_texture_enabled», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\nНе проверено: у движка нет renderer'а для обоев «scene», поэтому сверить эти настройки не с чем: custom_extent, msaa"
+  },
+  "duplicate_renderer_name": {
+   "input": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "fps",
+        "type": 1
+       }
+      ]
+     },
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "volume",
+        "type": 1
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video"
+    ],
+    "renderers": [
+     "mpv",
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "volume"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "enable_audio",
+      "detail": "UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "hwdec",
+      "detail": "UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "resolution",
+      "detail": "UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "render_node",
+      "detail": "UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "loop_file",
+      "detail": "UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 0,
+    "unchecked": [
+     {
+      "types": "scene",
+      "keys": [
+       "custom_extent",
+       "msaa"
+      ]
+     },
+     {
+      "types": "web",
+      "keys": [
+       "shared_texture_enabled",
+       "remote_debugging_port"
+      ]
+     }
+    ]
+   },
+   "text": "Типы обоев движка: video\nRenderer'ы: mpv, mpv\nРасхождений: 5 (предупреждений: 0)\n  • enable_audio: UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • hwdec: UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • resolution: UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • render_node: UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • loop_file: UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\nНе проверено: у движка нет renderer'а для обоев «scene», поэтому сверить эти настройки не с чем: custom_extent, msaa\nНе проверено: у движка нет renderer'а для обоев «web», поэтому сверить эти настройки не с чем: shared_texture_enabled, remote_debugging_port"
+  },
+  "mixed": {
+   "input": {
+    "supported_types": [
+     "video",
+     "web"
+    ],
+    "renderers": [
+     {
+      "name": "mpv",
+      "settings": [
+       {
+        "key": "volume",
+        "type": 2,
+        "group": "Audio"
+       },
+       {
+        "key": "hwdec",
+        "type": 3,
+        "group": "Render",
+        "choices": [
+         "auto",
+         "cuda"
+        ]
+       },
+       {
+        "key": "bloom",
+        "type": 2,
+        "group": "Эффекты"
+       },
+       {
+        "key": "fps",
+        "type": 31
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [
+     "video",
+     "web"
+    ],
+    "renderers": [
+     "mpv"
+    ],
+    "engine_keys": {
+     "mpv": [
+      "volume",
+      "hwdec",
+      "bloom",
+      "fps"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "type_mismatch",
+      "renderer": "mpv",
+      "key": "volume",
+      "detail": "UI ждёт тип u32, движок отдаёт f32",
+      "severity": "info"
+     },
+     {
+      "kind": "choices_mismatch",
+      "renderer": "mpv",
+      "key": "hwdec",
+      "detail": "UI ждёт choices ['auto', 'vaapi', 'vulkan', 'none'], движок отдаёт ['auto', 'cuda']",
+      "severity": "info"
+     },
+     {
+      "kind": "missing_in_ui",
+      "renderer": "mpv",
+      "key": "bloom",
+      "detail": "движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "unknown_type",
+      "renderer": "mpv",
+      "key": "fps",
+      "detail": "тип значения 31 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле",
+      "severity": "warning"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "enable_audio",
+      "detail": "UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "resolution",
+      "detail": "UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "render_node",
+      "detail": "UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "loop_file",
+      "detail": "UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "shared_texture_enabled",
+      "detail": "UI Rexon ожидает «shared_texture_enabled», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "remote_debugging_port",
+      "detail": "UI Rexon ожидает «remote_debugging_port», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 2,
+    "unchecked": [
+     {
+      "types": "scene",
+      "keys": [
+       "custom_extent",
+       "msaa"
+      ]
+     }
+    ]
+   },
+   "text": "Типы обоев движка: video, web\nRenderer'ы: mpv\nРасхождений: 10 (предупреждений: 2)\n  • [mpv] volume: UI ждёт тип u32, движок отдаёт f32\n  • [mpv] hwdec: UI ждёт choices ['auto', 'vaapi', 'vulkan', 'none'], движок отдаёт ['auto', 'cuda']\n  ⚠️ [mpv] bloom: движок умеет «bloom» (тип f32, группа Эффекты), в реестре UI Rexon её нет\n  ⚠️ [mpv] fps: тип значения 31 неизвестен UI (известные: [1, 2, 3, 4, 5]); виджет может быть отрисован как простое поле\n  • enable_audio: UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • resolution: UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • render_node: UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • loop_file: UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • shared_texture_enabled: UI Rexon ожидает «shared_texture_enabled», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • remote_debugging_port: UI Rexon ожидает «remote_debugging_port», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\nНе проверено: у движка нет renderer'а для обоев «scene», поэтому сверить эти настройки не с чем: custom_extent, msaa"
+  },
+  "empty_renderer_name": {
+   "input": {
+    "supported_types": [],
+    "renderers": [
+     {
+      "name": "",
+      "settings": [
+       {
+        "key": "bloom",
+        "type": 2
+       }
+      ]
+     }
+    ]
+   },
+   "report": {
+    "supported_types": [],
+    "renderers": [
+     ""
+    ],
+    "engine_keys": {
+     "": [
+      "bloom"
+     ]
+    },
+    "issues": [
+     {
+      "kind": "missing_in_ui",
+      "renderer": "",
+      "key": "bloom",
+      "detail": "движок умеет «bloom» (тип f32, группа —), в реестре UI Rexon её нет",
+      "severity": "warning"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "enable_audio",
+      "detail": "UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "volume",
+      "detail": "UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "fps",
+      "detail": "UI Rexon ожидает «fps», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "hwdec",
+      "detail": "UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "resolution",
+      "detail": "UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "render_node",
+      "detail": "UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     },
+     {
+      "kind": "stale_in_ui",
+      "renderer": "",
+      "key": "loop_file",
+      "detail": "UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)",
+      "severity": "info"
+     }
+    ],
+    "has_drift": true,
+    "warning_count": 1,
+    "unchecked": [
+     {
+      "types": "scene",
+      "keys": [
+       "custom_extent",
+       "msaa"
+      ]
+     },
+     {
+      "types": "web",
+      "keys": [
+       "shared_texture_enabled",
+       "remote_debugging_port"
+      ]
+     }
+    ]
+   },
+   "text": "Типы обоев движка: —\nRenderer'ы: —\nРасхождений: 8 (предупреждений: 1)\n  ⚠️ bloom: движок умеет «bloom» (тип f32, группа —), в реестре UI Rexon её нет\n  • enable_audio: UI Rexon ожидает «enable_audio», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • volume: UI Rexon ожидает «volume», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • fps: UI Rexon ожидает «fps», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • hwdec: UI Rexon ожидает «hwdec», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • resolution: UI Rexon ожидает «resolution», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • render_node: UI Rexon ожидает «render_node», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\n  • loop_file: UI Rexon ожидает «loop_file», но ни один renderer движка её больше не отдаёт (возможно, настройка удалена)\nНе проверено: у движка нет renderer'а для обоев «scene», поэтому сверить эти настройки не с чем: custom_extent, msaa\nНе проверено: у движка нет renderer'а для обоев «web», поэтому сверить эти настройки не с чем: shared_texture_enabled, remote_debugging_port"
+  }
+ },
+ "upstream_tag_file": {
+  "bytes": [
+   118,
+   48,
+   46,
+   50,
+   46,
+   54,
+   10
+  ],
+  "value": "v0.2.6"
+ },
+ "daemon_matches_snapshot": [
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "v0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "  0.2.6 ",
+   "result": true
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "0.2.7",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "vv0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": "0.2.6-dirty",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6",
+   "daemon_version": null,
+   "result": null
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "v0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "  0.2.6 ",
+   "result": true
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "0.2.7",
+   "result": false
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "vv0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": "0.2.6-dirty",
+   "result": false
+  },
+  {
+   "tag_file": "0.2.6",
+   "daemon_version": null,
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "0.2.6",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "v0.2.6",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "  0.2.6 ",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "0.2.7",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "vv0.2.6",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": "0.2.6-dirty",
+   "result": null
+  },
+  {
+   "tag_file": "",
+   "daemon_version": null,
+   "result": null
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "v0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "  0.2.6 ",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "0.2.7",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "vv0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": "0.2.6-dirty",
+   "result": false
+  },
+  {
+   "tag_file": "  v0.2.6  ",
+   "daemon_version": null,
+   "result": null
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "v0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "  0.2.6 ",
+   "result": true
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "0.2.7",
+   "result": false
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "vv0.2.6",
+   "result": true
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": "0.2.6-dirty",
+   "result": false
+  },
+  {
+   "tag_file": "vv0.2.6",
+   "daemon_version": null,
+   "result": null
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "v0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "",
+   "result": null
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "  0.2.6 ",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "0.2.7",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "vv0.2.6",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": "0.2.6-dirty",
+   "result": false
+  },
+  {
+   "tag_file": "v0.2.6\n",
+   "daemon_version": null,
+   "result": null
+  }
+ ],
+ "read_probe": {
+  "invalid_utf8": "<UnicodeDecodeError>",
+  "invalid_utf8_traceback_last": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 5: invalid start byte"
+ }
+}

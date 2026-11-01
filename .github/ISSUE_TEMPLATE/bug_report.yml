@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Rexon doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Security problems: please don't file them here — see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Desktops
+        2. Press Install on …
+        3. …
+  - type: input
+    id: system
+    attributes:
+      label: Distribution and desktop
+      placeholder: CachyOS, KDE Plasma 6.5, Wayland
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rexon version or commit
+      placeholder: rexon-git 0.1.0.r2000.gabcdef0
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        `~/.local/state/rexon/rexon.log` (start Rexon with `REXON_LOG=debug rexon` for more detail).
+        After a crash: the report from `~/.config/rexon/crashes/`.
+        If a system change failed: `journalctl -t rexon-priv-helper -b`.
+        Please remove anything you don't want to share.
+      render: text

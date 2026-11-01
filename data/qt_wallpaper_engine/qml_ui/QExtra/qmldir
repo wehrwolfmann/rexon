@@ -1,0 +1,7 @@
+module QExtra
+# НАШ модуль, не вендорный: замена C++-модуля QExtra (hypengw) на QML —
+# ровно те два типа, которые зовёт вендорная разметка waywallen v0.4.4
+# (`Global.qml`, `component/ThumbnailImage.qml`). Зачем и чем отличается —
+# шапки файлов ниже.
+singleton ImageCache 1.0 ImageCache.qml
+AnimatedImage 1.0 AnimatedImage.qml
