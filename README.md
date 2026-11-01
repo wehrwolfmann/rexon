@@ -32,6 +32,14 @@ and test platform is Arch Linux / CachyOS.
 
 **Appearance**
 
+- The appearance settings of KDE Plasma's System Settings on every supported
+  desktop, written to that desktop's own settings: global themes (applied whole or
+  part by part, and "Save Current Appearance…" to keep your current look as a theme),
+  colour schemes with a scheme editor, accent colour, light and dark switching on a
+  schedule, application style, window decorations and title-bar buttons, fonts and a
+  font manager with font groups.
+- GTK themes are carried over to GTK 4 / libadwaita apps when the theme ships a
+  GTK 4 version, and theme tiles show real widgets drawn in that theme.
 - Themes for GTK, Qt / Kvantum, icons, cursors, fonts, window buttons, animations,
   KDE Plasma, Cinnamon, MATE panel layouts and Deepin, from the OpenDesktop / Pling
   catalog, Cinnamon Spices and the AUR (AUR packages show risk signs before you
@@ -73,12 +81,28 @@ and test platform is Arch Linux / CachyOS.
 
 | Platform | State |
 |---|---|
-| Arch Linux, CachyOS and other Arch-based distributions | Primary platform: developed and tested here. A `PKGBUILD` is in [`packaging/aur/`](packaging/aur/). |
+| Arch Linux, CachyOS and other Arch-based distributions | Primary platform: developed and tested here. See [Installing](#installing). |
 | SteamOS (Steam Deck, Steam Machine) | Desktops are installed as `systemd-sysext` images, because `/usr` is read-only and replaced on every OS update. |
 | Debian / Ubuntu, Fedora, openSUSE, Gentoo, Alpine, Void, Solus, Clear Linux, ALT | Rexon has package tables for these families, but they are tested much less. |
 | NixOS | Rexon does not install desktops itself; it gives you a `configuration.nix` snippet. |
 
 The package is built for x86_64. Qt 6.6 or newer is required.
+
+## Installing
+
+On Arch Linux / CachyOS there are two packages in this repository:
+
+- [`packaging/rexon/`](packaging/rexon/) — the release. It is built from the signed
+  tag (`v0.1.0`), and `makepkg` checks the tag's signature against the key
+  `B4505C7C7841ECC12D7A0E9D0083083C32159A72`. Import it once with
+  `curl -s https://github.com/wehrwolfmann.gpg | gpg --import`.
+- [`packaging/aur/`](packaging/aur/) — `rexon-git`, the latest code from `main`.
+
+```sh
+git clone https://github.com/wehrwolfmann/rexon.git
+cd rexon/packaging/rexon
+makepkg -si
+```
 
 ## Building from source
 
