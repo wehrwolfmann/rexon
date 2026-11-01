@@ -42,9 +42,20 @@ jobs:
 
       # Run from rust/: the cargo aliases and the [env] section of
       # rust/.cargo/config.toml are only read from there.
+      # The container runs as root, and for root every permission check passes:
+      # tests that expect a read-only folder or someone else's directory to be
+      # refused would fail. Run them as an ordinary user.
+      - name: Create an unprivileged user for the tests
+        run: |
+          useradd -m tester
+          mkdir -p "${CARGO_HOME:-$HOME/.cargo}"
+          chown -R tester "$GITHUB_WORKSPACE" "${CARGO_HOME:-$HOME/.cargo}"
+
       - name: Test rexon-core
         working-directory: rust
-        run: cargo test-core-isolated --locked --no-fail-fast
+        run: |
+          runuser -u tester -- env CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+            cargo test-core-isolated --locked --no-fail-fast
 
   app:
     name: Build the application
@@ -83,7 +94,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed bash gettext
+        run: pacman -Syu --noconfirm --needed bash gettext diffutils
 
       - uses: actions/checkout@v4
 
