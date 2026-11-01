@@ -12,6 +12,18 @@ Rexon is written in Rust with a Qt 6 / QML interface (via [cxx-qt](https://githu
 It is early software: the version number is still 0.x, and the main development
 and test platform is Arch Linux / CachyOS.
 
+![Rexon: the list of desktop environments with details of KDE Plasma](.github/screenshots/desktops.png)
+
+![Rexon: Global Themes catalog under Appearance](.github/screenshots/global-themes.png)
+
+<table>
+  <tr>
+    <td><img src=".github/screenshots/app-style.png" alt="Qt application styles shown as live widget previews"></td>
+    <td><img src=".github/screenshots/gtk-theme-details.png" alt="GTK theme details with the GTK 4/libadwaita switch"></td>
+    <td><img src=".github/screenshots/compare.png" alt="Side-by-side comparison of desktop environments"></td>
+  </tr>
+</table>
+
 ## Features
 
 **Desktops**
