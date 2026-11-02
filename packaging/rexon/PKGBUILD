@@ -10,22 +10,23 @@
 
 pkgname=rexon
 pkgver=0.1.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers"
 url="https://github.com/wehrwolfmann/rexon"
 # Пакет вёз один Python (arch=any); теперь в нём собранные бинари:
 # Rust-окно, хост обоев, заставка входа и привилегированные помощники.
 # Интерпретатора в пакете нет вовсе — вход /usr/bin/rexon ведёт на Rust-окно.
 arch=('x86_64')
-# Вариант сборки движка обоев. По умолчанию (0) движок — отдельные пакеты
-# дистрибутива waywallen и open-wallpaper-engine (так собирается пакет AUR
-# и CachyOS, и только этот вариант описан в .SRCINFO). 1 — движок ВШИТ:
-# AppImage waywallen, плагин OWE и архив его GPL-исходников едут в самом
-# пакете, в /usr/lib/rexon/engine — для поставки Steam, ручной установки и
-# машин без пакетов движка. Включается из окружения:
-#   REXON_BUNDLED_ENGINE=1 makepkg
+# Вариант сборки движка обоев. По умолчанию (1) движок ВШИТ: AppImage
+# waywallen, плагин OWE и архив его GPL-исходников едут в самом пакете, в
+# /usr/lib/rexon/engine — пакетов waywallen и open-wallpaper-engine нет в
+# репозиториях Arch и CachyOS, а без движка обои Wallpaper Engine не
+# показываются (решение Wehrwolfmann 02.11.2026, заявка в CachyOS). Только
+# этот вариант описан в .SRCINFO. 0 — движок из отдельных пакетов
+# дистрибутива (там, где они есть), включается из окружения:
+#   REXON_BUNDLED_ENGINE=0 makepkg
 # Подробности — блок «Движок обоев» после options и README.md.
-case "${REXON_BUNDLED_ENGINE:-0}" in
+case "${REXON_BUNDLED_ENGINE:-1}" in
   1) _bundled_engine=1 ;;
   0) _bundled_engine=0 ;;
   *) echo "ERROR: REXON_BUNDLED_ENGINE=${REXON_BUNDLED_ENGINE} — допустимо 0 или 1" >&2
@@ -51,17 +52,17 @@ _owe_min=0.3.2
 # врёт покупателю и сопровождающим; тексты всех ставятся в
 # /usr/share/licenses.
 #
-# Движок обоев по умолчанию в пакете НЕ лежит (с 30.10.2026): демон
-# waywallen и плагин Open Wallpaper Engine — отдельные пакеты дистрибутива,
-# ниже в depends. Их файлы, лицензии и исходники — забота их пакетов; с кодом
-# Rexon они не линкуются (демон — отдельный процесс, Rexon говорит с ним по
-# D-Bus и WebSocket, рисовальщики OWE запускает сам демон).
-# Вариант с вшитым движком (REXON_BUNDLED_ENGINE=1) везёт их сам: AppImage
+# Движок обоев по умолчанию ВШИТ (с 02.11.2026): пакет везёт AppImage
 # waywallen (MIT; внутри — чужие библиотеки со своими лицензиями, см.
 # NOTICE) и плагин OWE — GPL-2.0-only, с полным исходником того же тега в
 # /usr/share/rexon/sources (GPL-2 §3(a)); внутри плагина — CEF
-# (BSD-3-Clause, уведомление отдельным файлом). GPL-код и тут за границей
-# процесса — «простое объединение» (GPL-2 §2).
+# (BSD-3-Clause, уведомление отдельным файлом). С кодом Rexon они не
+# линкуются: демон — отдельный процесс, Rexon говорит с ним по D-Bus и
+# WebSocket, рисовальщики OWE запускает сам демон — «простое объединение»
+# (GPL-2 §2).
+# Вариант REXON_BUNDLED_ENGINE=0 движка не везёт: демон waywallen и плагин
+# Open Wallpaper Engine — отдельные пакеты дистрибутива в depends, их файлы,
+# лицензии и исходники — забота их пакетов.
 license=('Apache-2.0' 'MPL-2.0' 'MIT' 'BSD-3-Clause'
          'GPL-2.0-or-later')
 if [[ $_bundled_engine == 1 ]]; then license+=('GPL-2.0-only'); fi
@@ -110,7 +111,7 @@ depends=(
   curl
 )
 if [[ $_bundled_engine == 1 ]]; then
-  # Движок из комплекта. Пакетов движка не требуем и с ними не конфликтуем:
+  # Движок из комплекта (по умолчанию). Пакетов движка не требуем и с ними не конфликтуем:
   # файлы комплекта лежат в своих каталогах (/usr/lib/rexon/engine,
   # /usr/share/rexon/sources), а стоят оба — ядро берёт системный.
   depends+=(
@@ -120,7 +121,7 @@ if [[ $_bundled_engine == 1 ]]; then
                          # libatk/libatspi (namcap: E: Dependency at-spi2-core)
   )
 else
-  # Движок обоев — отдельными пакетами. Нижние границы — версии, под которые
+  # REXON_BUNDLED_ENGINE=0: движок обоев — отдельными пакетами. Нижние границы — версии, под которые
   # сверены вендорный интерфейс и протокол (см. блок «Движок обоев» ниже):
   # демон старше 0.5.0 не знает полей control.proto, которые шлёт ядро.
   depends+=(
@@ -131,14 +132,13 @@ fi
 makedepends=(git glib2 rust
              cmake ninja protobuf qt6-shadertools
              # QML-плагин QExtra собирает сборщик lito (C++23 с модулями —
-             # только clang, связывает lld). В официальных репозиториях lito
-             # нет: пакет из AUR, `lito` (из исходников) или `lito-bin`
-             # (готовая сборка автора, provides=lito). Младше 0.8.7 не годится —
-             # манифест wavsen 7564374 (QExtra b3fd790, waywallen 0.5.0) несёт
-             # поле `condition` у зависимости, которое 0.8.5 не разбирает;
-             # tools/build_qml_qextra.sh такой lito отвергает сам. Другой бинарь
-             # подаётся переменной LITO.
-             'lito>=0.8.7' clang lld llvm
+             # только clang, связывает lld). В репозиториях Arch lito нет
+             # (только AUR), поэтому он — источник этого пакета: build()
+             # собирает его из исходника выпуска (_lito_ver, блок ниже) в
+             # $srcdir, в пакет он не едет. Собирается clang'ом с libc++,
+             # zstd — системный. Готовый lito подаётся переменной LITO —
+             # тогда своя сборка пропускается.
+             clang lld llvm libc++ zstd
              glslang vulkan-headers libpulse   # wavsen внутри QExtra
              alsa-lib    # заголовки libasound для cpal (звук Flash-обоев)
              # Flash-обои: build.rs крейта ruffle_core собирает встроенные
@@ -174,15 +174,16 @@ options=('!lto' '!strip' '!debug')
 # post_remove: снять страховку экрана входа из /etc (см. сам файл).
 install=rexon.install
 
-# ── Движок обоев: отдельные пакеты дистрибутива ─────────────────────
-# С 30.10.2026 пакет по умолчанию НЕ вшивает движок (AppImage waywallen со
-# статически вшитыми чужими библиотеками, плагин OWE с CEF и архив его
-# GPL-исходников внутри пакета Rexon) — он зависит от пакетов `waywallen` и
-# `open-wallpaper-engine`, которые обновляет пакетный менеджер. Прежний
-# рецепт остался вариантом REXON_BUNDLED_ENGINE=1 (блок «Вшитый движок»
-# ниже). Куда они ставят файлы и как ядро их находит — `we_client::SYSTEM_DAEMON` и
+# ── Движок обоев ─────────────────────────────────────────────────────
+# По умолчанию (с 02.11.2026) движок ВШИТ — блок «Вшитый движок» ниже:
+# пакетов `waywallen` и `open-wallpaper-engine` в репозиториях Arch и
+# CachyOS нет, и пакет выпуска, зависящий от них, там не поставить.
+# Вариант REXON_BUNDLED_ENGINE=0 (30.10–02.11.2026 был основным) вместо
+# комплекта зависит от этих пакетов — их обновляет пакетный менеджер. Куда
+# они ставят файлы и как ядро их находит — `we_client::SYSTEM_DAEMON` и
 # `we_client::SYSTEM_ENGINE_DIR` (демон из /usr/bin сам видит
-# /usr/share/waywallen/plugins, флаг --plugin ему не нужен).
+# /usr/share/waywallen/plugins, флаг --plugin ему не нужен). Стоят оба —
+# ядро берёт системный.
 #
 # Нижние границы версий — не формальность, они привязаны к вендорным кускам
 # дерева:
@@ -217,12 +218,14 @@ install=rexon.install
 # и сумма записаны ещё в data/kpackage/org.waywallen.kde/vendor.toml;
 # `vendor-check` краснеет, если они здесь и там разойдутся или сумма не
 # совпадёт с digest выпуска на GitHub.
+# ${CARCH} в именах файлов — всегда x86_64 (arch выше): так их зовут выпуски
+# апстрима.
 _wwd_ver=0.4.3
-_wwd_zip="waywallen-kde-${_wwd_ver}-x86_64-embed.zip"
+_wwd_zip="waywallen-kde-${_wwd_ver}-${CARCH}-embed.zip"
 
-# ── Вшитый движок (REXON_BUNDLED_ENGINE=1) ───────────────────────────
-# Рецепт прежней поставки (28.09–30.10.2026), оставлен вариантом: Steam,
-# ручная установка, машина без пакетов waywallen и open-wallpaper-engine.
+# ── Вшитый движок (по умолчанию, REXON_BUNDLED_ENGINE=1) ─────────────
+# Пакет выпуска для Arch и CachyOS, Steam, ручная установка — везде, где
+# нет пакетов waywallen и open-wallpaper-engine.
 # Каталог — `we_client::ENGINE_DIR` ядра: AppImage демона и рядом
 # plugins/<id>/; демону он передаётся флагом --plugin, и плагины демон ищет
 # в <каталог>/plugins/ (сверка app_parity.rs). Ядро берёт эту раскладку,
@@ -234,11 +237,11 @@ _wwd_zip="waywallen-kde-${_wwd_ver}-x86_64-embed.zip"
 # (_ww_ver = proto/UPSTREAM_TAG, prepare() сверяет), плагин — не младше
 # _owe_min. Меняя одну из версий, сверять две другие.
 _ww_ver=0.5.0
-_ww_appimage="waywallen-${_ww_ver}-x86_64.AppImage"
+_ww_appimage="waywallen-${_ww_ver}-${CARCH}.AppImage"
 _owe_ver=0.3.2
 _owe_commit=dd07afa79d3e8c34daa61391cc641954d3d01fe0   # тег v0.3.2
 _owe_id=org.waywallen.open-wallpaper-engine
-_owe_zip="${_owe_id}-${_owe_ver}-linux-x86_64.zip"
+_owe_zip="${_owe_id}-${_owe_ver}-linux-${CARCH}.zip"
 
 # Полный исходник OWE (GPL-2.0-only §3(a)). Подмодулей git у тега нет, но
 # сборка тянет зависимости своим сборщиком lito: их список, ревизии и
@@ -329,6 +332,24 @@ _qe_reg=(
   'vvk|0.1.1|4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f'
 )
 
+# Сборщик lito (litocpp/lito, MIT OR Apache-2.0) — только для сборки QExtra,
+# в пакет не едет. В репозиториях Arch его нет, и makedepends на пакет из
+# AUR остановил бы `makepkg -s` у сопровождающих дистрибутива, поэтому он
+# собирается здесь же из исходника выпуска — тем же рецептом cmake, что у
+# пакета lito в AUR, без сети (зависимости — источники ниже, ревизии — из
+# deps.json тега). Не младше 0.8.7: манифест wavsen 7564374 (QExtra
+# b3fd790, waywallen 0.5.0) несёт поле `condition` у зависимости, которое
+# 0.8.5 не разбирает; tools/build_qml_qextra.sh такой lito отвергает сам.
+# Меняя версию, переписать коммиты из deps.json нового тега.
+_lito_ver=0.8.8
+_lito_commit=66ee45dcfc77391b51fe63a6bd8cece8e6e345e4   # тег v0.8.8
+# имя|адрес|коммит (deps.json тега; zstd — системный, LITO_USE_SYSTEM_ZSTD)
+_lito_deps=(
+  'rstd|https://github.com/litocpp/rstd.git|05748d842307476dd86dfa14237838295cb5ec77'
+  'luato|https://github.com/litocpp/luato.git|df0c6f2d1cce2051b4711d36067619eda7933683'
+  'licrypto|https://github.com/litocpp/licrypto.git|1199a8fe2b119774a85adbd33043fc5ef7b20d3c'
+)
+
 # Шрифты Material Symbols лежат в репозитории QmlMaterial указателями
 # git-lfs, поэтому настоящие файлы качаются отдельными источниками — сеть
 # только на шаге загрузки, сборка идёт без неё. Суммы — sha256 самих файлов
@@ -386,6 +407,11 @@ for _e in "${_qe_reg[@]}"; do
   IFS='|' read -r _n _v _ <<<"$_e"
   source+=("lito-${_n}-${_v}.tar.zst::https://registry.litocpp.org/packages/${_n}/${_n}-${_v}.tar.zst")
 done
+source+=("lito::git+https://github.com/litocpp/lito.git#commit=${_lito_commit}")
+for _e in "${_lito_deps[@]}"; do
+  IFS='|' read -r _n _u _c <<<"$_e"
+  source+=("lito-dep-${_n}::git+${_u}#commit=${_c}")
+done
 # Распаковывает модель prepare() сам: у makepkg встроенная распаковка .gz
 # кладёт файл рядом с архивом в $srcdir, а ядру нужны имена БЕЗ префикса
 # редакции и в каталоге направления.
@@ -411,9 +437,11 @@ for _e in "${_qe_reg[@]}"; do
   IFS='|' read -r _ _ _s <<<"$_e"
   sha256sums+=("$_s")
 done
+sha256sums+=('SKIP')                                             # lito — прибит коммитом
+for _e in "${_lito_deps[@]}"; do sha256sums+=('SKIP'); done    # прибиты коммитами
 
-# Источники вшитого движка — в хвост массивов, чтобы порядок и суммы
-# варианта по умолчанию (и .SRCINFO) не менялись.
+# Источники вшитого движка — в хвост массивов: вариант
+# REXON_BUNDLED_ENGINE=0 отличается от умолчания (и .SRCINFO) только хвостом.
 if [[ $_bundled_engine == 1 ]]; then
   source+=("${_ww_appimage}::https://github.com/waywallen/waywallen/releases/download/v${_ww_ver}/${_ww_appimage}"
            "waywallen-${_ww_ver}-LICENSE::https://raw.githubusercontent.com/waywallen/waywallen/v${_ww_ver}/LICENSE"
@@ -486,6 +514,19 @@ prepare() {
     echo "ERROR: в tools/qextra_plugin/lito.lock другое число источников, чем в _qe_git и _qe_reg" >&2
     return 1
   fi
+  # lito: исходник ровно того выпуска, а его зависимости — ревизии из
+  # deps.json тега (их же FetchContent взял бы из сети).
+  grep -qx "  VERSION ${_lito_ver}" "$srcdir/lito/CMakeLists.txt" || {
+    echo "ERROR: исходник lito не версии $_lito_ver — сверьте _lito_ver и _lito_commit" >&2
+    return 1
+  }
+  for e in "${_lito_deps[@]}"; do
+    IFS='|' read -r n u c <<<"$e"
+    grep -qF "\"rev\": \"$c\"" "$srcdir/lito/deps.json" || {
+      echo "ERROR: _lito_deps: $n@$c нет в deps.json lito $_lito_ver — перепишите ревизии" >&2
+      return 1
+    }
+  done
   # Сценарий сборки QExtra отвергает каталог сборки с путём не из латиницы
   # (lito на таких падал) — сказать об этом до сборки Rust, а не после.
   if LC_ALL=C grep -q '[^ -~]' <<<"$srcdir"; then
@@ -614,7 +655,9 @@ build() {
   QML_CONTROL_BUILD="$srcdir/qml_control-build" \
     bash "$srcdir/rexon/tools/build_qml_control.sh" "$srcdir/qml_modules"
 
-  # Третий — настоящий QExtra (без него вкладка идёт на QML-подмене).
+  # Третий — настоящий QExtra (без него вкладка идёт на QML-подмене);
+  # собирает его lito, а lito — сначала сам (если не подан переменной LITO).
+  _lito_build
   _qextra_build
 
   if [[ $_bundled_engine == 1 ]]; then
@@ -689,6 +732,43 @@ _owe_source_bundle() {
   } > "$root/SOURCES.txt"
   tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
     -C "$srcdir/owe-src" -cf - "$top" | xz -T0 -9 > "$srcdir/owe-src/$top-src.tar.xz"
+}
+
+# Сборщик lito из исходника — рецепт пакета lito из AUR: clang + libc++,
+# без LTO, зависимости FetchContent — из $srcdir (без сети), zstd системный.
+# _FORTIFY_SOURCE снимается: с ним glibc объявляет open/openat встроенными
+# обёртками, а модули C++ rstd их не экспортируют (тот же случай, что в
+# tools/build_qml_qextra.sh). Ставится в $srcdir/lito-root, в пакет не едет;
+# дальше его берут _qextra_source_bundle и сценарий сборки через LITO.
+_lito_build() {
+  if [[ -n ${LITO:-} ]]; then
+    echo "lito подан переменной LITO=$LITO — своя сборка пропущена"
+    return 0
+  fi
+  local t cflags=() cxxflags=()
+  for t in $CFLAGS; do
+    [[ $t == *_FORTIFY_SOURCE* ]] || cflags+=("$t")
+  done
+  for t in $CXXFLAGS; do
+    [[ $t == *_FORTIFY_SOURCE* ]] || cxxflags+=("$t")
+  done
+  CFLAGS="${cflags[*]}" CXXFLAGS="${cxxflags[*]}" \
+  cmake -B "$srcdir/lito-build" -S "$srcdir/lito" -G Ninja -Wno-dev \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+    -DFETCHCONTENT_SOURCE_DIR_RSTD="$srcdir/lito-dep-rstd" \
+    -DFETCHCONTENT_SOURCE_DIR_LUATO="$srcdir/lito-dep-luato" \
+    -DFETCHCONTENT_SOURCE_DIR_LICRYPTO="$srcdir/lito-dep-licrypto" \
+    -DLITO_USE_SYSTEM_ZSTD=ON
+  cmake --build "$srcdir/lito-build"
+  rm -rf "$srcdir/lito-root"
+  DESTDIR="$srcdir/lito-root" cmake --install "$srcdir/lito-build" >/dev/null
+  export LITO="$srcdir/lito-root/usr/bin/lito"
+  "$LITO" --version
 }
 
 # Набор исходников lito для сборки QExtra без сети. Раскладка — та, что lito

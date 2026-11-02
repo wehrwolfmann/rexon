@@ -1,8 +1,8 @@
 pkgbase = rexon
 	pkgdesc = Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers
-	url = https://github.com/wehrwolfmann/rexon
 	pkgver = 0.1.1
-	pkgrel = 2
+	pkgrel = 3
+	url = https://github.com/wehrwolfmann/rexon
 	install = rexon.install
 	arch = x86_64
 	license = Apache-2.0
@@ -10,6 +10,7 @@ pkgbase = rexon
 	license = MIT
 	license = BSD-3-Clause
 	license = GPL-2.0-or-later
+	license = GPL-2.0-only
 	checkdepends = desktop-file-utils
 	checkdepends = appstream
 	makedepends = git
@@ -19,10 +20,11 @@ pkgbase = rexon
 	makedepends = ninja
 	makedepends = protobuf
 	makedepends = qt6-shadertools
-	makedepends = lito>=0.8.7
 	makedepends = clang
 	makedepends = lld
 	makedepends = llvm
+	makedepends = libc++
+	makedepends = zstd
 	makedepends = glslang
 	makedepends = vulkan-headers
 	makedepends = libpulse
@@ -56,8 +58,8 @@ pkgbase = rexon
 	depends = ffmpeg
 	depends = libva
 	depends = curl
-	depends = waywallen>=0.5.0
-	depends = open-wallpaper-engine>=0.3.2
+	depends = fuse3
+	depends = at-spi2-core
 	optdepends = yt-dlp: YouTube-обои (потоковое видео как обои)
 	optdepends = yay: установка AUR-тем из вкладки «Оформление» (AeroThemePlasma и т.п.)
 	optdepends = xdg-terminal-exec: корректный терминал по умолчанию для GLib-запусков (AUR)
@@ -83,6 +85,18 @@ pkgbase = rexon
 	noextract = lito-rstd-runtime-0.1.9.tar.zst
 	noextract = lito-rstd-std-0.1.9.tar.zst
 	noextract = lito-vvk-0.1.1.tar.zst
+	noextract = org.waywallen.open-wallpaper-engine-0.3.2-linux-x86_64.zip
+	noextract = cef_binary_149.0.4+g2f1bfd8+chromium-149.0.7827.156_linux64_minimal.tar.bz2
+	noextract = lito-liffto-0.1.0.tar.zst
+	noextract = lito-lito-spirv-0.1.0.tar.zst
+	noextract = lito-liunicode-0.1.0.tar.zst
+	noextract = lito-rstd-argparse-0.1.9.tar.zst
+	noextract = lito-rstd-bench-0.1.9.tar.zst
+	noextract = lito-rstd-json-0.1.9.tar.zst
+	noextract = lito-rstd-nostd-0.1.9.tar.zst
+	noextract = lito-rstd-serde-0.1.9.tar.zst
+	noextract = lito-rstd-test-0.1.9.tar.zst
+	noextract = lito-spirvto-0.1.0.tar.zst
 	options = !lto
 	options = !strip
 	options = !debug
@@ -113,6 +127,31 @@ pkgbase = rexon
 	source = lito-rstd-runtime-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-runtime/rstd-runtime-0.1.9.tar.zst
 	source = lito-rstd-std-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-std/rstd-std-0.1.9.tar.zst
 	source = lito-vvk-0.1.1.tar.zst::https://registry.litocpp.org/packages/vvk/vvk-0.1.1.tar.zst
+	source = lito::git+https://github.com/litocpp/lito.git#commit=66ee45dcfc77391b51fe63a6bd8cece8e6e345e4
+	source = lito-dep-rstd::git+https://github.com/litocpp/rstd.git#commit=05748d842307476dd86dfa14237838295cb5ec77
+	source = lito-dep-luato::git+https://github.com/litocpp/luato.git#commit=df0c6f2d1cce2051b4711d36067619eda7933683
+	source = lito-dep-licrypto::git+https://github.com/litocpp/licrypto.git#commit=1199a8fe2b119774a85adbd33043fc5ef7b20d3c
+	source = waywallen-0.5.0-x86_64.AppImage::https://github.com/waywallen/waywallen/releases/download/v0.5.0/waywallen-0.5.0-x86_64.AppImage
+	source = waywallen-0.5.0-LICENSE::https://raw.githubusercontent.com/waywallen/waywallen/v0.5.0/LICENSE
+	source = org.waywallen.open-wallpaper-engine-0.3.2-linux-x86_64.zip::https://github.com/waywallen/open-wallpaper-engine/releases/download/v0.3.2/org.waywallen.open-wallpaper-engine-0.3.2-linux-x86_64.zip
+	source = open-wallpaper-engine::git+https://github.com/waywallen/open-wallpaper-engine.git#commit=dd07afa79d3e8c34daa61391cc641954d3d01fe0
+	source = cef_binary_149.0.4+g2f1bfd8+chromium-149.0.7827.156_linux64_minimal.tar.bz2::https://cef-builds.spotifycdn.com/cef_binary_149.0.4%2Bg2f1bfd8%2Bchromium-149.0.7827.156_linux64_minimal.tar.bz2
+	source = owe-dep-glslang::git+https://github.com/KhronosGroup/glslang.git#commit=275822a6261ee689aadb1da5f09a0ec2f058685c
+	source = owe-dep-wavsen::git+https://github.com/hypengw/wavsen.git#commit=756437443d84905a027f115c75ec6ae6b19692e7
+	source = owe-dep-quickjs::git+https://github.com/quickjs-ng/quickjs.git#commit=3c051980ab7e783dfbfb1c70c014ce5e05ecf24c
+	source = owe-dep-vectext::git+https://github.com/vecren/vectext.git#commit=d918972da5c08b5afc73b812062e855fce2d847d
+	source = owe-dep-vrento::git+https://github.com/vecren/vrento.git#commit=5cc289e6511d86cf6207a4677b22da88a3592505
+	source = owe-dep-eigen::git+https://chromium.googlesource.com/external/gitlab.com/libeigen/eigen.git#commit=bc3b39870ecb690a623a3f49149a358b95c5781d
+	source = lito-liffto-0.1.0.tar.zst::https://registry.litocpp.org/packages/liffto/liffto-0.1.0.tar.zst
+	source = lito-lito-spirv-0.1.0.tar.zst::https://registry.litocpp.org/packages/lito-spirv/lito-spirv-0.1.0.tar.zst
+	source = lito-liunicode-0.1.0.tar.zst::https://registry.litocpp.org/packages/liunicode/liunicode-0.1.0.tar.zst
+	source = lito-rstd-argparse-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-argparse/rstd-argparse-0.1.9.tar.zst
+	source = lito-rstd-bench-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-bench/rstd-bench-0.1.9.tar.zst
+	source = lito-rstd-json-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-json/rstd-json-0.1.9.tar.zst
+	source = lito-rstd-nostd-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-nostd/rstd-nostd-0.1.9.tar.zst
+	source = lito-rstd-serde-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-serde/rstd-serde-0.1.9.tar.zst
+	source = lito-rstd-test-0.1.9.tar.zst::https://registry.litocpp.org/packages/rstd-test/rstd-test-0.1.9.tar.zst
+	source = lito-spirvto-0.1.0.tar.zst::https://registry.litocpp.org/packages/spirvto/spirvto-0.1.0.tar.zst
 	validpgpkeys = B4505C7C7841ECC12D7A0E9D0083083C32159A72
 	sha256sums = SKIP
 	sha256sums = SKIP
@@ -141,5 +180,30 @@ pkgbase = rexon
 	sha256sums = 885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d
 	sha256sums = 6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2
 	sha256sums = 4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = e6216c5fffc7056122b105e5745950c9ee77710e294a63b687c4b3871e190083
+	sha256sums = 2d1edaf74e77c63e166ed948c2fee17a50dd15f73d8e9db249117e5fde8bef24
+	sha256sums = 282c97fc67857420135c25faca95eae40ea6a50169adc2671b008622ef126ad0
+	sha256sums = SKIP
+	sha256sums = 6d43607675e47ed6bfa40d1cfce136d04e7720529f8f1c4435d4ba1dcd1839b2
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = d9bf4462318ff04aaf80401c7b02a7116907f1f4d22111ab5eb3d491d1bc94e4
+	sha256sums = feeeeb78f97962e7414f1f9170c8bcabd9396d3c77a416b3962d5a4225b3699d
+	sha256sums = 821677a163b1103e7d8cbed70dbaeb0690047a1e163f6b4f42567db425d26985
+	sha256sums = c9b43c8e568c4a28583a003e48937d8abfc43d31c08d29efea8f5805c246142e
+	sha256sums = c1459b3264cf3123b1c300bf3e5385e3ae3d85fb57cce548e3429abf827712f9
+	sha256sums = ddee37fc80bf73466ff19388c2efbfab0c8f80db9958a762e8b2b7a58204337e
+	sha256sums = f4d0d3105a9f83c9668a81720b4d16b1abd9c4c314e4ceb2b3f77ce59f43719e
+	sha256sums = 2842a0ace60e0f906bf3938c54f0accc5fea5777c1001617044a2f95674710b8
+	sha256sums = 1a8ec426208a2378c9e12c2ef90218470a7bd31ba974255c9cb53be2ba08e5e4
+	sha256sums = 331b447bb6ba8e08d5bdb58958dce5dd894f09d1b99d54276dc5403d44aac324
 
 pkgname = rexon
