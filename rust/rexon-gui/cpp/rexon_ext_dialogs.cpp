@@ -354,7 +354,8 @@ QtObject {
 // ── выбор шрифта ──────────────────────────────────────────────────────────
 
 QString rexon_ext_pick_font(const QString& title, const QString& family,
-                            std::int32_t size, std::int32_t& outcome)
+                            std::int32_t size, std::int32_t weight,
+                            bool italic, std::int32_t& outcome)
 {
     static const char* kQml = R"QML(
 import QtQuick
@@ -368,6 +369,8 @@ QtObject {
     property string dlgTitle: ""
     property string famIn: ""
     property int sizeIn: 0
+    property int weightIn: 0
+    property bool italicIn: false
     property var win: null
 
     property FontDialog dlg: FontDialog {
@@ -385,11 +388,18 @@ QtObject {
         onRejected: { root.ok = false; root.finished = true; }
     }
 
+    // Нынешнее начертание (жирность по шкале Qt 6, наклон) — выбранным
+    // при открытии: иначе окно предлагало бы обычный вместо жирного.
     function start() {
         if (root.famIn !== "") {
-            dlg.selectedFont = root.sizeIn > 0
-                ? Qt.font({ family: root.famIn, pointSize: root.sizeIn })
-                : Qt.font({ family: root.famIn });
+            var spec = { family: root.famIn };
+            if (root.sizeIn > 0)
+                spec.pointSize = root.sizeIn;
+            if (root.weightIn > 0)
+                spec.weight = root.weightIn;
+            if (root.italicIn)
+                spec.italic = true;
+            dlg.selectedFont = Qt.font(spec);
         }
         dlg.open();
     }
@@ -400,6 +410,8 @@ QtObject {
     props << qMakePair("dlgTitle", QVariant(title));
     props << qMakePair("famIn", QVariant(family));
     props << qMakePair("sizeIn", QVariant(static_cast<int>(size)));
+    props << qMakePair("weightIn", QVariant(static_cast<int>(weight)));
+    props << qMakePair("italicIn", QVariant(italic));
 
     QObject* root = run_dialog(kQml, "FontPick", props);
     if (root == nullptr) {

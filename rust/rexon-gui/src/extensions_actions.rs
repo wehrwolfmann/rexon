@@ -79,6 +79,8 @@ pub mod qobject {
             title: &QString,
             family: &QString,
             size: i32,
+            weight: i32,
+            italic: bool,
             outcome: &mut i32,
         ) -> QString;
     }

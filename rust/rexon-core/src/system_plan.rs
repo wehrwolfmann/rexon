@@ -13101,7 +13101,7 @@ mod stage_helper_copy_tests {
         assert!(!ok && err.contains("does not belong to the caller"), "{err}");
         let link = PathBuf::from("/tmp").join(format!("rexon-stage-test-lnk-{}", std::process::id()));
         let _ = std::fs::remove_file(&link);
-        symlink("/usr/share/icons", &link).unwrap();
+        symlink("/usr", &link).unwrap();
         let (ok, err) = run(&link, &uid());
         assert!(!ok && err.contains("outside /tmp"), "{err}");
         let _ = std::fs::remove_file(&link);

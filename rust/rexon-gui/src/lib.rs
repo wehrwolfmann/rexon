@@ -122,9 +122,31 @@ pub mod skin {
             .len()
     }
 
+    unsafe extern "C" {
+        /// `cpp/rexon_gui_factory.cpp`.
+        fn rexon_set_app_link_color(set: bool, r: u8, g: u8, b: u8);
+    }
+
+    /// Цвет ссылок форматированного текста — в палитру приложения по
+    /// действующему скину (`ui_base::active_skin_link_rgb`). Одна точка на
+    /// все `Text.RichText` всех вкладок и окон: «О программе», описания и
+    /// комментарии тем, окна расширений, вендорные страницы.
+    ///
+    /// Звать из главного потока: при старте ДО загрузки QML
+    /// (`we_env::prepare_process`) и на смене скина ([`dispatch`]). Уже
+    /// показанный текст Qt не перекрашивает — цвет попадает в документ при
+    /// разборе HTML, и открытая вкладка возьмёт новый цвет со следующей
+    /// сменой текста.
+    pub fn apply_app_palette() {
+        let link = rexon_core::ui_base::active_skin_link_rgb();
+        let (r, g, b) = link.unwrap_or((0, 0, 0));
+        unsafe { rexon_set_app_link_color(link.is_some(), r, g, b) }
+    }
+
     /// Толкнуть все живые страницы: скин сменился, палитру пересчитать.
     /// Возвращает число оповещённых; мёртвые записи снимаются заодно.
     pub fn dispatch() -> usize {
+        apply_app_palette();
         let mut told = 0usize;
         let mut reg = registry().lock().expect("реестр скина не отравлен");
         reg.entries.retain(|(_, notify)| match notify() {

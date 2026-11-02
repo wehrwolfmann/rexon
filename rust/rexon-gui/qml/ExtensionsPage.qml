@@ -1088,7 +1088,6 @@ Item {
                         width: bodyFlick.width
                                 - (bodyBar.visible ? bodyBar.width : 0)
                         text: detailDialog.view ? detailDialog.view.bodyHtml : ""
-                        linkColor: root.colAccent
                         textFormat: Text.RichText
                         wrapMode: Text.WordWrap
                         color: root.colText
@@ -1110,7 +1109,6 @@ Item {
                 Layout.topMargin: root.st.dialog.techPaddingV
                 Layout.bottomMargin: root.st.dialog.techPaddingV
                 text: detailDialog.view ? detailDialog.view.techHtml : ""
-                linkColor: root.colAccent
                 visible: text !== ""
                 textFormat: Text.RichText
                 wrapMode: Text.WordWrap
@@ -1560,7 +1558,6 @@ Item {
                         width: createFlick.width
                                 - (createBar.visible ? createBar.width : 0)
                         text: page.createBody
-                        linkColor: root.colAccent
                         textFormat: Text.RichText
                         wrapMode: Text.WordWrap
                         color: root.colText

@@ -559,14 +559,6 @@ pub fn pair_close_text() -> String {
     tr("Close")
 }
 
-/// Полоска из десяти клеток для оценки из пяти.
-pub fn bar5(val: u8) -> String {
-    let filled = (val.min(5) as usize) * 2;
-    let mut s = "█".repeat(filled);
-    s.push_str(&"░".repeat(10 - filled));
-    s
-}
-
 /// Кнопка установки в диалоге сравнения.
 #[derive(Debug, Clone, Serialize)]
 pub struct PairButton {
@@ -595,11 +587,19 @@ fn pair_table(a: &DeMeta, b: &DeMeta) -> String {
     let rows: [(String, String, String); 10] = [
         (trc("desktop spec", "Memory"), megabytes(a.ram_mb), megabytes(b.ram_mb)),
         (trc("desktop spec", "CPU load"), a.cpu_usage.label(), b.cpu_usage.label()),
-        (trc("desktop spec", "Customization"), bar5(a.customizable), bar5(b.customizable)),
+        // Оценки — теми же значками, что в легенде над таблицей и в
+        // карточках (`card_body`). Прежняя полоска из «█» и «░» шла в
+        // запасном шрифте: клетки со щелями, пустая часть — штриховкой, и
+        // с легендой «⭐ от 1 до 5» она не сходилась (01.11.2026).
+        (
+            trc("desktop spec", "Customization"),
+            stars(a.customizable, "⭐"),
+            stars(b.customizable, "⭐"),
+        ),
         (
             trc("desktop spec", "Gaming"),
-            bar5(a.gaming_friendly),
-            bar5(b.gaming_friendly),
+            stars(a.gaming_friendly, "🎮"),
+            stars(b.gaming_friendly, "🎮"),
         ),
         (trc("desktop spec", "Toolkit"), a.toolkit.to_string(), b.toolkit.to_string()),
         (

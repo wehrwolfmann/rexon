@@ -85,6 +85,17 @@ bool rexon_tray_guard_window();
 // Поднять окно и отдать ему фокус. false — окна нет.
 bool rexon_tray_raise_window();
 
+// Главное окно на QML — корень движка `engine` (`QQmlApplicationEngine *`).
+// Запоминается ДО того, как окно покажут: спрятанных окон верхнего уровня в
+// процессе несколько, и угадывать среди них нельзя. false — корня-окна нет.
+// Звать из потока GUI.
+bool rexon_tray_adopt_qml_window(void *engine);
+
+// Создать платформенное окно главного окна, не показывая его. Возвращает его
+// номер (0 — окна нет) и в `rgb` — цвет фона окна 0xRRGGBB. Звать из потока
+// GUI.
+uint64_t rexon_tray_window_native(uint32_t *rgb);
+
 // Спрятать окно.
 bool rexon_tray_hide_window();
 

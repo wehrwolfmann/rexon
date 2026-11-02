@@ -58,6 +58,8 @@ unsafe extern "C" {
     fn rexon_tray_notify(title: *const c_char, body: *const c_char);
     fn rexon_tray_guard_window() -> bool;
     fn rexon_tray_raise_window() -> bool;
+    fn rexon_tray_adopt_qml_window(engine: *mut std::ffi::c_void) -> bool;
+    fn rexon_tray_window_native(rgb: *mut u32) -> u64;
     fn rexon_tray_hide_window() -> bool;
     fn rexon_tray_select_tab(index: i32) -> bool;
     fn rexon_tray_quit();
@@ -549,6 +551,51 @@ pub fn install_for_main_window(args: &[String]) -> bool {
     // живёт в службе уведомлений, лоток ему не нужен.
     spawn_self_update_watch();
     install(&tabs, &root, core_tray::starts_hidden(args))
+}
+
+/// Запомнить главное окно на QML — корень движка — до первого показа.
+///
+/// Окно грузится спрятанным (см. [`first_show_main_window`]), а спрятанных
+/// окон верхнего уровня в процессе несколько: значок, ставящийся следом,
+/// искал бы «первое спрятанное» и мог взять чужое. Потому окно называется
+/// прямо, по движку.
+///
+/// # Safety
+/// `engine` — живой `QQmlApplicationEngine` после `load`; поток GUI.
+pub unsafe fn adopt_main_window(engine: *mut std::ffi::c_void) -> bool {
+    unsafe { rexon_tray_adopt_qml_window(engine) }
+}
+
+/// Первый показ главного окна — в самом конце запуска, перед циклом событий.
+///
+/// 02.11.2026, MATE на X11: при запуске сначала стояло прозрачное окно и
+/// только потом интерфейс. Замер на стенде: окно с `visible: true` выходило
+/// на экран посреди `engine.load`, а кадр Qt рисует только из цикла событий —
+/// между ними поток GUI ещё догружал QML, ставил значок и заводил сторожей
+/// (на стенде ~0,5 с; у Wehrwolfmann по журналу
+/// от загрузки QML до значка 0,6–1,2 с), и всё это время на экране было
+/// окно без единого пикселя. Теперь окно грузится спрятанным, показывается
+/// здесь, когда до цикла событий не осталось работы, и ещё до показа
+/// получает фон X11 цветом скина (`wallpaper_host::paint_x11_background`):
+/// оставшиеся до первого кадра миллисекунды оно стоит в своей краске.
+///
+/// `show == false` — запуск в лоток (значок есть и просили `--tray`): окно
+/// остаётся спрятанным, его покажет значок.
+pub fn first_show_main_window(show: bool) {
+    if !show {
+        return;
+    }
+    let mut rgb: u32 = 0;
+    let id = unsafe { rexon_tray_window_native(&mut rgb) };
+    if id != 0 {
+        let painted = crate::wallpaper_host::paint_x11_background(id as i64, rgb);
+        rexon_core::log_info!(
+            "start",
+            "окно показано{}",
+            if painted { format!(", фон X11 #{rgb:06x}") } else { String::new() }
+        );
+    }
+    unsafe { rexon_tray_raise_window() };
 }
 
 /// Завести сторожа «Rexon обновлён» один раз на процесс. Только у Rexon из

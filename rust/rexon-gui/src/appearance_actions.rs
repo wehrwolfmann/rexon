@@ -2557,11 +2557,13 @@ fn store_page_checked<IO: rexon_core::ocs::OcsIo>(
 ) -> (ap::StreamPage<rexon_core::ocs::OcsContent>, Option<rexon_core::ocs::StoreFailure>) {
     let size = page_size(req).clamp(1, i64::from(u32::MAX)) as u32;
     let mut failure = None;
-    let page = ap::stream_page(num(req, "page"), size, |k| {
+    // Серверная страница — всегда `PAGE_SIZE`: ключ кеша магазина размера
+    // не знает, а страница Rexon (целые ряды сетки) режется из потока.
+    let page = ap::stream_page(num(req, "page"), size, ap::PAGE_SIZE, |k| {
         let (mut chunk, total) = match client.search_checked(
             s(req, "categoryId"),
             k,
-            i64::from(size),
+            i64::from(ap::PAGE_SIZE),
             s(req, "sort"),
             s(req, "query"),
             true,

@@ -33,9 +33,29 @@ use crate::ui_base;
 //  Геометрия каталога
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Сколько работ просим у OCS за одну страницу. Сервер реально отдаёт
-/// около десятка — это учтено в подсчёте числа страниц.
+/// Сколько работ просим у OCS за одну серверную страницу. Сервер реально
+/// отдаёт около десятка — это учтено в подсчёте числа страниц.
+///
+/// Это же — НИЖНЯЯ граница страницы Rexon: страница сетки набирается целыми
+/// рядами ([`grid_page_size`]) и бывает чуть больше, но не меньше. Серверная
+/// страница от числа столбцов не зависит, иначе кеш магазина (`ocs_cache`,
+/// ключ без размера) отдавал бы ломти другой длины.
 pub const PAGE_SIZE: u32 = 20;
+
+/// Размер страницы сетки при `cols` столбцах: целые ряды, не меньше
+/// [`PAGE_SIZE`] работ. Иначе при девяти столбцах страница из двадцати
+/// кончалась рядом из двух плиток и семью пустыми местами.
+pub fn grid_page_size(cols: u32) -> u32 {
+    let cols = cols.max(1);
+    ui_base::grid_page_size(cols, PAGE_SIZE.div_ceil(cols))
+}
+
+/// Номер страницы после смены её размера: первая работа прежней страницы
+/// остаётся на экране.
+pub fn page_after_resize(page: i64, old_size: u32, new_size: u32) -> i64 {
+    let first = page.max(0).saturating_mul(i64::from(old_size.max(1)));
+    first / i64::from(new_size.max(1))
+}
 
 /// Ширина плитки каталога. Постоянная: по ней общий движок сеток считает
 /// число столбцов, и «плавающая» плитка сломала бы расчёт.
@@ -2154,18 +2174,17 @@ pub fn revert_applied_section(
 
 /// Сколько всего страниц у категории.
 ///
-/// Магазин листает ровно по запрошенному размеру (`page × PAGE_SIZE`), а
+/// Магазин листает ровно по запрошенному размеру (`page × page_size`), а
 /// скрытые им работы просто выпадают из своей страницы: на странице бывает
 /// 18 карточек из двадцати, но следующая всё равно начинается с 21-й.
 /// Поэтому число страниц считается по ЗАПРОШЕННОМУ размеру. Прежний счёт по
 /// пришедшей странице (318 / 18 = 18 вместо 16) показывал в конце пустые
 /// страницы — проверено 03.10.2026 на Global Themes: 18, 20 × 14, 18, 0.
-/// `_shown` оставлен в подписи: вызывающие передают пришедшее число.
-pub fn total_pages(total: i64, _shown: usize) -> i64 {
+pub fn total_pages(total: i64, page_size: u32) -> i64 {
     if total <= 0 {
         return 1;
     }
-    let per = (PAGE_SIZE as i64).max(1);
+    let per = i64::from(page_size.max(1));
     (1).max((total + per - 1) / per)
 }
 
@@ -2178,8 +2197,8 @@ pub struct Pagination {
 }
 
 /// Блок страниц под текущий ответ каталога.
-pub fn pagination(page: i64, total: i64, shown: usize) -> Pagination {
-    let pages = total_pages(total, shown);
+pub fn pagination(page: i64, total: i64, shown: usize, page_size: u32) -> Pagination {
+    let pages = total_pages(total, page_size);
     Pagination {
         label: trf("Page %1 / %2", &[&(page + 1), &pages]),
         prev_enabled: page > 0,
@@ -2194,8 +2213,8 @@ pub fn pagination(page: i64, total: i64, shown: usize) -> Pagination {
 /// (около десяти). Из-за этого во второй половине каталога кнопка листала
 /// дальше, а прогрев считал, что страниц уже нет, и та страница каждый раз
 /// открывалась через сеть. Счёт теперь один на обоих.
-pub fn has_page_to_prefetch(page: i64, total: i64, shown: usize) -> bool {
-    total > 0 && (page + 1) < total_pages(total, shown)
+pub fn has_page_to_prefetch(page: i64, total: i64, page_size: u32) -> bool {
+    total > 0 && (page + 1) < total_pages(total, page_size)
 }
 
 /// Страница Rexon, набранная из потока источника.
@@ -2212,7 +2231,9 @@ pub struct StreamPage<T> {
 }
 
 /// Добор страницы: страница Rexon номер `page` — работы потока
-/// `[page × size, page × size + size)`, где поток — серверные страницы подряд.
+/// `[page × size, page × size + size)`, где поток — серверные страницы
+/// подряд по `server_size` работ. Размеры разные: страница Rexon — целые
+/// ряды сетки ([`grid_page_size`]), серверная — всегда [`PAGE_SIZE`].
 ///
 /// Так ведёт себя KDE Store (OCS): листает строго по запрошенным двадцати, а
 /// скрытые им работы выпадают из своей страницы, и на экране оставалась дыра
@@ -2220,22 +2241,25 @@ pub struct StreamPage<T> {
 /// работы следующей серверной страницы, а следующая страница Rexon начинается
 /// ровно с того места, где кончилась эта, — без повторов и пропусков.
 ///
-/// `fetch(k)` — серверная страница `k` (с нуля): работы и `totalitems`.
+/// `fetch(k)` — серверная страница `k` (с нуля, по `server_size` работ):
+/// работы и `totalitems`.
 /// Источник не ответил — `(пусто, 0)`. Серверные страницы тянутся с нулевой
 /// по порядку, потому что, где в потоке начинается страница Rexon, известно
 /// только сложив длины всех предыдущих; при листании подряд они уже в кеше
 /// (`ocs_cache`), так что сеть видит одну-две новые страницы за шаг.
 /// Тянется на одну работу больше страницы — чтобы честно знать, есть ли
 /// следующая (`has_more`). Конец потока — по счёту самого источника
-/// (`ceil(total / size)` серверных страниц), а не по короткой странице:
+/// (`ceil(total / server_size)` серверных страниц), а не по короткой странице:
 /// короткие страницы бывают и в середине. Источник замолчал посреди потока —
 /// о следующей странице судим по `total`, как раньше, а не гасим «Вперёд».
 pub fn stream_page<T>(
     page: i64,
     page_size: u32,
+    server_size: u32,
     mut fetch: impl FnMut(i64) -> (Vec<T>, i64),
 ) -> StreamPage<T> {
     let size = page_size.max(1) as usize;
+    let server_size = i64::from(server_size.max(1));
     let start = (page.max(0) as usize).saturating_mul(size);
     let want = start.saturating_add(size + 1);
     let mut items: Vec<T> = Vec::with_capacity(size + 1);
@@ -2260,12 +2284,12 @@ pub fn stream_page<T>(
             seen += 1;
         }
         server += 1;
-        if seen >= want || server.saturating_mul(size as i64) >= total {
+        if seen >= want || server.saturating_mul(server_size) >= total {
             break;
         }
     }
     let has_more = if broken {
-        (page + 1) < total_pages(total, 0)
+        (page + 1) < total_pages(total, page_size)
     } else {
         items.len() > size
     };
@@ -2277,9 +2301,9 @@ pub fn stream_page<T>(
 /// (`has_more`), число страниц — по `total`, пока поток не кончился, и по
 /// факту, когда кончился (скрытых работ в конце может набраться на целую
 /// страницу — пустую последнюю не обещаем).
-pub fn stream_pagination(page: i64, total: i64, has_more: bool) -> Pagination {
+pub fn stream_pagination(page: i64, total: i64, has_more: bool, page_size: u32) -> Pagination {
     let pages = if has_more {
-        total_pages(total, 0).max(page + 2)
+        total_pages(total, page_size).max(page + 2)
     } else {
         page + 1
     };

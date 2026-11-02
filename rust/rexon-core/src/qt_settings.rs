@@ -1084,7 +1084,7 @@ impl FontFile {
         }
     }
 
-    /// Строка шрифта из текста файла в виде, понятном [`parse_font_spec`]
+    /// Строка шрифта из текста файла в виде, понятном [`parse_font_spec_face`]
     /// (пусто — не задан).
     pub fn read_spec(&self, text: &str) -> String {
         match self {
@@ -1097,13 +1097,15 @@ impl FontFile {
                 .find(|f| f.target == *target)
                 .map(|f| gnome_font_spec(&f.family, f.size))
                 .unwrap_or_default(),
-            FontFile::RcXml { .. } => rc_xml_title_font(text)
-                .map(|(family, size)| gnome_font_spec(&family, size))
+            // Начертание — словами Pango («Sans Bold 10»): строку читает
+            // [`parse_font_spec_face`].
+            FontFile::RcXml { .. } => rc_xml_title_font_face(text)
+                .map(|(family, size, face)| font_face_spec(&family, size, face))
                 .unwrap_or_default(),
             FontFile::SwayConf => sway_font_value(text)
                 .map(|desc| {
-                    let (family, size, _) = parse_pango_font_desc(&desc);
-                    gnome_font_spec(&family, size)
+                    let (family, size, face) = parse_pango_font_desc(&desc);
+                    font_face_spec(&family, size, face)
                 })
                 .unwrap_or_default(),
         }
@@ -1122,9 +1124,10 @@ impl FontFile {
         self.try_new_text_face(existing, family, size, FontFace::default())
     }
 
-    /// То же с начертанием из окна выбора (жирность, наклон): его понимает
-    /// только `FontConfig` COSMIC, остальные хранилища держат семейство и
-    /// кегль.
+    /// То же с начертанием из окна выбора (жирность, наклон): его держат
+    /// `FontConfig` COSMIC, запись QFont (LXQt, qt6ct), `rc.xml` Openbox и
+    /// labwc (`<weight>`, `<slant>`) и строка `font` sway; блоки `gtk.css` и
+    /// `.qss` — только семейство и кегль.
     pub fn try_new_text_face(&self, existing: Option<&str>, family: &str, size: i32, face: FontFace) -> Option<String> {
         match self {
             FontFile::CosmicTk { .. } => Some(cosmic_font_ron_face(family, face)),
@@ -1132,7 +1135,7 @@ impl FontFile {
                 existing,
                 group,
                 key,
-                &format!("\"{}\"", qt_font_spec(family, size)),
+                &format!("\"{}\"", qt_font_spec_face(family, size, face)),
             )),
             FontFile::GtkCss { version, target } => {
                 let dialect = if version == "4.0" { ExtraFontDialect::Gtk4 } else { ExtraFontDialect::Gtk3 };
@@ -1145,7 +1148,7 @@ impl FontFile {
                 let fonts = with_extra_font(extra_fonts_parse(existing.unwrap_or_default()), target, family, size);
                 Some(extra_fonts_block(ExtraFontDialect::Qss, &fonts))
             }
-            FontFile::RcXml { wm } => rc_xml_with_title_font(existing, *wm, family, size),
+            FontFile::RcXml { wm } => rc_xml_with_title_font_face(existing, *wm, family, size, face),
             FontFile::SwayConf => Some(sway_title_font_content(family, size, face)),
         }
     }
@@ -1671,6 +1674,18 @@ pub fn pango_font_desc(family: &str, size: i32, face: FontFace) -> String {
     parts.join(" ")
 }
 
+/// Строка шрифта для чтения обратно ([`parse_font_spec_face`]) и для показа
+/// человеку: описание Pango «Семейство [Начертание] Кегль»
+/// ([`pango_font_desc`]), а без кегля (`0` — не задан) — без числа, чтобы
+/// не выдумать кегль 1.
+pub fn font_face_spec(family: &str, size: i32, face: FontFace) -> String {
+    if size > 0 {
+        return pango_font_desc(family, size, face);
+    }
+    let desc = pango_font_desc(family, 1, face);
+    desc.strip_suffix(" 1").unwrap_or(&desc).to_string()
+}
+
 /// Жирность по слову начертания (Pango, имя стиля Qt): ступень 100–900,
 /// `Some(0)` — обычная, `None` — слово не о жирности. Слово — в нижнем
 /// регистре и без дефисов.
@@ -1822,11 +1837,11 @@ pub fn sway_title_font_current(io: &dyn crate::animations::LookIo, ctx: &crate::
     ours.or_else(|| sway_font_value(&text)).unwrap_or_else(|| SWAY_DEFAULT_FONT.to_string())
 }
 
-/// [`sway_title_font_current`] строкой «Семейство кегль» (как у GNOME —
-/// её понимает [`parse_font_spec`]).
+/// [`sway_title_font_current`] строкой «Семейство [Начертание] кегль» (как
+/// у GNOME — её понимает [`parse_font_spec_face`]).
 pub fn sway_title_font_spec(io: &dyn crate::animations::LookIo, ctx: &crate::animations::LookCtx) -> String {
-    let (family, size, _) = parse_pango_font_desc(&sway_title_font_current(io, ctx));
-    gnome_font_spec(&family, size)
+    let (family, size, face) = parse_pango_font_desc(&sway_title_font_current(io, ctx));
+    font_face_spec(&family, size, face)
 }
 
 /// [`sway_title_font_spec`] на живой машине.
@@ -1953,6 +1968,14 @@ fn rc_xml_font_field(text: &str, font: &RcXmlFont, field: &str) -> Option<String
 /// иначе `<font>` без `place` (у labwc — для всех мест). Кегль `0` — не
 /// задан.
 pub fn rc_xml_title_font(text: &str) -> Option<(String, i32)> {
+    rc_xml_title_font_face(text).map(|(family, size, _)| (family, size))
+}
+
+/// [`rc_xml_title_font`] с начертанием: `<weight>` (Openbox — `Bold` или
+/// `Normal`, labwc — слова Pango: `semibold`, `bold`, …) и `<slant>`
+/// (`italic`, `oblique`). Обычная жирность и неизвестное слово — `0`, как у
+/// [`parse_pango_font_desc`].
+pub fn rc_xml_title_font_face(text: &str) -> Option<(String, i32, FontFace)> {
     let (_, fonts) = rc_xml_theme_fonts(text)?;
     let font = fonts
         .iter()
@@ -1963,7 +1986,38 @@ pub fn rc_xml_title_font(text: &str) -> Option<(String, i32)> {
         return None;
     }
     let size = rc_xml_font_field(text, font, "size").and_then(|s| s.trim().parse().ok()).unwrap_or(0);
-    Some((family, size))
+    let word = |field| rc_xml_font_field(text, font, field).unwrap_or_default().to_ascii_lowercase().replace('-', "");
+    let face = FontFace {
+        weight: face_weight_word(&word("weight")).unwrap_or(0),
+        italic: matches!(word("slant").as_str(), "italic" | "oblique"),
+    };
+    Some((family, size, face))
+}
+
+/// Слова `<weight>` и `<slant>` для `rc.xml`. Openbox различает только
+/// `Bold` (остальное для него обычная жирность, `parse_theme` в его
+/// `config.c`), поэтому полужирный и жирнее у него — `Bold`, тоньше —
+/// `Normal`. labwc понимает ступени Pango (labwc-config(5): normal, thin,
+/// ultralight, light, semilight, book, medium, semibold, bold, ultrabold,
+/// heavy, ultraheavy).
+fn rc_xml_face_words(wm: TitleWm, face: FontFace) -> (&'static str, &'static str) {
+    if wm == TitleWm::Labwc {
+        let weight = match ((face.weight.max(1) as f64 / 100.0).round() as i32).clamp(1, 9) {
+            1 => "thin",
+            2 => "ultralight",
+            3 => "light",
+            5 => "medium",
+            6 => "semibold",
+            7 => "bold",
+            8 => "ultrabold",
+            9 => "heavy",
+            _ => "normal",
+        };
+        let weight = if face.weight <= 0 { "normal" } else { weight };
+        (weight, if face.italic { "italic" } else { "normal" })
+    } else {
+        (if face.weight >= 600 { "Bold" } else { "Normal" }, if face.italic { "Italic" } else { "Normal" })
+    }
 }
 
 /// Места заголовков, которые получают выбранный шрифт.
@@ -1980,6 +2034,19 @@ const RC_XML_TITLE_PLACES: [&str; 2] = ["ActiveWindow", "InactiveWindow"];
 /// и окна остались бы без привязок. `None` и тогда, когда файл не
 /// разбирается (нет корня) — чужое не портим.
 pub fn rc_xml_with_title_font(existing: Option<&str>, wm: TitleWm, family: &str, size: i32) -> Option<String> {
+    rc_xml_with_title_font_face(existing, wm, family, size, FontFace::default())
+}
+
+/// [`rc_xml_with_title_font`] с начертанием из окна выбора: оно уходит в
+/// `<weight>` и `<slant>` обоих мест ([`rc_xml_face_words`]). Начертание не
+/// выбрано ([`FontFace::default`]) — эти поля остаются как были.
+pub fn rc_xml_with_title_font_face(
+    existing: Option<&str>,
+    wm: TitleWm,
+    family: &str,
+    size: i32,
+    face: FontFace,
+) -> Option<String> {
     let root = wm.rc_xml_root();
     let mut text = match existing {
         Some(t) if !t.trim().is_empty() => t.to_string(),
@@ -1988,6 +2055,12 @@ pub fn rc_xml_with_title_font(existing: Option<&str>, wm: TitleWm, family: &str,
     };
     xml_find_tag(&xml_mask_comments(&text), 0, text.len(), root)?;
     let family_xml = xml_escape_text(family);
+    let mut fields = vec![("name", family_xml.clone()), ("size", size.to_string())];
+    if face != FontFace::default() {
+        let (weight, slant) = rc_xml_face_words(wm, face);
+        fields.push(("weight", weight.to_string()));
+        fields.push(("slant", slant.to_string()));
+    }
     if rc_xml_theme_fonts(&text).is_none() {
         let masked = xml_mask_comments(&text);
         let close = masked.rfind(&format!("</{root}>"))?;
@@ -1998,8 +2071,8 @@ pub fn rc_xml_with_title_font(existing: Option<&str>, wm: TitleWm, family: &str,
         match fonts.iter().find(|f| f.place.eq_ignore_ascii_case(place)) {
             Some(font) => {
                 let mut element = text[font.start..font.end].to_string();
-                for (field, value) in [("name", family_xml.clone()), ("size", size.to_string())] {
-                    element = rc_xml_set_font_field(&element, font.self_closing, field, &value)?;
+                for (field, value) in &fields {
+                    element = rc_xml_set_font_field(&element, font.self_closing, field, value)?;
                 }
                 text.replace_range(font.start..font.end, &element);
             }
@@ -2010,9 +2083,8 @@ pub fn rc_xml_with_title_font(existing: Option<&str>, wm: TitleWm, family: &str,
                 let (at, indent, prefix) =
                     if lead.trim().is_empty() { (line_start, lead.to_string(), "") } else { (close, String::new(), "\n") };
                 let i = format!("{indent}  ");
-                let block = format!(
-                    "{prefix}{i}<font place=\"{place}\">\n{i}  <name>{family_xml}</name>\n{i}  <size>{size}</size>\n{i}</font>\n"
-                );
+                let body: String = fields.iter().map(|(f, v)| format!("{i}  <{f}>{v}</{f}>\n")).collect();
+                let block = format!("{prefix}{i}<font place=\"{place}\">\n{body}{i}</font>\n");
                 text.insert_str(at, &block);
             }
         }
@@ -7761,9 +7833,10 @@ pub fn caja_restart_result(ok: bool) -> String {
 /// хранит сериализацию QFont из десяти полей
 /// (`Segoe UI,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0`), и раньше эта строка
 /// уезжала покупателю как есть — сырая техническая запись прямо в окне
-/// настроек (правило #13). Разбирает её тот же [`parse_font_spec`], которым
-/// вкладка открывает окно выбора шрифта, так что надпись и предвыбранный
-/// шрифт теперь говорят одно и то же.
+/// настроек (правило #13). Разбирает её тот же [`parse_font_spec_face`],
+/// которым вкладка открывает окно выбора шрифта, так что надпись и
+/// предвыбранный шрифт говорят одно и то же — вместе с начертанием
+/// («Sans Bold 10»: слова Pango, как их показывают GNOME и XFCE).
 ///
 /// Строку, из которой не вышло достать семейство, показываем как есть: это
 /// лучше, чем «не задан» там, где что-то всё-таки записано.
@@ -7772,14 +7845,8 @@ pub fn font_value_text(raw: &str) -> String {
     if raw.is_empty() {
         return t("font.unset");
     }
-    let (family, size) = parse_font_spec(raw);
-    let shown = if family.is_empty() {
-        raw.to_string()
-    } else if size > 0 {
-        format!("{family} {size}")
-    } else {
-        family
-    };
+    let (family, size, face) = parse_font_spec_face(raw);
+    let shown = if family.is_empty() { raw.to_string() } else { font_face_spec(&family, size, face) };
     tf("font.value", &[&shown])
 }
 

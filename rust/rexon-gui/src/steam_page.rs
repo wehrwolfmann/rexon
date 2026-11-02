@@ -1760,6 +1760,9 @@ impl qobject::SteamModel {
             ("prevEnabled", QVariant::from(&p.prev_enabled)),
             ("nextEnabled", QVariant::from(&p.next_enabled)),
             ("text", qstr(&p.text)),
+            // Столбцы сетки — те же, по которым нарезана страница: ряды
+            // всегда целые (`qs::bg_columns`).
+            ("cols", QVariant::from(&(self.rust().cols() as i32))),
         ])
     }
 }
@@ -2075,11 +2078,13 @@ impl qobject::SteamModel {
 
     // ── Фоны профиля ────────────────────────────────────────────────────
 
-    /// Ширина полосы приходит СТРОКОЙ: инвокабл с числом в подписи снаружи
+    /// Ширина приходит СТРОКОЙ: инвокабл с числом в подписи снаружи
     /// не зовётся (`::std::int32_t` в метаобъекте не имеет метатипа).
+    /// Это ширина САМОЙ сетки (без полей группы): по ней же сетка QML делит
+    /// ряд на `pager.cols` столбцов.
     pub fn set_bg_viewport_width(mut self: Pin<&mut Self>, width: &QString) {
         let px: i32 = width.to_string().trim().parse().unwrap_or(0);
-        let cols = ui_base::grid_columns(px, qs::BG_CARD_W, 10, 0, qs::BG_MIN_COLS, qs::BG_MAX_COLS);
+        let cols = qs::bg_columns(px);
         let old = self.rust().cols();
         if cols == old {
             return;

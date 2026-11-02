@@ -567,6 +567,9 @@ pub fn prepare_process() {
     // демону: стартовый снимок он шлёт один раз. `App` при рождении ставит
     // переводчик вендорных страниц по каталогу пакета.
     crate::register_we_types();
+    // Цвет ссылок скина — в палитру приложения до первой страницы QML:
+    // HTML разбирается при загрузке, и без этого ссылки выходят `#0000ff`.
+    crate::skin::apply_app_palette();
     register_filter_model();
     crate::we_singletons::set_launch_hook(Some(crate::we_socket::launch_daemon_hook));
     prewarm();

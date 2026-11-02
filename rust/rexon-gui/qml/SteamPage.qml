@@ -937,10 +937,15 @@ Item {
                                 id: showcase
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Math.max(cellHeight,
-                                                                 cellHeight * Math.ceil(
-                                                                     count / Math.max(1, Math.floor(width / cellWidth))))
+                                                                 cellHeight * Math.ceil(count / columns))
                                 interactive: false
-                                cellWidth: page.svCardWidth + root.st.card.gap
+                                // Столбцы — сколько карточек влезает, остаток
+                                // ширины делится между ними, как у сетки
+                                // «Оформления»: без пустой полосы справа.
+                                readonly property int columns: Math.max(1, Math.floor(
+                                    width / (page.svCardWidth + root.st.card.gap)))
+                                cellWidth: Math.max(page.svCardWidth + root.st.card.gap,
+                                                    Math.floor(width / columns))
                                 cellHeight: page.svThumbHeight + 78
                                 model: page
 
@@ -1095,9 +1100,6 @@ Item {
                     objectName: "bgScroll"
                     clip: true
                     contentWidth: availableWidth
-                    // Ширина полосы, а не окна: её меняет и появление
-                    // вертикального ползунка, а окно об этом события не шлёт.
-                    onAvailableWidthChanged: page.setBgViewportWidth(String(Math.round(availableWidth)))
 
                     // Группа-секция: та же карточка с рамкой, что у виджетной
                     // вкладки (steamBgGroup). Краски и поля — от ядра.
@@ -1210,142 +1212,170 @@ Item {
 
                             // Карточки ТОЛЬКО текущей страницы (~25 из сотен) —
                             // ключевой приём против лага при открытии подвкладки.
-                            Flow {
+                            //
+                            // Столбцы задаёт ядро (`pager.cols`), по ним же
+                            // нарезана страница — ряды всегда целые. Прежде
+                            // `Flow` раскладывал карточки сам: на окне 1920
+                            // клал девять в ряд, а страница была 8 × 5 = 40, и
+                            // последний ряд выходил из четырёх. Остаток ширины
+                            // делится между столбцами, как у сетки
+                            // «Оформления», — без пустой полосы справа.
+                            Item {
+                                id: bgGridBox
                                 Layout.fillWidth: true
-                                spacing: root.st.card.gap
+                                implicitHeight: bgGrid.implicitHeight
+                                // Ширина самой сетки, а не окна: её меняет и
+                                // появление вертикального ползунка, а окно об
+                                // этом события не шлёт.
+                                onWidthChanged: page.setBgViewportWidth(String(Math.round(width)))
+                                Component.onCompleted: page.setBgViewportWidth(String(Math.round(width)))
 
-                                Repeater {
-                                    model: page.bgCards
-                                    delegate: Rectangle {
-                                        id: bgCard
-                                        required property var modelData
+                                readonly property int cols: Math.max(1, page.pager.cols || 1)
+                                readonly property int cardWidth: Math.max(page.bgCardWidth,
+                                    Math.floor((width - (cols - 1) * root.st.card.gap) / cols))
 
-                                        width: page.bgCardWidth
-                                        implicitHeight: bgCardCol.implicitHeight
-                                                        + root.st.card.margin * 2
-                                        radius: root.st.card.radius
-                                        color: root.st.card.background
-                                        border.width: 1
-                                        border.color: bgHover.hovered ? root.st.card.hover
-                                                                      : root.st.card.border
-                                        HoverHandler { id: bgHover }
+                                Grid {
+                                    id: bgGrid
+                                    objectName: "bgGrid"
+                                    width: parent.width
+                                    columns: bgGridBox.cols
+                                    columnSpacing: root.st.card.gap
+                                    rowSpacing: root.st.card.gap
 
-                                        // ⚠️ Имя своё, а не общее с колонкой
-                                        // СЕКЦИИ: обе назывались `bgCol`, и внутри
-                                        // делегата плитки имя секции было закрыто
-                                        // тёзкой. Любая новая ссылка на колонку
-                                        // секции из плитки молча привязалась бы к
-                                        // колонке самой плитки.
-                                        ColumnLayout {
-                                            id: bgCardCol
-                                            anchors.fill: parent
-                                            anchors.margins: root.st.card.margin
-                                            spacing: root.st.card.spacing
+                                    Repeater {
+                                        model: page.bgCards
+                                        delegate: Rectangle {
+                                            id: bgCard
+                                            required property var modelData
 
-                                            Rectangle {
-                                                Layout.alignment: Qt.AlignHCenter
-                                                implicitWidth: page.bgThumbWidth
-                                                implicitHeight: page.bgThumbHeight
-                                                radius: root.st.thumb.radius
-                                                color: root.st.thumb.bgBackground
-                                                ToolTip.text: bgCard.modelData.thumbTooltip
-                                                ToolTip.visible: thumbHover.hovered
-                                                                 && bgCard.modelData.thumbTooltip !== ""
-                                                HoverHandler { id: thumbHover }
-                                                Image {
-                                                    anchors.fill: parent
-                                                    source: bgCard.modelData.thumb
-                                                    fillMode: Image.PreserveAspectCrop
-                                                    asynchronous: true
-                                                    visible: source !== ""
-                                                }
-                                                Text {
-                                                    anchors.centerIn: parent
-                                                    visible: bgCard.modelData.thumb === ""
-                                                    text: bgCard.modelData.icon
-                                                    font.pixelSize: 22
-                                                }
-                                                // Отметка анимированного фона:
-                                                // у статичного её нет вовсе.
+                                            width: bgGridBox.cardWidth
+                                            implicitHeight: bgCardCol.implicitHeight
+                                                            + root.st.card.margin * 2
+                                            radius: root.st.card.radius
+                                            color: root.st.card.background
+                                            border.width: 1
+                                            border.color: bgHover.hovered ? root.st.card.hover
+                                                                          : root.st.card.border
+                                            HoverHandler { id: bgHover }
+
+                                            // ⚠️ Имя своё, а не общее с колонкой
+                                            // СЕКЦИИ: обе назывались `bgCol`, и внутри
+                                            // делегата плитки имя секции было закрыто
+                                            // тёзкой. Любая новая ссылка на колонку
+                                            // секции из плитки молча привязалась бы к
+                                            // колонке самой плитки.
+                                            ColumnLayout {
+                                                id: bgCardCol
+                                                anchors.fill: parent
+                                                anchors.margins: root.st.card.margin
+                                                spacing: root.st.card.spacing
+
                                                 Rectangle {
-                                                    objectName: "bgAnimatedMark"
-                                                    visible: bgCard.modelData.mark !== ""
-                                                    anchors.left: parent.left
-                                                    anchors.bottom: parent.bottom
-                                                    anchors.margins: 4
-                                                    width: bgMarkText.implicitWidth + 10
-                                                    height: bgMarkText.implicitHeight + 4
-                                                    radius: 4
-                                                    color: "#cc000000"
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    implicitWidth: page.bgThumbWidth
+                                                    implicitHeight: page.bgThumbHeight
+                                                    radius: root.st.thumb.radius
+                                                    color: root.st.thumb.bgBackground
+                                                    ToolTip.text: bgCard.modelData.thumbTooltip
+                                                    ToolTip.visible: thumbHover.hovered
+                                                                     && bgCard.modelData.thumbTooltip !== ""
+                                                    HoverHandler { id: thumbHover }
+                                                    Image {
+                                                        anchors.fill: parent
+                                                        source: bgCard.modelData.thumb
+                                                        fillMode: Image.PreserveAspectCrop
+                                                        asynchronous: true
+                                                        visible: source !== ""
+                                                    }
                                                     Text {
-                                                        id: bgMarkText
                                                         anchors.centerIn: parent
-                                                        text: bgCard.modelData.mark
-                                                        font.pixelSize: 15
+                                                        visible: bgCard.modelData.thumb === ""
+                                                        text: bgCard.modelData.icon
+                                                        font.pixelSize: 22
+                                                    }
+                                                    // Отметка анимированного фона:
+                                                    // у статичного её нет вовсе.
+                                                    Rectangle {
+                                                        objectName: "bgAnimatedMark"
+                                                        visible: bgCard.modelData.mark !== ""
+                                                        anchors.left: parent.left
+                                                        anchors.bottom: parent.bottom
+                                                        anchors.margins: 4
+                                                        width: bgMarkText.implicitWidth + 10
+                                                        height: bgMarkText.implicitHeight + 4
+                                                        radius: 4
+                                                        color: "#cc000000"
+                                                        Text {
+                                                            id: bgMarkText
+                                                            anchors.centerIn: parent
+                                                            text: bgCard.modelData.mark
+                                                            font.pixelSize: 15
+                                                        }
+                                                    }
+                                                    RexonZoomArea {
+                                                        anchors.fill: parent
+                                                        pal: root.pal
+                                                        radius: root.st.thumb.radius
+                                                        // Своя подсказка есть только
+                                                        // у анимированного фона — она
+                                                        // и остаётся, без второй поверх.
+                                                        tooltip: bgCard.modelData.thumbTooltip !== ""
+                                                                 ? "" : qsTranslate("rexon", "Open large view")
+                                                        onActivated: root.openBackgroundViewer(bgCard.modelData.id)
                                                     }
                                                 }
-                                                RexonZoomArea {
-                                                    anchors.fill: parent
-                                                    pal: root.pal
-                                                    radius: root.st.thumb.radius
-                                                    // Своя подсказка есть только
-                                                    // у анимированного фона — она
-                                                    // и остаётся, без второй поверх.
-                                                    tooltip: bgCard.modelData.thumbTooltip !== ""
-                                                             ? "" : qsTranslate("rexon", "Open large view")
-                                                    onActivated: root.openBackgroundViewer(bgCard.modelData.id)
-                                                }
-                                            }
 
-                                            // Значок и имя — двумя подписями, а не
-                                            // одной: у оригинала обрезается ТОЛЬКО
-                                            // имя (по ширине миниатюры), а значок
-                                            // стоит перед обрезкой и виден всегда.
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                spacing: 0
-                                                Text {
-                                                    text: bgCard.modelData.icon + " "
-                                                    color: root.colText
+                                                // Значок и имя — двумя подписями, а не
+                                                // одной: у оригинала обрезается ТОЛЬКО
+                                                // имя (по ширине миниатюры), а значок
+                                                // стоит перед обрезкой и виден всегда.
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 0
+                                                    Text {
+                                                        text: bgCard.modelData.icon + " "
+                                                        color: root.colText
+                                                    }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        Layout.maximumWidth: page.bgThumbWidth
+                                                        text: bgCard.modelData.name
+                                                        color: root.colText
+                                                        elide: Text.ElideRight
+                                                        ToolTip.text: bgCard.modelData.name
+                                                        ToolTip.visible: bgNameHover.hovered
+                                                        HoverHandler { id: bgNameHover }
+                                                    }
                                                 }
+
+                                                // Пустую строку всё равно рисуем: иначе
+                                                // карточки ряда разъезжаются по высоте.
                                                 Text {
                                                     Layout.fillWidth: true
                                                     Layout.maximumWidth: page.bgThumbWidth
-                                                    text: bgCard.modelData.name
-                                                    color: root.colText
+                                                    text: bgCard.modelData.sub
+                                                    color: root.colTextSecondary
                                                     elide: Text.ElideRight
-                                                    ToolTip.text: bgCard.modelData.name
-                                                    ToolTip.visible: bgNameHover.hovered
-                                                    HoverHandler { id: bgNameHover }
                                                 }
-                                            }
 
-                                            // Пустую строку всё равно рисуем: иначе
-                                            // карточки ряда разъезжаются по высоте.
-                                            Text {
-                                                Layout.fillWidth: true
-                                                Layout.maximumWidth: page.bgThumbWidth
-                                                text: bgCard.modelData.sub
-                                                color: root.colTextSecondary
-                                                elide: Text.ElideRight
-                                            }
-
-                                            RexonButton {
-                                                Layout.fillWidth: true
-                                                pal: root.pal
-                                                // Синяя «Применить», зелёная
-                                                // «✓ Применено»: какой фон стоит
-                                                // сейчас, видно, не читая надпись.
-                                                tone: bgCard.modelData.applied
-                                                      ? root.st.appliedButton
-                                                      : root.st.primaryButton
-                                                text: bgCard.modelData.applied ? page.bgAppliedText
-                                                                               : page.bgApplyText
-                                                onClicked: page.applyBackground(bgCard.modelData.id)
+                                                RexonButton {
+                                                    Layout.fillWidth: true
+                                                    pal: root.pal
+                                                    // Синяя «Применить», зелёная
+                                                    // «✓ Применено»: какой фон стоит
+                                                    // сейчас, видно, не читая надпись.
+                                                    tone: bgCard.modelData.applied
+                                                          ? root.st.appliedButton
+                                                          : root.st.primaryButton
+                                                    text: bgCard.modelData.applied ? page.bgAppliedText
+                                                                                   : page.bgApplyText
+                                                    onClicked: page.applyBackground(bgCard.modelData.id)
+                                                }
                                             }
                                         }
                                     }
                                 }
+
                             }
 
                             // ── Пагинация ─────────────────────────────────────────

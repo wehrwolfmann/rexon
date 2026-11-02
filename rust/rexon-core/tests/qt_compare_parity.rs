@@ -18,7 +18,9 @@
 //! отдельным тестом внизу файла:
 //!   1. «X11 (Wayland WIP)» больше не зелёное;
 //!   2. подсветка шапки и подложка полосы памяти зависят от темы;
-//!   3. в диалоге сравнения обе кнопки установки выделены одинаково.
+//!   3. в диалоге сравнения обе кнопки установки выделены одинаково;
+//!   4. оценки в таблице пары — значками (⭐/🎮 и ☆), как в легенде и
+//!      карточках, а не полоской «█░» (`sanctioned_divergences`).
 //!
 //! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: семь точечных
 //! поломок реализации (порог зелёного сдвинут на 0.36; `stars` не обрезает
@@ -189,13 +191,20 @@ fn value_style_matches_python_except_wayland_wip() {
     }
 }
 
+/// Полоска оригинала (`_bar5`) — только для сверки с эталоном: в таблице
+/// пары её сменили значки оценки (санкция 4).
+fn legacy_bar5(n: u8) -> String {
+    let filled = (n.min(5) as usize) * 2;
+    "█".repeat(filled) + &"░".repeat(10 - filled)
+}
+
 #[test]
-fn bar5_matches_python() {
+fn legacy_bar5_matches_python() {
     let g = golden();
     let py = g["bar5"].as_object().expect("bar5");
     for (n_s, want) in py {
         let n: u8 = n_s.parse().unwrap();
-        assert_eq!(qc::bar5(n), want.as_str().unwrap(), "полоска {n}");
+        assert_eq!(legacy_bar5(n), want.as_str().unwrap(), "полоска {n}");
     }
 }
 
@@ -272,7 +281,7 @@ fn card_headers_and_bodies_match_python() {
     }
 }
 
-/// Санкционированные расхождения с оригиналом по слову «DE».
+/// Санкционированные расхождения с оригиналом: слово «DE» и значки оценок в таблице пары.
 ///
 /// Оригинал говорил «📊 Сравнение DE» и «Новый Wayland-native DE от System76»
 /// (описание COSMIC приходит на карточку, в дерево окна и в таблицу пары); ядро
@@ -281,9 +290,17 @@ fn card_headers_and_bodies_match_python() {
 /// переснимается из blob'а оригинала (`rexon-golden-update qt_compare`),
 /// поэтому правится не он, а ожидание, и ровно эти две фразы.
 fn sanctioned_divergences(original: &str) -> String {
-    original
+    let text = original
         .replace("📊 Сравнение DE", "📊 Сравнение рабочих столов")
-        .replace("Wayland-native DE от System76", "Wayland-native рабочий стол от System76")
+        .replace("Wayland-native DE от System76", "Wayland-native рабочий стол от System76");
+    // Санкция 4: оценки в таблице пары — значками, как в легенде и
+    // карточках; в строке «Гейминг» — геймпады, в остальных — звёзды.
+    text.split_inclusive("</tr>")
+        .map(|row| {
+            let emoji = if row.contains("<td><b>Гейминг</b></td>") { "🎮" } else { "⭐" };
+            (0..=5u8).fold(row.to_string(), |r, n| r.replace(&legacy_bar5(n), &qc::stars(n, emoji)))
+        })
+        .collect()
 }
 
 #[test]
@@ -295,6 +312,7 @@ fn sanctioned_divergences_are_exactly_the_de_word() {
     // Эталон по-прежнему оригинальный: санкция на месте, а не устарела.
     assert_eq!(text.matches("📊 Сравнение DE").count(), 1);
     assert_eq!(text.matches("Wayland-native DE от System76").count(), 3);
+    assert!(text.contains("<td><b>Гейминг</b></td><td>█"), "полоски оригинала в эталоне пары");
     assert!(!sanctioned_divergences(&text)
         .split(|c: char| !c.is_alphanumeric())
         .any(|w| w == "DE"));

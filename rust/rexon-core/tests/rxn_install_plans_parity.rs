@@ -302,19 +302,14 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/rxn_inst
 
 /// Все планы совпадают с эталоном.
 /// Язык Rexon один на процесс, а тесты файла идут параллельно: эталон снят
-/// на русском, сторож чужих тем ищет английское «skipped». Оба берут этот
-/// замок и задают язык явно — иначе исход зависел бы от локали машины.
-static LANGUAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-fn with_language(code: &str) -> std::sync::MutexGuard<'static, ()> {
-    let guard = LANGUAGE.lock().unwrap_or_else(|e| e.into_inner());
-    rexon_core::i18n::set_language(Some(code));
-    guard
-}
+/// на русском, сторож чужих тем ищет английское «skipped». Оба закрепляют язык
+/// через `i18n_pin`: русский там собирается из `po/ru.po` дерева, поэтому
+/// исход не зависит ни от локали машины, ни от каталога в /usr/share/locale.
+mod i18n_pin;
 
 #[test]
 fn rxn_plans_match_golden() {
-    let _language = with_language("ru");
+    let _language = i18n_pin::ru();
     let now = collect();
     let text = serde_json::to_string_pretty(&now).unwrap() + "\n";
     if std::env::var("REXON_UPDATE_GOLDEN").is_ok() {
@@ -614,7 +609,7 @@ fn conky_and_bundle_never_touch_foreign_subfolder() {
 /// (`plasmoid_*`, `single_file_*`, `bundle_parts_never_overwrite_foreign`).
 #[test]
 fn main_copy_never_touches_foreign_theme() {
-    let _language = with_language(rexon_core::i18n::SOURCE_LANGUAGE);
+    let _language = i18n_pin::en();
     let pkg = package_snapshot();
     let clean = FsSnap::from_json(&pkg);
     let mut checked = 0;

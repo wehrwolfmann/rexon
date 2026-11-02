@@ -1211,6 +1211,14 @@ pub mod qobject {
         #[cxx_name = "removalCountdownText"]
         fn removal_countdown_text(self: &AppearanceModel, seconds: i32) -> QString;
 
+        /// Сетка разложилась на `cols` столбцов: страница каталога —
+        /// целые ряды (`ap::grid_page_size`). Размер сменился — страница
+        /// пересчитывается так, чтобы первая плитка осталась на экране, и
+        /// витрина перезапрашивается.
+        #[qinvokable]
+        #[cxx_name = "setGridColumns"]
+        fn set_grid_columns(self: Pin<&mut AppearanceModel>, cols: i32);
+
         /// Листание страниц.
         #[qinvokable]
         #[cxx_name = "prevPage"]
@@ -2047,6 +2055,8 @@ pub struct AppearanceModelRust {
     /// (`ap::stream_page`) это знает сам ответ; `None` — ответ без потока
     /// (AUR, диск): страницы там режутся на месте и считаются по `total`.
     has_more: Option<bool>,
+    /// Столбцов в сетке сейчас (0 — сетка ещё не разложилась).
+    grid_cols: u32,
 
     /// Есть ли помощник AUR (yay/paru).
     aur_helper: bool,
@@ -2191,6 +2201,7 @@ impl Default for AppearanceModelRust {
             spices: BTreeMap::new(),
             total: 0,
             has_more: None,
+            grid_cols: 0,
             aur_helper: false,
             aur_jobs: Vec::new(),
             aur_status: String::new(),
@@ -2241,6 +2252,16 @@ impl Drop for AppearanceModelRust {
 }
 
 impl AppearanceModelRust {
+    /// Размер страницы каталога: целые ряды сетки (`ap::grid_page_size`);
+    /// пока сетка не разложилась — серверные двадцать.
+    fn page_size(&self) -> u32 {
+        if self.grid_cols == 0 {
+            ap::PAGE_SIZE
+        } else {
+            ap::grid_page_size(self.grid_cols)
+        }
+    }
+
     /// Раздел по ключу.
     fn category(&self, key: &str) -> Option<ThemeCategory> {
         self.sidebar.iter().find(|c| c.key == key).cloned()
@@ -2755,8 +2776,8 @@ impl qobject::AppearanceModel {
     fn pagination(&self) -> ap::Pagination {
         let me = self.rust();
         match me.has_more {
-            Some(more) => ap::stream_pagination(me.view.page, me.total, more),
-            None => ap::pagination(me.view.page, me.total, me.cards.len()),
+            Some(more) => ap::stream_pagination(me.view.page, me.total, more, me.page_size()),
+            None => ap::pagination(me.view.page, me.total, me.cards.len(), me.page_size()),
         }
     }
 
@@ -3492,6 +3513,28 @@ impl qobject::AppearanceModel {
         self.refresh();
     }
 
+    fn set_grid_columns(mut self: Pin<&mut Self>, cols: i32) {
+        let cols = cols.max(1) as u32;
+        let old = self.rust().page_size();
+        if self.rust().grid_cols == cols {
+            return;
+        }
+        self.as_mut().rust_mut().grid_cols = cols;
+        let new = self.rust().page_size();
+        if new == old {
+            return;
+        }
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.view.page = ap::page_after_resize(me.view.page, old, new);
+        }
+        // Листается только витрина магазина; местным разделам размер
+        // страницы не нужен, и перезапрос там был бы лишним сканом диска.
+        if self.pagination_visible() {
+            self.resync();
+        }
+    }
+
     fn prev_page(mut self: Pin<&mut Self>) {
         if !self.prev_enabled() {
             return;
@@ -3522,7 +3565,7 @@ impl qobject::AppearanceModel {
             "categoryId": me.view.query_category_id(),
             "categoryKey": me.view.category.key,
             "page": me.view.page,
-            "pageSize": ap::PAGE_SIZE,
+            "pageSize": me.page_size(),
             "sort": me.view.active_sort(),
             "query": me.view.query,
             "which": me.view.local_scan_which(),
@@ -5350,7 +5393,7 @@ impl qobject::AppearanceModel {
             "kind": PREFETCH_CATEGORY,
             "categoryId": cat_id,
             "page": 0,
-            "pageSize": ap::PAGE_SIZE,
+            "pageSize": self.rust().page_size(),
             "sort": sort,
             "query": "",
         });
@@ -5378,7 +5421,7 @@ impl qobject::AppearanceModel {
             } else {
                 // Есть ли следующая — по факту потока, если ответ его знает.
                 let more = me.has_more.unwrap_or_else(|| {
-                    ap::has_page_to_prefetch(me.view.page, me.total, me.cards.len())
+                    ap::has_page_to_prefetch(me.view.page, me.total, me.page_size())
                 });
                 if !more {
                     None
@@ -5390,7 +5433,7 @@ impl qobject::AppearanceModel {
                         "kind": PREFETCH_PAGE,
                         "categoryId": me.view.query_category_id(),
                         "page": me.view.page + 1,
-                        "pageSize": ap::PAGE_SIZE,
+                        "pageSize": me.page_size(),
                         "sort": me.view.active_sort(),
                         "query": me.view.query,
                     }))
@@ -5398,11 +5441,17 @@ impl qobject::AppearanceModel {
             }
         };
         let Some(body) = request else { return };
-        let key = ocs::list_key(
-            body["categoryId"].as_str().unwrap_or_default(),
-            body["page"].as_i64().unwrap_or_default(),
-            body["sort"].as_str().unwrap_or_default(),
-            body["query"].as_str().unwrap_or_default(),
+        // Размер страницы — в ключе: при другой ширине окна страница N —
+        // другие работы, и прежний прогрев её не покрывает.
+        let key = format!(
+            "{}:n{}",
+            ocs::list_key(
+                body["categoryId"].as_str().unwrap_or_default(),
+                body["page"].as_i64().unwrap_or_default(),
+                body["sort"].as_str().unwrap_or_default(),
+                body["query"].as_str().unwrap_or_default(),
+            ),
+            body["pageSize"].as_u64().unwrap_or_default(),
         );
         if !self.as_mut().rust_mut().requests.claim_page_prefetch(&key) {
             return;

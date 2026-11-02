@@ -90,7 +90,7 @@ fn grid_sizes_match_python() {
     assert_eq!((qs::BG_THUMB_W, qs::BG_THUMB_H), (140, 79));
     assert_eq!(qs::BG_CARD_W, 180);
     assert_eq!(qs::BG_ROWS, 5);
-    assert_eq!((qs::BG_MIN_COLS, qs::BG_MAX_COLS), (2, 8));
+    assert_eq!((qs::BG_MIN_COLS, qs::BG_MAX_COLS), (2, 16));
 }
 
 // ── Витрина заставок ────────────────────────────────────────────────────
@@ -523,6 +523,20 @@ fn pager_agrees_with_grid_engine() {
             assert_eq!(p.text, format!("Страница 1 / {}", p.pages));
         }
     }
+}
+
+/// Столбцы сетки фонов: окно 1920 (сетка ~1828 точек) — девять, как их и
+/// рисовала сетка; страница — девять целых рядов по пять.
+#[test]
+fn bg_columns_fill_the_grid_width() {
+    // 9 × 180 + 8 × 10 = 1700 ≤ 1828 < 10 × 180 + 9 × 10 = 1890.
+    assert_eq!(qs::bg_columns(1828), 9);
+    assert_eq!(qs::bg_columns(1890), 10);
+    assert_eq!(qs::bg_columns(1889), 9);
+    assert_eq!(qs::bg_columns(0), qs::BG_MIN_COLS);
+    assert_eq!(qs::bg_columns(100_000), qs::BG_MAX_COLS);
+    let p = qs::bg_pager(202, 0, qs::bg_columns(1828));
+    assert_eq!(p.end - p.start, 45);
 }
 
 /// Смена числа столбцов не должна терять место: первый элемент прежней

@@ -367,6 +367,24 @@ pub fn apply_x11_desktop_layer(window_id: i64) -> bool {
     x11_desktop::after_map(window_id)
 }
 
+/// Фон X11 у ещё не показанного окна — сплошной цвет `rgb` (0xRRGGBB).
+///
+/// Зачем. Qt создаёт окна X11 без фона (`BackPixmap None`): до первого кадра
+/// сцены сервер ничего в окне не рисует, и показанное окно выглядит
+/// прозрачным — сквозь него виден стол, под композитором чёрное или
+/// мусор. С цветом фона сервер сам заливает окно в момент показа, ещё до
+/// первого кадра Qt, и до кадра окно стоит в краске скина. Тот же цвет
+/// сервер кладёт и на открывшуюся при растяжении полосу — она не мигает.
+///
+/// Звать после `winId()` и до показа. `false` — не X11 (Wayland, offscreen):
+/// там у окна свой путь показа и делать нечего, в журнал не пишем.
+pub fn paint_x11_background(window_id: i64, rgb: u32) -> bool {
+    if qobject::rexon_wp_xcb_connection() == 0 {
+        return false;
+    }
+    x11_desktop::background(window_id, rgb)
+}
+
 /// Исполнитель плана X11 на соединении xcb самого Qt.
 ///
 /// ⚠️ Почему соединение Qt, а не своё. Запросы одного соединения сервер
@@ -674,6 +692,24 @@ mod x11_desktop {
         // SAFETY: живое соединение.
         unsafe { (x.flush)(conn) };
         ok
+    }
+
+    /// `XCB_CW_BACK_PIXEL`.
+    const CW_BACK_PIXEL: u32 = 1 << 1;
+
+    pub(super) fn background(window_id: i64, rgb: u32) -> bool {
+        let Some((x, conn, window)) = session(window_id) else {
+            return false;
+        };
+        // Пиксель TrueColor: у окна глубины 32 (с альфой) старший байт —
+        // непрозрачность, без него фон под композитором был бы прозрачным.
+        let pixel = if depth(x, conn, window) == 32 { 0xff00_0000 | rgb } else { rgb & 0x00ff_ffff };
+        // SAFETY: живое соединение; значение — один u32 под маску.
+        unsafe {
+            (x.change_window_attributes)(conn, window, CW_BACK_PIXEL, (&pixel as *const u32).cast());
+            (x.flush)(conn);
+        }
+        true
     }
 
     pub(super) fn after_map(window_id: i64) -> bool {

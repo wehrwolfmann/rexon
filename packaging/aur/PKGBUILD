@@ -8,7 +8,7 @@
 #   клона: REXON_GITURL="git+file://<путь к клону>" makepkg (см. README.md).
 
 pkgname=rexon-git
-pkgver=0.1.0.r1999.g990766e
+pkgver=0.1.1.r2100.g0000000
 pkgrel=1
 pkgdesc="Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers (git version)"
 url="https://github.com/wehrwolfmann/rexon"

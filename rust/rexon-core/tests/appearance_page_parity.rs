@@ -999,18 +999,18 @@ fn pagination_counts_by_the_requested_page_size() {
     let _lang = i18n_pin::ru();
     // Магазин листает по запрошенным двадцати, даже если прислал 18:
     // 318 работ — 16 страниц, а не 318 / 18 = 18 (две пустые в конце).
-    let p = ap::pagination(0, 318, 18);
+    let p = ap::pagination(0, 318, 18, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 16");
     assert!(!p.prev_enabled && p.next_enabled);
-    let p = ap::pagination(15, 318, 18);
+    let p = ap::pagination(15, 318, 18, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 16 / 16");
     assert!(p.prev_enabled && !p.next_enabled);
     // Пусто — одна страница, листать некуда.
-    let p = ap::pagination(0, 0, 0);
+    let p = ap::pagination(0, 0, 0, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 1");
     assert!(!p.prev_enabled && !p.next_enabled);
     // Ответ пуст, а всего работ много: «Вперёд» не должен звать в никуда.
-    assert!(!ap::pagination(0, 100, 0).next_enabled);
+    assert!(!ap::pagination(0, 100, 0, ap::PAGE_SIZE).next_enabled);
 }
 
 #[test]
@@ -1019,13 +1019,13 @@ fn prefetch_and_the_forward_button_agree_on_the_page_count() {
     // Кнопка «Вперёд» и прогрев обязаны считать страницы одинаково.
     for page in 0..15 {
         assert_eq!(
-            ap::has_page_to_prefetch(page, 318, 18),
-            ap::pagination(page, 318, 18).next_enabled,
+            ap::has_page_to_prefetch(page, 318, ap::PAGE_SIZE),
+            ap::pagination(page, 318, 18, ap::PAGE_SIZE).next_enabled,
             "страница {page}"
         );
     }
-    assert!(!ap::has_page_to_prefetch(15, 318, 18));
-    assert!(!ap::has_page_to_prefetch(0, 0, 0));
+    assert!(!ap::has_page_to_prefetch(15, 318, ap::PAGE_SIZE));
+    assert!(!ap::has_page_to_prefetch(0, 0, ap::PAGE_SIZE));
 }
 
 /// Поддельный магазин: серверные страницы заданной длины, работы пронумерованы
@@ -1049,7 +1049,7 @@ impl FakeStore {
         ((first..first + len).collect(), self.total)
     }
     fn page(&mut self, page: i64) -> ap::StreamPage<usize> {
-        ap::stream_page(page, ap::PAGE_SIZE, |k| self.fetch(k))
+        ap::stream_page(page, ap::PAGE_SIZE, ap::PAGE_SIZE, |k| self.fetch(k))
     }
 }
 
@@ -1100,8 +1100,64 @@ fn store_page_needs_only_the_pages_it_covers() {
     assert_eq!(p.items, (60..76).collect::<Vec<_>>());
     assert!(!p.has_more);
     // Число страниц по факту кончившегося потока: 4, не 80 / 20 = 4 + пустая.
-    let pg = ap::stream_pagination(3, p.total, p.has_more);
+    let pg = ap::stream_pagination(3, p.total, p.has_more, ap::PAGE_SIZE);
     assert!(!pg.next_enabled && pg.prev_enabled);
+}
+
+/// Страница сетки — целые ряды, не меньше двадцати: при девяти столбцах
+/// страница из двадцати кончалась рядом из двух плиток и семью пустыми.
+#[test]
+fn grid_page_is_whole_rows_of_at_least_twenty() {
+    for cols in 1..=40u32 {
+        let size = ap::grid_page_size(cols);
+        assert_eq!(size % cols, 0, "{cols} столбцов: {size} — не целые ряды");
+        assert!(size >= ap::PAGE_SIZE, "{cols} столбцов: {size} меньше двадцати");
+        assert!(size < ap::PAGE_SIZE + cols, "{cols} столбцов: {size} — лишний ряд");
+    }
+    assert_eq!(ap::grid_page_size(4), 20);
+    assert_eq!(ap::grid_page_size(5), 20);
+    assert_eq!(ap::grid_page_size(6), 24);
+    assert_eq!(ap::grid_page_size(9), 27);
+    assert_eq!(ap::grid_page_size(0), 20);
+}
+
+/// Смена ширины окна: первая работа прежней страницы остаётся на экране.
+#[test]
+fn page_after_resize_keeps_the_first_item_visible() {
+    for (page, old, new) in [(0i64, 20u32, 27u32), (3, 20, 27), (5, 27, 24), (7, 24, 20), (2, 21, 30)] {
+        let first = page * i64::from(old);
+        let moved = ap::page_after_resize(page, old, new);
+        let start = moved * i64::from(new);
+        assert!(start <= first && first < start + i64::from(new), "{page} {old}→{new}");
+    }
+}
+
+/// Страница Rexon больше серверной (27 при девяти столбцах): набирается из
+/// серверных страниц по двадцать подряд, без повторов и пропусков, и
+/// последняя короче только в самом конце потока.
+#[test]
+fn whole_row_pages_are_cut_from_fixed_server_pages() {
+    let mut lens = vec![18];
+    lens.extend([20; 14]);
+    lens.push(18);
+    let total = 318;
+    let size = ap::grid_page_size(9);
+    let mut store = FakeStore::new(&lens, total);
+    let mut seen = Vec::new();
+    let mut page = 0;
+    loop {
+        let p = ap::stream_page(page, size, ap::PAGE_SIZE, |k| store.fetch(k));
+        if p.has_more {
+            assert_eq!(p.items.len(), size as usize, "страница {page}");
+        }
+        seen.extend(p.items);
+        if !p.has_more {
+            break;
+        }
+        page += 1;
+    }
+    let stream: usize = lens.iter().sum();
+    assert_eq!(seen, (0..stream).collect::<Vec<_>>());
 }
 
 #[test]
@@ -1122,7 +1178,7 @@ fn empty_store_answer_is_one_empty_page() {
     let p = store.page(0);
     assert!(p.items.is_empty() && !p.has_more && p.total == 0);
     assert_eq!(store.asked, vec![0]);
-    let pg = ap::stream_pagination(0, 0, false);
+    let pg = ap::stream_pagination(0, 0, false, ap::PAGE_SIZE);
     assert_eq!(pg.label, "Страница 1 / 1");
     assert!(!pg.prev_enabled && !pg.next_enabled);
 }
@@ -1131,7 +1187,7 @@ fn empty_store_answer_is_one_empty_page() {
 fn store_failure_mid_stream_does_not_kill_the_forward_button() {
     // Нулевая страница пришла, первая — сеть упала: по видимым 18 «Вперёд»
     // не гасим, судим по totalitems, как до добора.
-    let p = ap::stream_page(0, ap::PAGE_SIZE, |k| {
+    let p = ap::stream_page(0, ap::PAGE_SIZE, ap::PAGE_SIZE, |k| {
         if k == 0 {
             ((0..18).collect::<Vec<usize>>(), 318)
         } else {
@@ -1146,16 +1202,16 @@ fn store_failure_mid_stream_does_not_kill_the_forward_button() {
 fn stream_pagination_counts_by_total_until_the_stream_ends() {
     let _lang = i18n_pin::ru();
     // Пока поток идёт — страниц по totalitems.
-    let p = ap::stream_pagination(0, 318, true);
+    let p = ap::stream_pagination(0, 318, true, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 16");
     assert!(!p.prev_enabled && p.next_enabled);
     // Поток кончился раньше счёта магазина — пустую последнюю не обещаем.
-    let p = ap::stream_pagination(14, 318, false);
+    let p = ap::stream_pagination(14, 318, false, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 15 / 15");
     assert!(p.prev_enabled && !p.next_enabled);
     // Магазин недосчитал (новые работы сдвинули поток) — страниц не меньше
     // той, на которой стоим, плюс следующая.
-    assert_eq!(ap::stream_pagination(16, 318, true).label, "Страница 17 / 18");
+    assert_eq!(ap::stream_pagination(16, 318, true, ap::PAGE_SIZE).label, "Страница 17 / 18");
 }
 
 #[test]
@@ -2673,7 +2729,7 @@ fn english_texts() {
     let _lang = i18n_pin::en();
     assert_eq!(ap::page_title(), "Appearance");
     assert_eq!(ap::sort_label(ap::SORTS[0].0), "🆕 Newest");
-    assert_eq!(ap::pagination(0, 318, 18).label, "Page 1 / 16");
+    assert_eq!(ap::pagination(0, 318, 18, ap::PAGE_SIZE).label, "Page 1 / 16");
     assert_eq!(ap::scan_status("active", 7).unwrap(), "Active themes: 7");
     assert_eq!(ap::catalog_status(153, 10), "Found: 153 · showing 10");
     assert_eq!(ap::catalog_status(0, 0), "Nothing found");

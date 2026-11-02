@@ -2118,6 +2118,7 @@ fn startup_survey_wanted(enabled: bool, from_notice: bool, plasma: bool) -> bool
 
 /// Текущий системный шрифт цели, как его читает окружение: из родного
 /// хранилища (`qt_settings::font_plan`) — команды или файла (COSMIC, LXQt).
+/// Начертание остаётся в строке — разбирает её [`read_font_face`].
 fn read_font(de: &str, target: &str) -> String {
     let raw = match qs::font_plan_wm(de, target, title_wm(de)).primary {
         // sway: наш блок в его конфиге, иначе строка `font` конфига или
@@ -2126,11 +2127,20 @@ fn read_font(de: &str, target: &str) -> String {
         qs::FontStore::Cmd(backend) => read_cmd(
             &qs::sound_read_argv(&backend, &kde_tool("kreadconfig6")).unwrap_or_default(),
         ),
+        // rc.xml Openbox/labwc: без своего менеджер читает системный.
         qs::FontStore::File(file) => read_file(&font_file_path(&file))
+            .or_else(|| matches!(file, qs::FontFile::RcXml { .. }).then(|| qs::FontFileIo::read_system(&ConfigFiles, &file.rel_path())).flatten())
             .map(|text| file.read_spec(&text))
             .unwrap_or_default(),
     };
     raw.trim().trim_matches(['\'', '"']).to_string()
+}
+
+/// [`read_font`] разобранным: семейство, кегль и начертание
+/// (`qt_settings::parse_font_spec_face` — описание Pango gsettings/xfconf,
+/// запись QFont KDE и Qt).
+fn read_font_face(de: &str, target: &str) -> (String, i32, qs::FontFace) {
+    qs::parse_font_spec_face(&read_font(de, target))
 }
 
 /// Полный путь файла-хранилища шрифта.
@@ -2145,7 +2155,9 @@ fn write_font_store(store: &qs::FontStore, family: &str, size: i32, face: qs::Fo
         // `swaymsg font …` — ядро, тем же механизмом, что акцент.
         qs::FontStore::File(qs::FontFile::SwayConf) => qs::sway_title_font_apply_live(family, size, face),
         qs::FontStore::Cmd(_) => {
-            match qs::font_store_write_argv(store, family, size, &kde_tool("kwriteconfig6")) {
+            // Начертание — словами Pango в gsettings/xfconf, полями QFont в
+            // kdeglobals (`font_store_write_argv_face`).
+            match qs::font_store_write_argv_face(store, family, size, face, &kde_tool("kwriteconfig6")) {
                 Some(argv) => write_cmd(&argv),
                 None => false,
             }
@@ -2249,7 +2261,8 @@ fn apply_font(de: &str, target: &str, family: &str, size: i32, face: qs::FontFac
     // Перенос в GTK — только у того шрифта, у которого там вообще есть свой
     // ключ (у моноширинного и заголовочного его нет).
     if plan.gtk_ini {
-        let spec = qs::gnome_font_spec(family, size);
+        // `gtk-font-name` — описание Pango, начертание в нём словами.
+        let spec = qs::pango_font_desc(family, size, face);
         for path in qs::gtk_font_ini_paths(&config_home()) {
             let text = gtk_sanitizer::write_ini_setting_in(
                 read_file(&path).as_deref(),
@@ -3498,14 +3511,17 @@ impl qobject::SettingsActions {
         if let Some(why) = qs::font_refusal_live(&de) {
             return QString::from(&format!("{title} — {why}"));
         }
-        // Что показать выбранным при открытии — нынешний шрифт окружения.
-        let (current_family, current_size) = qs::parse_font_spec(&read_font(&de, &target));
+        // Что показать выбранным при открытии — нынешний шрифт окружения
+        // вместе с начертанием.
+        let (current_family, current_size, current_face) = read_font_face(&de, &target);
 
         let mut outcome = 0i32;
         let chosen = crate::extensions_actions::qobject::pick_font(
             &QString::from(&title),
             &QString::from(&current_family),
             current_size,
+            current_face.weight,
+            current_face.italic,
             &mut outcome,
         )
         .to_string();
@@ -3518,12 +3534,16 @@ impl qobject::SettingsActions {
             return QString::default();
         };
 
-        // Жирность и наклон из окна выбора берёт только COSMIC (`FontConfig`).
-        let applied = apply_font(&de, &target, &family, size, qs::parse_font_face(&chosen));
+        // Жирность и наклон из окна выбора уходят во все хранилища, где
+        // они есть (`apply_font`).
+        let face = qs::parse_font_face(&chosen);
+        let applied = apply_font(&de, &target, &family, size, face);
         // Снимок шрифтов устарел ровно здесь — иначе список показывал бы
         // старое значение до закрытия вкладки.
         self.rust().session().fonts = None;
-        QString::from(&qs::font_apply_status(applied, &title, &family, size))
+        // В итоге — семейство с начертанием («Sans Bold»), кегль отдельно.
+        let shown = qs::font_face_spec(&family, 0, face);
+        QString::from(&qs::font_apply_status(applied, &title, &shown, size))
     }
 
     fn set_font_rendering(
@@ -3554,13 +3574,15 @@ impl qobject::SettingsActions {
         if let Some(why) = qs::font_refusal_live(&de) {
             return QString::from(&format!("{title} — {why}"));
         }
-        let (current_family, current_size) = qs::parse_font_spec(&read_font(&de, "system"));
+        let (current_family, current_size, current_face) = read_font_face(&de, "system");
 
         let mut outcome = 0i32;
         let chosen = crate::extensions_actions::qobject::pick_font(
             &QString::from(&title),
             &QString::from(&current_family),
             current_size,
+            current_face.weight,
+            current_face.italic,
             &mut outcome,
         )
         .to_string();
@@ -3571,10 +3593,14 @@ impl qobject::SettingsActions {
             return QString::default();
         };
 
+        // Начертание у каждого шрифта остаётся своим: «изменить все» меняет
+        // семейство и кегль, а жирный заголовок остаётся жирным.
+        let mut faces = std::collections::HashMap::new();
         let now: Vec<qs::FontNow> = qs::font_targets_for_wm(&de, title_wm(&de))
             .into_iter()
             .map(|target| {
-                let (family, size) = qs::parse_font_spec(&read_font(&de, target));
+                let (family, size, face) = read_font_face(&de, target);
+                faces.insert(target.to_string(), face);
                 qs::FontNow { target: target.to_string(), family, size }
             })
             .collect();
@@ -3582,7 +3608,8 @@ impl qobject::SettingsActions {
         let (plan, mono_kept) = qs::change_all_fonts(&now, &family, size, &mode, is_mono);
         let mut failed = Vec::new();
         for font in &plan {
-            if !apply_font(&de, &font.target, &font.family, font.size, qs::FontFace::default()) {
+            let face = faces.get(&font.target).copied().unwrap_or_default();
+            if !apply_font(&de, &font.target, &font.family, font.size, face) {
                 failed.push(qs::font_target_texts(&font.target).2);
             }
         }
@@ -3747,7 +3774,7 @@ impl qobject::SettingsActions {
             let de = current_de();
             let in_use: Vec<String> = qs::font_targets_for_wm(&de, title_wm(&de))
                 .into_iter()
-                .map(|target| qs::parse_font_spec(&read_font(&de, target)).0)
+                .map(|target| read_font_face(&de, target).0)
                 .collect();
             if let Some(refusal) = qs::font_disable_refusal(&fonts, &after, &in_use) {
                 return QString::from(&qs::font_toggle_status(&refusal));
@@ -3853,7 +3880,7 @@ impl qobject::SettingsActions {
             let de = current_de();
             let in_use: Vec<String> = qs::font_targets_for_wm(&de, title_wm(&de))
                 .into_iter()
-                .map(|target| qs::parse_font_spec(&read_font(&de, target)).0)
+                .map(|target| read_font_face(&de, target).0)
                 .collect();
             if let Some(refusal) = qs::font_disable_refusal(&fonts, &after, &in_use) {
                 return QString::from(&qs::font_toggle_status(&refusal));

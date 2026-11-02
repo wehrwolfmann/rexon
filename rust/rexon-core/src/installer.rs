@@ -4822,7 +4822,7 @@ mod system_helper_tests {
         // Ссылка под /tmp на каталог вне /tmp.
         let link = PathBuf::from("/tmp").join(format!("rexon-system-helper-test-lnk-{}", std::process::id()));
         let _ = std::fs::remove_file(&link);
-        symlink("/usr/share/icons", &link).unwrap();
+        symlink("/usr", &link).unwrap();
         let (ok, err) = run_helper("plymouth", "neon", &link, &uid());
         assert!(!ok && err.contains("outside /tmp"), "{err}");
         let _ = std::fs::remove_file(&link);

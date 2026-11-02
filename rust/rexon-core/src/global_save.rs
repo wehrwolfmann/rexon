@@ -290,6 +290,22 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
                     .filter(|(ok, _)| *ok)
                     .map(|(_, out)| out)
                     .unwrap_or_default(),
+                // sway: действующий шрифт заголовков — наш блок, строка
+                // `font` конфига или умолчание sway, с начертанием.
+                crate::qt_settings::FontStore::File(crate::qt_settings::FontFile::SwayConf) => {
+                    crate::qt_settings::sway_title_font_current(env.io, &env.ctx)
+                }
+                // rc.xml Openbox/labwc: свой, без него — системный, которым
+                // менеджер и пользуется; `<weight>`/`<slant>` — в начертание.
+                crate::qt_settings::FontStore::File(file @ crate::qt_settings::FontFile::RcXml { wm }) => {
+                    let (_, text, _) = crate::qt_settings::rc_xml_source(
+                        wm,
+                        &env.ctx.config_home,
+                        &(env.env)("XDG_CONFIG_DIRS"),
+                        &|p| env.io.read(p),
+                    );
+                    text.map(|t| file.read_spec(&t)).unwrap_or_default()
+                }
                 crate::qt_settings::FontStore::File(file) => {
                     env.io.read(&env.ctx.cfg(&file.rel_path())).map(|t| file.read_spec(&t)).unwrap_or_default()
                 }
@@ -1207,6 +1223,24 @@ mod tests {
         ] {
             assert!(argvs.iter().any(|a| a.contains(key) && a.ends_with(value)), "{key}{value}: {argvs:#?}");
         }
+    }
+
+    /// Заголовок labwc и sway с начертанием → поля QFont темы. labwc без
+    /// своего rc.xml читается системный; sway — строка `font` его конфига.
+    #[test]
+    fn шрифт_заголовка_с_начертанием_labwc_и_sway() {
+        let io = Fake::default();
+        io.write(
+            "/etc/xdg/labwc/rc.xml",
+            "<labwc_config>\n  <theme>\n    <font place=\"ActiveWindow\">\n      <name>Inter</name>\n      <size>9</size>\n      <weight>semibold</weight>\n      <slant>italic</slant>\n    </font>\n  </theme>\n</labwc_config>\n",
+        );
+        let s = snapshot(&SaveEnv { io: &io, ctx: ctx("labwc"), env: &no_env });
+        assert_eq!(s.get(FONT_TITLE), Some("Inter,9,-1,5,600,1,0,0,0,0,0,0,0,0,0,1"));
+
+        let io = Fake::default();
+        io.write("/h/.config/sway/config", "font pango:Noto Sans Bold 11\n");
+        let s = snapshot(&SaveEnv { io: &io, ctx: ctx("sway"), env: &no_env });
+        assert_eq!(s.get(FONT_TITLE), Some("Noto Sans,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"));
     }
 
     /// Тема Plasma с начертанием (Qt 6 и старая запись Qt 5) → XFCE.

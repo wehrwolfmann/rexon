@@ -1,7 +1,7 @@
 pkgbase = rexon
 	pkgdesc = Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers
 	url = https://github.com/wehrwolfmann/rexon
-	pkgver = 0.1.0
+	pkgver = 0.1.1
 	pkgrel = 1
 	install = rexon.install
 	arch = x86_64
@@ -86,7 +86,7 @@ pkgbase = rexon
 	options = !lto
 	options = !strip
 	options = !debug
-	source = rexon::git+https://github.com/wehrwolfmann/rexon.git#tag=v0.1.0?signed
+	source = rexon::git+https://github.com/wehrwolfmann/rexon.git#tag=v0.1.1?signed
 	source = QmlMaterial::git+https://github.com/hypengw/QmlMaterial.git#commit=f1464c52d42732acb1363122b9b1a2360fd505b3
 	source = f1464c52d427-MaterialSymbolsRounded.wght_400.opsz_24.fill_0.ttf::https://media.githubusercontent.com/media/hypengw/QmlMaterial/f1464c52d42732acb1363122b9b1a2360fd505b3/assets/MaterialSymbolsRounded.wght_400.opsz_24.fill_0.ttf
 	source = f1464c52d427-MaterialSymbolsRounded.wght_400.opsz_24.fill_0.woff2::https://media.githubusercontent.com/media/hypengw/QmlMaterial/f1464c52d42732acb1363122b9b1a2360fd505b3/assets/MaterialSymbolsRounded.wght_400.opsz_24.fill_0.woff2

@@ -9,7 +9,7 @@
 #   (packaging/aur/PKGBUILD).
 
 pkgname=rexon
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers"
 url="https://github.com/wehrwolfmann/rexon"

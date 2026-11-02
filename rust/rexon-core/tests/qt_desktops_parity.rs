@@ -246,17 +246,13 @@ fn stats_match_de_database() {
         assert_eq!(cells[1].icon, "⚡");
         assert_eq!(cells[1].value, meta.cpu_usage);
         assert_eq!(cells[1].label, "Процессор");
-        // Значки повторяются по оценке, но не меньше одного: нулевая оценка
-        // иначе дала бы пустую колонку.
-        assert_eq!(
-            cells[2].icon,
-            "⭐".repeat(meta.customizable.max(1) as usize)
-        );
+        // Оценка — как в «Сравнении»: значки по оценке и «☆» до пяти, так
+        // что пустые места видны и колонка никогда не пустая.
+        assert_eq!(cells[2].icon, rexon_core::qt_compare::stars(meta.customizable, "⭐"));
+        assert_eq!(cells[2].icon.chars().count(), 5);
         assert_eq!(cells[2].label, "Настройка");
-        assert_eq!(
-            cells[3].icon,
-            "🎮".repeat(meta.gaming_friendly.max(1) as usize)
-        );
+        assert_eq!(cells[3].icon, rexon_core::qt_compare::stars(meta.gaming_friendly, "🎮"));
+        assert_eq!(cells[3].icon.chars().count(), 5);
         assert_eq!(cells[3].label, "Игры");
         // Пустое значение оригинал показывал прозрачной точкой.
         assert_eq!(cells[2].value, "");

@@ -4184,11 +4184,11 @@ fn cosmic_font_config_face() {
     let w = file.file_writes_face("/c", &NoFiles, "Fira Mono", 12, FontFace { weight: 700, italic: false }).unwrap();
     assert_eq!(w[0].rel_path, "cosmic/com.system76.CosmicTk/v1/interface_font");
     assert_eq!(qs::cosmic_font_face_fields(&w[0].text), ("Bold".to_string(), "Normal".to_string()));
-    // Остальные хранилища начертание не трогает.
+    // LXQt держит начертание полями QFont (жирность, наклон).
     let FontStore::File(lxqt) = qs::font_plan("lxqt", "system").primary else { panic!("файл") };
     assert_eq!(
-        lxqt.try_new_text_face(None, "A", 10, FontFace { weight: 700, italic: true }),
-        lxqt.try_new_text(None, "A", 10)
+        lxqt.try_new_text_face(None, "A", 10, FontFace { weight: 700, italic: true }).as_deref(),
+        Some("[Qt]\nfont=\"A,10,-1,5,700,1,0,0,0,0,0,0,0,0,0,1\"\n")
     );
 }
 
@@ -4282,7 +4282,11 @@ fn rc_xml_title_font_golden() {
             assert_eq!(qs::rc_xml_title_font(&text), Some((family.to_string(), size)), "{name}: читается обратно");
             assert_eq!(qs::rc_xml_with_title_font(Some(&text), wm, family, size).as_deref(), Some(text.as_str()), "{name}: повтор ничего не меняет");
             let file = qs::FontFile::RcXml { wm };
-            assert_eq!(file.read_spec(&text), qs::gnome_font_spec(family, size), "{name}");
+            // Строка чтения несёт и начертание из `<weight>`/`<slant>` файла,
+            // которых запись без начертания не трогает.
+            let (f, s, face) = qs::parse_font_spec_face(&file.read_spec(&text));
+            assert_eq!((f.as_str(), s), (family, size), "{name}");
+            assert_eq!(Some(face), qs::rc_xml_title_font_face(&text).map(|t| t.2), "{name}");
         }
     }
 }
@@ -4384,7 +4388,7 @@ fn sway_title_font_plan_and_pango() {
     }
     let content = qs::sway_title_font_content("Noto Sans", 11, FontFace { weight: 700, italic: false });
     assert!(content.lines().any(|l| l == "font pango:Noto Sans Bold 11"), "{content}");
-    assert_eq!(FontFile::SwayConf.read_spec(&content), "Noto Sans 11");
+    assert_eq!(FontFile::SwayConf.read_spec(&content), "Noto Sans Bold 11");
 
     // Последняя `font` верхнего уровня; `bar { font … }` — шрифт панели.
     let config = "font pango:Old 8\n# font pango:Commented 20\nbar {\n    font pango:Bar 30\n    colors {\n    }\n}\nfont pango:New Bold 12\nmode \"resize\" {\n    font x 1\n}\n";
@@ -4442,7 +4446,7 @@ fn sway_title_font_apply_writes_block_and_reads_back() {
     assert_eq!(io.read(own).as_deref().and_then(qs::sway_font_value).as_deref(), Some("pango:Noto Sans Bold 11"));
     assert!(io.ran.borrow().iter().any(|a| a == &["swaymsg".to_string(), "font pango:Noto Sans Bold 11".to_string()]));
     assert!(!io.ran.borrow().iter().any(|a| a.iter().any(|s| s == "reload")), "без reload: он перезапускает swaybg");
-    assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Noto Sans 11");
+    assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Noto Sans Bold 11");
 
     // Повтор переписывает тот же блок, а не добавляет второй.
     qs::sway_title_font_apply(&io, &ctx, "Inter", 9, qs::FontFace::default()).unwrap();
@@ -4532,4 +4536,94 @@ fn font_face_between_pango_and_qfont() {
         qs::font_write_argv_face("mate", "system", "Sans", 10, FontFace::default(), ""),
         qs::font_write_argv("mate", "system", "Sans", 10, "")
     );
+}
+
+/// Начертание шрифта по кругу «запись → чтение» в каждом хранилище, куда
+/// его пишет вкладка «Оформление»: gsettings MATE, xfconf, kdeglobals,
+/// `rc.xml` Openbox и labwc, строка `font` sway. Жирный, наклонный и
+/// полужирный возвращаются теми же; обычный после жирного — обычным.
+#[test]
+fn font_face_round_trip_every_store() {
+    use qs::{FontFace, FontFile, TitleWm};
+    let faces = [
+        ("Bold", FontFace { weight: 700, italic: false }),
+        ("Italic", FontFace { weight: 400, italic: true }),
+        ("Semi-Bold", FontFace { weight: 600, italic: false }),
+        ("Bold Italic", FontFace { weight: 700, italic: true }),
+        ("Regular", FontFace { weight: 400, italic: false }),
+    ];
+    // Обычная жирность читается то как 0 (Pango, rc.xml), то как 400 (QFont).
+    let norm = |(f, s, face): (String, i32, FontFace)| (f, s, if face.weight == 0 { 400 } else { face.weight }, face.italic);
+
+    // Команды: значение — последний аргумент; так же его отдают `gsettings
+    // get` (в кавычках), `xfconf-query` и `kreadconfig6`.
+    for (de, target, quoted) in [
+        ("mate", "title", true),
+        ("mate", "system", true),
+        ("mate", "mono", true),
+        ("xfce", "title", false),
+        ("xfce", "system", false),
+        ("kde", "title", false),
+        ("kde", "system", false),
+    ] {
+        for (name, face) in faces {
+            let argv = qs::font_write_argv_face(de, target, "Noto Sans", 11, face, "kwriteconfig6").unwrap();
+            let value = argv.last().unwrap();
+            let raw = if quoted { format!("'{value}'\n") } else { format!("{value}\n") };
+            assert_eq!(
+                norm(qs::parse_font_spec_face(&raw)),
+                ("Noto Sans".to_string(), 11, face.weight, face.italic),
+                "{de}/{target} {name}: {raw}"
+            );
+        }
+    }
+    // Слова Pango и поля QFont — те, что пишут сами столы.
+    let mate = qs::font_write_argv_face("mate", "title", "Sans", 10, faces[2].1, "").unwrap();
+    assert_eq!(mate.last().map(String::as_str), Some("Sans Semi-Bold 10"));
+    let kde = qs::font_write_argv_face("kde", "title", "Sans", 10, faces[0].1, "kwriteconfig6").unwrap();
+    assert_eq!(kde.last().map(String::as_str), Some("Sans,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"));
+
+    // rc.xml: у Openbox жирность только `Bold`/`Normal` — полужирный
+    // становится жирным; labwc держит ступени Pango.
+    let openbox = "<?xml version=\"1.0\"?>\n<openbox_config>\n  <theme>\n    <name>Clearlooks</name>\n    <font place=\"ActiveWindow\">\n      <name>sans</name>\n      <size>8</size>\n      <weight>Bold</weight>\n      <slant>Normal</slant>\n    </font>\n  </theme>\n  <keyboard/>\n</openbox_config>\n";
+    for (wm, start) in [(TitleWm::Openbox, Some(openbox)), (TitleWm::Labwc, None)] {
+        let file = FontFile::RcXml { wm };
+        let mut text = start.map(str::to_string);
+        for (name, face) in faces {
+            let written = file.try_new_text_face(text.as_deref(), "Noto Sans", 11, face).unwrap();
+            let want = if wm == TitleWm::Openbox && face.weight == 600 { 700 } else { face.weight };
+            assert_eq!(
+                norm(qs::parse_font_spec_face(&file.read_spec(&written))),
+                ("Noto Sans".to_string(), 11, want, face.italic),
+                "{wm:?} {name}: {written}"
+            );
+            // Неактивное окно — тем же начертанием, второй элемент не заводится.
+            assert_eq!(written.matches("place=\"InactiveWindow\"").count(), 1, "{written}");
+            assert_eq!(written.matches("<weight>").count(), 2, "{written}");
+            text = Some(written);
+        }
+        // Начертание не выбрано — `<weight>`/`<slant>` остаются как были.
+        let bold = file.try_new_text_face(text.as_deref(), "Noto Sans", 11, faces[0].1).unwrap();
+        let kept = file.try_new_text_face(Some(&bold), "Inter", 9, FontFace::default()).unwrap();
+        assert_eq!(norm(qs::parse_font_spec_face(&file.read_spec(&kept))), ("Inter".to_string(), 9, 700, false));
+    }
+    let labwc = FontFile::RcXml { wm: TitleWm::Labwc }.try_new_text_face(None, "Inter", 9, faces[2].1).unwrap();
+    assert!(labwc.contains("<weight>semibold</weight>") && labwc.contains("<slant>normal</slant>"), "{labwc}");
+    let ob = FontFile::RcXml { wm: TitleWm::Openbox }.try_new_text_face(Some(openbox), "Inter", 9, faces[1].1).unwrap();
+    assert!(ob.contains("<weight>Normal</weight>") && ob.contains("<slant>Italic</slant>"), "{ob}");
+    assert!(ob.contains("<name>Clearlooks</name>") && ob.contains("<keyboard/>"), "чужое не тронуто: {ob}");
+
+    // sway: наш файл со строкой `font pango:…`.
+    for (name, face) in faces {
+        let content = qs::sway_title_font_content("Noto Sans", 11, face);
+        assert_eq!(
+            norm(qs::parse_font_spec_face(&FontFile::SwayConf.read_spec(&content))),
+            ("Noto Sans".to_string(), 11, face.weight, face.italic),
+            "sway {name}: {content}"
+        );
+    }
+
+    // Подпись во вкладке показывает начертание и из записи QFont.
+    assert!(qs::font_value_text("Sans,10,-1,5,700,1,0,0,0,0,0,0,0,0,0,1").contains("Sans Bold Italic 10"));
+    assert!(qs::font_value_text("'Sans Semi-Bold 10'").contains("Sans Semi-Bold 10"));
 }

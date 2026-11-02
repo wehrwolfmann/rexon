@@ -105,7 +105,7 @@ The package is built for x86_64. Qt 6.6 or newer is required.
 On Arch Linux / CachyOS there are two packages in this repository:
 
 - [`packaging/rexon/`](packaging/rexon/) — the release. It is built from the signed
-  tag (`v0.1.0`), and `makepkg` checks the tag's signature against the key
+  release tag (`v0.1.1`), and `makepkg` checks the tag's signature against the key
   `B4505C7C7841ECC12D7A0E9D0083083C32159A72`. Import it once with
   `curl -s https://github.com/wehrwolfmann.gpg | gpg --import`.
 - [`packaging/aur/`](packaging/aur/) — `rexon-git`, the latest code from `main`.

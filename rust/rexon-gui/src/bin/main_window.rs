@@ -503,6 +503,14 @@ fn main() {
         // привязки.
         let mut props = QMap::<QMapPair_QString_QVariant>::default();
         props.insert(QString::from("selftest"), QVariant::from(&selftest));
+        // Окно грузится СПРЯТАННЫМ и показывается в конце запуска
+        // (`tray::first_show_main_window`, там и замер 02.11.2026): с
+        // `visible: true` из разметки оно выходило на экран посреди загрузки
+        // и стояло прозрачным, пока поток GUI доделывал запуск. Самопроверка
+        // окно не прячет — её прогон этого пути не касается.
+        if !selftest {
+            props.insert(QString::from("visible"), QVariant::from(&false));
+        }
         props.insert(
             QString::from("startSection"),
             QVariant::from(&QString::from(&start_section)),
@@ -518,7 +526,17 @@ fn main() {
         engine.as_mut().set_initial_properties(&props);
         // Путь внутри ресурса повторяет путь файла в крейте: cxx-qt кладёт
         // .qml по относительному пути, а не в корень модуля.
+        // Адрес движка — до `load`: та забирает закреплённую ссылку себе.
+        let engine_ptr = unsafe { engine.as_mut().get_unchecked_mut() as *mut QQmlApplicationEngine };
         engine.load(&QUrl::from("qrc:/qt/qml/org/rexon/gui/qml/MainWindow.qml"));
+        if !selftest {
+            // SAFETY: движок жив (владелец — `engine` до конца `main`) и
+            // загружен; поток GUI.
+            let adopted = unsafe { rexon_gui::tray::adopt_main_window(engine_ptr.cast()) };
+            if !adopted {
+                log_warn!("start", "корень QML не окно — показывать нечего");
+            }
+        }
     }
 
     // ── Значок в системном лотке ──────────────────────────────────────
@@ -531,8 +549,15 @@ fn main() {
     //
     // Самопроверка значок НЕ ставит: она гоняет разделы и выходит, а лишний
     // значок в лотке живого сеанса — мусор на панели у человека.
+    // Показать ли окно в конце запуска: прячется оно только при живом
+    // значке и просьбе `--tray` (без значка окно — единственная дверь,
+    // правило #13).
+    let mut show_window = !selftest;
     if !selftest {
         let tray = rexon_gui::tray::install_for_main_window(&args);
+        if tray && rexon_core::tray::starts_hidden(&args) {
+            show_window = false;
+        }
         // Просили свернуться, но значка нет — окно единственная дверь в
         // программу, и прятать его нельзя (правило #13). Дверь значка окно в
         // этом случае не прячет; сказать об этом всё равно надо — строку
@@ -650,6 +675,12 @@ fn main() {
         POOL_LEFT.store(left, std::sync::atomic::Ordering::SeqCst);
         left
     });
+
+    // Первый показ окна — последним делом перед циклом событий: дальше поток
+    // GUI сразу рисует кадр, и прозрачного окна на экране не бывает.
+    if !selftest {
+        rexon_gui::tray::first_show_main_window(show_window);
+    }
 
     // Код возврата цикла событий — это приговор самопроверки, и он обязан
     // стать кодом возврата процесса. Просто вернуть управление из main

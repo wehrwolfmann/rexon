@@ -764,7 +764,19 @@ pub const BG_CARD_W: i32 = 180;
 /// страница выходит 25 штук, при трёх — 15, и последний ряд всегда полный.
 pub const BG_ROWS: u32 = 5;
 pub const BG_MIN_COLS: u32 = 2;
-pub const BG_MAX_COLS: u32 = 8;
+/// Потолок столбцов. Был 8, а сетка QML раскладывала карточки сама и на
+/// окне 1920 ставила девять: страница из 8 × 5 = 40 кончалась рядом из
+/// четырёх карточек. Теперь столбцы сетке задаёт ядро ([`bg_columns`]), а
+/// потолок поднят, чтобы широкое окно не растягивало карточки вдвое.
+pub const BG_MAX_COLS: u32 = 16;
+
+/// Столбцов в сетке фонов при ширине самой сетки `width` (без полей группы):
+/// сколько карточек `BG_CARD_W` с зазором `CARD_GAP` влезает. Это же число
+/// стоит у сетки QML в `columns`, поэтому страница `cols × BG_ROWS` — всегда
+/// целые ряды.
+pub fn bg_columns(width: i32) -> u32 {
+    ui_base::grid_columns(width, BG_CARD_W, CARD_GAP, 0, BG_MIN_COLS, BG_MAX_COLS)
+}
 
 pub fn bg_search_placeholder() -> String {
     tr("🔍 Search by name or game…")

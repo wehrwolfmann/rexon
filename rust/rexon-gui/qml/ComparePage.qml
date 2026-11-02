@@ -661,8 +661,14 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.width - 40,
                         pairDialog.view ? pairDialog.view.minWidth : 720)
+        // Высота — по содержимому, но не меньше наименьшей у ядра и не
+        // больше окна. Постоянные 520 точек резали таблицу посередине
+        // последней строки даже в окне 1440×920, где места хватало, а
+        // полоса прокрутки при этом пряталась — обрезанное выглядело
+        // концом окна (01.11.2026).
         height: Math.min(root.height - 40,
-                         pairDialog.view ? pairDialog.view.minHeight : 520)
+                         Math.max(pairDialog.view ? pairDialog.view.minHeight : 520,
+                                  pairDialog.implicitHeight))
         padding: 16
 
         background: Rectangle {
@@ -714,12 +720,20 @@ Item {
                 id: pairFlick
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                // Сколько таблице нужно целиком: отсюда высота окна.
+                Layout.preferredHeight: pairBody.implicitHeight
                 contentWidth: width
                 contentHeight: pairBody.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
-                ScrollBar.vertical: ScrollBar {}
+                // В низком окне таблица прокручивается — и полоса тогда
+                // видна всегда, а не только под мышью: иначе не понять,
+                // что ниже есть ещё строки.
+                ScrollBar.vertical: ScrollBar {
+                    policy: pairFlick.contentHeight > pairFlick.height
+                            ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+                }
 
                 Text {
                     id: pairBody

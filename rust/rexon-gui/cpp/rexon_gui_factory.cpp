@@ -20,6 +20,7 @@
 #include <QtCore/QVariant>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPalette>
 #include <QtGui/QWindow>
 #include <QtMultimedia/QMediaPlayer>
 #include <QtQml/QJSValue>
@@ -547,4 +548,19 @@ void rexon_pass_outside_presses(QObject* area)
     // Последний поставленный фильтр зовётся первым.
     window->removeEventFilter(pass);
     window->installEventFilter(pass);
+}
+
+extern "C" void rexon_set_app_link_color(bool set, unsigned char r, unsigned char g, unsigned char b)
+{
+    if (QGuiApplication::instance() == nullptr)
+        return;
+    // Пустая палитра с двумя заданными ролями: Qt 6 достраивает остальные
+    // роли из системной темы, так что прочие цвета приложения не трогаются.
+    QPalette palette;
+    if (set) {
+        const QColor color(r, g, b);
+        palette.setColor(QPalette::Link, color);
+        palette.setColor(QPalette::LinkVisited, color);
+    }
+    QGuiApplication::setPalette(palette);
 }

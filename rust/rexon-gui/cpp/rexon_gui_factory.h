@@ -201,6 +201,14 @@ typedef bool (*RexonAppTranslate)(const char* disambiguation, const char* source
 /// потокобезопасным, кэш строк здесь — под замком.
 bool rexon_install_app_translator(const char* context, RexonAppTranslate lookup);
 
+/// Цвет ссылок форматированного текста во всём приложении — роли `Link` и
+/// `LinkVisited` палитры приложения (решение — ядро, `ui_base::skin_link_rgb`).
+/// `set == false` — снять: роли снова берутся из системной темы. Прочие роли
+/// не задаются и по-прежнему идут от системы. Звать из главного потока.
+/// ⚠️ Уже разобранный текст Qt не перекрашивает: цвет кладётся в документ при
+/// разборе HTML, поэтому звать ДО загрузки QML и на смене скина.
+void rexon_set_app_link_color(bool set, unsigned char r, unsigned char g, unsigned char b);
+
 /// Осушить ОБЩИЙ пул потоков Qt, не дольше ms миллисекунд.
 /// → сколько задач НЕ дождались (0 — пул пуст).
 ///

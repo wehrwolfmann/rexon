@@ -206,9 +206,6 @@ Item {
         // показывать их простым текстом значило бы показать разметку.
         textFormat: Text.RichText
         color: root.pal.text_primary
-        // Ссылки — цветом акцента скина: по умолчанию Qt красит их #0000ff,
-        // и на тёмном скине («Благодарности» в «О программе») их не видно.
-        linkColor: root.pal.accent
         onLinkActivated: (link) => Qt.openUrlExternally(link)
     }
 

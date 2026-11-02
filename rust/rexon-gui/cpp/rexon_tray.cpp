@@ -14,7 +14,9 @@
 #include <QtDBus/QDBusMessage>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
+#include <QtGui/QColor>
 #include <QtGui/QWindow>
+#include <QtQml/QQmlApplicationEngine>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QMenu>
@@ -552,6 +554,33 @@ bool rexon_tray_guard_window()
 bool rexon_tray_raise_window()
 {
     return on_gui_thread(raise_window_here);
+}
+
+bool rexon_tray_adopt_qml_window(void *engine)
+{
+    auto *qml = static_cast<QQmlApplicationEngine *>(engine);
+    if (qml == nullptr)
+        return false;
+    const auto roots = qml->rootObjects();
+    QWindow *win = roots.isEmpty() ? nullptr : qobject_cast<QWindow *>(roots.first());
+    if (win == nullptr)
+        return false;
+    g_qwindow = win;
+    return true;
+}
+
+uint64_t rexon_tray_window_native(uint32_t *rgb)
+{
+    if (!resolve_window() || g_qwindow.isNull())
+        return 0;
+    QWindow *win = g_qwindow.data();
+    // Окно на QML — `QQuickWindow`, его фон — свойство `color` (в разметке
+    // это краска скина). Через свойство, а не через тип: без QtQuick здесь.
+    const QColor color = win->property("color").value<QColor>();
+    if (rgb != nullptr)
+        *rgb = color.isValid() ? (color.rgb() & 0xffffffu) : 0u;
+    win->create();
+    return static_cast<uint64_t>(win->winId());
 }
 
 bool rexon_tray_hide_window()

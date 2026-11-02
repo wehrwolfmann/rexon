@@ -815,6 +815,25 @@ pub fn skin_role_color(skin_id: &str, role: &str) -> Option<&'static str> {
         .map(|(_, hex)| *hex)
 }
 
+/// Цвет ссылок в форматированном тексте (роли `Link` и `LinkVisited`
+/// палитры приложения) для скина: его роль `Link`. `None` — системный скин,
+/// ссылки остаются цвета системной темы.
+///
+/// ⚠️ Почему палитра приложения, а не `linkColor` у элемента. У `Text` из
+/// QML `linkColor` действует только на `Text.StyledText`; в `Text.RichText`
+/// (описания и комментарии тем, «О программе», окна расширений) ссылку
+/// красит разборщик HTML самой Qt — ролью `Link` палитры ПРИЛОЖЕНИЯ, в
+/// момент разбора текста. Не заданная роль — это `#0000ff`, на тёмных
+/// скинах нечитаемый (дефект 01.11.2026, коммит 504655a9 его не лечил).
+pub fn skin_link_rgb(skin_id: &str) -> Option<(u8, u8, u8)> {
+    skin_role_color(skin_id, "Link").and_then(parse_hex)
+}
+
+/// То же для ДЕЙСТВУЮЩЕГО скина.
+pub fn active_skin_link_rgb() -> Option<(u8, u8, u8)> {
+    skin_link_rgb(active_skin_id())
+}
+
 // ============================================================================
 // Поверхности скина: ГОТОВАЯ краска для QML
 // ============================================================================
@@ -1787,6 +1806,27 @@ mod skin_extras_tests {
         assert!(is_dark_rgb(127, 128, 128));
         // Насыщенный жёлтый — там расходились прежние два критерия.
         assert!(!is_dark_rgb(255, 255, 0));
+    }
+
+    /// Каждый скин со своей палитрой задаёт цвет ссылок, и он отличим от
+    /// фона: иначе ссылки в форматированном тексте выходят системными
+    /// `#0000ff` (дефект 01.11.2026 на «Тёмном (Steam)»).
+    #[test]
+    fn every_palette_skin_has_readable_link() {
+        assert_eq!(skin_link_rgb("system"), None);
+        for s in SKINS.iter().filter(|s| s.palette.is_some()) {
+            let link = skin_link_rgb(s.id).unwrap_or_else(|| panic!("{}: нет роли Link", s.id));
+            let bg = skin_colors(s.id)
+                .get("bg_primary")
+                .and_then(|c| parse_hex(c))
+                .unwrap_or_else(|| panic!("{}: нет bg_primary", s.id));
+            assert_ne!(
+                is_dark_rgb(link.0, link.1, link.2),
+                is_dark_rgb(bg.0, bg.1, bg.2),
+                "{}: ссылка {link:?} сливается с фоном {bg:?}",
+                s.id
+            );
+        }
     }
 
     #[test]

@@ -706,13 +706,17 @@ pub fn stats(de_id: &str) -> Vec<StatCell> {
             label: trc("desktop spec", "Processor"),
         },
         StatCell {
-            icon: "⭐".repeat(meta.customizable.max(1) as usize),
+            // Оценка — одной функцией с «Сравнением» (`qt_compare::stars`):
+            // заполненные значки плюс «☆» до пяти. Раньше здесь были одни
+            // заполненные, и «Игры 4» от «Игр 5» отличались только длиной
+            // строки (01.11.2026, правило #12).
+            icon: crate::qt_compare::stars(meta.customizable, "⭐"),
             value: String::new(),
             // TRANSLATORS: stat label under stars: how customizable a desktop is.
             label: tr("Customization"),
         },
         StatCell {
-            icon: "🎮".repeat(meta.gaming_friendly.max(1) as usize),
+            icon: crate::qt_compare::stars(meta.gaming_friendly, "🎮"),
             value: String::new(),
             // TRANSLATORS: stat label under gamepads: how good a desktop is for games.
             label: tr("Gaming"),

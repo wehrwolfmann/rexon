@@ -22,7 +22,7 @@ fn recommended_extensions_serialize_byte_identical() {
 /// Версии.
 #[test]
 fn versions() {
-    assert_eq!(constants::REXON_VERSION, (0, 1, 0));
+    assert_eq!(constants::REXON_VERSION, (0, 1, 1));
     assert_eq!(constants::FORMAT_VERSION, 3);
 }
 

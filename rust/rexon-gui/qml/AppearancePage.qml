@@ -2888,10 +2888,13 @@ Item {
                 actions: root.actions
             }
 
-            // ── Цвет акцента ──────────────────────────────────────────────
+            // ── Цвет акцента над объяснением ──────────────────────────────
             //
-            // Над сеткой «Цветовых схем», как в KDE «Цвета». Где он стоит и
-            // доступен ли здесь — решает ядро (`accent`).
+            // Где он стоит и доступен ли здесь — решает ядро (`accent`).
+            // Здесь блок стоит только над объяснением (`on_note`). Над
+            // сеткой схем он — шапка самой сетки (`grid.header`) вместе со
+            // «Светлым и тёмным» и «Сохранить текущее оформление…» и
+            // прокручивается вместе с плитками.
             AccentSection {
                 id: accentSection
                 objectName: "accentSection"
@@ -2901,48 +2904,9 @@ Item {
                 Layout.bottomMargin: 8
                 visible: page.installFileSection === (accentSection.st.section || "-")
                          && accentSection.st.available === true
-                         && (page.screen === "grid" || (page.screen === "note" && accentSection.st.on_note === true))
+                         && page.screen === "note" && accentSection.st.on_note === true
                 pal: root.pal
                 sty: page.sectionStyles
-            }
-
-            // ── Светлое и тёмное ──────────────────────────────────────────
-            //
-            // Над «Глобальными темами» (Plasma) и «Цветовыми схемами»: пары
-            // тем и смена по расписанию. Где стоит и доступен ли — ядро
-            // (`day_night`).
-            DayNightSection {
-                id: dayNightSection
-                objectName: "dayNightSection"
-                Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.bottomMargin: 8
-                visible: (dayNightSection.st.sections || []).indexOf(page.installFileSection) >= 0
-                         && dayNightSection.st.available === true
-                         && page.screen === "grid"
-                pal: root.pal
-                sty: page.sectionStyles
-            }
-
-            // ── «Сохранить текущее оформление…» ───────────────────────────
-            //
-            // Над «Глобальными темами» во всех окружениях: то, что стоит
-            // сейчас, — своей глобальной темой (ядро `global_save`).
-            // Сохранили — сетка перечитывает диск, плитка новой темы сразу в ней.
-            GlobalSaveSection {
-                objectName: "globalSaveSection"
-                Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.bottomMargin: 8
-                visible: page.installFileSection === "global" && page.screen === "grid"
-                pal: root.pal
-                sty: page.sectionStyles
-                onSaved: function(message) {
-                    page.setStatus(message);
-                    page.refresh();
-                }
             }
 
             // ── Сетка плиток либо объяснение ──────────────────────────────
@@ -4067,7 +4031,6 @@ Item {
                             Layout.rightMargin: 16
                             text: page.detailDescription
                             color: root.colText
-                            linkColor: root.colAccent
                             textFormat: Text.RichText
                             wrapMode: Text.WordWrap
                             onLinkActivated: function (link) {
@@ -4311,7 +4274,6 @@ Item {
                                     Layout.fillWidth: true
                                     text: commentRow.modelData.body
                                     color: root.colText
-                                    linkColor: root.colAccent
                                     textFormat: Text.RichText
                                     wrapMode: Text.WordWrap
                                     onLinkActivated: function (link) {
@@ -4383,32 +4345,92 @@ Item {
                         usableWidth / (page.cardWidth + page.gridSpacing)))
                     cellWidth: Math.max(page.cardWidth + page.gridSpacing,
                                         Math.floor(usableWidth / columns))
+                    // Страница каталога — целые ряды: ядро нарезает её по
+                    // этим столбцам (`ap::grid_page_size`), иначе при девяти
+                    // столбцах последний ряд из двадцати выходил в две плитки.
+                    onColumnsChanged: page.setGridColumns(columns)
+                    Component.onCompleted: page.setGridColumns(columns)
                     cellHeight: page.cardHeight + page.gridSpacing
                     model: page
 
                     ScrollBar.vertical: ScrollBar {}
 
-                    // Блок «Менеджер входа» над темами экрана входа — шапка
-                    // самой сетки, а не отдельная строка над ней: в окне
-                    // 1100×750 блок в пять строк оставлял плиткам около
-                    // 60 точек, и колесо их почти не листало. Теперь
-                    // прокручивается весь раздел целиком, как у KDE.
+                    // Блоки над плитками — шапка самой сетки, а не отдельные
+                    // строки над ней, и прокручиваются вместе с плитками, как
+                    // у KDE. Неподвижными они съедали высоту: в окне 1100×750
+                    // «Менеджер входа» в пять строк оставлял плиткам около
+                    // 60 точек, а над «Цветовыми схемами» акцент со «Светлым
+                    // и тёмным» (развёрнутым — тем более) закрывали сетку
+                    // целиком, и колесу нечего было листать (01.11.2026).
                     // Шапка стоит в координатах содержимого с x = 0, то есть
                     // уже после левого поля сетки; ширина — до правого поля
                     // плиток (16, как у шапки страницы).
                     header: Item {
                         width: grid.width - grid.leftMargin - page.gridMarginH
-                        height: gridLoginManager.visible ? gridLoginManager.implicitHeight + page.gridSpacing : 0
+                        height: gridHeaderBlocks.implicitHeight
 
-                        LoginManagerSection {
-                            id: gridLoginManager
-                            objectName: "gridLoginManagerSection"
+                        ColumnLayout {
+                            id: gridHeaderBlocks
                             width: parent.width
-                            visible: page.loginSection
-                                     && (gridLoginManager.managers.length > 0 || gridLoginManager.sessionOffer !== null)
-                            pal: root.pal
-                            sty: page.sectionStyles
-                            actions: root.actions
+                            spacing: 0
+
+                            LoginManagerSection {
+                                id: gridLoginManager
+                                objectName: "gridLoginManagerSection"
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: page.gridSpacing
+                                visible: page.loginSection
+                                         && (gridLoginManager.managers.length > 0 || gridLoginManager.sessionOffer !== null)
+                                pal: root.pal
+                                sty: page.sectionStyles
+                                actions: root.actions
+                            }
+
+                            // Цвет акцента — над «Цветовыми схемами», как в
+                            // KDE «Цвета». Где стоит и доступен ли — ядро
+                            // (`accent`).
+                            AccentSection {
+                                id: gridAccent
+                                objectName: "accentSection"
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: 8
+                                visible: page.installFileSection === (gridAccent.st.section || "-")
+                                         && gridAccent.st.available === true
+                                pal: root.pal
+                                sty: page.sectionStyles
+                            }
+
+                            // Светлое и тёмное — над «Глобальными темами»
+                            // (Plasma) и «Цветовыми схемами»: пары тем и
+                            // смена по расписанию. Где стоит и доступен ли —
+                            // ядро (`day_night`).
+                            DayNightSection {
+                                id: gridDayNight
+                                objectName: "dayNightSection"
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: 8
+                                visible: (gridDayNight.st.sections || []).indexOf(page.installFileSection) >= 0
+                                         && gridDayNight.st.available === true
+                                pal: root.pal
+                                sty: page.sectionStyles
+                            }
+
+                            // «Сохранить текущее оформление…» — над
+                            // «Глобальными темами» во всех окружениях (ядро
+                            // `global_save`). Сохранили — сетка перечитывает
+                            // диск, плитка новой темы сразу в ней.
+                            GlobalSaveSection {
+                                objectName: "globalSaveSection"
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: 8
+                                visible: page.installFileSection === "global"
+                                pal: root.pal
+                                sty: page.sectionStyles
+                                onSaved: function(message) {
+                                    page.setStatus(message);
+                                    page.refresh();
+                                }
+                            }
                         }
                     }
 

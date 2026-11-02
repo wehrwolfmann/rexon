@@ -190,7 +190,7 @@ pub fn log_location_text(path: &str) -> String {
 /// и умещается в письмо, а последних запусков хватает для разбора.
 pub const LOG_COPY_BYTES: u64 = 200 * 1024;
 
-/// Версия продукта человеку — «0.1.0». Собирается из [`crate::constants`], а
+/// Версия продукта человеку — «0.1.1». Собирается из [`crate::constants`], а
 /// не переписывается строкой: `rexon.__version__` и ядро обязаны совпадать.
 pub fn version_string() -> String {
     let (major, minor, patch) = crate::constants::REXON_VERSION;
