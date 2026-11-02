@@ -10,7 +10,7 @@
 
 pkgname=rexon
 pkgver=0.1.1
-pkgrel=1
+pkgrel=2
 pkgdesc="Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers"
 url="https://github.com/wehrwolfmann/rexon"
 # Пакет вёз один Python (arch=any); теперь в нём собранные бинари:
@@ -628,7 +628,7 @@ build() {
 _owe_prepare() {
   rm -rf "$srcdir/owe-plugin"
   install -d "$srcdir/owe-plugin"
-  bsdtar -xf "$srcdir/$_owe_zip" -C "$srcdir/owe-plugin"
+  bsdtar --no-same-owner -xf "$srcdir/$_owe_zip" -C "$srcdir/owe-plugin"
   grep -qx "id = \"$_owe_id\"" "$srcdir/owe-plugin/plugin.toml" \
     && grep -qx "version = \"$_owe_ver\"" "$srcdir/owe-plugin/plugin.toml" || {
     echo "ERROR: в $_owe_zip не $_owe_id $_owe_ver" >&2
@@ -663,7 +663,7 @@ _owe_source_bundle() {
     install -m644 "$srcdir/lito-$n-$v.tar.zst" \
       "$bundle/registry/source/$n-$v-${c:0:16}.tar.zst"
   done
-  bsdtar -xf "$srcdir/$_cef_archive" -C "$root/third_party-cef" \
+  bsdtar --no-same-owner -xf "$srcdir/$_cef_archive" -C "$root/third_party-cef" \
     --include '*/include/*' --include '*/libcef_dll/*' --include '*/cmake/*' \
     --include '*/CMakeLists.txt' --include '*/LICENSE.txt' --include '*/README.txt'
   {
@@ -885,7 +885,7 @@ LAUNCHER
   install -Dm644 data/qt_wallpaper_engine/proto/UPSTREAM_TAG \
     "$data/qt_wallpaper_engine/proto/UPSTREAM_TAG"
   # Корень архива — уже каталог org.waywallen.kde/.
-  bsdtar -xf "$srcdir/$_wwd_zip" -C "$data/kpackage"
+  bsdtar --no-same-owner -xf "$srcdir/$_wwd_zip" -C "$data/kpackage"
   install -m644 data/kpackage/org.waywallen.kde/vendor.toml \
     "$data/kpackage/org.waywallen.kde/vendor.toml"
   install -Dm644 data/themes.json "$data/themes.json"
