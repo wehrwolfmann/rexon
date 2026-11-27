@@ -26,7 +26,7 @@ use serde_json::Value;
 /// and the order (including skipping records without a link) match Python
 /// `_fetch_owned`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn parse_owned_matches_python() {
     let _lang = i18n_pin::ru();
     let raw: Value =
@@ -71,7 +71,7 @@ fn empty_response_yields_empty() {
 /// they have `data: null`, and here we only check that Python returned an
 /// empty list.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn broken_owned_responses_match_python() {
     let _lang = i18n_pin::ru();
     let cases: Value =

@@ -254,10 +254,9 @@ pub fn parse_v4_manifest(zip_path: &Path) -> Result<Value, ParseError> {
 /// ZIP, finding the entry at the root, decoding UTF-8 with replacement
 /// (`errors="replace"`).
 ///
-/// Kept separate from `parse_v4_manifest` for the sake of the live bridge: JSON
-/// parsing stays with Python, otherwise `json.JSONDecodeError` with its
-/// `msg`/`pos` cannot be reproduced — and the caller (`rxn_v4_installer`)
-/// catches exactly that type.
+/// Kept separate from `parse_v4_manifest` for the sake of the former Python
+/// bridge: JSON parsing stayed with Python, otherwise `json.JSONDecodeError`
+/// with its `msg`/`pos` could not be reproduced.
 pub fn read_manifest_text(zip_path: &Path) -> Result<String, ParseError> {
     if !zip_path.is_file() {
         return Err(ParseError::NotFound(trf("Archive not found: %1", &[&zip_path.display()])));

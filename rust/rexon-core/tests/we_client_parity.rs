@@ -855,13 +855,13 @@ fn содержимое_автозапуска() {
     let без_починки: String = unit
         .lines()
         .filter(|l| {
-            !l.starts_with("KillMode=") && !l.starts_with("# Демон живёт в AppImage")
-                && !l.starts_with("# cgroup. SIGTERM только главному")
-                && !l.starts_with("# демоном и завершение падает")
+            !l.starts_with("KillMode=") && !l.starts_with("# The daemon lives in an AppImage")
+                && !l.starts_with("# cgroup. SIGTERM only to the main one")
+                && !l.starts_with("# daemon and shutdown fails")
                 && !l.starts_with("ExecCondition=")
-                && !l.starts_with("# Демон уже жив вне службы")
-                && !l.starts_with("# копии не будет: служба честно")
-                && !l.starts_with("# выходит «успешно» со словами")
+                && !l.starts_with("# The daemon is already alive outside the service")
+                && !l.starts_with("# no second copy: the service is honestly skipped")
+                && !l.starts_with("# exiting «successfully» with the words")
         })
         .map(|l| format!("{l}\n"))
         .collect();

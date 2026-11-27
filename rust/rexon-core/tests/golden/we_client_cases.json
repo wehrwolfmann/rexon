@@ -10,7 +10,7 @@
    "systemd": "Автозапуск включён (systemd user unit)",
    "xdg": "Автозапуск включён (XDG autostart)"
   },
-  "unit_content": "[Unit]\nDescription=Rexon: wallpaper engine (waywallen)\n# Файл управляется Rexon (вкладка WE → «Start at login»); правки затрутся.\nAfter=graphical-session.target\nPartOf=graphical-session.target\n\n[Service]\nExecStart=\"/home/tester/.local/share/waywallen/waywallen.AppImage\" --no-ui --no-tray\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n",
+  "unit_content": "[Unit]\nDescription=Rexon: wallpaper engine (waywallen)\n# The file is managed by Rexon (WE tab → «Start at login»); edits will be overwritten.\nAfter=graphical-session.target\nPartOf=graphical-session.target\n\n[Service]\nExecStart=\"/home/tester/.local/share/waywallen/waywallen.AppImage\" --no-ui --no-tray\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n",
   "unit_name": "rexon-wallpaper-engine.service",
   "unit_path_default": "/home/tester/.config/systemd/user/rexon-wallpaper-engine.service",
   "unit_path_xdg_python_quirk": "/home/tester/.config/systemd/user/rexon-wallpaper-engine.service"

@@ -10,14 +10,14 @@ ColumnLayout {
     readonly property string githubUrl: "https://github.com/waywallen/waywallen-display"
     readonly property string kdeStoreUrl: "https://store.kde.org/p/2356221"
 
-    // ПРАВКА REXON (починка дефекта, не доработка): Rexon сам ставит
-    // плагин обоев Plasma и назначает его по «Применить», поэтому вместо
-    // «поставьте расширение из GitHub/KDE Store и выберите его в настройках
-    // стола» показываем, что делать на самом деле. На X11 вне KDE (MATE,
-    // XFCE, Cinnamon X11) вывод поднимает хост Rexon — там подсказка
-    // показывается при любом бэкенде демона, иначе под «Мониторы не
-    // зарегистрированы» было пусто. Текст — ядро Rexon
-    // (`W.App.noDisplaysHint`); пусто — вид апстрима. Правка живёт в
+    // REXON EDIT (a defect fix, not a feature): Rexon itself installs
+    // the Plasma wallpaper plugin and assigns it on «Apply», so instead of
+    // «install the extension from GitHub/KDE Store and select it in the desktop
+    // settings» we show what to actually do. On X11 outside KDE (MATE,
+    // XFCE, Cinnamon X11) the output is brought up by the Rexon host — there the hint
+    // is shown with any daemon backend, otherwise under «No monitors
+    // registered» it was empty. The text comes from the Rexon core
+    // (`W.App.noDisplaysHint`); empty — the upstream look. The edit lives in
     // patches/0010-apply-without-displays-on-kde.patch.
     readonly property string rexonHint: W.App.noDisplaysHint
 

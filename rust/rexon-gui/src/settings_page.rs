@@ -106,8 +106,8 @@ pub mod qobject {
                     READ = library_preview_height, CONSTANT)]
         #[qproperty(i32, sound_preview_buttons, cxx_name = "soundPreviewButtons",
                     READ = sound_preview_buttons, CONSTANT)]
-        #[qproperty(i32, plasma_backups_shown, cxx_name = "plasmaBackupsShown",
-                    READ = plasma_backups_shown, CONSTANT)]
+        #[qproperty(i32, panel_backups_shown, cxx_name = "panelBackupsShown",
+                    READ = panel_backups_shown, CONSTANT)]
         #[qproperty(i32, toast_timeout_ms, cxx_name = "toastTimeoutMs",
                     READ = toast_timeout_ms, CONSTANT)]
         #[qproperty(i32, ambient_refresh_ms, cxx_name = "ambientRefreshMs",
@@ -183,8 +183,8 @@ pub mod qobject {
         fn library_preview_height(self: &SettingsModel) -> i32;
         #[cxx_name = "soundPreviewButtons"]
         fn sound_preview_buttons(self: &SettingsModel) -> i32;
-        #[cxx_name = "plasmaBackupsShown"]
-        fn plasma_backups_shown(self: &SettingsModel) -> i32;
+        #[cxx_name = "panelBackupsShown"]
+        fn panel_backups_shown(self: &SettingsModel) -> i32;
         #[cxx_name = "toastTimeoutMs"]
         fn toast_timeout_ms(self: &SettingsModel) -> i32;
         #[cxx_name = "ambientRefreshMs"]
@@ -391,7 +391,7 @@ fn parse_facts(raw: &str) -> (qs::SectionFacts, String) {
     (
         qs::SectionFacts::new(
             flag("onboarding"),
-            flag("plasma"),
+            flag("panel"),
             flag("aeroshell"),
         ),
         de_display,
@@ -596,7 +596,7 @@ impl qobject::SettingsModel {
             ("soundPreview", num(qs::SOUND_PREVIEW_SPACING)),
             ("fontRow", num(qs::FONT_ROW_SPACING)),
             ("fontCol", num(qs::FONT_COL_SPACING)),
-            ("plasmaRow", num(qs::PLASMA_ROW_SPACING)),
+            ("panelRow", num(qs::PANEL_ROW_SPACING)),
             ("infoBox", num(qs::INFO_BOX_SPACING)),
         ]);
 
@@ -776,8 +776,8 @@ impl qobject::SettingsModel {
         qs::SOUND_PREVIEW_BUTTONS as i32
     }
 
-    fn plasma_backups_shown(&self) -> i32 {
-        qs::PLASMA_BACKUPS_SHOWN as i32
+    fn panel_backups_shown(&self) -> i32 {
+        qs::PANEL_BACKUPS_SHOWN as i32
     }
 
     fn toast_timeout_ms(&self) -> i32 {

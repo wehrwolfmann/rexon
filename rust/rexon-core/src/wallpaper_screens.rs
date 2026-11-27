@@ -925,6 +925,96 @@ pub fn live_drm_outputs() -> Vec<DrmOutput> {
 }
 
 // ============================================================================
+// Wallpaper orientation
+// ============================================================================
+
+/// Wallpaper orientation from its frame: width×height. Shared by every
+/// source where the frame size is known (Razer Axon, Wallhaven…): the tile
+/// label, the filter item and the warning in the details come from here
+/// instead of being set up again by each source.
+///
+/// Resolution is always written "width×height", so `2160×3840` is a frame
+/// 2160 wide and 3840 tall: a video for a rotated monitor or a phone. A
+/// square counts as horizontal — on a regular monitor it behaves like a
+/// horizontal wallpaper, not like a vertical one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallpaperOrientation {
+    /// The frame is wider than tall (or square).
+    Landscape,
+    /// The frame is taller than wide.
+    Portrait,
+}
+
+impl WallpaperOrientation {
+    /// Filter items, in panel order.
+    pub const ALL: [WallpaperOrientation; 2] = [WallpaperOrientation::Landscape, WallpaperOrientation::Portrait];
+
+    /// Orientation of a `width`×`height` frame; a zero size — unknown.
+    pub fn of(width: u32, height: u32) -> Option<WallpaperOrientation> {
+        if width == 0 || height == 0 {
+            None
+        } else if height > width {
+            Some(WallpaperOrientation::Portrait)
+        } else {
+            Some(WallpaperOrientation::Landscape)
+        }
+    }
+
+    /// Key for the model and the filter.
+    pub fn key(self) -> &'static str {
+        match self {
+            WallpaperOrientation::Landscape => "landscape",
+            WallpaperOrientation::Portrait => "portrait",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<WallpaperOrientation> {
+        WallpaperOrientation::ALL.into_iter().find(|o| o.key() == key)
+    }
+
+    /// Label: in the tile line and in the filter item.
+    pub fn label(self) -> String {
+        use crate::i18n::trc;
+        match self {
+            WallpaperOrientation::Landscape => trc("wallpaper orientation", "Horizontal"),
+            WallpaperOrientation::Portrait => trc("wallpaper orientation", "Vertical"),
+        }
+    }
+
+    /// Whether the orientation goes into the tile line: only for vertical
+    /// ones — horizontal is the usual case, and the word would be noise.
+    pub fn shown_on_tile(self) -> bool {
+        self == WallpaperOrientation::Portrait
+    }
+}
+
+/// Heading of the "Orientation" filter group.
+pub fn orientation_group_label() -> String {
+    crate::i18n::tr("Orientation")
+}
+
+/// What happens to a vertical wallpaper on a regular (landscape) monitor —
+/// for the card details. `crops_to_fill` — the display fills the screen and
+/// crops (the Rexon video host does that: `PreserveAspectCrop`); otherwise
+/// the desktop decides how to fit it (it sets pictures itself). For
+/// horizontal ones — `None`: there is nothing to warn about.
+pub fn orientation_warning(orientation: WallpaperOrientation, crops_to_fill: bool) -> Option<String> {
+    use crate::i18n::tr;
+    if orientation != WallpaperOrientation::Portrait {
+        return None;
+    }
+    Some(if crops_to_fill {
+        tr("⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a regular \
+            landscape screen it fills the width, so only the middle part of the frame is visible — \
+            the top and bottom are cut off.")
+    } else {
+        tr("⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a regular \
+            landscape screen the desktop either cuts off the top and bottom or adds bars at the \
+            sides — it depends on its wallpaper settings.")
+    })
+}
+
+// ============================================================================
 // Checks
 // ============================================================================
 
@@ -1453,5 +1543,24 @@ mod tests {
         // A Wayland screen with a manufacturer name matches by connector + name.
         let ids = identify_screens(&[qt("HDMI-A-1", "Samsung Electric Company", "LS27A600", "")], &outs);
         assert_eq!(ids[0].key, "edid:SAM:7140:9");
+    }
+
+    #[test]
+    fn wallpaper_orientation_is_width_by_height() {
+        use WallpaperOrientation::*;
+        // Axon records: "2160x3840" is a vertical video, "3840x2160" a regular one.
+        assert_eq!(WallpaperOrientation::of(2160, 3840), Some(Portrait));
+        assert_eq!(WallpaperOrientation::of(3840, 2160), Some(Landscape));
+        assert_eq!(WallpaperOrientation::of(1080, 1080), Some(Landscape), "a square counts as horizontal");
+        assert_eq!(WallpaperOrientation::of(0, 1080), None);
+        for o in WallpaperOrientation::ALL {
+            assert_eq!(WallpaperOrientation::from_key(o.key()), Some(o));
+        }
+        assert_eq!(WallpaperOrientation::from_key("Dynamic"), None);
+        assert!(Portrait.shown_on_tile() && !Landscape.shown_on_tile());
+        assert!(orientation_warning(Landscape, true).is_none());
+        let crop = orientation_warning(Portrait, true).unwrap();
+        let desk = orientation_warning(Portrait, false).unwrap();
+        assert_ne!(crop, desk, "the video host always crops, the desktop follows its own settings");
     }
 }

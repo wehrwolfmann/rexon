@@ -79,7 +79,7 @@ fn book() -> &'static Mutex<Option<Book>> {
 }
 
 fn cstr(text: &str) -> CString {
-    CString::new(text.replace('\0', "")).expect("нули вычищены")
+    CString::new(text.replace('\0', "")).expect("NUL bytes were stripped")
 }
 
 fn text(ptr: *const c_char) -> String {
@@ -210,7 +210,7 @@ extern "C" fn on_message(
         // There is no bookkeeping — close the receipt anyway, the client must not
         // wait.
         let n = cstr(core_ssb::ERROR_FAILED);
-        let t = cstr("мост не готов");
+        let t = cstr("bridge not ready");
         unsafe { rexon_ssb_reply_error(token, n.as_ptr(), t.as_ptr()) };
     }
 }
@@ -241,7 +241,7 @@ extern "C" fn on_lost() {
     // new calls — the objects are removed from the bus.
     let service = cstr(core_ssb::SERVICE);
     unsafe { rexon_ssb_stop(service.as_ptr()) };
-    log_info!(AREA, "{} забрал другой хозяин — мост сошёл", core_ssb::SERVICE);
+    log_info!(AREA, "{} was taken by another owner — bridge stepped down", core_ssb::SERVICE);
 }
 
 /// Output of `mate-screensaver-command --version`; `None` means there is no
@@ -289,7 +289,7 @@ fn start_after_delay() {
     let plan = match core_ssb::decide(de.as_deref(), mate_version.as_deref(), has_owner, wayland_idle::probe) {
         Decision::Start(plan) => plan,
         Decision::Skip(why) => {
-            log_info!(AREA, "мост {} не нужен: {why}", core_ssb::SERVICE);
+            log_info!(AREA, "bridge {} not needed: {why}", core_ssb::SERVICE);
             return;
         }
     };
@@ -304,16 +304,16 @@ fn start_after_delay() {
     if code == 0 {
         log_info!(
             AREA,
-            "{} занято Rexon: удержания идут в {}{}",
+            "{} owned by Rexon: inhibitions forwarded to {}{}",
             core_ssb::SERVICE,
             plan.upstream.service,
             plan.companion
-                .map(|c| format!(", хранитель экрана — {}", c.service))
+                .map(|c| format!(", screensaver — {}", c.service))
                 .unwrap_or_default()
         );
     } else {
         *book().lock().unwrap_or_else(|e| e.into_inner()) = None;
-        log_warn!(AREA, "мост {} не встал (код {code})", core_ssb::SERVICE);
+        log_warn!(AREA, "bridge {} failed to start (code {code})", core_ssb::SERVICE);
     }
 }
 
@@ -329,7 +329,7 @@ pub fn spawn_once() {
             .name("screensaver-bridge".into())
             .spawn(start_after_delay);
         if let Err(e) = spawned {
-            log_warn!(AREA, "мост {} не запущен: {e}", core_ssb::SERVICE);
+            log_warn!(AREA, "bridge {} not started: {e}", core_ssb::SERVICE);
         }
     });
 }
@@ -462,20 +462,20 @@ pub mod wayland_idle {
             }
             let raw = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
             if raw < 0 {
-                log_warn!(AREA, "запрет простоя Wayland не поставлен: eventfd {}", std::io::Error::last_os_error());
+                log_warn!(AREA, "Wayland idle inhibitor not set: eventfd {}", std::io::Error::last_os_error());
                 return;
             }
             let stop = Arc::new(unsafe { OwnedFd::from_raw_fd(raw) });
             let thread_stop = Arc::clone(&stop);
             let spawned = std::thread::Builder::new().name("idle-inhibit".into()).spawn(move || {
                 match run(&thread_stop) {
-                    Ok(()) => log_info!(AREA, "запрет простоя Wayland снят"),
-                    Err(e) => log_warn!(AREA, "запрет простоя Wayland оборвался: {e}"),
+                    Ok(()) => log_info!(AREA, "Wayland idle inhibitor released"),
+                    Err(e) => log_warn!(AREA, "Wayland idle inhibitor broke off: {e}"),
                 }
             });
             match spawned {
                 Ok(thread) => *guard = Some(Hold { stop, thread }),
-                Err(e) => log_warn!(AREA, "запрет простоя Wayland не поставлен: {e}"),
+                Err(e) => log_warn!(AREA, "Wayland idle inhibitor not set: {e}"),
             }
         } else if let Some(h) = guard.take() {
             let one: u64 = 1;
@@ -487,9 +487,9 @@ pub mod wayland_idle {
     /// Connect, set up the surface and the inhibition, hold until the `stop`
     /// signal. Closing the connection on exit removes everything at once.
     fn run(stop: &OwnedFd) -> Result<(), String> {
-        let conn = Connection::connect_to_env().map_err(|e| format!("подключение: {e}"))?;
+        let conn = Connection::connect_to_env().map_err(|e| format!("connect: {e}"))?;
         let (globals, mut queue) =
-            registry_queue_init::<State>(&conn).map_err(|e| format!("реестр: {e}"))?;
+            registry_queue_init::<State>(&conn).map_err(|e| format!("registry: {e}"))?;
         let qh = queue.handle();
         let bind_err = |what: &str, e: wayland_client::globals::BindError| format!("{what}: {e}");
         let compositor: wl_compositor::WlCompositor =
@@ -544,7 +544,7 @@ pub mod wayland_idle {
                 // mapped (sway/desktop/idle_inhibit_v1.c).
                 if state.configured && inhibitor.is_none() {
                     inhibitor = Some(manager.create_inhibitor(&surface, &qh, ()));
-                    log_info!(AREA, "запрет простоя Wayland поставлен");
+                    log_info!(AREA, "Wayland idle inhibitor set");
                 }
             })?;
             if let Some(i) = inhibitor {
@@ -557,7 +557,7 @@ pub mod wayland_idle {
                 return Ok(());
             }
             // The output the surface was on has disappeared — set it up again.
-            log_info!(AREA, "слой-поверхность запрета закрыта композитором — ставлю заново");
+            log_info!(AREA, "inhibitor layer surface closed by the compositor — setting it up again");
         }
     }
 
@@ -571,12 +571,12 @@ pub mod wayland_idle {
         mut after_dispatch: impl FnMut(&mut State),
     ) -> Result<bool, String> {
         loop {
-            queue.dispatch_pending(state).map_err(|e| format!("очередь: {e}"))?;
+            queue.dispatch_pending(state).map_err(|e| format!("queue: {e}"))?;
             after_dispatch(state);
             if state.closed {
                 return Ok(false);
             }
-            conn.flush().map_err(|e| format!("отправка: {e}"))?;
+            conn.flush().map_err(|e| format!("flush: {e}"))?;
             let Some(guard) = queue.prepare_read() else {
                 continue;
             };
@@ -596,14 +596,14 @@ pub mod wayland_idle {
                 return Ok(true);
             }
             if fds[0].revents & (libc::POLLERR | libc::POLLHUP) != 0 {
-                return Err("композитор закрыл подключение".into());
+                return Err("the compositor closed the connection".into());
             }
             if fds[0].revents & libc::POLLIN != 0 {
                 match guard.read() {
                     Ok(_) => {}
                     Err(wayland_client::backend::WaylandError::Io(e))
                         if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                    Err(e) => return Err(format!("чтение: {e}")),
+                    Err(e) => return Err(format!("read: {e}")),
                 }
             }
         }

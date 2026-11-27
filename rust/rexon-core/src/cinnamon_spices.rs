@@ -223,8 +223,8 @@ fn site_path_field(v: &Value, key: &str) -> String {
 /// (the key becomes a directory name, the path — a download address). The order is
 /// as in the file.
 pub fn parse_index(body: &str) -> Result<Vec<Spice>, String> {
-    let root: Value = serde_json::from_str(body).map_err(|e| format!("индекс не разобран: {e}"))?;
-    let obj = root.as_object().ok_or_else(|| "индекс — не словарь".to_string())?;
+    let root: Value = serde_json::from_str(body).map_err(|e| format!("index not parsed: {e}"))?;
+    let obj = root.as_object().ok_or_else(|| "index is not an object".to_string())?;
     let mut out = Vec::with_capacity(obj.len());
     for (key, v) in obj {
         if !v.is_object() || !valid_key(key) {
@@ -477,7 +477,7 @@ mod index_tests {
         }
         let applets = load(type_for_key("applet").unwrap());
         let weather = applets.iter().find(|s| s.key == "weather@mockturtl").unwrap();
-        assert_eq!(weather.author, "", "author_user = none прячется");
+        assert_eq!(weather.author, "", "author_user = none is hidden");
         assert_eq!(weather.score, 270);
         assert_eq!(weather.screenshot, "/git/applets/weather@mockturtl/screenshot.png");
         let empty = applets.iter().find(|s| s.key == "1440@jvlianodorneles").unwrap();
@@ -519,7 +519,7 @@ mod index_tests {
         assert_eq!(list[0].name, "");
         assert_eq!(list[1].score, 12);
         assert_eq!(list[1].last_edited, 1_700_000_000);
-        assert_eq!(list[1].icon, "", "адрес на чужой хост отброшен");
+        assert_eq!(list[1].icon, "", "an address on a foreign host is dropped");
     }
 
     #[test]
@@ -527,7 +527,7 @@ mod index_tests {
         for k in ["weather@mockturtl", "Adara-Dark", "a+b_c.d", "AlbumArt3.0@claudiux"] {
             assert!(valid_key(k), "{k}");
         }
-        for k in ["", ".", "..", "a/b", "a b", "ключ", "a\\b", "a:b"] {
+        for k in ["", ".", "..", "a/b", "a b", "ключ", "a\\b", "a:b"] { // i18n-exempt: a non-ASCII key must be refused
             assert!(!valid_key(k), "{k}");
         }
     }
@@ -537,12 +537,12 @@ mod index_tests {
         let mut s = Spice { name: "Weather".into(), description: "D".into(), ..Default::default() };
         s.translations.insert("name_zh".into(), "zh".into());
         s.translations.insert("name_zh_TW".into(), "zh_TW".into());
-        s.translations.insert("name_ru".into(), "Погода".into());
+        s.translations.insert("name_ru".into(), "Погода".into()); // i18n-exempt: test data, a site translation
         s.translations.insert("description_ru".into(), "  ".into());
         assert_eq!(localized(&s, "zh_TW").0, "zh_TW");
         assert_eq!(localized(&s, "zh_CN").0, "zh");
-        assert_eq!(localized(&s, "ru_RU.UTF-8"), ("Погода".to_string(), "D".to_string()), "пустой перевод не берётся");
-        assert_eq!(localized(&s, "ru").0, "Погода");
+        assert_eq!(localized(&s, "ru_RU.UTF-8"), ("Погода".to_string(), "D".to_string()), "an empty translation is not taken"); // i18n-exempt: test data, a site translation
+        assert_eq!(localized(&s, "ru").0, "Погода"); // i18n-exempt: test data, a site translation
         assert_eq!(localized(&s, "de").0, "Weather");
         assert_eq!(localized(&s, "").0, "Weather");
 
@@ -801,16 +801,16 @@ mod version_tests {
     fn version_check_table() {
         let cur = (6, 6, 9);
         let weather = s(&["2.2", "2.4", "2.6", "2.8", "3.0", "3.2", "3.4", "3.6", "3.8", "4.0", "4.2", "4.4", "4.6", "4.8"]);
-        assert!(version_check(&weather, cur), "последняя 4.8 ≤ 6.6");
+        assert!(version_check(&weather, cur), "the last 4.8 ≤ 6.6");
         assert!(!version_check(&s(&["6.8"]), cur));
         assert!(version_check(&s(&["6.6"]), cur));
         assert!(version_check(&s(&["6.6"]), (6, 6, 0)));
         assert!(!version_check(&s(&["6.6"]), (6, 4, 13)));
-        assert!(version_check(&s(&["5.8", "7.0"]), cur), "хватает одной подходящей");
-        assert!(version_check(&s(&["6.6.12"]), cur), "третья часть не сравнивается");
-        assert!(!version_check(&s(&[]), cur), "пустой список — несовместимо");
+        assert!(version_check(&s(&["5.8", "7.0"]), cur), "one matching version is enough");
+        assert!(version_check(&s(&["6.6.12"]), cur), "the third part is not compared");
+        assert!(!version_check(&s(&[]), cur), "an empty list is incompatible");
         assert!(!version_check(&s(&["abc", "6"]), cur));
-        assert!(version_check(&s(&["4.x2", "6.0beta"]), cur), "как parseInt: начальные цифры");
+        assert!(version_check(&s(&["4.x2", "6.0beta"]), cur), "like parseInt: leading digits");
     }
 
     #[test]
@@ -828,11 +828,11 @@ mod version_tests {
         // weather@mockturtl on 6.6.9 takes 3.8.
         assert_eq!(pick_version_subdir(&s(&["3.0", "po", "icons", "3.8", "arrow-icons"]), cur).as_deref(), Some("3.8"));
         assert_eq!(pick_version_subdir(&s(&["po", "icons"]), cur), None);
-        assert_eq!(pick_version_subdir(&s(&["6.8", "7.0"]), cur), None, "все новее — корень");
+        assert_eq!(pick_version_subdir(&s(&["6.8", "7.0"]), cur), None, "all newer — the root");
         assert_eq!(pick_version_subdir(&s(&["6.6", "6.6.9", "6.6.10"]), cur).as_deref(), Some("6.6.9"));
         assert_eq!(pick_version_subdir(&s(&["6.6", "6.6.0"]), (6, 6, 0)).as_deref(), Some("6.6.0"));
         assert_eq!(pick_version_subdir(&s(&["6.6.0", "6.6"]), (6, 6, 0)).as_deref(), Some("6.6.0"));
-        assert_eq!(pick_version_subdir(&s(&["5.4", "6.10", "6.2"]), cur).as_deref(), Some("6.2"), "6.10 > 6.6 по числам");
+        assert_eq!(pick_version_subdir(&s(&["5.4", "6.10", "6.2"]), cur).as_deref(), Some("6.2"), "6.10 > 6.6 numerically");
         assert_eq!(pick_version_subdir(&s(&["4.0", "4.10"]), (4, 10, 0)).as_deref(), Some("4.10"));
         for bad in ["06.0", "6", "6.", ".6", "6.0.1.2", "6.a", "v6.0"] {
             assert_eq!(pick_version_subdir(&s(&[bad]), cur), None, "{bad}");
@@ -866,14 +866,14 @@ fn po_unquote(s: &str, line_no: usize) -> Result<Vec<u8>, String> {
         .strip_prefix('"')
         .and_then(|r| r.strip_suffix('"'))
         .filter(|_| s.len() >= 2)
-        .ok_or_else(|| format!("строка {line_no}: ожидалась строка в кавычках"))?;
+        .ok_or_else(|| format!("line {line_no}: a quoted string expected"))?;
     let b = inner.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
         let c = b[i];
         if c == b'"' {
-            return Err(format!("строка {line_no}: кавычка внутри строки"));
+            return Err(format!("line {line_no}: a quote inside a string"));
         }
         if c != b'\\' {
             out.push(c);
@@ -881,7 +881,7 @@ fn po_unquote(s: &str, line_no: usize) -> Result<Vec<u8>, String> {
             continue;
         }
         i += 1;
-        let e = *b.get(i).ok_or_else(|| format!("строка {line_no}: обрыв экранирования"))?;
+        let e = *b.get(i).ok_or_else(|| format!("line {line_no}: truncated escape"))?;
         i += 1;
         match e {
             b'n' => out.push(b'\n'),
@@ -913,11 +913,11 @@ fn po_unquote(s: &str, line_no: usize) -> Result<Vec<u8>, String> {
                     i += 1;
                 }
                 if i == start {
-                    return Err(format!("строка {line_no}: \\x без цифр"));
+                    return Err(format!("line {line_no}: \\x without digits"));
                 }
                 out.push(v as u8);
             }
-            other => return Err(format!("строка {line_no}: неизвестное экранирование \\{}", other as char)),
+            other => return Err(format!("line {line_no}: unknown escape \\{}", other as char)),
         }
     }
     Ok(out)
@@ -954,20 +954,20 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
         let draft = std::mem::take(d);
         let Some(id) = draft.id else {
             if draft.ctx.is_some() || !draft.strs.is_empty() {
-                return Err(format!("строка {}: запись без msgid", draft.started_at));
+                return Err(format!("line {}: entry without msgid", draft.started_at));
             }
             return Ok(());
         };
         if draft.strs.is_empty() {
-            return Err(format!("строка {}: запись без msgstr", draft.started_at));
+            return Err(format!("line {}: entry without msgstr", draft.started_at));
         }
         let mut forms = draft.strs;
         forms.sort_by_key(|(n, _)| *n);
         if forms.iter().enumerate().any(|(i, (n, _))| i != *n) {
-            return Err(format!("строка {}: формы msgstr[] не по порядку", draft.started_at));
+            return Err(format!("line {}: msgstr[] forms out of order", draft.started_at));
         }
         if draft.plural.is_none() && forms.len() != 1 {
-            return Err(format!("строка {}: msgstr[] без msgid_plural", draft.started_at));
+            return Err(format!("line {}: msgstr[] without msgid_plural", draft.started_at));
         }
         let is_header = id.is_empty() && draft.ctx.is_none();
         if (draft.fuzzy && !is_header) || forms[0].1.is_empty() {
@@ -1031,7 +1031,7 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
                 Some(PoField::Str(i)) => d.strs.iter_mut().find(|(k, _)| *k == i).map(|(_, v)| v),
                 None => None,
             }
-            .ok_or_else(|| format!("строка {line_no}: продолжение без ключевого слова"))?;
+            .ok_or_else(|| format!("line {line_no}: continuation without a keyword"))?;
             target.extend_from_slice(&bytes);
             continue;
         }
@@ -1048,21 +1048,21 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
         match kw {
             "msgctxt" => {
                 if d.ctx.is_some() || d.id.is_some() {
-                    return Err(format!("строка {line_no}: лишний msgctxt"));
+                    return Err(format!("line {line_no}: extra msgctxt"));
                 }
                 d.ctx = Some(value);
                 field = Some(PoField::Ctx);
             }
             "msgid" => {
                 if d.id.is_some() {
-                    return Err(format!("строка {line_no}: второй msgid подряд"));
+                    return Err(format!("line {line_no}: a second msgid in a row"));
                 }
                 d.id = Some(value);
                 field = Some(PoField::Id);
             }
             "msgid_plural" => {
                 if d.id.is_none() || d.plural.is_some() || !d.strs.is_empty() {
-                    return Err(format!("строка {line_no}: msgid_plural не на месте"));
+                    return Err(format!("line {line_no}: msgid_plural out of place"));
                 }
                 d.plural = Some(value);
                 field = Some(PoField::Plural);
@@ -1070,19 +1070,19 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
             _ => {
                 let idx = if kw == "msgstr" {
                     if d.plural.is_some() {
-                        return Err(format!("строка {line_no}: у формы по числу нужен msgstr[N]"));
+                        return Err(format!("line {line_no}: a plural form needs msgstr[N]"));
                     }
                     0
                 } else if let Some(num) = kw.strip_prefix("msgstr[").and_then(|r| r.strip_suffix(']')) {
                     if d.plural.is_none() {
-                        return Err(format!("строка {line_no}: msgstr[N] без msgid_plural"));
+                        return Err(format!("line {line_no}: msgstr[N] without msgid_plural"));
                     }
-                    num.parse::<usize>().map_err(|_| format!("строка {line_no}: номер формы «{num}»"))?
+                    num.parse::<usize>().map_err(|_| format!("line {line_no}: form number \"{num}\""))?
                 } else {
-                    return Err(format!("строка {line_no}: неизвестное ключевое слово «{kw}»"));
+                    return Err(format!("line {line_no}: unknown keyword \"{kw}\""));
                 };
                 if d.id.is_none() || d.strs.iter().any(|(k, _)| *k == idx) {
-                    return Err(format!("строка {line_no}: msgstr не на месте"));
+                    return Err(format!("line {line_no}: msgstr out of place"));
                 }
                 d.strs.push((idx, value));
                 field = Some(PoField::Str(idx));
@@ -1125,7 +1125,7 @@ pub fn po_to_mo(po: &str) -> Result<Vec<u8>, String> {
     let lookup = |e: &PoEntry| -> Vec<u8> { e.key.split(|b| *b == 0).next().unwrap_or(&[]).to_vec() };
     entries.sort_by_key(lookup);
     if let Some(w) = entries.windows(2).find(|w| lookup(&w[0]) == lookup(&w[1])) {
-        return Err(format!("повтор записи «{}»", String::from_utf8_lossy(&lookup(&w[0]))));
+        return Err(format!("duplicate entry \"{}\"", String::from_utf8_lossy(&lookup(&w[0]))));
     }
     let n = entries.len() as u32;
     let hash_size = if n == 0 { 0 } else { next_prime(n * 4 / 3).max(3) };
@@ -1203,6 +1203,7 @@ mod po_tests {
 
     const FIXTURES: &[&str] = &["powerman-cs.po", "1440-da.po", "backup-uk.po", "albumart-tr_TR.po"];
 
+    // i18n-exempt-begin: test data, a catalog with non-ASCII translations
     const EDGE: &str = r#"
 # шапка без пометок
 msgid ""
@@ -1258,19 +1259,22 @@ msgstr ""
 #~ msgid "obsolete"
 #~ msgstr "old"
 "#;
+    // i18n-exempt-end
 
     #[test]
     fn roundtrip_through_our_reader() {
         let cat = Catalog::parse_mo(&po_to_mo(EDGE).unwrap()).unwrap();
+        // i18n-exempt-begin: test data, translations from the catalog above
         assert_eq!(cat.get(None, "Open"), Some("Открыть"));
         assert_eq!(cat.get(Some("menu"), "Open"), Some("Открыть (меню)"));
         assert_eq!(cat.get(Some("ctx"), ""), Some("ctx-empty-id"));
         assert_eq!(cat.get(None, "esc"), Some("a\tb\\c\"dAB"));
         assert_eq!(cat.get(None, "multi line"), Some("многострок"));
-        assert_eq!(cat.get(None, "fuzzy one"), None, "неточное не берётся");
+        // i18n-exempt-end
+        assert_eq!(cat.get(None, "fuzzy one"), None, "a fuzzy entry is not taken");
         assert_eq!(cat.get(None, "obsolete"), None);
         assert_eq!(cat.get(None, "allempty"), None);
-        assert_eq!(cat.get(None, "firstempty"), None, "первая форма пуста — не переведено");
+        assert_eq!(cat.get(None, "firstempty"), None, "the first form is empty — not translated");
         assert_eq!(cat.plural_lookup("partempty", 1).as_deref(), Some("a"));
         assert_eq!(cat.plural_lookup("partempty", 7).as_deref(), Some("c"));
         assert_eq!(cat.nplurals(), 3);
@@ -1309,11 +1313,11 @@ msgstr ""
     #[test]
     fn byte_identical_with_msgfmt() {
         let Ok(probe) = std::process::Command::new("msgfmt").arg("--version").output() else {
-            eprintln!("msgfmt нет — сверка НЕ ПРОВЕРЕНА");
+            eprintln!("no msgfmt — comparison NOT CHECKED");
             return;
         };
         if !probe.status.success() {
-            eprintln!("msgfmt не запускается — сверка НЕ ПРОВЕРЕНА");
+            eprintln!("msgfmt does not start — comparison NOT CHECKED");
             return;
         }
         let dir = std::env::temp_dir().join(format!("rexon-spices-po-{}", std::process::id()));
@@ -1325,10 +1329,10 @@ msgstr ""
             let dst = dir.join(format!("{name}.mo"));
             std::fs::write(&src, &po).unwrap();
             let st = std::process::Command::new("msgfmt").arg("-o").arg(&dst).arg(&src).status().unwrap();
-            assert!(st.success(), "{name}: msgfmt отказал");
+            assert!(st.success(), "{name}: msgfmt refused");
             let want = std::fs::read(&dst).unwrap();
             let got = po_to_mo(&po).unwrap();
-            assert_eq!(got, want, "{name}: .mo расходится с msgfmt");
+            assert_eq!(got, want, "{name}: .mo differs from msgfmt");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1360,12 +1364,12 @@ msgstr ""
                 match (ok, ours) {
                     (true, Ok(m)) if m == std::fs::read(&dst).unwrap() => same += 1,
                     (false, Err(_)) => same += 1,
-                    (ok, ours) => eprintln!("РАСХОДИТСЯ {}: msgfmt={ok} наш={:?}", p.display(), ours.map(|m| m.len())),
+                    (ok, ours) => eprintln!("DIFFERS {}: msgfmt={ok} ours={:?}", p.display(), ours.map(|m| m.len())),
                 }
             }
         }
         let _ = std::fs::remove_dir_all(&out);
-        eprintln!("совпало {same} из {total}");
+        eprintln!("matched {same} of {total}");
         assert_eq!(same, total);
     }
 
@@ -1383,7 +1387,7 @@ msgstr ""
         ] {
             assert!(po_to_mo(bad).is_err(), "{bad:?}");
         }
-        assert!(po_to_mo("").unwrap().len() == 28, "пустой каталог — одна шапка");
+        assert!(po_to_mo("").unwrap().len() == 28, "an empty catalog is one header");
     }
 
     #[test]
@@ -1688,7 +1692,7 @@ mod cache_tests {
     impl ConditionalNet for Replay {
         fn conditional_get(&mut self, url: &str, ua: &str, etag: &str, lm: &str, _t: u64) -> Result<CondReply, NetError> {
             self.asked.push((url.into(), ua.into(), etag.into(), lm.into()));
-            assert!(!self.answers.is_empty(), "лишний запрос к сайту");
+            assert!(!self.answers.is_empty(), "an extra request to the site");
             self.answers.remove(0)
         }
     }
@@ -1744,7 +1748,7 @@ mod cache_tests {
         assert_eq!((r.source, r.spices.len(), r.fetched), (RefreshSource::NotModified, 6, T0 + CACHE_TTL_SECS));
         assert_eq!(net.asked[0].2, "W/\"ddfd-1\"");
         assert_eq!(net.asked[0].3, "Fri, 16 Oct 2026 22:15:06 GMT");
-        assert!(!net.asked[0].0.contains('?'), "без параметра времени");
+        assert!(!net.asked[0].0.contains('?'), "without the time parameter");
         let (c, _) = load_cache(&p).unwrap();
         assert_eq!(c.fetched, T0 + CACHE_TTL_SECS);
 
@@ -1818,7 +1822,7 @@ mod cache_tests {
             let mut net = replay(vec![ok200("e2")]);
             let r = refresh(&mut net, &p, applets(), false, T0 + 1);
             assert_eq!(r.source, RefreshSource::Downloaded, "{junk}");
-            assert_eq!(net.asked[0].2, "", "валидаторы испорченного кэша не посылаются: {junk}");
+            assert_eq!(net.asked[0].2, "", "validators of a broken cache are not sent: {junk}");
             let _ = std::fs::remove_dir_all(p.parent().unwrap().parent().unwrap().parent().unwrap());
         }
     }
@@ -1862,7 +1866,7 @@ mod cache_tests {
         let heads = server.join().unwrap();
         assert!(heads[0].contains("user-agent: rexon/5.0"));
         assert!(!heads[0].contains("if-none-match") && !heads[0].contains("if-modified-since"));
-        assert!(!heads[0].contains("accept-encoding"), "сжатие не просим");
+        assert!(!heads[0].contains("accept-encoding"), "compression is not requested");
         assert!(heads[1].contains("if-none-match: w/\"a1\""));
         assert!(heads[1].contains("if-modified-since: fri, 16 oct 2026 22:15:06 gmt"));
     }
@@ -2710,7 +2714,7 @@ mod plan_tests {
         assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::UuidMismatch { found: "1440@someone".into() }));
         // No metadata.json, broken, without name.
         let snap = snapshot_from_entries(X, &tr.names, &Map::new());
-        assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::BadMetadata), "пустой текст не JSON");
+        assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::BadMetadata), "empty text is not JSON");
         let names: Vec<String> = tr.names.iter().filter(|n| !n.ends_with("metadata.json")).cloned().collect();
         let snap = snapshot_from_entries(X, &names, &Map::new());
         assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::NoMetadata));
@@ -2742,7 +2746,7 @@ mod plan_tests {
             SpiceRefusal::NoCinnamonCss,
             SpiceRefusal::NoActionFile,
         ] {
-            assert!(r.message("Имя").contains("Имя"), "{r:?}");
+            assert!(r.message("Name").contains("Name"), "{r:?}");
         }
     }
 
@@ -2758,7 +2762,7 @@ mod plan_tests {
         let root = dir.to_string_lossy().into_owned();
         let lay = check_layout(&snap, &root, type_for_key("applet").unwrap(), "u@x", CUR).unwrap();
         assert_eq!(lay.version_subdir.as_deref(), Some("3.8"));
-        assert!(lay.po_files.is_empty(), "po ищется только в корне спайса");
+        assert!(lay.po_files.is_empty(), "po is looked for only in the spice root");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2786,7 +2790,7 @@ mod plan_tests {
                 "panel1:right:0:weather@mockturtl:8",
             ]
         );
-        assert_eq!(next, 9, "счётчик 0 при занятом 7 — берём 8");
+        assert_eq!(next, 9, "counter 0 with 7 taken — take 8");
         let (out, next) = applet_enable_front(&[], "a@b", 12);
         assert_eq!((out, next), (vec!["panel1:right:0:a@b:12".to_string()], 13));
     }
@@ -2997,7 +3001,7 @@ pub fn execute(
                     std::fs::write(mo, bytes).map_err(|e| e.to_string())
                 });
                 if let Err(e) = written {
-                    log(&format!("перевод {lang} не собран: {e}"));
+                    log(&format!("translation {lang} not built: {e}"));
                     report.bad_po.push(lang);
                 }
             }
@@ -3381,7 +3385,7 @@ pub fn cleanup_after_removal(env: &SpiceEnv, path: &str) {
             .collect();
         let roots = [env.home.as_str(), env.config.as_str()];
         if let Err(e) = execute(&files, &roots, &mut NoSys, &mut |_| Ok(()), &mut |l| crate::log_warn!("theme", "{l}")) {
-            crate::log_warn!("theme", "остатки спайса {key} не сняты: {e}");
+            crate::log_warn!("theme", "spice {key} leftovers not removed: {e}");
         }
     }
 }
@@ -3526,12 +3530,12 @@ mod uninstall_tests {
         assert!(has_update(Some(100), 200));
         assert!(!has_update(Some(200), 200));
         assert!(!has_update(Some(300), 200));
-        assert!(!has_update(None, 200), "без отметки сравнивать не с чем");
+        assert!(!has_update(None, 200), "without a mark there is nothing to compare with");
         assert_eq!(installed_last_edited(&serde_json::json!({"last-edited": 1_700_000_000})), Some(1_700_000_000));
         assert_eq!(installed_last_edited(&serde_json::json!({"last-edited": " 42 "})), Some(42));
         assert_eq!(installed_last_edited(&serde_json::json!({"last-edited": 4.2e1})), Some(42));
         assert_eq!(installed_last_edited(&serde_json::json!({"uuid": "a@b"})), None);
-        assert_eq!(installed_last_edited(&serde_json::json!({"last-edited": "вчера"})), None);
+        assert_eq!(installed_last_edited(&serde_json::json!({"last-edited": "yesterday"})), None);
     }
 
     #[test]
@@ -3596,7 +3600,7 @@ mod uninstall_tests {
         assert_eq!(d[1], SpiceStep::RemoveTree { path: "/home/u/.local/share/cinnamon/desklets/AlbumArt3.0@claudiux".into() });
         let e = plan_uninstall(&env(), type_for_key("extension").unwrap(), "x@y", &empty).unwrap();
         assert_eq!(e[0], SpiceStep::GsettingsListDrop { schema: "org.cinnamon".into(), key: "enabled-extensions".into(), item: "x@y".into(), field: None });
-        assert!(!e.iter().any(|s| matches!(s, SpiceStep::RemoveFile { .. })), "переводов нет — и снимать нечего");
+        assert!(!e.iter().any(|s| matches!(s, SpiceStep::RemoveFile { .. })), "no translations — nothing to remove");
     }
 
     #[test]
@@ -3617,7 +3621,7 @@ mod uninstall_tests {
         let key = "backup-this-file@h3nr1ke";
         let steps = plan_uninstall(&env(), type_for_key("action").unwrap(), key, &none()).unwrap();
         let d = "/home/u/.local/share/nemo/actions";
-        assert_eq!(steps[0], SpiceStep::RemoveFile { path: format!("{d}/{key}.nemo_action") }, "сначала пропадает пункт меню");
+        assert_eq!(steps[0], SpiceStep::RemoveFile { path: format!("{d}/{key}.nemo_action") }, "the menu item goes first");
         assert_eq!(steps[1], SpiceStep::RemoveTree { path: format!("{d}/{key}") });
         assert_eq!(
             steps[2],
@@ -3780,7 +3784,7 @@ mod exec_tests {
         for e in all[key]["entries"].as_array().unwrap() {
             let name = e[0].as_str().unwrap().trim_end_matches('/');
             let want = format!(".local/share/cinnamon/applets/{name} {:o}", e[1].as_u64().unwrap());
-            assert!(tree.contains(&want), "нет {want}: {tree:#?}");
+            assert!(tree.contains(&want), "missing {want}: {tree:#?}");
         }
         assert!(tree.iter().any(|l| l.starts_with(&format!(".local/share/locale/da/LC_MESSAGES/{key}.mo "))), "{tree:#?}");
         // last-edited is appended at the end, previous keys in the previous order, indent 4.
@@ -3793,10 +3797,10 @@ mod exec_tests {
         let orig_keys: Vec<&String> = orig.as_object().unwrap().keys().collect();
         assert_eq!(&keys[..orig_keys.len()], &orig_keys[..]);
         assert_eq!(keys.last().map(|k| k.as_str()), Some("last-edited"));
-        assert!(meta.contains("\n    \""), "отступ 4: {meta}");
+        assert!(meta.contains("\n    \""), "indent 4: {meta}");
         assert_eq!(journal, vec![(format!("spices:applet:{key}"), vec![format!("{}/{dir}", h.env.home)])]);
         assert_eq!(installed_state(&h.env, type_for_key("applet").unwrap(), key), Some(Some(1_700_000_000)));
-        assert!(sys.reloads.is_empty(), "свежий апплет не включён — перезагружать нечего");
+        assert!(sys.reloads.is_empty(), "a fresh applet is not enabled — nothing to reload");
 
         // Updating an enabled one: the settings are intact, ReloadXlet was called.
         let cfg = format!("{}/cinnamon/spices/{key}", h.env.config);
@@ -3806,7 +3810,7 @@ mod exec_tests {
         let (ok, msg) = install(&h, 1, key, "applet", &spice(key, Value::from(427), 1_800_000_000), &mut sys, &mut journal);
         assert!(ok, "{msg}");
         assert_eq!(sys.reloads, vec![(key.to_string(), "APPLET".to_string())]);
-        assert!(Path::new(&format!("{cfg}/1.json")).is_file(), "настройки пережили обновление");
+        assert!(Path::new(&format!("{cfg}/1.json")).is_file(), "settings survived the update");
         assert_eq!(installed_state(&h.env, type_for_key("applet").unwrap(), key), Some(Some(1_800_000_000)));
 
         // Removal: disabled, the directory, translation and settings removed.
@@ -3815,7 +3819,7 @@ mod exec_tests {
         assert!(sys.lists[&("org.cinnamon".to_string(), "enabled-applets".to_string())].is_empty());
         let left = h.tree();
         assert!(!left.iter().any(|l| l.contains(key)), "{left:#?}");
-        assert!(!left.iter().any(|l| l.starts_with(".local/share/locale/da")), "пустой каталог языка снят: {left:#?}");
+        assert!(!left.iter().any(|l| l.starts_with(".local/share/locale/da")), "an empty language directory is removed: {left:#?}");
     }
 
     #[test]
@@ -3830,10 +3834,10 @@ mod exec_tests {
         let tree = h.tree();
         assert!(tree.iter().any(|l| l.starts_with(&format!("{d}/{key}.nemo_action "))), "{tree:#?}");
         assert!(tree.iter().any(|l| l.starts_with(&format!("{d}/{key}/metadata.json "))), "{tree:#?}");
-        assert!(tree.iter().any(|l| l.starts_with(&format!("{d}/{key}/")) && l.ends_with(".sh 755")), "скрипт исполняемый: {tree:#?}");
+        assert!(tree.iter().any(|l| l.starts_with(&format!("{d}/{key}/")) && l.ends_with(".sh 755")), "the script is executable: {tree:#?}");
         let disabled = ("org.nemo.plugins".to_string(), "disabled-actions".to_string());
-        assert_eq!(sys.lists[&disabled], vec![format!("{key}.nemo_action")], "свежее действие выключено");
-        assert_eq!(journal[0].1.len(), 2, "журнал помнит каталог и файл: {journal:?}");
+        assert_eq!(sys.lists[&disabled], vec![format!("{key}.nemo_action")], "a fresh action is disabled");
+        assert_eq!(journal[0].1.len(), 2, "the journal remembers the directory and the file: {journal:?}");
         // The person enabled it; an update does not touch the list.
         sys.lists.insert(disabled.clone(), Vec::new());
         let (ok, _) = install(&h, 1, key, "action", &spice(key, Value::from(37), 1_800_000_000), &mut sys, &mut journal);
@@ -3874,7 +3878,7 @@ mod exec_tests {
         assert!(!h.tree().iter().any(|l| l.contains(key)), "{:#?}", h.tree());
         assert!(crate::ocs_store::parse_installed_log(std::fs::read_to_string(&log).ok().as_deref()).is_empty());
         let general = crate::install_journal::parse(std::fs::read_to_string(crate::install_journal::journal_path(&rexon)).ok().as_deref())
-            .expect("общий журнал сверен");
+            .expect("shared journal checked");
         assert!(general.items.is_empty(), "{general:#?}");
 
         // Something foreign in place of the directory: the person put a link to their own thing there.
@@ -3891,7 +3895,7 @@ mod exec_tests {
         // is removed, not what it points to.
         let (ok, msg) = uninstall_with(&h.env, t, key, key, &mut sys, &mut |_| {});
         assert!(ok, "{msg}");
-        assert!(mine.is_dir(), "снято то, на что ведёт ссылка");
+        assert!(mine.is_dir(), "the link target is removed");
         assert!(std::fs::symlink_metadata(&dir).is_err());
     }
 
@@ -3989,7 +3993,7 @@ mod exec_tests {
         cleanup_after_removal(&h.env, &format!("{home}/.local/share/nemo/actions/{key}.nemo_action"));
         let tree = h.tree();
         assert!(!tree.iter().any(|l| l.contains(key)), "{tree:#?}");
-        assert!(tree.iter().any(|l| l.contains("keep.mo")), "чужой перевод на месте: {tree:#?}");
+        assert!(tree.iter().any(|l| l.contains("keep.mo")), "a foreign translation stays: {tree:#?}");
         // A path not from the spices directory — nothing.
         cleanup_after_removal(&h.env, &format!("{home}/.local/share/locale"));
         assert!(h.tree().iter().any(|l| l.contains("keep.mo")));
@@ -4007,13 +4011,13 @@ mod card_tests {
         std::fs::create_dir_all(dir.join("3.8")).unwrap();
         std::fs::write(dir.join("applet.js"), "const x = 1;").unwrap();
         std::fs::write(dir.join("README.md"), "GLib.spawn_command_line_sync").unwrap();
-        assert!(!scan_for_danger(&dir), "README не код");
+        assert!(!scan_for_danger(&dir), "README is not code");
         std::fs::write(dir.join("3.8/applet.js"), "let [ok, out] = GLib.spawn_command_line_sync('ls');").unwrap();
-        assert!(scan_for_danger(&dir), "подкаталог версии тоже проверяется");
+        assert!(scan_for_danger(&dir), "a version subdirectory is checked too");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!scan_for_danger(Path::new("/nonexistent/rexon")));
         let env = SpiceEnv::at_home("/home/u");
-        assert_eq!(code_dir(&env, type_for_key("theme").unwrap(), "Adara-Dark"), None, "у темы кода нет");
+        assert_eq!(code_dir(&env, type_for_key("theme").unwrap(), "Adara-Dark"), None, "a theme has no code");
         assert_eq!(
             code_dir(&env, type_for_key("applet").unwrap(), "a@b").as_deref(),
             Some("/home/u/.local/share/cinnamon/applets/a@b")
@@ -4028,7 +4032,7 @@ mod card_tests {
         assert_eq!(stats_line(-3, 0), "\u{a0}0");
         assert_ne!(card_button(true, true).text, crate::appearance_page::card_install_button(true, false, false).text);
         assert_eq!(card_button(true, false).text, crate::appearance_page::card_install_button(true, false, false).text);
-        assert_eq!(card_button(false, true).text, crate::appearance_page::card_install_button(false, false, false).text, "не стоит — «Установить», а не «Обновить»");
+        assert_eq!(card_button(false, true).text, crate::appearance_page::card_install_button(false, false, false).text, "not installed — Install, not Update");
         assert_ne!(detail_button(true, true).text, crate::appearance_page::install_button(true, false, false).text);
         assert!(!detail_button(true, true).tooltip.is_empty());
         assert_eq!(detail_stars(7), "⭐ 7");
@@ -4182,9 +4186,9 @@ pub fn parse_theme_tree(body: &str) -> Result<ThemeParts, String> {
         truncated: bool,
         tree: Vec<Entry>,
     }
-    let tree: Tree = serde_json::from_str(body).map_err(|e| format!("дерево тем не разобрано: {e}"))?;
+    let tree: Tree = serde_json::from_str(body).map_err(|e| format!("theme tree not parsed: {e}"))?;
     if tree.truncated {
-        return Err("дерево тем пришло обрезанным".to_string());
+        return Err("theme tree arrived truncated".to_string());
     }
     let mut out = ThemeParts::new();
     for e in &tree.tree {
@@ -4351,7 +4355,7 @@ pub fn part_missing_message(name: &str, section: &str) -> String {
 /// apply mechanism), in
 /// the description at the top — the [`part_note`] caveat and the theme contents.
 pub fn section_theme_item(s: &Spice, lang: &str, section: &str, de: &str, parts: &[String]) -> ThemeItem {
-    let t = type_for_key("theme").expect("тип тем есть в таблице");
+    let t = type_for_key("theme").expect("the theme type is in the table");
     let mut it = theme_item(t, s, lang);
     if let Some(c) = crate::categories::categories(Path::new("")).into_iter().find(|c| c.key == section) {
         it.category_id = c.id;
@@ -4431,8 +4435,8 @@ mod part_tests {
         assert_eq!(p.keys().map(String::as_str).collect::<Vec<_>>(), ["Adara-Dark", "Aune", "CBlack", "Orchidea", "Winterbloom"]);
         let w = &p["Winterbloom"];
         assert!(w.contains(&"gtk-3.0".to_string()) && w.contains(&"gtk-3.0/gtk.css".to_string()), "{w:?}");
-        assert!(w.windows(2).all(|x| x[0] < x[1]), "по алфавиту, без повторов");
-        assert!(!p["CBlack"].iter().any(|x| x.split('/').count() > 2), "глубже двух уровней не берётся");
+        assert!(w.windows(2).all(|x| x[0] < x[1]), "alphabetical, no duplicates");
+        assert!(!p["CBlack"].iter().any(|x| x.split('/').count() > 2), "nothing deeper than two levels");
         // A truncated tree is an error, not half the themes; garbage — too.
         let cut = tree_body().replacen("\"truncated\": false", "\"truncated\": true", 1);
         assert!(cut.contains("\"truncated\": true"));
@@ -4456,7 +4460,7 @@ mod part_tests {
         assert!(themes_for_section(&index, &p, "gnomeshell").is_empty());
         let shell = vec!["gnome-shell".to_string(), "gnome-shell/gnome-shell.css".to_string()];
         assert!(fits_section("gnomeshell", &has_in(&shell)) && !fits_section("gtk", &has_in(&shell)));
-        assert!(!fits_section("gnomeshell", &has_in(&shell[..1])), "пустой каталог — не тема оболочки");
+        assert!(!fits_section("gnomeshell", &has_in(&shell[..1])), "an empty directory is not a shell theme");
         // Part subdirectories — from the matrix, not as a second copy.
         assert_eq!(part_subdir("xfwm4"), Some("xfwm4"));
         assert_eq!(part_subdir("marco"), Some("metacity-1"));
@@ -4473,15 +4477,15 @@ mod part_tests {
 
     #[test]
     fn note_tells_honestly_what_applies_here() {
-        assert_eq!(part_note("gtk", "cinnamon"), None, "в Cinnamon оговорка не нужна");
+        assert_eq!(part_note("gtk", "cinnamon"), None, "no note needed in Cinnamon");
         assert_eq!(part_note("cinnamontheme", "mate"), None);
         let apps = part_note("gtk", "kde").unwrap();
         let apps_borders = part_note("gtk", "gnome").unwrap();
         let borders = part_note("marco", "mate").unwrap();
         assert_ne!(apps, apps_borders);
         assert_ne!(apps, borders);
-        assert_eq!(part_note("gtk", "budgie").as_deref(), Some(apps_borders.as_str()), "Budgie: рамки — по теме GTK");
-        assert_eq!(part_note("gtk", "xfce").as_deref(), Some(apps.as_str()), "у XFCE рамки — свой раздел");
+        assert_eq!(part_note("gtk", "budgie").as_deref(), Some(apps_borders.as_str()), "Budgie: borders follow the GTK theme");
+        assert_eq!(part_note("gtk", "xfce").as_deref(), Some(apps.as_str()), "XFCE has its own borders section");
         assert_eq!(part_note("xfwm4", "xfce").as_deref(), Some(borders.as_str()));
         let shell = part_note("gnomeshell", "gnome").unwrap();
         assert!(shell != borders && shell != apps_borders);
@@ -4494,7 +4498,7 @@ mod part_tests {
         for (section, id) in [("gtk", 135), ("xfwm4", 906), ("marco", 907)] {
             let it = section_theme_item(&s, "ru_RU", section, "mate", &p["CBlack"]);
             assert_eq!(it.category_id, id, "{section}");
-            assert_eq!(it.id, "spices:theme:CBlack", "{section}: та же запись журнала и то же удаление");
+            assert_eq!(it.id, "spices:theme:CBlack", "{section}: the same journal entry and the same removal");
             assert_eq!(part_section_of(&it), Some(section));
             let note = part_note(section, "mate").unwrap();
             assert!(it.description.starts_with(&note), "{}", it.description);
@@ -4512,9 +4516,9 @@ mod part_tests {
     #[test]
     fn buttons_offer_apply_only_where_the_card_applies() {
         use crate::appearance_page::{card_install_button, install_button};
-        assert_eq!(card_button_for(true, false, true).text, card_install_button(true, false, true).text, "стоит — «Применить»");
+        assert_eq!(card_button_for(true, false, true).text, card_install_button(true, false, true).text, "installed — Apply");
         assert_eq!(card_button_for(true, false, false).text, card_button(true, false).text);
-        assert_eq!(card_button_for(true, true, true).text, card_button(true, true).text, "новее на сайте — «Обновить»");
+        assert_eq!(card_button_for(true, true, true).text, card_button(true, true).text, "newer on the site — Update");
         assert_eq!(card_button_for(false, false, true).text, card_install_button(false, false, false).text);
         assert_eq!(detail_button_for(true, false, true).text, install_button(true, false, true).text);
         assert_eq!(detail_button_for(true, true, true).text, detail_button(true, true).text);
@@ -4526,7 +4530,7 @@ mod part_tests {
     impl ConditionalNet for Replay {
         fn conditional_get(&mut self, url: &str, _ua: &str, etag: &str, _lm: &str, _t: u64) -> Result<CondReply, NetError> {
             self.1.push((url.into(), etag.into()));
-            assert!(!self.0.is_empty(), "лишний запрос");
+            assert!(!self.0.is_empty(), "an extra request");
             self.0.remove(0)
         }
     }
@@ -4552,7 +4556,7 @@ mod part_tests {
         assert_eq!((r.source, r.parts.len(), r.note.as_str()), (RefreshSource::Downloaded, 5, ""));
         assert_eq!(net.1, [(THEME_TREE_URL.to_string(), String::new())]);
         let saved = std::fs::read_to_string(&p).unwrap();
-        assert!(saved.len() < 20_000 && !saved.contains("\"tree\""), "в кэше состав, а не дерево");
+        assert!(saved.len() < 20_000 && !saved.contains("\"tree\""), "the cache holds the contents, not the tree");
         // A day — without network.
         let mut quiet = Replay(Vec::new(), Vec::new());
         assert_eq!(refresh_parts(&mut quiet, &p, false, T0 + 3600).source, RefreshSource::Cache);
@@ -4576,7 +4580,7 @@ mod part_tests {
         }
         let mut quiet = Replay(Vec::new(), Vec::new());
         let r = refresh_parts(&mut quiet, &p, false, T0 + 2 * CACHE_TTL_SECS + 60);
-        assert_eq!((r.source, r.parts.len()), (RefreshSource::Stale, 5), "после сбоя не стучаться сразу");
+        assert_eq!((r.source, r.parts.len()), (RefreshSource::Stale, 5), "after a failure do not knock right away");
         // No cache at all and no network — empty and an explanation.
         let q = tmp("offline");
         let mut net = Replay(vec![Err(NetError::Transport { detail: "dns".into() })], Vec::new());
@@ -4612,7 +4616,7 @@ mod part_tests {
             Some(Vec::new())
         }
         fn list_set(&mut self, _: &str, _: &str, _: &[String]) -> Result<(), String> {
-            panic!("тема списков gsettings не трогает")
+            panic!("a list theme does not touch gsettings")
         }
         fn string_get(&mut self, _: &str, _: &str) -> Option<String> {
             None
@@ -4621,7 +4625,7 @@ mod part_tests {
             Ok(())
         }
         fn reload_xlet(&mut self, _: &str, _: &str) -> Result<(), String> {
-            panic!("тема — не xlet")
+            panic!("a theme is not an xlet")
         }
     }
 
@@ -4654,7 +4658,7 @@ mod part_tests {
         let (ok, msg) = install_in(&h, 0, "Winter", &["gtk-3.0/gtk.css", "index.theme"], Some("gtk"));
         assert!(ok, "{msg}");
         assert!(Path::new(&format!("{themes}/Winter/gtk-3.0/gtk.css")).is_file());
-        assert!(Path::new(&format!("{themes}/Winter/cinnamon/cinnamon.css")).is_file(), "тема ставится целиком");
+        assert!(Path::new(&format!("{themes}/Winter/cinnamon/cinnamon.css")).is_file(), "the theme is installed whole");
         // The archive diverged from the tree: no GTK — a refusal, nothing on disk.
         let (ok, msg) = install_in(&h, 1, "OnlyShell", &["metacity-1/metacity-theme-3.xml"], Some("gtk"));
         assert!(!ok && msg == part_missing_message("OnlyShell", "gtk"), "{msg}");
@@ -4679,7 +4683,7 @@ mod part_tests {
         let gtk = r.parts.values().filter(|v| fits_section("gtk", &has_in(v))).count();
         let marco = r.parts.values().filter(|v| fits_section("marco", &has_in(v))).count();
         let xfwm = r.parts.values().filter(|v| fits_section("xfwm4", &has_in(v))).count();
-        eprintln!("тем {}, GTK {gtk}, Marco {marco}, xfwm4 {xfwm}", r.parts.len());
+        eprintln!("themes {}, GTK {gtk}, Marco {marco}, xfwm4 {xfwm}", r.parts.len());
         assert!(r.parts.len() > 50 && gtk > 20 && marco > 20 && xfwm > 5);
         let again = refresh_parts(&mut net, &p, true, T0 + 10);
         assert_eq!(again.source, RefreshSource::NotModified);
@@ -4691,11 +4695,11 @@ mod part_tests {
         let h = Home::new("press");
         let s = spice("Winter", 1_700_000_000);
         let card = section_theme_item(&s, "ru_RU", "gtk", "kde", &["gtk-3.0".into(), "gtk-3.0/gtk.css".into()]);
-        assert_eq!(part_apply_name(&h.1, &card, &[s.clone()]), None, "не стоит — поставить");
+        assert_eq!(part_apply_name(&h.1, &card, &[s.clone()]), None, "not installed — install");
         assert!(install_in(&h, 0, "Winter", &["gtk-3.0/gtk.css"], Some("gtk")).0);
-        assert_eq!(part_apply_name(&h.1, &card, &[s.clone()]).as_deref(), Some("Winter"), "стоит — применить");
+        assert_eq!(part_apply_name(&h.1, &card, &[s.clone()]).as_deref(), Some("Winter"), "installed — apply");
         let newer = Spice { last_edited: s.last_edited + 10, ..s.clone() };
-        assert_eq!(part_apply_name(&h.1, &card, &[newer]), None, "на сайте новее — обновить");
+        assert_eq!(part_apply_name(&h.1, &card, &[newer]), None, "newer on the site — update");
         // The Cinnamon section card is not applied this way: there the installed tile
         // enables it.
         let cin = theme_item(type_for_key("theme").unwrap(), &s, "ru_RU");

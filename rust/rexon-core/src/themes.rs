@@ -2830,7 +2830,7 @@ fn kde_part_steps(theme: &str, press: &GlobalPress, part: LnfPart) -> Result<Vec
         },
         LnfPart::WidgetStyle => {
             let style = lnf_section_value(c, part).unwrap_or_default();
-            let env = KvantumEnv { de_id: "kde", home: "", xdg_config_home: "", platform_theme: "", icon_theme: String::new() };
+            let env = KvantumEnv { de_id: "kde", home: "", xdg_config_home: "", platform_theme: "", icon_theme: String::new(), qt_desktop_installed: false };
             apply_qt_style_plan(&style, &env).steps
         }
         LnfPart::PlasmaTheme => apply_kde_plasma_plan(c.value("plasmarc/Theme/name").unwrap_or_default()).steps,
@@ -3191,6 +3191,34 @@ pub fn qt_style_helper_pkg(pkg_family: &str) -> Option<String> {
 /// terminal's).
 pub const QT_STYLE_ENV_FILE: &str = "rexon-qt-style.conf";
 
+/// Where Rexon keeps session variables that must NOT reach every desktop
+/// (relative to `$XDG_CONFIG_HOME`). systemd does not read this directory;
+/// [`crate::compositor_autostart::sync_session_env`] mirrors it only into
+/// desktop-bound places (the `~/.xprofile` block with `case` on the desktop,
+/// the labwc `environment` files, Hyprland's `env =`).
+pub const DESKTOP_BOUND_ENV_DIR: &str = "rexon/session-env";
+
+/// Desktops with their own Qt integration (a platform theme of their own):
+/// `QT_QPA_PLATFORMTHEME=qt6ct` or `QT_STYLE_OVERRIDE` in their session takes it
+/// away from their programs.
+pub const OWN_QT_THEME_DESKTOPS: &[&str] = &["kde", "lxqt", "deepin"];
+
+/// Whether a desktop with its own Qt integration ([`OWN_QT_THEME_DESKTOPS`]) is
+/// installed. `has_bin` — whether a program is in `PATH`.
+pub fn own_qt_desktop_installed(has_bin: &dyn Fn(&str) -> bool) -> bool {
+    OWN_QT_THEME_DESKTOPS
+        .iter()
+        .any(|de| crate::system::de_installed_binaries(de).iter().any(|b| has_bin(b)))
+}
+
+/// Both places the Qt style variables file may be in (shared first).
+pub fn qt_style_env_paths(config_home: &str) -> [String; 2] {
+    [
+        format!("{config_home}/environment.d/{QT_STYLE_ENV_FILE}"),
+        format!("{config_home}/{DESKTOP_BOUND_ENV_DIR}/{QT_STYLE_ENV_FILE}"),
+    ]
+}
+
 /// Environment for the Kvantum theme apply plan.
 pub struct KvantumEnv<'a> {
     /// Desktop identifier (`system::detect_current_de`).
@@ -3206,6 +3234,10 @@ pub struct KvantumEnv<'a> {
     /// Goes into the qt6ct config if it has none of its own yet: without it Qt
     /// programs under qt6ct lose their icons (Papirus → hicolor, D2).
     pub icon_theme: String,
+    /// A desktop with its own Qt integration is installed
+    /// ([`own_qt_desktop_installed`]): then the variables do not go into the
+    /// shared `environment.d` (see [`qt_style_switch_steps`]).
+    pub qt_desktop_installed: bool,
 }
 
 /// Kvantum theme apply plan — port of `apply_kvantum_theme`, extended to all
@@ -3330,11 +3362,30 @@ fn qt_style_switch_steps(style: &str, env: &KvantumEnv, after_primary: bool) -> 
                 }
                 format!("QT_QPA_PLATFORMTHEME={tool}\n")
             };
-            steps.push(ApplyStep::WriteIfOk {
-                dir: format!("{cfg}/environment.d"),
-                path: format!("{cfg}/environment.d/{QT_STYLE_ENV_FILE}"),
-                content,
-            });
+            // ⚠️ `~/.config/environment.d` is read by EVERY session systemd
+            // starts, and Plasma explicitly imports it into its own environment
+            // (`startplasma`, after its env scripts — nothing there can undo it).
+            // With qt6ct there, «Kvantum in GNOME» moved Plasma's programs off
+            // the KDE platform theme. So while a desktop with its own Qt
+            // integration is installed, the variables go into Rexon's own
+            // directory, which only desktop-bound places mirror
+            // ([`DESKTOP_BOUND_ENV_DIR`]), and the shared file is removed.
+            let [shared, bound] = qt_style_env_paths(&cfg);
+            if env.qt_desktop_installed {
+                steps.push(ApplyStep::WriteIfOk {
+                    dir: format!("{cfg}/{DESKTOP_BOUND_ENV_DIR}"),
+                    path: bound,
+                    content,
+                });
+                steps.push(ApplyStep::RemoveIfOk { path: shared });
+            } else {
+                steps.push(ApplyStep::WriteIfOk {
+                    dir: format!("{cfg}/environment.d"),
+                    path: shared,
+                    content,
+                });
+                steps.push(ApplyStep::RemoveIfOk { path: bound });
+            }
         }
         // Neither a variable nor "success" — see [`QtStyleWay::Deepin`].
         QtStyleWay::Deepin => {}

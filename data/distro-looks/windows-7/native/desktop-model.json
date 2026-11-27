@@ -1,0 +1,44 @@
+{
+  "schema": "rexon-desktop-model/1",
+  "about": "Rexon's own description of a Windows 7 style desktop for MATE, Xfce and Cinnamon: roles and values only, no code. From the community theme only the GTK, Metacity and xfwm4 parts are taken (copy_only): its Cinnamon and GNOME Shell parts are not copied. From the icon archive the author's install scripts, packaging files and the prebuilt icon cache are dropped, and the icon set inherits themes that exist on every system.",
+  "copy_only": [
+    "sources/Windows-7/index.theme",
+    "sources/Windows-7/gtk-2.0",
+    "sources/Windows-7/gtk-3.0",
+    "sources/Windows-7/gtk-4.0",
+    "sources/Windows-7/metacity-1",
+    "sources/Windows-7/xfwm4"
+  ],
+  "exclude": [
+    "sources/w7-icons/Windows-7/icon-theme.cache",
+    "sources/w7-icons/Windows-7/install.sh",
+    "sources/w7-icons/Windows-7/PKGBUILD",
+    "sources/w7-icons/Windows-7/.SRCINFO",
+    "sources/w7-icons/Windows-7/llms.md",
+    "sources/w7-icons/Windows-7/llms.txt",
+    "sources/w7-icons/Windows-7/.gitattributes",
+    "sources/w7-icons/Windows-7/.gitignore",
+    "sources/w7-icons/Windows-7/preview.png"
+  ],
+  "edits": [
+    {"file": "sources/w7-icons/Windows-7/index.theme", "ini_set": {"group": ["Icon Theme"], "key": "Inherits", "value": "Adwaita,hicolor"}}
+  ],
+  "panels": [
+    {
+      "edge": "bottom",
+      "size": 40,
+      "expand": true,
+      "items": [
+        {"role": "menu", "prefer": "mate-menu",
+         "label": {"en": "Start", "ru": "Пуск", "de": "Start", "zh_CN": "开始", "fr": "Démarrer", "es": "Inicio", "uk": "Пуск"}},
+        {"role": "windows"},
+        {"role": "tray", "align": "end"},
+        {"role": "clock", "align": "end"},
+        {"role": "show-desktop", "align": "end"}
+      ]
+    }
+  ],
+  "behaviour": {
+    "window_buttons": ":minimize,maximize,close"
+  }
+}

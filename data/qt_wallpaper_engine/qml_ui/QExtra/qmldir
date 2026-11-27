@@ -1,9 +1,9 @@
 module QExtra
-# НАШ модуль, не вендорный: замена C++-модуля QExtra (hypengw) на QML —
-# ровно те типы, которые зовёт вендорная разметка waywallen (с v0.4.4 —
-# `Global.qml`, `component/ThumbnailImage.qml`; с v0.6.0 ещё `Image`). Зачем и чем отличается —
-# шапки файлов ниже.
+# OUR module, not a vendored one: a QML replacement of the QExtra C++ module (hypengw) —
+# exactly the types the vendored waywallen markup calls (since v0.4.4 —
+# `Global.qml`, `component/ThumbnailImage.qml`; since v0.6.0 also `Image`). Why and how it differs —
+# see the headers of the files below.
 singleton ImageCache 1.0 ImageCache.qml
 AnimatedImage 1.0 AnimatedImage.qml
-# waywallen 0.6.0: перечисления базового типа (режим загрузки, состояние).
+# waywallen 0.6.0: enumerations of the base type (load mode, status).
 Image 1.0 Image.qml

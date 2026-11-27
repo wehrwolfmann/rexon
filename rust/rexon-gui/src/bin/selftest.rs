@@ -42,6 +42,14 @@
 // is always green checks nothing): `--layer-shell-bite` (all kinds in a
 // row) or `--layer-shell-bite=<kind>` — a run with a spoiled layer MUST go
 // red.
+//
+// The idle screensaver overlay bench (OVERLAY layer, exclusive keyboard, one
+// window per screen, leaving on a key / a pointer move). ⛔ Only inside a
+// nested compositor — the stand brings one up in an isolated environment and
+// runs the bench there:
+//     cargo run -p rexon-gui --bin rexon-gui-selftest -- --overlay-stand=labwc
+//     cargo run -p rexon-gui --bin rexon-gui-selftest -- --overlay-stand=kwin --overlay-bite
+// Analysis and the machine-readable verdict — `layer_shell_selftest::overlay`.
 
 use cxx_qt_lib::{
     QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QUrl,
@@ -130,9 +138,35 @@ fn main() {
     if has(PROBE_ARG) {
         std::process::exit(run_layer_shell_probe());
     }
+    // Idle screensaver overlay bench: same two-process scheme; the stand
+    // variant brings up its own nested compositor first.
+    {
+        use rexon_gui::layer_shell_selftest::overlay as ov;
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let value = |prefix: &str| {
+            args.iter().find(|a| a.as_str() == prefix || a.starts_with(&format!("{prefix}="))).map(|a| {
+                a.split_once('=').map(|(_, v)| v.to_string()).unwrap_or_default()
+            })
+        };
+        if let Some(name) = value(ov::STAND_ARG) {
+            let rest: Vec<String> = args.iter().filter(|a| !a.starts_with(ov::STAND_ARG)).cloned().collect();
+            std::process::exit(ov::run_stand(&name, &rest));
+        }
+        if let Some(spec) = value(ov::SELFTEST_ARG) {
+            std::process::exit(ov::run(&spec));
+        }
+        if let Some(kind) = value(ov::BITE_ARG) {
+            std::process::exit(ov::run_bite(&kind));
+        }
+        if has(ov::PROBE_ARG) {
+            std::process::exit(run_overlay_probe());
+        }
+    }
     let live: Vec<&str> = LIVE_MODEL_SCENARIOS.iter().map(|(arg, _)| *arg).collect();
     eprintln!(
-        "не указан сценарий: {} | {} | {} | {} | {} | {} | {} | {}[=вид]",
+        "не указан сценарий: {} | {} | {} | {} | {} | {} | {} | {}[=вид] | \
+         --overlay-selftest[=key|motion|none] | --overlay-bite[=вид] | \
+         --overlay-stand=labwc|sway|kwin [аргументы проверки]",
         rexon_gui::remote_list_model::selftest::ARG,
         rexon_gui::we_stop_selftest::ARG,
         rexon_gui::discover_queries::selftest::ARG,
@@ -304,6 +338,49 @@ fn store_files_fixture(two: bool) -> String {
         ..Default::default()
     };
     rexon_core::appearance_page::store_file_choices_json(&item)
+}
+
+/// Test subject of the idle screensaver overlay bench: one OVERLAY window per
+/// screen with the exclusive keyboard (`qml/OverlayProbe.qml`).
+///
+/// It covers everything and takes the keyboard, so it has its own watchdog on
+/// top of the QML "no input" timer and the parent's process killer: even a
+/// hung QML cannot turn it into an invisible wall for long.
+fn run_overlay_probe() -> i32 {
+    use rexon_gui::layer_shell_selftest::overlay as ov;
+    cxx_qt::init_qml_module!("org.rexon.gui");
+
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(25));
+        eprintln!("проба заставки не закончилась за 25 с — снимаю её с экрана");
+        std::process::exit(3);
+    });
+
+    let mut app = QGuiApplication::new();
+    if let Some(app) = app.as_mut() {
+        app.set_application_name(&QString::from("Rexon (overlay probe)"));
+    }
+    let mut engine = QQmlApplicationEngine::new();
+    if let Some(mut engine) = engine.as_mut() {
+        let bite = std::env::var(ov::BITE_ENV).unwrap_or_default();
+        let wait_ms: i32 = std::env::var(ov::INPUT_WAIT_ENV)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(8000);
+        let mut props = QMap::<QMapPair_QString_QVariant>::default();
+        props.insert(QString::from("bite"), QVariant::from(&QString::from(&bite)));
+        props.insert(
+            QString::from("wakeMotionPx"),
+            QVariant::from(&rexon_core::idle_screensaver::WAKE_MOTION_PX),
+        );
+        props.insert(QString::from("inputWaitMs"), QVariant::from(&wait_ms));
+        engine.as_mut().set_initial_properties(&props);
+        engine.load(&QUrl::from("qrc:/qt/qml/org/rexon/gui/qml/OverlayProbe.qml"));
+    }
+    match app.as_mut() {
+        Some(app) => app.exec(),
+        None => 2,
+    }
 }
 
 /// Test subject window of the wallpaper layer bench: a QML window whose

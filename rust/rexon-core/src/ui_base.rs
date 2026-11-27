@@ -508,10 +508,10 @@ QComboBox QAbstractItemView {
     selection-background-color: rgba(255,45,149,0.45);
 }
 QCheckBox, QRadioButton, QLabel { color: %TEXT%; background: transparent; }
-/* Полная стилизация индикаторов: если задать только :checked, Qt рисует
-   невыбранные как пустой бокс, а радио без border-radius выходит КВАДРАТНЫМ
-   (баг 2026-06-22: зелёный квадрат вместо круга). Описываем обе стадии +
-   форму. */
+/* Full indicator styling: with only :checked set, Qt draws unchecked ones
+   as an empty box, and a radio without border-radius comes out SQUARE
+   (bug 2026-06-22: a green square instead of a circle). Describe both states +
+   the shape. */
 QCheckBox::indicator, QRadioButton::indicator {
     width: 14px;
     height: 14px;

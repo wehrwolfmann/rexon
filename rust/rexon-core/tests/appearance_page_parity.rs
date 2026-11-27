@@ -870,6 +870,31 @@ fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     assert_eq!(v.screen(home), ap::SCREEN_SETTINGS);
 }
 
+/// "Orientation: All / Horizontal / Vertical" (24.11.2026): only in the
+/// Wallhaven store (its cards carry the picture size and its server filters
+/// by it); the choice goes into the request key, so a filtered page is not
+/// mixed up with an unfiltered one. KDE Store cards carry no size — no line.
+#[test]
+fn orientation_line_only_in_wallhaven() {
+    use rexon_core::wallpaper_screens::WallpaperOrientation;
+    let _lang = i18n_pin::en();
+    let mut v = view("wallpapers");
+    v.orientation_filter = "portrait".to_string();
+    assert!(!v.orientation_bar(), "KDE Store: no line");
+    assert_eq!(v.active_orientation(), None);
+    v.source = ap::SOURCE_WALLHAVEN.to_string();
+    assert!(v.wallhaven_mode() && v.orientation_bar());
+    assert_eq!(v.active_orientation(), Some(WallpaperOrientation::Portrait));
+    let tall = v.request_key();
+    v.orientation_filter.clear();
+    assert_eq!(v.active_orientation(), None);
+    assert_ne!(tall, v.request_key());
+    let chips = ap::orientation_chips();
+    let labels: Vec<_> = chips.iter().map(|c| (c.key, c.label.as_str())).collect();
+    assert_eq!(labels, [("", "All"), ("landscape", "Horizontal"), ("portrait", "Vertical")]);
+    assert!(chips.iter().all(|c| !c.tooltip.is_empty()));
+}
+
 #[test]
 fn catalog_starts_on_new_and_on_the_kde_store() {
     let _lang = i18n_pin::ru();

@@ -146,6 +146,8 @@ pub mod qobject {
                     READ = source_label, CONSTANT)]
         #[qproperty(QString, submode_label, cxx_name = "submodeLabel",
                     READ = submode_label, CONSTANT)]
+        #[qproperty(QString, orientation_bar_label, cxx_name = "orientationBarLabel",
+                    READ = orientation_bar_label, CONSTANT)]
         #[qproperty(QString, cursor_size_label, cxx_name = "cursorSizeLabel",
                     READ = cursor_size_label, CONSTANT)]
         #[qproperty(QString, de_label, cxx_name = "deLabel",
@@ -198,6 +200,9 @@ pub mod qobject {
         // The "All / Light / Dark" filter for colour schemes and Plasma styles.
         #[qproperty(bool, tone_bar_visible, cxx_name = "toneBarVisible",
                     READ = tone_bar_visible, NOTIFY = chrome_changed)]
+        // "All / Horizontal / Vertical" in a store that knows the picture size.
+        #[qproperty(bool, orientation_bar_visible, cxx_name = "orientationBarVisible",
+                    READ = orientation_bar_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, cursor_size_bar_visible, cxx_name = "cursorSizeBarVisible",
                     READ = cursor_size_bar_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, sort_visible, cxx_name = "sortVisible",
@@ -258,6 +263,8 @@ pub mod qobject {
                     READ = lock_chips, NOTIFY = chrome_changed)]
         #[qproperty(QList_QVariant, tone_chips, cxx_name = "toneChips",
                     READ = tone_chips, NOTIFY = chrome_changed)]
+        #[qproperty(QList_QVariant, orientation_chips, cxx_name = "orientationChips",
+                    READ = orientation_chips, NOTIFY = chrome_changed)]
         // Cursor size chips: [{key, label, tooltip}, …]; which one is checked is
         // decided by the page by the answer of `actions.cursorSize()`.
         #[qproperty(QList_QVariant, cursor_size_chips, cxx_name = "cursorSizeChips",
@@ -845,6 +852,8 @@ pub mod qobject {
         fn source_label(self: &AppearanceModel) -> QString;
         #[cxx_name = "submodeLabel"]
         fn submode_label(self: &AppearanceModel) -> QString;
+        #[cxx_name = "orientationBarLabel"]
+        fn orientation_bar_label(self: &AppearanceModel) -> QString;
         #[cxx_name = "cursorSizeLabel"]
         fn cursor_size_label(self: &AppearanceModel) -> QString;
         #[cxx_name = "deLabel"]
@@ -885,6 +894,8 @@ pub mod qobject {
         fn lock_bar_visible(self: &AppearanceModel) -> bool;
         #[cxx_name = "toneBarVisible"]
         fn tone_bar_visible(self: &AppearanceModel) -> bool;
+        #[cxx_name = "orientationBarVisible"]
+        fn orientation_bar_visible(self: &AppearanceModel) -> bool;
         #[cxx_name = "cursorSizeBarVisible"]
         fn cursor_size_bar_visible(self: &AppearanceModel) -> bool;
         #[cxx_name = "sortVisible"]
@@ -932,6 +943,8 @@ pub mod qobject {
         fn lock_chips(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "toneChips"]
         fn tone_chips(self: &AppearanceModel) -> QList_QVariant;
+        #[cxx_name = "orientationChips"]
+        fn orientation_chips(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "cursorSizeChips"]
         fn cursor_size_chips(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "sortKey"]
@@ -1245,6 +1258,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setToneFilter"]
         fn set_tone_filter(self: Pin<&mut AppearanceModel>, key: &QString);
+
+        /// The orientation filter of a store that knows the picture size
+        /// (`WallpaperOrientation` key, empty — "All").
+        #[qinvokable]
+        #[cxx_name = "setOrientationFilter"]
+        fn set_orientation_filter(self: Pin<&mut AppearanceModel>, key: &QString);
 
         /// The catalogue sort.
         #[qinvokable]
@@ -1780,6 +1799,7 @@ use rexon_core::categories;
 use rexon_core::cinnamon_spices as cs;
 use rexon_core::gnome_ext_section as gext;
 use rexon_core::wallhaven as wh;
+use rexon_core::wallpaper_screens::WallpaperOrientation;
 use rexon_core::models::{ThemeCategory, ThemeItem};
 use rexon_core::ocs;
 use rexon_core::ui_base;
@@ -2650,6 +2670,9 @@ impl qobject::AppearanceModel {
     fn submode_label(&self) -> QString {
         QString::from(&ap::submode_label())
     }
+    fn orientation_bar_label(&self) -> QString {
+        QString::from(&ap::orientation_bar_label())
+    }
     fn cursor_size_label(&self) -> QString {
         QString::from(&ap::cursor_size_label())
     }
@@ -2967,6 +2990,25 @@ impl qobject::AppearanceModel {
 
     fn tone_bar_visible(&self) -> bool {
         self.rust().view.tone_bar()
+    }
+
+    fn orientation_bar_visible(&self) -> bool {
+        self.rust().view.orientation_bar()
+    }
+
+    /// Orientation chips (`ap::orientation_chips`).
+    fn orientation_chips(&self) -> QList<QVariant> {
+        let active = self.rust().view.active_orientation().map_or("", WallpaperOrientation::key);
+        let mut out = QList::<QVariant>::default();
+        for chip in ap::orientation_chips() {
+            out.append(QVariant::from(&vmap(vec![
+                ("key", qstr(chip.key)),
+                ("label", qstr(&chip.label)),
+                ("tooltip", qstr(&chip.tooltip)),
+                ("checked", QVariant::from(&(chip.key == active))),
+            ])));
+        }
+        out
     }
 
     /// Whether the chosen filter narrows the grid down to the installed items
@@ -3529,6 +3571,16 @@ impl qobject::AppearanceModel {
             let wayland = rexon_core::animations::LookCtx::from_env().for_chosen(&de).wayland;
             self.as_mut().rust_mut().view.session = categories::Session::from_wayland(wayland);
         }
+        // Whether Plasma, LXQt or Deepin is installed — for the Qt style caveat
+        // on sway/river/Wayfire: the variables file is elsewhere then. Only in
+        // the sections that carry this caveat.
+        if matches!(self.rust().view.category.key.as_str(), "kvantum" | "widgetstyle" | "colors") {
+            let path = std::env::var("PATH").ok();
+            let installed = rexon_core::themes::own_qt_desktop_installed(&|b| {
+                rexon_core::utils::which(b, path.as_deref()).is_some()
+            });
+            self.as_mut().rust_mut().view.qt_desktop_installed = installed;
+        }
         // Whether Razer Axon is found — for its chip and the settings block in the
         // wallpaper section: Axon may have been installed (or its folder
         // specified) with the window open. The probe walks the known Wine
@@ -3893,6 +3945,20 @@ impl qobject::AppearanceModel {
         self.resync();
     }
 
+    fn set_orientation_filter(mut self: Pin<&mut Self>, key: &QString) {
+        let key = key.to_string();
+        {
+            let mut me = self.as_mut().rust_mut();
+            if me.view.orientation_filter == key {
+                return;
+            }
+            me.view.orientation_filter = key;
+            // Another selection on the server: page 1 of it.
+            me.view.page = 0;
+        }
+        self.resync();
+    }
+
     fn set_sort(mut self: Pin<&mut Self>, key: &QString) {
         let key = key.to_string();
         {
@@ -4088,6 +4154,7 @@ impl qobject::AppearanceModel {
             "pageSize": me.page_size(),
             "sort": me.view.active_sort(),
             "query": me.view.query,
+            "orientation": me.view.active_orientation().map_or("", WallpaperOrientation::key),
             "which": me.view.local_scan_which(),
             "aurKey": me.view.aur_cache_key(),
             "lockMode": me.view.lock_mode_effective(),

@@ -209,12 +209,12 @@ pub enum OwnerProblem {
 impl fmt::Display for OwnerProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotAbsolute(p) => write!(f, "путь не абсолютный: {}", p.display()),
-            Self::NotRoot(p) => write!(f, "владелец не root: {}", p.display()),
-            Self::Writable(p) => write!(f, "запись для группы или всех: {}", p.display()),
-            Self::NotRegular(p) => write!(f, "не обычный файл: {}", p.display()),
-            Self::NotDirectory(p) => write!(f, "не каталог: {}", p.display()),
-            Self::NotExecutable(p) => write!(f, "не исполняемый: {}", p.display()),
+            Self::NotAbsolute(p) => write!(f, "path is not absolute: {}", p.display()),
+            Self::NotRoot(p) => write!(f, "owner is not root: {}", p.display()),
+            Self::Writable(p) => write!(f, "writable by group or others: {}", p.display()),
+            Self::NotRegular(p) => write!(f, "not a regular file: {}", p.display()),
+            Self::NotDirectory(p) => write!(f, "not a directory: {}", p.display()),
+            Self::NotExecutable(p) => write!(f, "not executable: {}", p.display()),
             Self::Unreadable(p, e) => write!(f, "{}: {e}", p.display()),
         }
     }
@@ -364,7 +364,7 @@ impl Spawner for CommandSpawner {
     fn spawn(&mut self, argv: &[String], helper_end: OwnedFd) -> io::Result<Box<dyn HelperChild>> {
         let (program, args) = argv
             .split_first()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "пустой argv"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty argv"))?;
         let out = helper_end.try_clone()?;
         let mut cmd = Command::new(program);
         cmd.args(args)
@@ -507,32 +507,32 @@ impl ClientError {
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::HelperMissing => write!(f, "помощника сеанса прав нет"),
-            Self::HelperBadOwner(p) => write!(f, "помощник сеанса прав недопустим: {p}"),
+            Self::HelperMissing => write!(f, "the privilege session helper is missing"),
+            Self::HelperBadOwner(p) => write!(f, "the privilege session helper is unacceptable: {p}"),
             Self::HelperOtherBuild { helper_build } => {
-                write!(f, "помощник сеанса прав другой сборки ({helper_build}) — прежним путём")
+                write!(f, "the privilege session helper is from another build ({helper_build}), using the old path")
             }
-            Self::NotAuthorized { code } => write!(f, "пароль не подтверждён (pkexec {code})"),
+            Self::NotAuthorized { code } => write!(f, "password not confirmed (pkexec {code})"),
             Self::BuildMismatch { helper_build: Some(b) } => {
-                write!(f, "помощник другой сборки ({b}): Rexon обновлён, нужен перезапуск")
+                write!(f, "helper from another build ({b}): Rexon was updated, a restart is needed")
             }
             Self::BuildMismatch { helper_build: None } => {
-                write!(f, "помощник другой сборки: Rexon обновлён, нужен перезапуск")
+                write!(f, "helper from another build: Rexon was updated, a restart is needed")
             }
-            Self::Refused { message_key } => write!(f, "помощник отказал: {message_key}"),
-            Self::HelperFailed { message_key } => write!(f, "сбой помощника: {message_key}"),
-            Self::Cancelled => write!(f, "операция отменена"),
-            Self::Revoked { message_key } => write!(f, "право отозвано: {message_key}"),
+            Self::Refused { message_key } => write!(f, "the helper refused: {message_key}"),
+            Self::HelperFailed { message_key } => write!(f, "helper failure: {message_key}"),
+            Self::Cancelled => write!(f, "operation cancelled"),
+            Self::Revoked { message_key } => write!(f, "privilege revoked: {message_key}"),
             Self::SessionLost { outcome_unknown: true, detail } => {
-                write!(f, "сеанс прав оборвался, исход операции неизвестен: {detail}")
+                write!(f, "the privilege session broke off, the outcome of the operation is unknown: {detail}")
             }
             Self::SessionLost { outcome_unknown: false, detail } => {
-                write!(f, "сеанс прав оборвался, операция не исполнялась: {detail}")
+                write!(f, "the privilege session broke off, the operation was not executed: {detail}")
             }
-            Self::Closed => write!(f, "сеанс прав закрыт окном"),
-            Self::Busy => write!(f, "помощник занят другой операцией"),
-            Self::Spawn(e) => write!(f, "не запустить помощника: {e}"),
-            Self::InvalidRequest(e) => write!(f, "негодный запрос: {e}"),
+            Self::Closed => write!(f, "the privilege session was closed by the window"),
+            Self::Busy => write!(f, "the helper is busy with another operation"),
+            Self::Spawn(e) => write!(f, "cannot start the helper: {e}"),
+            Self::InvalidRequest(e) => write!(f, "invalid request: {e}"),
         }
     }
 }
@@ -735,9 +735,9 @@ impl Death {
     /// Error of the operation that was with the helper when the session ended.
     fn in_flight_error(&self) -> ClientError {
         let detail = match self {
-            Self::Closed => "окно закрыло сеанс".to_string(),
-            Self::Revoked(key) => format!("право отозвано ({key})"),
-            Self::BuildMismatch(_) => "помощник другой сборки".to_string(),
+            Self::Closed => "the window closed the session".to_string(),
+            Self::Revoked(key) => format!("privilege revoked ({key})"),
+            Self::BuildMismatch(_) => "helper from another build".to_string(),
             Self::Lost(d) => d.clone(),
         };
         ClientError::SessionLost {
@@ -932,7 +932,7 @@ impl Pending {
                 Err(_) => {
                     return Err(ClientError::SessionLost {
                         outcome_unknown: true,
-                        detail: "поток сеанса прав пропал".into(),
+                        detail: "the privilege session thread is gone".into(),
                     })
                 }
             }
@@ -1018,7 +1018,7 @@ fn session_loop(shared: &Shared) -> Death {
                 return if shared.lock().closing {
                     Death::Closed
                 } else {
-                    Death::Lost("помощник закрыл канал".into())
+                    Death::Lost("the helper closed the channel".into())
                 };
             }
             Err(e) => {
@@ -1096,7 +1096,7 @@ fn handle_msg(shared: &Shared, msg: HelperMsg) -> Option<Death> {
                     Some(Death::BuildMismatch(None))
                 }
                 ErrorCode::Sequence => {
-                    let detail = format!("помощник: нарушен порядок ({message_key})");
+                    let detail = format!("helper: sequence violated ({message_key})");
                     st.dead = Some(Death::Lost(detail.clone()));
                     c.finish(Err(ClientError::SessionLost {
                         outcome_unknown: false,
@@ -1116,7 +1116,7 @@ fn handle_msg(shared: &Shared, msg: HelperMsg) -> Option<Death> {
             code: ErrorCode::BuildMismatch,
             ..
         } => Some(Death::BuildMismatch(None)),
-        other => Some(Death::Lost(format!("нежданное сообщение помощника: {other:?}"))),
+        other => Some(Death::Lost(format!("unexpected helper message: {other:?}"))),
     }
 }
 
@@ -1197,8 +1197,8 @@ fn handshake(sock: &OwnedFd, build_id: &str) -> Result<(), HandshakeFail> {
             message_key,
             ..
         })) => Err(HandshakeFail::Error(ClientError::Revoked { message_key })),
-        Ok(Some(other)) => Err(lost(format!("рукопожатие: нежданное сообщение {other:?}"))),
-        Err(e) => Err(lost(format!("рукопожатие: {e}"))),
+        Ok(Some(other)) => Err(lost(format!("handshake: unexpected message {other:?}"))),
+        Err(e) => Err(lost(format!("handshake: {e}"))),
     }
 }
 
@@ -1330,7 +1330,7 @@ impl Client {
             .map_err(|e| ClientError::Spawn(e.to_string()))?;
         match handshake(&ours, &self.build_id) {
             Ok(()) => Session::start(ours, wake, child).map_err(|e| {
-                ClientError::Spawn(format!("поток сеанса прав: {e}"))
+                ClientError::Spawn(format!("privilege session thread: {e}"))
             }),
             Err(HandshakeFail::Eof) => {
                 drop(ours);
@@ -1340,11 +1340,11 @@ impl Client {
                     }
                     Ok(code) => Err(ClientError::SessionLost {
                         outcome_unknown: false,
-                        detail: format!("помощник вышел до рукопожатия (код {code:?})"),
+                        detail: format!("the helper exited before the handshake (code {code:?})"),
                     }),
                     Err(e) => Err(ClientError::SessionLost {
                         outcome_unknown: false,
-                        detail: format!("помощник до рукопожатия: {e}"),
+                        detail: format!("helper before the handshake: {e}"),
                     }),
                 }
             }
@@ -1363,17 +1363,17 @@ impl Client {
         let files = op.local_files();
         if files.len() != fds.len() {
             return Err(ClientError::InvalidRequest(format!(
-                "операции нужно {} файлов, приложено {}",
+                "the operation needs {} files, {} attached",
                 files.len(),
                 fds.len()
             )));
         }
         if files.iter().enumerate().any(|(i, f)| usize::from(f.slot) != i) {
-            return Err(ClientError::InvalidRequest("номера файлов не по порядку".into()));
+            return Err(ClientError::InvalidRequest("file numbers out of order".into()));
         }
         if fds.len() > proto::MAX_FDS {
             return Err(ClientError::InvalidRequest(format!(
-                "{} файлов больше предела {}",
+                "{} files exceed the limit {}",
                 fds.len(),
                 proto::MAX_FDS
             )));
@@ -1549,13 +1549,13 @@ mod tests {
                 match proto::decode::<ClientMsg<PrivOp>>(&frame).unwrap() {
                     ClientMsg::Request { id, .. } => {
                         seen.lock().unwrap().push((id, fds.len()));
-                        send(&sock, HelperMsg::Progress { id, line: format!("ход {id}") });
+                        send(&sock, HelperMsg::Progress { id, line: format!("progress {id}") });
                         send(
                             &sock,
                             HelperMsg::Done { id, ok: true, code: Some(0), message_key: None },
                         );
                     }
-                    other => panic!("нежданное: {other:?}"),
+                    other => panic!("unexpected: {other:?}"),
                 }
             }
         }
@@ -1718,7 +1718,7 @@ mod tests {
         }
         // The helper (B4) understands exactly this form.
         let argv = helper_argv(p, Some("c2"), Some("ru"));
-        let args = crate::privilege::helper::parse_args(&argv[2..]).expect("помощник принял");
+        let args = crate::privilege::helper::parse_args(&argv[2..]).expect("the helper accepted");
         assert_eq!(args.lang.as_deref(), Some("ru"));
         assert_eq!(args.session.as_deref(), Some("c2"));
     }
@@ -1763,11 +1763,11 @@ mod tests {
         }
         assert!(c.has_session());
         let calls = calls.lock().unwrap();
-        assert_eq!(calls.len(), 1, "одно окно пароля на три операции");
+        assert_eq!(calls.len(), 1, "one password dialog for three operations");
         assert_eq!(calls[0], ["pkexec", HELPER, "--session", "2"]);
         let ids: Vec<u64> = seen.lock().unwrap().iter().map(|(id, _)| *id).collect();
-        assert_eq!(ids, [1, 2, 3], "номера монотонные");
-        assert_eq!(lines, ["ход 1", "ход 2", "ход 3"]);
+        assert_eq!(ids, [1, 2, 3], "ids are monotonic");
+        assert_eq!(lines, ["progress 1", "progress 2", "progress 3"]);
     }
 
     #[test]
@@ -1820,7 +1820,7 @@ mod tests {
         let e = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
         assert_eq!(e, ClientError::HelperOtherBuild { helper_build: "0.4.9+old".into() });
         assert!(e.raw_fallback_allowed());
-        assert!(calls.lock().unwrap().is_empty(), "пароль не спрашивался");
+        assert!(calls.lock().unwrap().is_empty(), "the password was not asked");
         // And next time — again via the old path, without "Rexon was updated".
         let again = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
         assert!(matches!(again, ClientError::HelperOtherBuild { .. }));
@@ -1874,7 +1874,7 @@ mod tests {
             });
             let e = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
             assert_eq!(e, ClientError::NotAuthorized { code });
-            assert!(!e.raw_fallback_allowed(), "отказ человека — не повод для сырого pkexec");
+            assert!(!e.raw_fallback_allowed(), "a refusal by the person is no reason for raw pkexec");
             assert!(!c.has_session());
             // The next request will ask for the password again.
             let _ = c.request(&op(), vec![], &mut no_progress());
@@ -1918,7 +1918,7 @@ mod tests {
             accept_hello(&sock);
             let msg: ClientMsg<PrivOp> = proto::recv_msg(sock.as_fd()).unwrap().unwrap();
             let ClientMsg::Request { id, .. } = msg else { panic!() };
-            send(&sock, HelperMsg::Progress { id, line: "начато".into() });
+            send(&sock, HelperMsg::Progress { id, line: "started".into() });
             drop(sock);
             0
         });
@@ -1926,7 +1926,7 @@ mod tests {
         let e = c.request(&op(), vec![], &mut |l: &str| lines.push(l.to_string())).unwrap_err();
         assert!(matches!(e, ClientError::SessionLost { outcome_unknown: true, .. }), "{e:?}");
         assert!(!e.raw_fallback_allowed());
-        assert_eq!(lines, ["начато"]);
+        assert_eq!(lines, ["started"]);
         assert!(!c.has_session());
     }
 
@@ -1981,7 +1981,7 @@ mod tests {
         }
         assert!(!c.has_session());
         c.request(&op(), vec![], &mut no_progress()).unwrap();
-        assert_eq!(calls.lock().unwrap().len(), 2, "после отзыва — новый пароль");
+        assert_eq!(calls.lock().unwrap().len(), 2, "after revocation, a new password");
     }
 
     #[test]
@@ -2110,21 +2110,21 @@ mod tests {
         let other_socks = socket_fds(other.id());
         assert!(
             !other_socks.values().any(|&i| i == ours_ino || i == theirs_ino),
-            "посторонний потомок видит сокет сеанса: {other_socks:?}"
+            "a foreign child sees the session socket: {other_socks:?}"
         );
         let helper_pid = child_pids()
             .into_iter()
             .find(|&p| p != other.id() && socket_fds(p).values().any(|&i| i == theirs_ino))
-            .expect("помощник с сокетом на fd 0/1");
+            .expect("helper with the socket on fd 0/1");
         let hs = socket_fds(helper_pid);
         assert_eq!(hs.get(&0), Some(&theirs_ino));
         assert_eq!(hs.get(&1), Some(&theirs_ino));
-        assert!(!hs.values().any(|&i| i == ours_ino), "конец окна утёк помощнику");
-        assert_eq!(hs.values().filter(|&&i| i == theirs_ino).count(), 2, "лишние копии");
+        assert!(!hs.values().any(|&i| i == ours_ino), "the window end leaked to the helper");
+        assert_eq!(hs.values().filter(|&&i| i == theirs_ino).count(), 2, "extra copies");
 
         // The window has no copy of the helper's end left.
         let mine = socket_fds(std::process::id());
-        assert!(!mine.values().any(|&i| i == theirs_ino), "окно держит конец помощника");
+        assert!(!mine.values().any(|&i| i == theirs_ino), "the window holds the helper end");
 
         other.kill().ok();
         other.wait().ok();
@@ -2187,11 +2187,13 @@ mod human_text_tests {
     ];
 
     /// Technical words the buyer must not see (lower case).
+    // i18n-exempt-begin: jargon searched for in the Russian catalog
     const JARGON: &[&str] = &[
         "pkexec", "polkit", "helper", "помощник", "сеанс прав", "root", "sudo", "build", "сборк",
         "refused.", "revoked.", "session", "socket", "сокет", "handshake", "рукопожат", "dbus",
         "administrator", "администратор", "/usr/", "_", "{", "rexon-priv",
     ];
+    // i18n-exempt-end
 
     fn english() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2232,7 +2234,7 @@ mod human_text_tests {
         for e in all_errors() {
             let text = e.human_text();
             assert!(!text.is_empty(), "{e:?}");
-            assert!(jargon(&text).is_none(), "служебное слово «{:?}» в тексте {e:?}: {text}", jargon(&text));
+            assert!(jargon(&text).is_none(), "technical word {:?} in the text {e:?}: {text}", jargon(&text));
             assert!(!text.contains("0.5.0") && !text.contains("eof") && !text.contains("enoent"), "{text}");
         }
     }
@@ -2292,12 +2294,12 @@ mod human_text_tests {
         msgids.sort();
         msgids.dedup();
         for lang in ["ru", "de"] {
-            let po = std::fs::read_to_string(root.join(format!("{lang}.po"))).expect("каталог читается");
+            let po = std::fs::read_to_string(root.join(format!("{lang}.po"))).expect("the catalog is readable");
             for id in &msgids {
                 let Some(text) = crate::system_l10n::po_lookup(&po, id) else {
-                    panic!("нет перевода {lang}: {id}");
+                    panic!("no {lang} translation: {id}");
                 };
-                assert!(jargon(&text).is_none(), "служебное слово в {lang}: {text}");
+                assert!(jargon(&text).is_none(), "technical word in {lang}: {text}");
                 if id.contains("%1") {
                     assert!(text.contains("%1"), "{lang}: {text}");
                 }

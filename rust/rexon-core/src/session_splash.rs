@@ -1153,6 +1153,417 @@ pub fn msg_movie_will_convert() -> String {
     tr("The video will be converted to WebM so Steam can play it. The original file stays as it is.")
 }
 
+// ── Accepting a custom clip: where it goes and under what name ──────────
+//
+// WHY A COPY. Until 24.11.2026 «Choose File…» stored the absolute path of the
+// original: the person moved or deleted the file, unplugged the flash drive —
+// and the startup movie silently disappeared. Now the clip is COPIED into a
+// folder we own: Steam's folder for custom startup movies
+// (`config/uioverrides/movies`, Steam shows the clip in «Customization →
+// Startup Movie» too), and without Steam — Rexon's own folder
+// ([`rexon_movies_dir`]). The original is never touched.
+
+/// Rexon's own folder of startup movies, relative to `$XDG_DATA_HOME`.
+pub const REXON_MOVIES_SUBDIR: &str = "rexon/startup-movies";
+
+/// Rexon's own folder of startup movies: where a clip goes when there is no Steam,
+/// and where an old selection that Steam cannot play is moved.
+pub fn rexon_movies_dir(xdg_data_home: Option<&str>, home: &str) -> String {
+    let base = match xdg_data_home {
+        Some(x) if !x.is_empty() => x.trim_end_matches('/').to_string(),
+        _ => format!("{home}/.local/share"),
+    };
+    format!("{base}/{REXON_MOVIES_SUBDIR}")
+}
+
+/// Extensions of the clips kept in [`rexon_movies_dir`] (mpv plays all of them).
+pub const REXON_MOVIE_EXTS: &[&str] = &[".webm", ".mp4", ".mkv", ".mov"];
+
+/// Records of the clips in Rexon's own folder — the same shape as
+/// [`custom_movie_records`]; the label is «Your own file»: Steam does not see
+/// them.
+pub fn rexon_movie_records(dir: &str, files: &[String]) -> Vec<Value> {
+    let mut sorted: Vec<&String> = files.iter().collect();
+    sorted.sort();
+    let mut out = Vec::new();
+    for fname in sorted {
+        if fname.starts_with('.') || fname.contains('/') {
+            continue;
+        }
+        let ext = splitext_ext_lower(fname);
+        if !REXON_MOVIE_EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        let stem = &fname[..fname.len() - ext.len()];
+        if stem.is_empty() {
+            continue;
+        }
+        let path = format!("{dir}/{fname}");
+        let mut m = Map::new();
+        m.insert("id".into(), Value::from(path.clone()));
+        m.insert("name".into(), Value::from(fname.as_str()));
+        m.insert("path".into(), Value::from(path));
+        m.insert("builtin".into(), Value::from(false));
+        m.insert("origin".into(), Value::from(ORIGIN_CUSTOM));
+        m.insert("origin_label".into(), Value::from(origin_label(ORIGIN_CUSTOM)));
+        m.insert("title".into(), Value::from(stem));
+        m.insert("thumb".into(), Value::from(""));
+        out.push(Value::Object(m));
+    }
+    out
+}
+
+/// Whether `path` is a clip lying DIRECTLY in one of our folders (`dirs`):
+/// only such clips may be deleted. Built-in and Points Shop clips live
+/// elsewhere and never pass; neither do `..`, nested paths and hidden files
+/// (a partially written copy).
+pub fn is_own_movie_path(path: &str, dirs: &[String]) -> bool {
+    let Some((dir, name)) = path.rsplit_once('/') else {
+        return false;
+    };
+    if name.is_empty() || name.starts_with('.') || path.split('/').any(|p| p == "..") {
+        return false;
+    }
+    dirs.iter()
+        .any(|d| !d.is_empty() && d.trim_end_matches('/') == dir)
+}
+
+/// A safe Latin file stem for a copied clip.
+///
+/// Steam shows a custom clip under its file name and builds the address
+/// `/uioverrides/movies/<name>` for its built-in browser. How it copes with
+/// Cyrillic and spaces in that address was not checked, so the name is made
+/// Latin: Cyrillic is transliterated (the shared rule of imported themes),
+/// everything else becomes `-`. A name with no letters left (CJK, emoji) gets
+/// a stable `movie-<hash>`; an empty one — `startup-movie`.
+pub fn safe_movie_stem(original_stem: &str) -> String {
+    let lowered = original_stem.to_lowercase();
+    let has_letters = lowered.chars().any(|c| {
+        c.is_ascii_alphanumeric() || ('а'..='я').contains(&c) || "ёґєіїў".contains(c) // i18n-exempt: Cyrillic letters the file name transliteration accepts
+    });
+    if !has_letters {
+        if original_stem.trim().is_empty() {
+            return "startup-movie".to_string();
+        }
+        let digest = fnv1a64(original_stem.trim().as_bytes());
+        return format!("movie-{:08x}", digest as u32);
+    }
+    let slug = crate::importers::slug60(original_stem);
+    if slug.is_empty() {
+        "startup-movie".to_string()
+    } else {
+        slug
+    }
+}
+
+/// A file name in the target folder that does not overwrite anything: `stem.ext`,
+/// and if taken — `stem-2.ext`, `stem-3.ext`… (`existing` — the folder listing;
+/// compared case-insensitively, like the person reads names).
+pub fn unique_movie_file_name(stem: &str, ext: &str, existing: &[String]) -> String {
+    let taken = |n: &str| existing.iter().any(|e| e.eq_ignore_ascii_case(n));
+    let first = format!("{stem}{ext}");
+    if !taken(&first) {
+        return first;
+    }
+    (2..)
+        .map(|i| format!("{stem}-{i}{ext}"))
+        .find(|n| !taken(n))
+        .unwrap_or(first)
+}
+
+/// `(file name, name without the extension)` of a path.
+pub fn split_name(path: &str) -> (String, String) {
+    let name = path.rsplit('/').next().unwrap_or(path).to_string();
+    let stem = match name.rfind('.') {
+        Some(pos) if pos > 0 && !name[..pos].chars().all(|c| c == '.') => name[..pos].to_string(),
+        _ => name.clone(),
+    };
+    (name, stem)
+}
+
+/// Name of the temporary file the copy is written into: hidden, so neither
+/// Steam (mask `*.webm`) nor our scan pick up a half-written clip.
+pub fn movie_part_name(final_name: &str) -> String {
+    format!(".{final_name}.part")
+}
+
+/// ffmpeg argv for converting into webm Steam plays: VP9 (constant quality,
+/// row multithreading) + Opus. Only the first video and audio track; no
+/// subtitles or attachments. `-progress pipe:1` gives machine-readable
+/// progress on stdout ([`parse_ffmpeg_progress`]); `-f webm` because the
+/// temporary name has no `.webm` extension.
+pub fn transcode_argv(exe: &str, src: &str, out: &str) -> Vec<String> {
+    [
+        exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-i", src,
+        "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn",
+        "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1",
+        "-deadline", "good", "-cpu-used", "4",
+        "-c:a", "libopus", "-b:a", "128k",
+        "-progress", "pipe:1", "-nostats", "-f", "webm", out,
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect()
+}
+
+/// Seconds already converted from one `-progress` line (`out_time_us=` /
+/// `out_time_ms=` — both are in MICROseconds in ffmpeg, a known quirk;
+/// `out_time=HH:MM:SS.micro`). Other lines and `N/A` — `None`.
+pub fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
+    let (key, value) = line.trim().split_once('=')?;
+    let value = value.trim();
+    match key {
+        "out_time_us" | "out_time_ms" => value
+            .parse::<i64>()
+            .ok()
+            .filter(|v| *v >= 0)
+            .map(|v| v as f64 / 1_000_000.0),
+        "out_time" => {
+            let mut parts = value.split(':');
+            let h = parts.next()?.parse::<f64>().ok()?;
+            let m = parts.next()?.parse::<f64>().ok()?;
+            let s = parts.next()?.parse::<f64>().ok()?;
+            let t = h * 3600.0 + m * 60.0 + s;
+            (t.is_finite() && t >= 0.0).then_some(t)
+        }
+        _ => None,
+    }
+}
+
+/// Converted share 0..=1; unknown duration — `None` (the interface then shows
+/// the stage without a percentage).
+pub fn progress_fraction(done_sec: f64, duration: f64) -> Option<f64> {
+    (duration > 0.0 && done_sec.is_finite()).then(|| (done_sec / duration).clamp(0.0, 1.0))
+}
+
+/// What the import does with a checked file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImportAction {
+    /// Copy byte for byte.
+    Copy,
+    /// Convert into webm VP9 + Opus.
+    Transcode,
+    /// Refuse with this reason.
+    Refuse(String),
+}
+
+/// The decision for one file: with Steam a clip must be a webm Steam plays
+/// (otherwise — conversion); without Steam only our splash plays it, and mpv
+/// plays any accepted video — a plain copy.
+///
+/// `src_is_webm` — the file is named `.webm`. ffprobe names Matroska and webm
+/// the same, but an `.mkv` carries the «matroska» document type inside, and
+/// Steam's built-in browser may refuse it even with VP9 inside — so for Steam
+/// such a file is converted, not renamed.
+pub fn import_action(check: &MovieCheck, steam_present: bool, src_is_webm: bool) -> ImportAction {
+    match check.verdict {
+        MovieVerdict::Reject => ImportAction::Refuse(check.reason.clone()),
+        MovieVerdict::AsIs if steam_present && !src_is_webm => ImportAction::Transcode,
+        MovieVerdict::AsIs => ImportAction::Copy,
+        MovieVerdict::Transcode if steam_present => ImportAction::Transcode,
+        MovieVerdict::Transcode => ImportAction::Copy,
+    }
+}
+
+/// The import stage — for the progress line in the interface.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ImportStage {
+    /// ffmpeg is being installed (the password window is up).
+    Installing,
+    /// ffprobe reads the file.
+    Checking,
+    /// The file is being copied.
+    Copying,
+    /// Conversion; the share done if the duration is known.
+    Converting(Option<f64>),
+}
+
+/// The progress line for a stage — in plain words (rule #13).
+pub fn import_stage_text(stage: ImportStage) -> String {
+    match stage {
+        // TRANSLATORS: progress while adding a startup movie: the video tools (ffmpeg) are being installed.
+        ImportStage::Installing => tr("⏳ Installing the video tools (ffmpeg)…"),
+        // TRANSLATORS: progress while adding a startup movie: the chosen file is being checked.
+        ImportStage::Checking => tr("⏳ Checking the video…"),
+        // TRANSLATORS: progress while adding a startup movie: the file is being copied.
+        ImportStage::Copying => tr("⏳ Copying the video…"),
+        ImportStage::Converting(None) => tr("⏳ Converting the video for Steam…"),
+        ImportStage::Converting(Some(f)) => {
+            let pct = (f * 100.0).floor() as i64;
+            // TRANSLATORS: progress while converting a startup movie; %1 is the percentage done.
+            trf("⏳ Converting the video for Steam… %1%", &[&pct])
+        }
+    }
+}
+
+/// How the import ended.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportOutcome {
+    pub ok: bool,
+    /// Where the copy lies (empty on failure).
+    pub path: String,
+    /// The line for the person: success with warnings, or the reason.
+    pub message: String,
+}
+
+impl ImportOutcome {
+    pub fn failed(message: String) -> Self {
+        ImportOutcome { ok: false, path: String::new(), message }
+    }
+}
+
+/// The clip was added and chosen.
+pub fn msg_import_done(title: &str, in_steam: bool) -> String {
+    if in_steam {
+        // TRANSLATORS: a startup movie was added; %1 is its name. Steam lists it too.
+        trf("✅ Added “%1” — it's chosen for login and also appears in Steam (the Customization section).", &[&title])
+    } else {
+        // TRANSLATORS: a startup movie was added (Steam isn't installed); %1 is its name.
+        trf("✅ Added “%1” — it's chosen for login.", &[&title])
+    }
+}
+
+/// The person cancelled the conversion.
+pub fn msg_import_cancelled() -> String {
+    // TRANSLATORS: adding a startup movie was cancelled by the user.
+    tr("Adding the video was cancelled.")
+}
+
+/// Copying or converting failed; %1 — the system's reason.
+pub fn msg_import_failed(why: &str) -> String {
+    // TRANSLATORS: a startup movie couldn't be added; %1 is the system's reason.
+    trf("Couldn't add the video: %1", &[&why])
+}
+
+/// ffmpeg could not be installed — nothing is done (all or nothing).
+pub fn msg_tools_missing(why: &str) -> String {
+    // TRANSLATORS: adding a startup movie needs ffmpeg, and installing it failed; %1 is the reason.
+    trf("Adding a video needs the video tools (ffmpeg), and they couldn't be installed: %1", &[&why])
+}
+
+/// An old selection was copied into our folder.
+pub fn msg_migrated(title: &str) -> String {
+    // TRANSLATORS: the startup movie chosen earlier was copied into Rexon's folder so it keeps working if the original is moved; %1 is its name.
+    trf("The startup movie “%1” is now kept as a copy — it keeps working even if the original file is moved or deleted.", &[&title])
+}
+
+/// The deletion question.
+pub fn msg_delete_question(title: &str, chosen_in_steam: bool) -> String {
+    // TRANSLATORS: confirmation before deleting the user's own startup movie; %1 is its name.
+    let base = trf("Delete the startup movie “%1”? The copy is removed from disk; the original video you added it from is not touched.", &[&title]);
+    if chosen_in_steam {
+        // TRANSLATORS: extra warning in the delete confirmation: Steam currently uses this movie.
+        format!("{base}\n\n{}", tr("⚠️ Steam currently plays this movie at startup — after deleting, Steam goes back to its standard one."))
+    } else {
+        base
+    }
+}
+
+/// Deleted.
+pub fn msg_deleted(title: &str) -> String {
+    // TRANSLATORS: the user's own startup movie was deleted; %1 is its name.
+    trf("🗑 Deleted “%1”.", &[&title])
+}
+
+/// Refusal: the clip is not ours (built-in or bought).
+pub fn msg_delete_not_own() -> String {
+    // TRANSLATORS: refusal to delete a startup movie that is built into Steam or bought in the Points Shop.
+    tr("Only your own movies can be deleted — the ones built into Steam and bought in the Points Shop stay.")
+}
+
+/// Whether the current selection must be copied into our folder: it is set,
+/// the file exists, and it lies neither in our folders nor inside Steam (a
+/// built-in or bought clip is Steam's business).
+pub fn needs_migration(current: &str, exists: bool, own_dirs: &[String], steam_root: Option<&str>) -> bool {
+    if current.is_empty() || !exists || is_own_movie_path(current, own_dirs) {
+        return false;
+    }
+    match steam_root {
+        Some(root) if !root.is_empty() => !current.starts_with(&format!("{}/", root.trim_end_matches('/'))),
+        _ => true,
+    }
+}
+
+/// The config after a clip moved: `old` → `new` in the selection and the stars.
+pub fn config_with_replaced_movie(cfg: &Value, old: &str, new: &str) -> Value {
+    let mut m = cfg.as_object().cloned().unwrap_or_default();
+    if m.get("path").and_then(Value::as_str) == Some(old) {
+        m.insert("path".into(), Value::from(new));
+    }
+    let mut fav = favorites_from_config(cfg);
+    for f in fav.iter_mut() {
+        if f == old {
+            *f = new.to_string();
+        }
+    }
+    fav.dedup();
+    m.insert("favorites".into(), Value::Array(fav.into_iter().map(Value::from).collect()));
+    Value::Object(m)
+}
+
+/// The config after deleting a clip: its star goes away; if it was the
+/// selection, `fallback` takes its place (another found clip — the splash
+/// must not be left enabled with nothing to play; rule #13), or nothing.
+pub fn config_without_movie(cfg: &Value, path: &str, fallback: Option<&str>) -> Value {
+    let (without_star, _) = config_with_favorite(cfg, path, false);
+    let mut m = without_star.as_object().cloned().unwrap_or_default();
+    if m.get("path").and_then(Value::as_str) == Some(path) {
+        m.insert("path".into(), Value::from(fallback.unwrap_or("")));
+    }
+    Value::Object(m)
+}
+
+/// `config/config.vdf` — where Steam keeps its own startup movie choice.
+pub fn steam_config_vdf_path(root: &str) -> String {
+    format!("{root}/config/config.vdf")
+}
+
+/// Steam's own choice (`Customization` → `StartupMovie` → `LocalPath`, a path
+/// relative to `config/`). `None` — nothing chosen, or «Shuffle» is on
+/// (then there is no single chosen clip). The block is looked for at any
+/// depth: the nesting differs between client versions.
+pub fn parse_steam_startup_movie(vdf_text: &str) -> Option<String> {
+    fn find<'a>(node: &'a crate::steam_screensaver::Kv) -> Option<&'a crate::steam_screensaver::Kv> {
+        if let Some(sm) = node.path(&["Customization", "StartupMovie"]) {
+            return Some(sm);
+        }
+        node.entries().iter().find_map(|(_, child)| find(child))
+    }
+    let root = crate::steam_screensaver::parse_kv(vdf_text);
+    let sm = find(&root)?;
+    let shuffle = sm.str_at("Shuffle").map(str::trim).unwrap_or("");
+    if shuffle == "1" || shuffle.eq_ignore_ascii_case("true") {
+        return None;
+    }
+    let local = sm.str_at("LocalPath")?.trim();
+    (!local.is_empty()).then(|| local.to_string())
+}
+
+/// The absolute path of Steam's choice.
+pub fn steam_choice_path(root: &str, local_path: &str) -> String {
+    let root = root.trim_end_matches('/');
+    if local_path.starts_with('/') {
+        format!("{root}/config{local_path}")
+    } else {
+        format!("{root}/config/{local_path}")
+    }
+}
+
+/// Showcase marks: `steam_selected` — this clip is Steam's own choice
+/// (Steam writes the extension in any case, `.webM`, so case is ignored);
+/// `deletable` — the clip lies in one of our folders ([`is_own_movie_path`]).
+pub fn mark_movies(movies: &mut [Value], steam_choice: Option<&str>, own_dirs: &[String]) {
+    for m in movies.iter_mut() {
+        let path = m.get("path").and_then(Value::as_str).unwrap_or_default().to_string();
+        let chosen = steam_choice.is_some_and(|c| !c.is_empty() && c.eq_ignore_ascii_case(&path));
+        let own = is_own_movie_path(&path, own_dirs);
+        if let Some(obj) = m.as_object_mut() {
+            obj.insert("steam_selected".into(), Value::from(chosen));
+            obj.insert("deletable".into(), Value::from(own));
+        }
+    }
+}
+
 /// FNV-1a 64 — a deterministic fingerprint for the cache file name.
 ///
 /// ⚠️ Fix of a bug of the original: the cache key was computed by Python's
@@ -1519,8 +1930,8 @@ pub fn systemd_unit_content(launcher_exec: &str) -> String {
          Type=notify\n\
          ExecStart={launcher_exec}\n\
          Slice=session.slice\n\
-         # страховки: сломанный mpv задержит вход максимум на ~15 с\n\
-         # (overlay-порог 6 c + фолбэк-mpv 6 c = 12 c до READY, + слак).\n\
+         # safety nets: a broken mpv delays login by at most ~15 s\n\
+         # (overlay threshold 6 s + fallback mpv 6 s = 12 s until READY, + slack).\n\
          TimeoutStartSec=15\n\
          TimeoutStopSec=5\n\
          \n\
@@ -2761,6 +3172,9 @@ pub const X11_POSTER_DEPTHS: &[i64] = &[24, 32];
 pub const FFPROBE_TIMEOUT_SEC: f64 = 15.0;
 /// `ffmpeg` timeout (showcase frame and theme poster).
 pub const FFMPEG_TIMEOUT_SEC: f64 = 30.0;
+/// Ceiling of one clip conversion (a minute-long clip converts in a few
+/// minutes even on a weak processor); a hang beyond it is stopped.
+pub const MOVIE_TRANSCODE_TIMEOUT_SEC: f64 = 1800.0;
 /// `kwriteconfig6` timeout.
 pub const KWRITECONFIG_TIMEOUT_SEC: f64 = 10.0;
 /// `systemctl --user` timeout.
@@ -3097,6 +3511,33 @@ pub trait SplashIo {
     fn login_lines(&mut self, desktop: Option<&str>) -> (Option<String>, Option<String>) {
         (desktop.map(str::to_string), None)
     }
+    /// A long command (the clip conversion): every stdout line goes to
+    /// `on_line` as it arrives, `cancelled` is polled while it runs — `true`
+    /// stops the command. The exit code; `None` — did not start or was
+    /// cancelled. By default — a plain [`SplashIo::run`] with the lines fed
+    /// afterwards (fake executors have nothing to stream).
+    fn run_streaming(
+        &mut self,
+        argv: &[String],
+        on_line: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Option<i64> {
+        if cancelled() {
+            return None;
+        }
+        let out = self.run(argv, MOVIE_TRANSCODE_TIMEOUT_SEC)?;
+        for line in out.stdout.lines() {
+            on_line(line);
+        }
+        Some(out.rc)
+    }
+    /// Install the package with the program `binary` from the official
+    /// repositories (the password window is the safeguard). `Err` — the reason
+    /// for the person. By default — refuse: fake executors install nothing.
+    fn install_program(&mut self, binary: &str) -> Result<(), String> {
+        let _ = binary;
+        Err(tr("Rexon can't install programs on this system by itself."))
+    }
     /// Whether the entry at `desktop_path` will fire in the current session (for
     /// compositors without XDG autostart — only with its own line in their
     /// config).
@@ -3243,9 +3684,28 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
 
     /// Basic scan `{id, name, path, builtin}` — port of `_scan_startup_movies_raw`.
     fn scan_movies_raw(&mut self) -> Vec<Value> {
-        let Some(root) = self.steam_root() else {
-            return Vec::new();
+        let mut out = match self.steam_root() {
+            Some(root) => self.scan_steam_movies(&root),
+            None => Vec::new(),
         };
+        // Rexon's own folder — with and without Steam: a clip copied there
+        // must not vanish from the showcase.
+        let own = self.rexon_movies_dir();
+        if self.io.is_dir(&own) {
+            let files = self.io.listdir(&own);
+            for rec in rexon_movie_records(&own, &files) {
+                let path = rec["path"].as_str().unwrap_or_default().to_string();
+                if !out.iter().any(|m| m["path"].as_str() == Some(path.as_str())) {
+                    out.push(rec);
+                }
+            }
+        }
+        out
+    }
+
+    /// The three Steam sources: built-in, Points Shop, custom clips.
+    fn scan_steam_movies(&mut self, root: &str) -> Vec<Value> {
+        let root = root.to_string();
         let movies = steam_movies_dir(&root);
         let builtin_present: Vec<String> = if self.io.is_dir(&movies) {
             builtin_movie_filenames()
@@ -3294,7 +3754,39 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
     /// Available Steam startup videos — port of `scan_startup_movies`.
     pub fn scan_startup_movies(&mut self) -> Vec<Value> {
         let raw = self.scan_movies_raw();
-        self.enrich_movies(&raw)
+        let mut movies = self.enrich_movies(&raw);
+        let choice = self.steam_chosen_movie();
+        let dirs = self.own_movie_dirs();
+        mark_movies(&mut movies, choice.as_deref(), &dirs);
+        movies
+    }
+
+    // ── Own clips: folders, Steam's choice ─────────────────────────────
+
+    /// Rexon's own folder of startup movies ([`rexon_movies_dir`]).
+    pub fn rexon_movies_dir(&mut self) -> String {
+        let x = self.io.env("XDG_DATA_HOME");
+        rexon_movies_dir(if x.is_empty() { None } else { Some(&x) }, &self.home.clone())
+    }
+
+    /// Folders whose clips are the person's own (they may be deleted):
+    /// Steam's custom clips folder (if Steam is here) and Rexon's own.
+    pub fn own_movie_dirs(&mut self) -> Vec<String> {
+        let mut dirs = Vec::new();
+        if let Some(root) = self.steam_root() {
+            dirs.push(steam_custom_movies_dir(&root));
+        }
+        dirs.push(self.rexon_movies_dir());
+        dirs
+    }
+
+    /// The clip Steam itself plays at startup (`config.vdf`), as an absolute
+    /// path. Read only — Rexon never writes Steam's choice.
+    pub fn steam_chosen_movie(&mut self) -> Option<String> {
+        let root = self.steam_root()?;
+        let text = self.io.read_text(&steam_config_vdf_path(&root))?;
+        let local = parse_steam_startup_movie(&text)?;
+        Some(steam_choice_path(&root, &local))
     }
 
     // ── Accepting a custom clip ────────────────────────────────────────
@@ -3311,6 +3803,290 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
             Some(r) if r.rc == 0 => check_movie_probe(&r.stdout),
             _ => MovieCheck::reject(msg_movie_unreadable()),
         }
+    }
+
+    /// The program is on `PATH`, and if not — install its package right away
+    /// (the owner's rule: missing programs are installed without a yes/no
+    /// question, the password window is the safeguard). All or nothing:
+    /// `Err` — the reason, and the caller does nothing.
+    fn ensure_program(&mut self, binary: &str, progress: &mut dyn FnMut(ImportStage)) -> Result<String, String> {
+        let exe = self.io.which(binary);
+        if !exe.is_empty() {
+            return Ok(exe);
+        }
+        progress(ImportStage::Installing);
+        self.io.log("info", &format!("startup movie: {binary} is missing, installing it"));
+        if let Err(why) = self.io.install_program(binary) {
+            self.io.log("warning", &format!("startup movie: {binary} was not installed: {why}"));
+            return Err(msg_tools_missing(&why));
+        }
+        let exe = self.io.which(binary);
+        if exe.is_empty() {
+            // TRANSLATORS: %1 is a program name (ffmpeg/ffprobe) that is still missing after its package was installed.
+            let why = trf("%1 is still not found after installing", &[&binary]);
+            self.io.log("warning", &format!("startup movie: {binary} still missing after install"));
+            return Err(msg_tools_missing(&why));
+        }
+        Ok(exe)
+    }
+
+    /// Add the person's own clip: check it (ffprobe), copy it as is or convert
+    /// it (ffmpeg, VP9 + Opus) into Steam's custom clips folder — or, without
+    /// Steam, into Rexon's own — under a safe Latin name, and choose it for
+    /// login. The original is never changed. Long: call it off the interface
+    /// thread. `cancelled` stops a running conversion; `progress` — stages
+    /// for the interface. Every step goes to the log.
+    pub fn import_movie(
+        &mut self,
+        src: &str,
+        cancelled: &dyn Fn() -> bool,
+        progress: &mut dyn FnMut(ImportStage),
+    ) -> ImportOutcome {
+        self.io.log("info", &format!("startup movie: adding {src}"));
+        if src.is_empty() || !self.io.is_file(src) {
+            return ImportOutcome::failed(msg_movie_unreadable());
+        }
+        let sound = self.config_sound();
+        // A clip that already lies in one of our folders is simply chosen.
+        let own_dirs = self.own_movie_dirs();
+        if is_own_movie_path(src, &own_dirs) {
+            let (_, stem) = split_name(src);
+            return match self.save_config(src, sound) {
+                None => ImportOutcome { ok: true, path: src.to_string(), message: msg_import_done(&stem, false) },
+                Some(e) => ImportOutcome::failed(msg_import_failed(&e)),
+            };
+        }
+
+        if let Err(why) = self.ensure_program("ffprobe", progress) {
+            return ImportOutcome::failed(why);
+        }
+        progress(ImportStage::Checking);
+        let check = self.probe_movie(src);
+        let root = self.steam_root();
+        let src_is_webm = splitext_ext_lower(&split_name(src).0) == ".webm";
+        let action = import_action(&check, root.is_some(), src_is_webm);
+        self.io.log(
+            "info",
+            &format!(
+                "startup movie: probe {}x{} {:.1}s video={} audio={} → {:?}",
+                check.width, check.height, check.duration, check.video_codec, check.audio_codec, action
+            ),
+        );
+        if let ImportAction::Refuse(reason) = &action {
+            return ImportOutcome::failed(reason.clone());
+        }
+        let ffmpeg = if action == ImportAction::Transcode {
+            match self.ensure_program("ffmpeg", progress) {
+                Ok(exe) => exe,
+                Err(why) => return ImportOutcome::failed(why),
+            }
+        } else {
+            String::new()
+        };
+
+        let dest_dir = match &root {
+            Some(r) => steam_custom_movies_dir(r),
+            None => self.rexon_movies_dir(),
+        };
+        if let Some(e) = self.io.makedirs(&dest_dir) {
+            self.io.log("warning", &format!("startup movie: cannot create {dest_dir}: {e}"));
+            return ImportOutcome::failed(msg_import_failed(&e));
+        }
+        let (src_name, src_stem) = split_name(src);
+        let ext = if action == ImportAction::Transcode {
+            ".webm".to_string()
+        } else {
+            let e = splitext_ext_lower(&src_name);
+            if root.is_some() || e.is_empty() { ".webm".to_string() } else { e }
+        };
+        let existing = self.io.listdir(&dest_dir);
+        let name = unique_movie_file_name(&safe_movie_stem(&src_stem), &ext, &existing);
+        let dest = format!("{dest_dir}/{name}");
+        let part = format!("{dest_dir}/{}", movie_part_name(&name));
+
+        let written = match action {
+            ImportAction::Transcode => {
+                progress(ImportStage::Converting(progress_fraction(0.0, check.duration)));
+                let argv = transcode_argv(&ffmpeg, src, &part);
+                let duration = check.duration;
+                let mut on_line = |line: &str| {
+                    if let Some(done) = parse_ffmpeg_progress(line) {
+                        progress(ImportStage::Converting(progress_fraction(done, duration)));
+                    }
+                };
+                let rc = self.io.run_streaming(&argv, &mut on_line, cancelled);
+                match rc {
+                    Some(0) if self.io.is_file(&part) => Ok(()),
+                    _ if cancelled() => Err(None),
+                    Some(code) => Err(Some(trf("the converter stopped with code %1", &[&code]))),
+                    None => Err(Some(tr("the converter didn't start"))),
+                }
+            }
+            _ => {
+                progress(ImportStage::Copying);
+                match self.io.copy_file(src, &part) {
+                    None => Ok(()),
+                    Some(e) => Err(Some(e)),
+                }
+            }
+        };
+        if let Err(why) = written {
+            let _ = self.io.remove_file(&part);
+            return match why {
+                None => {
+                    self.io.log("info", "startup movie: conversion cancelled");
+                    ImportOutcome::failed(msg_import_cancelled())
+                }
+                Some(why) => {
+                    self.io.log("warning", &format!("startup movie: {src} not added: {why}"));
+                    ImportOutcome::failed(msg_import_failed(&why))
+                }
+            };
+        }
+        // ffprobe did not know the duration of the original (a browser-recorded
+        // webm) — the limits are checked on the finished file.
+        if action == ImportAction::Transcode && check.duration <= 0.0 {
+            let again = self.probe_movie(&part);
+            if again.verdict == MovieVerdict::Reject {
+                let _ = self.io.remove_file(&part);
+                return ImportOutcome::failed(again.reason);
+            }
+        }
+        if let Some(e) = self.io.replace(&part, &dest) {
+            let _ = self.io.remove_file(&part);
+            return ImportOutcome::failed(msg_import_failed(&e));
+        }
+        self.io.log("info", &format!("startup movie: {src} → {dest}"));
+        if let Some(e) = self.save_config(&dest, sound) {
+            return ImportOutcome { ok: false, path: dest, message: msg_import_failed(&e) };
+        }
+        let title = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&name).to_string();
+        let mut message = msg_import_done(&title, root.is_some());
+        for w in &check.warnings {
+            message.push(' ');
+            message.push_str(w);
+        }
+        ImportOutcome { ok: true, path: dest, message }
+    }
+
+    /// The sound flag of the current config (on by default — as the tab reads it).
+    fn config_sound(&mut self) -> bool {
+        self.load_config()
+            .get("sound")
+            .map(|v| v.as_bool().unwrap_or(true))
+            .unwrap_or(true)
+    }
+
+    /// The old selection that is a path to someone else's file (before
+    /// 24.11.2026 the original was stored, not a copy) — `Some(path)` if it
+    /// must be copied ([`needs_migration`]).
+    pub fn migration_candidate(&mut self) -> Option<String> {
+        let current = self.load_config().get("path").and_then(Value::as_str).unwrap_or("").to_string();
+        let exists = !current.is_empty() && self.io.is_file(&current);
+        let dirs = self.own_movie_dirs();
+        let root = self.steam_root();
+        needs_migration(&current, exists, &dirs, root.as_deref()).then_some(current)
+    }
+
+    /// Copy the old selection into our folder and point the config (the
+    /// selection and the star) at the copy. Without conversion and without
+    /// installing anything — it runs by itself when the tab opens: a webm
+    /// Steam plays goes into Steam's folder, anything else — into Rexon's own
+    /// (our splash plays it there just the same).
+    pub fn migrate_movie(&mut self, src: &str) -> ImportOutcome {
+        self.io.log("info", &format!("startup movie: keeping a copy of the old selection {src}"));
+        let root = self.steam_root();
+        let (src_name, src_stem) = split_name(src);
+        let ext = {
+            let e = splitext_ext_lower(&src_name);
+            if e.is_empty() { ".webm".to_string() } else { e }
+        };
+        let steam_ok = root.is_some()
+            && ext == ".webm"
+            && !self.io.which("ffprobe").is_empty()
+            && self.probe_movie(src).verdict == MovieVerdict::AsIs;
+        let dest_dir = match (&root, steam_ok) {
+            (Some(r), true) => steam_custom_movies_dir(r),
+            _ => self.rexon_movies_dir(),
+        };
+        if let Some(e) = self.io.makedirs(&dest_dir) {
+            return ImportOutcome::failed(msg_import_failed(&e));
+        }
+        let existing = self.io.listdir(&dest_dir);
+        let name = unique_movie_file_name(&safe_movie_stem(&src_stem), &ext, &existing);
+        let dest = format!("{dest_dir}/{name}");
+        let part = format!("{dest_dir}/{}", movie_part_name(&name));
+        if let Some(e) = self.io.copy_file(src, &part) {
+            let _ = self.io.remove_file(&part);
+            self.io.log("warning", &format!("startup movie: old selection not copied: {e}"));
+            return ImportOutcome::failed(msg_import_failed(&e));
+        }
+        if let Some(e) = self.io.replace(&part, &dest) {
+            let _ = self.io.remove_file(&part);
+            return ImportOutcome::failed(msg_import_failed(&e));
+        }
+        let cfg = self.load_config();
+        let new_cfg = config_with_replaced_movie(&cfg, src, &dest);
+        if let Some(e) = self.write_config(&new_cfg) {
+            return ImportOutcome { ok: false, path: dest, message: msg_import_failed(&e) };
+        }
+        self.io.log("info", &format!("startup movie: old selection {src} → {dest}"));
+        ImportOutcome { ok: true, path: dest, message: msg_migrated(&src_stem) }
+    }
+
+    /// The deletion question for a clip (with a warning if Steam plays it).
+    pub fn delete_question(&mut self, path: &str) -> String {
+        let (_, stem) = split_name(path);
+        let chosen = self
+            .steam_chosen_movie()
+            .is_some_and(|c| c.eq_ignore_ascii_case(path));
+        msg_delete_question(&stem, chosen)
+    }
+
+    /// Delete the person's own clip — only from our folders
+    /// ([`is_own_movie_path`]); built-in and bought clips are refused. The
+    /// thumbnail Steam made next to it goes too. If it was chosen for login,
+    /// another found clip takes its place. `Ok` — the line for the person.
+    pub fn delete_own_movie(&mut self, path: &str) -> Result<String, String> {
+        let dirs = self.own_movie_dirs();
+        // A symlink in our folder is removed as a link: the file it points to
+        // stays untouched.
+        if !is_own_movie_path(path, &dirs) || !self.io.is_file(path) {
+            self.io.log("warning", &format!("startup movie: refused to delete {path}"));
+            return Err(msg_delete_not_own());
+        }
+        if let Some(e) = self.io.remove_file(path) {
+            self.io.log("warning", &format!("startup movie: cannot delete {path}: {e}"));
+            return Err(msg_import_failed(&e));
+        }
+        self.io.log("info", &format!("startup movie: deleted {path}"));
+        let (name, stem) = split_name(path);
+        let dir = path.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
+        for thumb in [format!("{dir}/{stem}.jpg"), format!("{dir}/{name}.jpg")] {
+            if self.io.is_file(&thumb) {
+                let _ = self.io.remove_file(&thumb);
+            }
+        }
+        let cfg = self.load_config();
+        let was_selected = cfg.get("path").and_then(Value::as_str) == Some(path);
+        let fallback = if was_selected {
+            self.scan_startup_movies()
+                .iter()
+                .filter_map(|m| m.get("path").and_then(Value::as_str).map(str::to_string))
+                .find(|p| p != path)
+        } else {
+            None
+        };
+        let new_cfg = config_without_movie(&cfg, path, fallback.as_deref());
+        if let Some(e) = self.write_config(&new_cfg) {
+            return Err(msg_import_failed(&e));
+        }
+        if let Some(next) = fallback {
+            // Through the ordinary choice: it also refreshes the hybrid poster.
+            let sound = self.config_sound();
+            let _ = self.save_config(&next, sound);
+        }
+        Ok(msg_deleted(&stem))
     }
 
     // ── Showcase frame ─────────────────────────────────────────────────

@@ -25,7 +25,7 @@ use crate::i18n::{n_, tr, trf};
 /// The second column is the catalog `msgid`; it is translated in [`stage_title`].
 pub const STAGE_TITLES: &[(&str, &str)] = &[
     ("snapshot", n_("Remembering your default apps…")),
-    ("plasma_backup", n_("Saving a copy of the KDE Plasma panel…")),
+    ("panel_backup", n_("Saving copies of desktop panels…")),
     ("config_backup", n_("Saving a copy of your desktop settings…")),
     ("wait_lock", n_("Waiting for another package installation to finish…")),
     ("install", n_("Installing packages…")),

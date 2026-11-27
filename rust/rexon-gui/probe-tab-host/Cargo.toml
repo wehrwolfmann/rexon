@@ -1,25 +1,25 @@
-# rexon-tab-host-probe — МАКЕТ каркаса главного окна.
+# rexon-tab-host-probe — a MOCK-UP of the main window frame.
 #
-# Не продуктовый крейт и не часть рабочего пространства: стенд разведки перед
-# переносом `rexon/qt_main/` на QML. Отвечает ровно на один вопрос, который
-# нельзя решить чтением наших исходников: в какую сторону Qt 6 умеет
-# СМЕШИВАТЬ QtWidgets и Qt Quick. От ответа зависит порядок работ —
-# переносить каркас окна первым или последним.
+# Not a product crate and not part of the workspace: a reconnaissance stand before
+# moving `rexon/qt_main/` to QML. It answers exactly one question that
+# cannot be settled by reading our sources: in which direction Qt 6 can
+# MIX QtWidgets and Qt Quick. The order of work depends on the answer —
+# move the window frame first or last.
 #
-# Меряется в живом сеансе, на настоящем Qt 6.11 и настоящем композиторе:
-#   * загрузка QML внутрь страницы QTabWidget (QQuickWidget) — по пикселям;
-#   * переход клавиатурного фокуса из виджета в QML и обратно;
-#   * попытка обратного вложения: QWidget внутрь сцены Qt Quick.
+# Measured in a live session, on the real Qt 6.11 and a real compositor:
+#   * loading QML inside a QTabWidget page (QQuickWidget) — by pixels;
+#   * moving keyboard focus from a widget into QML and back;
+#   * an attempt at the reverse nesting: a QWidget inside a Qt Quick scene.
 #
-# Почему отдельный крейт, а не бинарь внутри rexon-gui: продуктовому крейту
-# пришлось бы дописать в build.rs модули Widgets и QuickWidgets, а этот файл
-# общий — его правят параллельно другие партии. Свой `[workspace]` ниже
-# отвязывает макет от рабочего пространства: `cargo build` в rust/ его не
-# видит и не ломает.
+# Why a separate crate and not a binary inside rexon-gui: the product crate
+# would have to add the Widgets and QuickWidgets modules to build.rs, and that file
+# is shared — other batches edit it in parallel. Its own `[workspace]` below
+# detaches the mock-up from the workspace: `cargo build` in rust/ does not
+# see it and does not break it.
 #
-# Куда он денется: живёт до конца переноса каркаса на QML — им же проверяется,
-# что смешанное окно (часть вкладок QML, часть виджеты) остаётся исправным.
-# После того как виджетных вкладок не останется, каталог удаляется целиком.
+# Where it will go: it lives until the frame is moved to QML — it also checks
+# that a mixed window (some tabs QML, some widgets) stays working.
+# Once no widget tabs remain, the directory is removed entirely.
 [package]
 name = "rexon-tab-host-probe"
 version = "0.0.1"
@@ -27,15 +27,15 @@ edition = "2021"
 license = "Apache-2.0"
 description = "Макет: направление вложения QtWidgets ↔ QML в Qt 6"
 
-# Собственный корень рабочего пространства — крейт намеренно вне rust/Cargo.toml.
+# Its own workspace root — the crate is deliberately outside rust/Cargo.toml.
 [workspace]
 
 [dependencies]
 
 [build-dependencies]
-# Только компиляция одного .cpp и поиск Qt через pkg-config. Ни cxx-qt, ни
-# moc здесь не нужны: в макете нет ни одного Q_OBJECT — сигналы ловятся
-# лямбдами, а типы QML не регистрируются.
+# Only compiling one .cpp and finding Qt through pkg-config. Neither cxx-qt nor
+# moc is needed here: the mock-up has not a single Q_OBJECT — signals are caught
+# with lambdas, and no QML types are registered.
 cc = "1"
 pkg-config = "0.3"
 

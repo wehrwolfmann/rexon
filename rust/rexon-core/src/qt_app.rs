@@ -276,7 +276,15 @@ impl Timestamp {
         let epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .ok()?;
-        let t = epoch.as_secs() as libc::time_t;
+        let mut out = Self::from_epoch_local(epoch.as_secs())?;
+        out.microsecond = epoch.subsec_micros();
+        Some(out)
+    }
+
+    /// LOCAL time of the moment `secs` seconds after the epoch (a file's
+    /// change time, for instance); `None` as in [`Timestamp::now_local`].
+    pub fn from_epoch_local(secs: u64) -> Option<Self> {
+        let t = secs as libc::time_t;
         let mut tm: libc::tm = unsafe { std::mem::zeroed() };
         if unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
             return None;
@@ -288,7 +296,7 @@ impl Timestamp {
             hour: tm.tm_hour as u32,
             minute: tm.tm_min as u32,
             second: tm.tm_sec as u32,
-            microsecond: epoch.subsec_micros(),
+            microsecond: 0,
         })
     }
 

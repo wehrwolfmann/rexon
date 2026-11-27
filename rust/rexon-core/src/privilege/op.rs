@@ -797,12 +797,13 @@ mod tests {
             PrivOp::CacheRollback { files: names(&["/var/cache/pacman/pkg/qt6-base-6.11.2-1-x86_64.pkg.tar.zst"]) },
             PrivOp::FontInstall {
                 fonts: vec![
+                    // i18n-exempt: non-ASCII user paths and font names must survive the round trip
                     FontFile { source: file(0, "/home/u/Загрузки/Мой шрифт.ttf"), name: "Мой шрифт.ttf".into() },
                     FontFile { source: file(1, "/home/u/b.otf"), name: "b.otf".into() },
                 ],
             },
             PrivOp::FontRemove { files: names(&["/usr/local/share/fonts/b.otf"]) },
-            PrivOp::SddmBackground { theme: "breeze".into(), image: Some(file(0, "/home/u/Картинки/фон.jpg")) },
+            PrivOp::SddmBackground { theme: "breeze".into(), image: Some(file(0, "/home/u/Картинки/фон.jpg")) }, // i18n-exempt: non-ASCII user path
             PrivOp::SddmBackground { theme: "breeze".into(), image: None },
             PrivOp::SddmLook {
                 look: Some(plan::SddmLook {
@@ -867,7 +868,7 @@ mod tests {
                 plan::PlanStep::Run { id: i, cmd, .. } if *i == id => Some(cmd.argv.clone()),
                 _ => None,
             })
-            .expect("шаг есть")
+            .expect("the step exists")
     }
 
     #[test]
@@ -937,7 +938,7 @@ mod tests {
                     let inst = PrivOp::PkgInstall { family: PkgFamily::Arch, packages: names(&["sddm"]), source: PkgSource::DisplayManager };
                     assert_eq!(inst.pkexec_argv(&helpers(on)), Some(install.argv));
                 }
-                _ => panic!("ожидалась установка SDDM"),
+                _ => panic!("expected an SDDM install"),
             }
         }
         let unknown = PrivOp::EnableDm { family: PkgFamily::Arch, unit: "evil".into() };
@@ -1013,7 +1014,7 @@ mod tests {
     fn aur_matches_aur_install_and_aeroshell() {
         for helper in ["yay", "paru", "trizen"] {
             for replace in [true, false] {
-                let pkgs = names(&["mate-tweak", "brisk-menu"]);
+                let pkgs = names(&["mate-tweak", "mate-menu"]);
                 let op = PrivOp::AurInstall { helper: helper.into(), packages: pkgs.clone(), replace_conflicts: replace };
                 assert_eq!(op.pkexec_argv(&helpers(true)), Some(crate::aur_install::install_argv(helper, &pkgs, replace)));
             }
@@ -1081,7 +1082,7 @@ mod tests {
                     family_is_debian: fam == ThemeFamily::Debian,
                 };
                 let want = crate::appearance_installer::plan_root_install_with(&env, &fs, &cat, root, &|_| false)
-                    .unwrap_or_else(|_| panic!("план установки"))
+                    .unwrap_or_else(|_| panic!("install plan"))
                     .argv;
                 let install = PrivOp::SystemTheme(SystemThemeOp::Install {
                     kind,
@@ -1149,7 +1150,7 @@ mod tests {
         };
         let exists = |n: &str| Some(matches!(n, "kwin" | "libplasma"));
         let plan::PlasmaForkReset::Run { cmd, removable, stock, .. } = plan::plasma_fork_reset_plan(&forks, &qi, &exists) else {
-            panic!("ожидался откат");
+            panic!("expected a rollback");
         };
         assert!(!removable.is_empty() && !stock.is_empty(), "{removable:?} {stock:?}");
         let op = PrivOp::PlasmaForksReset { removable: removable.clone(), stock: stock.clone() };
@@ -1171,7 +1172,7 @@ mod tests {
         ] {
             let plan::PlymouthReset::Run { cmd, .. } = plan::plymouth_reset_plan(Some("bgrt"), Some("other"), sdt, ua, &|_| true)
             else {
-                panic!("ожидался запуск");
+                panic!("expected a launch");
             };
             let op = PrivOp::PlymouthReset { target: "bgrt".into(), tool };
             assert_eq!(op.pkexec_argv(&helpers(true)), Some(cmd.argv));
@@ -1179,7 +1180,7 @@ mod tests {
         let conf = vec![("zz-rexon-theme.conf".to_string(), "[Theme]\nCurrent=x\n".to_string())];
         let reset = plan::sddm_reset_plan(&conf, &[], None);
         let plan::SddmReset::Run { cmd, removed, .. } = plan::sddm_reset_command(&reset, plan::SDDM_CONF_D) else {
-            panic!("ожидалось снятие файла Rexon");
+            panic!("expected removal of a Rexon file");
         };
         let op = PrivOp::SddmReset { files: removed };
         assert_eq!(op.pkexec_argv(&helpers(true)), Some(cmd.argv));

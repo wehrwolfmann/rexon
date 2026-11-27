@@ -106,6 +106,7 @@ fn kv_env(de: &str) -> th::KvantumEnv<'_> {
         xdg_config_home: "",
         platform_theme: "qt6ct",
         icon_theme: "Papirus".to_string(),
+        qt_desktop_installed: false,
     }
 }
 
@@ -214,6 +215,7 @@ fn colors_trace(de: &str, theme: &str) -> Value {
         home: sp::PaletteHome::from_env(|k| if k == "HOME" { root.clone() } else { String::new() }),
         data_dirs: vec![format!("{root}/no-system-data")],
         session_platform_theme: String::new(),
+        qt_desktop_installed: false,
     };
     let io = Machine::new();
     let (ok, msg, _) = sp::apply_scheme(&io, &ctx, theme);
@@ -457,6 +459,7 @@ fn press_plan_is_the_golden_plan() {
                     gtk4: None,
                     qt_platform_theme: kv.platform_theme.to_string(),
                     qt_icon_theme: kv.icon_theme.clone(),
+                    qt_desktop_installed: kv.qt_desktop_installed,
                     kwin_reconfigure: flag.then(|| vec!["dbus-send".to_string(), "reconfigure".to_string()]),
                     aurorae_library: if flag { "org.kde.kwin.aurorae.v2".into() } else { String::new() },
                     cursor_safe: flag,

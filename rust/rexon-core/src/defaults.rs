@@ -64,6 +64,26 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("music_player", "audio/mpeg"),
 ];
 
+/// MIME types that belong to the web browser. Rexon NEVER writes them into a
+/// `<desktop>-mimeapps.list`: the browser is the person's choice and the same
+/// in every desktop. A live case (owner's machine, 2026): the KDE table carried
+/// `text/html=org.kde.kate.desktop`, and every web page saved to disk or opened
+/// from another program went to the text editor instead of Firefox. Lines with
+/// these types that are already in a file are left exactly as they are.
+pub const BROWSER_MIMES: &[&str] = &[
+    "text/html",
+    "application/xhtml+xml",
+    "x-scheme-handler/http",
+    "x-scheme-handler/https",
+    "x-scheme-handler/about",
+    "x-scheme-handler/unknown",
+];
+
+/// Whether `mime` belongs to the browser ([`BROWSER_MIMES`]).
+pub fn is_browser_mime(mime: &str) -> bool {
+    BROWSER_MIMES.contains(&mime.trim())
+}
+
 /// MIME for an application type (`MIME_TYPES.get`).
 pub fn mime_for(app_type: &str) -> Option<&'static str> {
     MIME_TYPES.iter().find(|(k, _)| *k == app_type).map(|(_, v)| *v)
@@ -111,29 +131,63 @@ pub const DEFAULT_RULES: &[(&str, bool)] = &[
     ("music_player", true),
 ];
 
-/// XDG_CURRENT_DESKTOP -> `*-mimeapps.list` file name, a port of `DE_DESKTOP_NAMES`.
-pub const DE_DESKTOP_NAMES: &[(&str, &str)] = &[
-    ("kde", "kde"),
-    ("gnome", "gnome"),
-    ("cinnamon-mint", "cinnamon"),
-    ("cinnamon", "cinnamon"),
-    ("xfce", "xfce"),
-    ("mate", "mate"),
-    ("budgie", "budgie"),
-    ("pantheon", "pantheon"),
-    // Deepin: `XDG_CURRENT_DESKTOP=DDE` → `dde-mimeapps.list`
-    // (dde-application-manager `applicationmimeinfo.cpp`: `<desktop>-mimeapps.list`).
-    ("deepin", "dde"),
-    ("cosmic", "cosmic"),
-    ("hyprland", "hyprland"),
-];
+/// The `*-mimeapps.list` file name of a desktop. ONE naming table for the whole
+/// product: [`crate::appdefaults::resolve_mimeapps_filename`] (the first element
+/// of the desktop's `XDG_CURRENT_DESKTOP` in lowercase, as GLib and `xdg-mime`
+/// look it up). The former separate table here named Cinnamon `cinnamon-…`,
+/// while `XDG_CURRENT_DESKTOP=X-Cinnamon` makes everyone read
+/// `x-cinnamon-mimeapps.list`: the list written at desktop install was never read.
+fn mimeapps_filename_for(de_id: &str) -> String {
+    crate::appdefaults::resolve_mimeapps_filename(de_id)
+}
 
-fn desktop_name_for(de_id: &str) -> &str {
-    DE_DESKTOP_NAMES
-        .iter()
-        .find(|(k, _)| *k == de_id)
-        .map(|(_, v)| *v)
-        .unwrap_or(de_id)
+/// Rexon's own per-desktop files of `de_id` in `$XDG_CONFIG_HOME` (file
+/// names): its `<desktop>-mimeapps.list` and `<desktop>-xdg-terminals.list`.
+/// Removed after the desktop itself is removed — only those carrying a Rexon
+/// mark ([`is_rexon_desktop_file`]).
+pub fn desktop_owned_files(de_id: &str) -> Vec<String> {
+    let mut out = vec![mimeapps_filename_for(de_id)];
+    if let Some(t) = crate::appdefaults::terminals_list_filename(de_id) {
+        out.push(t);
+    }
+    out
+}
+
+/// Whether a per-desktop file is Rexon's: the mimeapps marker (or the old
+/// header) or one of the terminal list marks.
+pub fn is_rexon_desktop_file(text: &str) -> bool {
+    is_rexon_mimeapps(text)
+        || text
+            .lines()
+            .any(|l| l.trim() == TERMINALS_LIST_CHOSEN_MARK || l.trim() == TERMINALS_LIST_NATIVE_MARK)
+}
+
+/// Lists older versions wrote under a name no desktop reads: (wrong, right).
+pub const MISNAMED_MIMEAPPS: &[(&str, &str)] =
+    &[("cinnamon-mimeapps.list", "x-cinnamon-mimeapps.list")];
+
+/// What to do with a list written under a wrong name ([`MISNAMED_MIMEAPPS`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MisnamedFix {
+    /// Nothing to do: no old file, or it is not Rexon's (the person's own file
+    /// is never touched).
+    Nothing,
+    /// The right file does not exist: write this text there, remove the old one.
+    Move { content: String },
+    /// The right file already exists: the old one is unread junk, remove it.
+    DropOld,
+}
+
+/// The decision for one misnamed list. `old`/`right` are the texts of the
+/// wrong-name and right-name files (`None` — no file).
+pub fn misnamed_mimeapps_fix(old: Option<&str>, right: Option<&str>) -> MisnamedFix {
+    match old {
+        Some(text) if is_rexon_mimeapps(text) => match right {
+            None => MisnamedFix::Move { content: text.to_string() },
+            Some(_) => MisnamedFix::DropOld,
+        },
+        _ => MisnamedFix::Nothing,
+    }
 }
 
 /// Native applications of each DE, a port of `DE_NATIVE_APPS`. The order of
@@ -183,7 +237,6 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("text/markdown", "org.kde.kate.desktop"),
             ("application/json", "org.kde.kate.desktop"),
             ("application/x-yaml", "org.kde.kate.desktop"),
-            ("text/html", "org.kde.kate.desktop"),
             ("text/xml", "org.kde.kate.desktop"),
             ("text/calendar", "org.kde.merkuro.calendar.desktop"),
             ("text/vcard", "org.kde.kaddressbook.desktop"),
@@ -269,7 +322,6 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("audio/flac", "org.xfce.Parole.desktop"),
             ("audio/ogg", "org.xfce.Parole.desktop"),
             ("application/json", "org.xfce.mousepad.desktop"),
-            ("text/html", "org.xfce.mousepad.desktop"),
             ("text/xml", "org.xfce.mousepad.desktop"),
             ("text/markdown", "org.xfce.mousepad.desktop"),
         ],
@@ -1571,13 +1623,46 @@ pub fn parse_mimeapps_list(content: &str) -> Vec<(String, String)> {
     result
 }
 
+/// First line of every `<desktop>-mimeapps.list` Rexon writes: by it Rexon
+/// recognises its own file (to follow the person's choice into it, to clean it
+/// up when the desktop or Rexon is removed). A file without it belongs to the
+/// person and is never rewritten or removed.
+pub const MIMEAPPS_MARK: &str = "# Rexon: per-desktop defaults";
+
+/// Whether a `<desktop>-mimeapps.list` text was written by Rexon: the current
+/// marker, or the header of versions before 25.11.2026 (Russian, see below).
+pub fn is_rexon_mimeapps(text: &str) -> bool {
+    text.lines().take(3).any(|l| {
+        let l = l.trim();
+        l == MIMEAPPS_MARK || is_legacy_mimeapps_header(l)
+    })
+}
+
+/// The header older versions wrote (in Russian, before the rule "files and
+/// logs in English"): `# <words> Rexon <words> DE`. Recognised by its ASCII
+/// skeleton so that the old Russian words do not have to live in the code.
+fn is_legacy_mimeapps_header(line: &str) -> bool {
+    line.starts_with("# ")
+        && line.ends_with(" DE")
+        && line.contains(" Rexon ")
+        && line.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+}
+
 /// Port of `_write_mimeapps_list`: header + `[Default Applications]` +
 /// entries SORTED by MIME. `timestamp` = `datetime.now().isoformat(
 /// timespec='seconds')`, passed as a parameter.
+///
+/// The header is English and starts with [`MIMEAPPS_MARK`] (the original wrote
+/// a Russian line here; files written by Rexon are read by people of any
+/// language, and logs and file comments are English).
 pub fn serialize_mimeapps_list(entries: &[(String, String)], timestamp: &str) -> String {
     let mut out = String::new();
-    out.push_str("# Автоматически создан Rexon для изоляции DE\n");
-    out.push_str(&format!("# Обновлён: {timestamp}\n"));
+    out.push_str(MIMEAPPS_MARK);
+    out.push('\n');
+    // No clock at hand (the login route) — no "Updated" line.
+    if !timestamp.is_empty() {
+        out.push_str(&format!("# Updated: {timestamp}\n"));
+    }
     out.push('\n');
     out.push_str("[Default Applications]\n");
     let mut sorted: Vec<&(String, String)> = entries.iter().collect();
@@ -1586,6 +1671,160 @@ pub fn serialize_mimeapps_list(entries: &[(String, String)], timestamp: &str) ->
         out.push_str(&format!("{mime}={desktop}\n"));
     }
     out
+}
+
+/// Merge a desktop's native programs into its existing list.
+///
+/// ⭐ What is already in the file WINS while its program is installed: it is
+/// either the person's choice (followed into the file by
+/// [`follow_choice_in_desktop_list`] / [`adopt_session_choices`]) or a native
+/// program written earlier. The original did `merged.update(native)`, and
+/// every next desktop install put the native programs back over what the
+/// person had chosen in that desktop. Only missing types are added, and a line
+/// whose program is gone is replaced. Browser types are never added.
+pub fn merge_native_entries(
+    existing: &[(String, String)],
+    native: &[(String, String)],
+    desktop_file_exists: &dyn Fn(&str) -> bool,
+) -> Vec<(String, String)> {
+    let mut merged = existing.to_vec();
+    for (m, d) in native {
+        if is_browser_mime(m) {
+            continue;
+        }
+        match merged.iter_mut().find(|(mm, _)| mm == m) {
+            Some(e) if !e.1.is_empty() && desktop_file_exists(&e.1) => {}
+            Some(e) => e.1 = d.clone(),
+            None => merged.push((m.clone(), d.clone())),
+        }
+    }
+    merged
+}
+
+/// `<desktop>-mimeapps.list` names a session reads, in its order: every
+/// element of `XDG_CURRENT_DESKTOP` in lowercase (`Budgie:GNOME` →
+/// `budgie-…`, `gnome-…`).
+pub fn session_desktop_lists(xdg_current_desktop: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for token in xdg_current_desktop.split(':') {
+        let t = token.trim().to_lowercase();
+        if t.is_empty() {
+            continue;
+        }
+        let name = format!("{t}-mimeapps.list");
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Follow a choice made for the whole session (`xdg-mime default` writes only
+/// the shared `~/.config/mimeapps.list`) into a desktop's own list.
+///
+/// WHY. By the specification `<desktop>-mimeapps.list` is read BEFORE the
+/// shared file, so a type present in it hides the choice: the person picks
+/// "always open with X" in Nemo or Dolphin (or Rexon's «Restore as it was»
+/// does), and for that type nothing changes. So the line in the desktop list
+/// takes the same program.
+///
+/// Only Rexon's own list ([`is_rexon_mimeapps`]) is edited, only a type that is
+/// already in it (a missing type falls through to the shared file anyway),
+/// never a browser type. The text is edited in place: other lines and
+/// sections stay byte for byte. `None` — nothing to change.
+pub fn follow_choice_in_desktop_list(text: &str, mime: &str, desktop: &str) -> Option<String> {
+    if !is_rexon_mimeapps(text) || is_browser_mime(mime) || desktop.trim().is_empty() {
+        return None;
+    }
+    let mut out = String::with_capacity(text.len() + desktop.len());
+    let mut in_section = false;
+    let mut changed = false;
+    for line in text.split_inclusive('\n') {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_section = t == "[Default Applications]";
+        } else if in_section {
+            if let Some((k, v)) = t.split_once('=') {
+                if k.trim() == mime {
+                    let current = v.trim().split(';').next().unwrap_or("").trim();
+                    if current != desktop {
+                        let nl = if line.ends_with('\n') { "\n" } else { "" };
+                        out.push_str(&format!("{mime}={desktop}{nl}"));
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str(line);
+    }
+    changed.then_some(out)
+}
+
+/// What the shared `mimeapps.list` looked like at the last session login, and
+/// which desktop list that session read (`~/.config/rexon/mimeapps_seen.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChoicesSeen {
+    /// `<desktop>-mimeapps.list` of that session.
+    pub list: String,
+    /// `[Default Applications]` of the shared file then.
+    pub general: Vec<(String, String)>,
+}
+
+/// Name of the [`ChoicesSeen`] file inside `~/.config/rexon`.
+pub const CHOICES_SEEN_FILE: &str = "mimeapps_seen.json";
+
+pub fn serialize_choices_seen(seen: &ChoicesSeen) -> String {
+    let mut general = Map::new();
+    for (m, d) in &seen.general {
+        general.insert(m.clone(), Value::String(d.clone()));
+    }
+    let mut root = Map::new();
+    root.insert("list".into(), Value::String(seen.list.clone()));
+    root.insert("general".into(), Value::Object(general));
+    serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_default() + "\n"
+}
+
+/// `None` — no file or not ours/broken: then nothing is adopted this time.
+pub fn parse_choices_seen(text: &str) -> Option<ChoicesSeen> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    let list = v.get("list")?.as_str()?.to_string();
+    if !list.ends_with("-mimeapps.list") || list.contains('/') {
+        return None;
+    }
+    let general = v
+        .get("general")?
+        .as_object()?
+        .iter()
+        .filter_map(|(k, d)| Some((k.clone(), d.as_str()?.to_string())))
+        .collect();
+    Some(ChoicesSeen { list, general })
+}
+
+/// The choices made during the previous session, carried into its desktop's
+/// list: every type whose program in the shared `mimeapps.list` changed since
+/// that session's login (`before`) is set to the new program in `text`
+/// (only types already in our list, never browser types — see
+/// [`follow_choice_in_desktop_list`]). The person chose it in that desktop,
+/// so there it must win. `None` — nothing to change.
+pub fn adopt_session_choices(
+    text: &str,
+    before: &[(String, String)],
+    after: &[(String, String)],
+) -> Option<String> {
+    let mut cur = text.to_string();
+    let mut changed = false;
+    for (mime, desktop) in after {
+        let was = before.iter().find(|(m, _)| m == mime).map(|(_, d)| d.as_str());
+        if was == Some(desktop.as_str()) {
+            continue;
+        }
+        if let Some(next) = follow_choice_in_desktop_list(&cur, mime, desktop) {
+            cur = next;
+            changed = true;
+        }
+    }
+    changed.then_some(cur)
 }
 
 /// Result of `protect_de_mimeapps` (the pure part).
@@ -1634,12 +1873,13 @@ pub fn protect_de_mimeapps(
             }
         };
 
-        let desktop_name = desktop_name_for(de_id);
-        let path = format!("{config_dir}/{desktop_name}-mimeapps.list");
+        let path = format!("{config_dir}/{}", mimeapps_filename_for(de_id));
 
-        // Only the actually installed .desktop files (native order).
+        // Only the actually installed .desktop files (native order). Browser
+        // types are never ours to write, whatever a table says.
         let valid: Vec<(String, String)> = native
             .iter()
+            .filter(|(m, _)| !is_browser_mime(m))
             .filter(|(_, d)| desktop_file_exists(d))
             .map(|(m, d)| (m.to_string(), d.to_string()))
             .collect();
@@ -1655,16 +1895,9 @@ pub fn protect_de_mimeapps(
             None => Vec::new(),
         };
 
-        // merged = dict(existing); merged.update(valid): a union of keys (the
-        // output order does not matter: serialise sorts by MIME).
-        let mut merged = existing.clone();
-        for (m, d) in &valid {
-            if let Some(e) = merged.iter_mut().find(|(mm, _)| mm == m) {
-                e.1 = d.clone();
-            } else {
-                merged.push((m.clone(), d.clone()));
-            }
-        }
+        // The person's line wins (see [`merge_native_entries`]); the output order
+        // does not matter: serialise sorts by MIME.
+        let merged = merge_native_entries(&existing, &valid, desktop_file_exists);
 
         let content = serialize_mimeapps_list(&merged, timestamp);
         outcome.writes.push((path, content));

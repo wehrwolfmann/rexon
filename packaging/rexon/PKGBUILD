@@ -41,14 +41,7 @@ _owe_min=0.3.4
 # Our own code is Apache-2.0 (LICENSE + NOTICE), but the package also ships
 # third-party code: the machine translation engine (fxtranslate, MPL-2.0)
 # with gemmology (MIT) and xsimd (BSD-3-Clause) compiled in, the Mozilla
-# model files (MPL-2.0) and the org.waywallen.kde Plasma wallpaper plugin
-# (the official release archive, unmodified). Upstream states the plasmoid
-# license in two ways: extensions/kde/LICENSE says MIT, while metadata.json
-# says GPL-2.0-or-later; the author has been asked
-# (waywallen/waywallen-display#70), and until there is an answer the field
-# lists both and both texts are installed. The bundled
-# libwaywallen-display-qml.so is MIT (a build of their waywallen-display
-# library, linked only against Qt6).
+# model files (MPL-2.0).
 # The QExtra QML plugin (built from the author's sources without changes)
 # and wavsen, ncrequest, rstd, vvk, lihttpto statically linked into it are
 # MIT (all except ncrequest offer "MIT OR Apache-2.0"; we take MIT).
@@ -68,9 +61,17 @@ _owe_min=0.3.4
 # daemon and the Open Wallpaper Engine plugin are separate distribution
 # packages in depends; their files, licenses and sources are the business
 # of their own packages.
-license=('Apache-2.0' 'MPL-2.0' 'MIT' 'BSD-3-Clause'
-         'GPL-2.0-or-later')
-if [[ $_bundled_engine == 1 ]]; then license+=('GPL-2.0-only'); fi
+# The bundled variant also ships the org.waywallen.kde Plasma wallpaper
+# plugin (the official release archive, unmodified; the =0 variant leaves it
+# to the plasma-wallpaper-waywallen distribution package, see optdepends).
+# Upstream states the plasmoid license in two ways: extensions/kde/LICENSE
+# says MIT, while metadata.json says GPL-2.0-or-later; the author has been
+# asked (waywallen/waywallen-display#70), and until there is an answer the
+# field lists both and both texts are installed. The bundled
+# libwaywallen-display-qml.so is MIT (a build of their waywallen-display
+# library, linked only against Qt6).
+license=('Apache-2.0' 'MPL-2.0' 'MIT' 'BSD-3-Clause')
+if [[ $_bundled_engine == 1 ]]; then license+=('GPL-2.0-only' 'GPL-2.0-or-later'); fi
 depends=(
   glibc
   libgcc               # libgcc_s; in Arch gcc-libs is a metapackage of all GCC libraries
@@ -187,9 +188,8 @@ optdepends=(
   '7zip: fallback extraction of .7z/.rar cursor archives that bsdtar cannot open'
   'unrar: fallback extraction of RAR cursor archives that bsdtar and 7zip cannot open'
   'kwin: KDE window decoration preview (QML module org.kde.kwin.private.kdecoration)'
-  'libplasma: waywallen wallpaper plugin for the Plasma desktop (org.waywallen.kde)'
-  'kirigami: waywallen wallpaper plugin for the Plasma desktop (org.waywallen.kde)'
-  'plasma-workspace: waywallen wallpaper plugin for the Plasma desktop (org.waywallen.kde)'
+  'plasma-wallpaper-waywallen: live waywallen wallpapers on the Plasma desktop (AUR; Rexon installs it on KDE by itself)'
+  'waywallen-display: Wallpaper Engine scenes on X11 desktops without Plasma (XFCE, MATE, Cinnamon on X11)'
 )
 
 conflicts=(rexon-git)
@@ -198,15 +198,15 @@ conflicts=(rexon-git)
 # This does not disable LTO for Rust itself: that is set by the release
 # profile in rust/Cargo.toml (lto = true), makepkg flags do not affect it.
 #
-# !strip: the .so of the org.waywallen.kde plasmoid must ship bit for bit as
-# in the release (the core recognizes its version by its hash,
-# KNOWN_RUNTIME_SHA). makepkg's strip has no exclusion list (it only skips
-# files without owner write permission — removing u+w from third-party
-# files for that was rejected), so package() strips our own binaries itself
-# (_strip_own_binaries). ⛔ With the bundled engine !strip also saves the AppImage:
-# strip sees an ordinary ELF in it and cuts off the attached squashfs
-# (78 MiB → <1 MiB, the engine is dead). !debug follows: makepkg builds the
-# debug package only together with strip.
+# !strip: with the bundled engine third-party files must ship untouched —
+# ⛔ the AppImage (strip sees an ordinary ELF in it and cuts off the attached
+# squashfs: 78 MiB → <1 MiB, the engine is dead) and the .so of the
+# org.waywallen.kde plasmoid, bit for bit as in the release (the core
+# recognizes its version by its hash, KNOWN_RUNTIME_SHA). makepkg's strip has
+# no exclusion list (it only skips files without owner write permission —
+# removing u+w from third-party files for that was rejected), so package()
+# strips our own binaries itself (_strip_own_binaries). !debug follows:
+# makepkg builds the debug package only together with strip.
 options=('!lto' '!strip' '!debug')
 # post_remove: remove the login screen safeguard from /etc (see the file itself).
 install=rexon.install
@@ -242,21 +242,25 @@ install=rexon.install
 # outside the table the plasmoid is not installed over a newer daemon and
 # does not guess compatibility.
 #
-# The org.waywallen.kde plasmoid ships here too, rather than as a
-# `plasma-wallpaper-waywallen` dependency: that one pulls in libplasma,
-# kirigami and plasma-workspace, i.e. all of Plasma onto any desktop, while
-# Rexon installs the plasmoid only on KDE and only per user (kpackagetool6
-# into ~/.local/share). The daemon and the plasmoid are updated ONLY
-# together: 0.4.x — output protocol v9; plasmoid 0.4.5 (waywallen-display,
-# checked 2026-11-08) fits daemon 0.6.1 (display protocol still 9..9,
-# checked 2026-11-23).
+# The org.waywallen.kde plasmoid is the plasma-wallpaper-waywallen
+# distribution package (AUR, split package of waywallen-display), and it is
+# an optdepends, not a dependency: it pulls in libplasma, kirigami and
+# plasma-workspace, i.e. all of Plasma onto any desktop. On KDE Rexon installs
+# it by itself when it is missing (owner's decision of 2026-11-25), never puts
+# its own copy over it, and moves its older copy out of ~/.local/share (a copy
+# there hides the package). The X11 output host takes the Waywallen.Display
+# QML module of waywallen-display (no Plasma). The daemon and the plasmoid
+# speak output protocol v9: waywallen-display 0.4.6 (checked 2026-11-25) fits
+# daemon 0.6.1 (display protocol still 9..9, checked 2026-11-23).
 # ⚠️The daemon's database only migrates forward: a daemon that has ever been
 # run in a newer version leaves a database an older one cannot start on — an
 # engine rollback only together with the database.
 # (_ww_min and _owe_min are set above depends: bash expands the array at once.)
-# The org.waywallen.kde Plasma wallpaper plugin is the official
-# waywallen-display release archive, installed UNMODIFIED (no patches of
-# ours on top). The version and checksum are also recorded in
+# Bundled engine variant only: the org.waywallen.kde Plasma wallpaper plugin
+# is the official waywallen-display release archive, installed UNMODIFIED
+# (no patches of ours on top), and the daemon and the plasmoid are updated
+# ONLY together (plasmoid 0.4.5 checked 2026-11-08 against daemon 0.6.1).
+# The version and checksum are also recorded in
 # data/kpackage/org.waywallen.kde/vendor.toml; `vendor-check` turns red if
 # they diverge between here and there, or if the checksum does not match the
 # release digest on GitHub.
@@ -457,8 +461,7 @@ source=("rexon::${_giturl}"
         "${_qm_pin:0:12}-${_qm_fonts[3]}::${_qm_media}/${_qm_fonts[3]}"
         "${_qm_pin:0:12}-${_qm_fonts[4]}::${_qm_media}/${_qm_fonts[4]}"
         "${_mt_tag:0:8}-${_mt_model}.gz::${_mt_url}/${_mt_model}.gz"
-        "${_mt_tag:0:8}-${_mt_vocab}.gz::${_mt_url}/${_mt_vocab}.gz"
-        "${_wwd_zip}::https://github.com/waywallen/waywallen-display/releases/download/v${_wwd_ver}/${_wwd_zip}")
+        "${_mt_tag:0:8}-${_mt_vocab}.gz::${_mt_url}/${_mt_vocab}.gz")
 _e=
 for _e in "${_qe_git[@]}"; do
   IFS='|' read -r _n _u _c <<<"$_e"
@@ -477,8 +480,7 @@ done
 # the file next to the archive in $srcdir, while the core needs the names
 # WITHOUT the revision prefix and inside the direction directory.
 noextract=("${_mt_tag:0:8}-${_mt_model}.gz"
-           "${_mt_tag:0:8}-${_mt_vocab}.gz"
-           "${_wwd_zip}")         # unpacked by package(): straight into the data directory
+           "${_mt_tag:0:8}-${_mt_vocab}.gz")
 for _e in "${_qe_reg[@]}"; do
   IFS='|' read -r _n _v _ <<<"$_e"
   noextract+=("lito-${_n}-${_v}.tar.zst")   # lito unpacks it itself from the source set
@@ -491,8 +493,7 @@ sha256sums=('SKIP'
             '72d77058be3c7f5b1a729ac3470daae79efea6a47a04b3a3fd11a76a0d410f62'
             '22663f2633246da809ba5e3b08161e774117135500c22664a17352c10eb1db34'
             '3c6e3ffd275c96a220ae28ddb55b8c2b86b44ffecc1eeb6c8195c1536de4ac74'
-            '07ed9055319f2adc50a16bc7e636fe1547ab745eb986e40b6384956dc1fc6cfd'
-            'dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41') # plasmoid (= release digest)
+            '07ed9055319f2adc50a16bc7e636fe1547ab745eb986e40b6384956dc1fc6cfd')
 for _e in "${_qe_git[@]}"; do sha256sums+=('SKIP'); done    # pinned by commits
 for _e in "${_qe_reg[@]}"; do
   IFS='|' read -r _ _ _s <<<"$_e"
@@ -517,6 +518,9 @@ if [[ $_bundled_engine == 1 ]]; then
                "$_cef_sha")
   noextract+=("${_owe_zip}"          # unpacked by prepare(): into its own directory
               "${_cef_archive}")     # of its 300 MB only the wrapper sources are needed
+  source+=("${_wwd_zip}::https://github.com/waywallen/waywallen-display/releases/download/v${_wwd_ver}/${_wwd_zip}")
+  sha256sums+=('dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41')  # plasmoid (= release digest)
+  noextract+=("${_wwd_zip}")         # unpacked by package(): straight into the data directory
   for _e in "${_owe_git[@]}"; do
     IFS='|' read -r _n _u _c _ <<<"$_e"
     source+=("owe-dep-${_n}::git+${_u}#commit=${_c}")
@@ -896,14 +900,18 @@ _qextra_build() {
 }
 
 # We strip our own binaries ourselves: makepkg's global strip is disabled
-# for the sake of the plasmoid and the bundled AppImage (see options).
-# Third-party builds are left alone: the bundled engine directory (the
-# AppImage and the plugin, already stripped upstream) and the
+# for the sake of the bundled engine variant (see options).
+# Third-party builds of the bundled engine variant are left alone: the engine
+# directory (the AppImage and the plugin, already stripped upstream) and the
 # org.waywallen.kde plasmoid — its .so must ship bit for bit as in the
 # upstream release (Rexon recognizes the version of a foreign install by
-# the runtime hash, KNOWN_RUNTIME_SHA).
+# the runtime hash, KNOWN_RUNTIME_SHA). The default package has neither.
 _strip_own_binaries() {
   local f
+  local keep=(-path "$pkgdir/usr/lib/rexon/engine")
+  if [[ $_bundled_engine == 1 ]]; then
+    keep+=(-o -path "$pkgdir/usr/lib/rexon/rexon/kpackage")
+  fi
   while IFS= read -r -d '' f; do
     # ELF only: the \x7fELF signature in the first bytes
     [[ "$(head -c4 "$f" | od -An -c | tr -d ' ')" == '177ELF' ]] || continue
@@ -911,9 +919,7 @@ _strip_own_binaries() {
       *.so|*.so.*) strip --strip-unneeded "$f" ;;
       *) strip --strip-all "$f" ;;
     esac
-  done < <(find "$pkgdir" \( -path "$pkgdir/usr/lib/rexon/engine" \
-                         -o -path "$pkgdir/usr/lib/rexon/rexon/kpackage" \) -prune \
-                         -o -type f -print0)
+  done < <(find "$pkgdir" \( "${keep[@]}" \) -prune -o -type f -print0)
 }
 
 check() {
@@ -1040,24 +1046,28 @@ LAUNCHER
   #     warm-up scene and the .qm translation catalog (`remote_l10n`);
   #   * qt_wallpaper_engine/proto/UPSTREAM_TAG — the protocol snapshot tag,
   #     by which the check badge detects an outdated protocol (`we_parity`);
-  #   * kpackage/org.waywallen.kde — the Plasma wallpaper plugin, installed
-  #     by kpackagetool6 (`waywallen_kde_plugin::bundle_dir`). Only
-  #     vendor.toml comes from the tree (by it Rexon knows "we installed it"
-  #     and the version); the plasmoid itself is the official release
-  #     archive, unpacked as is;
+  #   * kpackage/org.waywallen.kde — bundled engine variant only: the Plasma
+  #     wallpaper plugin, installed by kpackagetool6
+  #     (`waywallen_kde_plugin::bundle_dir`). Only vendor.toml comes from the
+  #     tree (by it Rexon knows "we installed it" and the version); the
+  #     plasmoid itself is the official release archive, unpacked as is. The
+  #     default package has no bundle: the plugin is plasma-wallpaper-waywallen;
   #   * themes.json — the built-in theme database (`themes::builtin_json_path`);
   #   * assets/fonts — bundled skin heading fonts (`ui_base`);
   #   * assets/screenshots — our own desktop screenshots that neither the
   #     project nor Commons has (River; `screenshots::BUNDLED_SUBDIR`).
   local data="$lib/rexon"
-  install -d "$data/qt_wallpaper_engine" "$data/kpackage"
+  install -d "$data/qt_wallpaper_engine"
   cp -a data/qt_wallpaper_engine/qml_ui "$data/qt_wallpaper_engine/qml_ui"
   install -Dm644 data/qt_wallpaper_engine/proto/UPSTREAM_TAG \
     "$data/qt_wallpaper_engine/proto/UPSTREAM_TAG"
-  # The archive root is already the org.waywallen.kde/ directory.
-  bsdtar --no-same-owner -xf "$srcdir/$_wwd_zip" -C "$data/kpackage"
-  install -m644 data/kpackage/org.waywallen.kde/vendor.toml \
-    "$data/kpackage/org.waywallen.kde/vendor.toml"
+  if [[ $_bundled_engine == 1 ]]; then
+    install -d "$data/kpackage"
+    # The archive root is already the org.waywallen.kde/ directory.
+    bsdtar --no-same-owner -xf "$srcdir/$_wwd_zip" -C "$data/kpackage"
+    install -m644 data/kpackage/org.waywallen.kde/vendor.toml \
+      "$data/kpackage/org.waywallen.kde/vendor.toml"
+  fi
   install -Dm644 data/themes.json "$data/themes.json"
   cp -a data/assets "$data/assets"
 
@@ -1232,24 +1242,26 @@ LAUNCHER
   }
   chmod 644 "$pkgdir/usr/share/licenses/$pkgname/LICENSE.lihttpto-MIT"
 
-  # ⚖️ The org.waywallen.kde Plasma wallpaper plugin (the official release
-  # archive, unmodified, ships in /usr/lib/rexon/rexon/kpackage/ and is
-  # installed by kpackagetool6). Upstream states the license in two ways:
-  # extensions/kde/LICENSE — MIT © hypengw, metadata.json —
-  # GPL-2.0-or-later. The author has been asked
+  # ⚖️ The org.waywallen.kde Plasma wallpaper plugin (bundled engine variant
+  # only: the official release archive, unmodified, ships in
+  # /usr/lib/rexon/rexon/kpackage/ and is installed by kpackagetool6).
+  # Upstream states the license in two ways: extensions/kde/LICENSE — MIT ©
+  # hypengw, metadata.json — GPL-2.0-or-later. The author has been asked
   # (waywallen/waywallen-display#70); until there is an answer we install
   # BOTH texts: its LICENSE and the GPL-2.0 that metadata.json refers to.
   # Since 0.4.2 LICENSE is inside the release archive itself (#71; bit for
   # bit the same as the tag's extensions/kde/LICENSE) — we no longer
   # download it separately.
-  [ -s "$data/kpackage/org.waywallen.kde/LICENSE" ] || {
-    echo "no LICENSE found in the plasmoid archive $_wwd_zip" >&2
-    return 1
-  }
-  install -Dm644 "$data/kpackage/org.waywallen.kde/LICENSE" \
-    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-MIT"
-  install -Dm644 packaging/licenses/GPL-2.0.txt \
-    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-GPL-2.0"
+  if [[ $_bundled_engine == 1 ]]; then
+    [ -s "$data/kpackage/org.waywallen.kde/LICENSE" ] || {
+      echo "no LICENSE found in the plasmoid archive $_wwd_zip" >&2
+      return 1
+    }
+    install -Dm644 "$data/kpackage/org.waywallen.kde/LICENSE" \
+      "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-MIT"
+    install -Dm644 packaging/licenses/GPL-2.0.txt \
+      "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-kde-GPL-2.0"
+  fi
 
   # The description machine translation engine: the vendored fxtranslate
   # crate (MPL-2.0) and the third-party headers inside it — gemmology (MIT)

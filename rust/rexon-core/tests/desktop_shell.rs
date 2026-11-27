@@ -476,7 +476,7 @@ fn на_x11_и_под_mutter_фон_всегда_наш() {
 // ── text for the buyer ─────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn при_чужом_владельце_есть_что_сказать() {
     // The text is in Russian from the real catalog.
     let _lang = i18n_pin::ru();

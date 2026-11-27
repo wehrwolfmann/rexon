@@ -50,15 +50,14 @@
 //     password window, from AUR — never: such packages are named to the user
 //     as a list.
 //
-//   * takes and restores a copy of the KDE panel → executed by Rust:
+//   * takes and restores a copy of the current desktop's panel → executed
+//     by Rust:
 //       - `panelBackup` / `panelRestore`.
-//     The `PlasmaProtector` executor moved to the core
-//     (`backup::plasma_backup_run`, `plasma_restore_run`,
-//     `plasma_restart_shell`), and is called with THE SAME call as in
-//     "Settings" (`settings_actions::panel_backup_now` /
-//     `panel_restore_now`) — there is no second copy in the product. The
-//     question before restoring and the outcome texts are as in the Python
-//     tab.
+//     The executor is the core's panel protection for every desktop
+//     (`backup::panel_save_live`, `panel_restore_live`), called with THE
+//     SAME calls as in "Settings" (`settings_actions::panel_save_now` /
+//     `panel_restore_now`, and the same restore question) — there is no
+//     second copy in the product.
 //
 // Warning: there must be no SILENT "nothing happened" here (rule #13): the
 // customer would take such a button for a breakage. So every method not yet
@@ -367,6 +366,7 @@ use rexon_core::shell_bundle as sb;
 use rexon_core::system::DesktopShell;
 use rexon_core::deepin_treeland as dt;
 use rexon_core::repo_rebuild;
+use rexon_core::screensaver_guard as sg;
 use rexon_core::steamos_sysext as sx;
 use rexon_core::system_plan;
 use rexon_core::utils;
@@ -410,6 +410,10 @@ pub struct DesktopsActionsRust {
     op: OpView,
     pending: Option<PendingOp>,
     cancel: Option<dx::CancelToken>,
+    /// "Check / Repair" of the current desktop found that the desktop's own
+    /// screen saver is not running or a foreign one is: the question is shown
+    /// when the outcome window is closed (`sg::survey_live`).
+    screensaver_offer: Option<sg::Restore>,
 }
 
 /// What the operation window shows. All labels come from the core.
@@ -666,6 +670,8 @@ enum PendingOp {
         de: String,
         operation_title: String,
     },
+    /// Bring the desktop's own screen saver back (found by "Check / Repair").
+    ScreensaverRestore(sg::Restore),
 }
 
 /// What to do with the shell.
@@ -698,6 +704,7 @@ enum Job {
         id: String,
         de: String,
     },
+    ScreensaverRestore(sg::Restore),
 }
 
 /// The core's simple HTML for the window: line breaks become `<br>` (in
@@ -1415,12 +1422,18 @@ impl qobject::DesktopsActions {
                 de,
                 operation_title,
             } => (operation_title, String::new(), Job::LookRevert { id, de }),
+            PendingOp::ScreensaverRestore(r) => {
+                (sg::restore_operation_title(), String::new(), Job::ScreensaverRestore(r))
+            }
         };
         let token = dx::CancelToken::new();
         self.as_mut().rust_mut().cancel = Some(token.clone());
         self.as_mut().set_op(OpView::running(&operation_title));
         let handle = self.as_mut().qt_thread();
         let current = current_de().unwrap_or_else(|| "unknown".to_string());
+        // Installing or repairing the CURRENT desktop is its "Check / Repair":
+        // the session's screen saver is checked too.
+        let check_saver = matches!(&job, Job::Install(de_id, ..) if *de_id == current);
         std::thread::spawn(move || {
             let sink: Arc<dyn dx::DeOpSink> = Arc::new(QtSink {
                 handle: handle.clone(),
@@ -1446,6 +1459,7 @@ impl qobject::DesktopsActions {
                     let reverted = dl::revert_live(&id, &de).map(|r| r.message);
                     look_outcome(&*sink, reverted, &mut job_result)
                 }
+                Job::ScreensaverRestore(r) => look_outcome(&*sink, sg::restore_live(&r), &mut job_result),
                 Job::AddSession(de_id, kind) => dx::add_session_live(sink, token, &de_id, kind),
                 Job::Install(de_id, replace, session) if replace.is_empty() => {
                     dx::install_de_live(sink, token, &de_id, &current, session)
@@ -1470,17 +1484,31 @@ impl qobject::DesktopsActions {
             // installed): several notification daemons have one bus name, and without
             // our choice someone else's would draw the notifications.
             rexon_core::notifications_slot::sync_live();
-            let result = match restart_result {
+            // The same for screen saver launchers: a new desktop may have brought
+            // another saver whose settings would show in foreign desktops.
+            sg::sync_live();
+            let saver_offer = if check_saver { sg::survey_live() } else { None };
+            let mut result = match restart_result {
                 Some(text) if outcome.restart_needed => text,
                 _ => job_result.unwrap_or(result),
             };
+            if saver_offer.is_some() {
+                result = format!("{result}<br><br>{}", html(&sg::found_note()));
+            }
             deliver(&handle, move |object| {
-                object.finish_operation(outcome, operation_title, result);
+                object.finish_operation(outcome, operation_title, result, saver_offer);
             });
         });
     }
 
-    fn finish_operation(mut self: Pin<&mut Self>, outcome: dx::DeOpOutcome, title: String, result: String) {
+    fn finish_operation(
+        mut self: Pin<&mut Self>,
+        outcome: dx::DeOpOutcome,
+        title: String,
+        result: String,
+        saver_offer: Option<sg::Restore>,
+    ) {
+        self.as_mut().rust_mut().screensaver_offer = saver_offer;
         let mut op = self.rust().op.clone();
         if let Some(line) = op.apply_done(&outcome, result) {
             self.as_mut().operation_log(QString::from(&line));
@@ -1549,6 +1577,23 @@ impl qobject::DesktopsActions {
             self.as_mut().set_status(String::new(), dx::FooterKind::Pending);
         }
         self.as_mut().rust_mut().pending = None;
+        // "Check / Repair" found a screen saver problem: the outcome window is
+        // closed, and now comes the question with the one button that fixes it.
+        if phase == "done" {
+            if let Some(offer) = self.as_mut().rust_mut().screensaver_offer.take() {
+                let text = sg::restore_text(&offer);
+                self.as_mut().rust_mut().pending = Some(PendingOp::ScreensaverRestore(offer));
+                self.as_mut()
+                    .set_status(dx::awaiting_answer(&sg::restore_operation_title()), dx::FooterKind::Pending);
+                self.set_op(OpView {
+                    phase: "confirm".to_string(),
+                    title: sg::restore_title(),
+                    text,
+                    ..OpView::default()
+                });
+                return;
+            }
+        }
         self.set_op(OpView::default());
     }
 
@@ -1612,7 +1657,7 @@ impl qobject::DesktopsActions {
         self.as_mut().operation_log(QString::from(&sx::password_set_text()));
     }
 
-    // ── KDE panel: executed by the core, with the same call as "Settings" ─
+    // ── Panel protection: executed by the core, with the same call as "Settings" ─
     //
     // Parity with the Python tab (`DesktopsActions.panelBackup/panelRestore`
     // in `rexon/qt_desktops/window.py`): the copy is taken without a question,
@@ -1622,73 +1667,39 @@ impl qobject::DesktopsActions {
     // and there is no reason for the page to recompute it.
 
     fn panel_backup(self: Pin<&mut Self>) -> bool {
-        let data_home = utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref().filter(|v| !v.is_empty()), &std::env::var("HOME").unwrap_or_default());
-        let (ok, message) = match current_de().as_deref() {
-            // MATE and XFCE keep ONE copy: a new one replaces the previous one, and for
-            // MATE it is also the "Restore the previous panel" copy — we do not
-            // overwrite it without asking.
-            Some(de @ ("mate" | "xfce")) => {
-                let exists = if de == "mate" {
-                    std::path::Path::new(&rexon_core::mate_panel::PanelCtx::from_env().backup_path()).is_file()
-                } else {
-                    std::path::Path::new(&rexon_core::backup::xfce_panel_copy_path(&data_home)).is_file()
-                };
-                if exists {
-                    let (title, text) = qd::panel_backup_replace_confirm(de == "mate");
-                    if !crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text)) {
-                        return false;
-                    }
-                }
-                if de == "mate" {
-                    rexon_core::mate_panel::save_snapshot(&rexon_core::animations::SystemIo, &rexon_core::mate_panel::PanelCtx::from_env())
-                } else {
-                    rexon_core::backup::xfce_panel_save_live(&data_home)
-                }
-            }
-            // Other desktops: one copy per desktop (`backup::panel_copy_*`).
-            Some(de) if de != "kde" && rexon_core::backup::live_panel_copy_spec(de).is_some() => {
-                if rexon_core::backup::panel_copy_exists_live(de) {
-                    let (title, text) = qd::panel_backup_replace_confirm(false);
-                    if !crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text)) {
-                        return false;
-                    }
-                }
-                rexon_core::backup::panel_copy_save_live(de)
-            }
-            _ => crate::settings_actions::panel_backup_now("manual")
-                // A DISK refusal (the directory was not created, the meta file was not
-                // written) — in Python this was an exception, and it went into the same
-                // "failed" outcome with its own text.
-                .unwrap_or_else(|detail| (false, detail)),
+        // One executor for every desktop and both tabs: a new copy never
+        // replaces an older one (up to ten per desktop, the original kept),
+        // so there is nothing to ask.
+        let de = current_de().unwrap_or_default();
+        let (ok, message) = match crate::settings_actions::panel_save_now(&de) {
+            Ok(message) => (true, message),
+            Err(detail) => (false, detail),
         };
         self.set_status(panel_status(&qd::panel_backup_result(ok, &message)), dx::result_footer_kind(ok));
         false
     }
 
     fn panel_restore(mut self: Pin<&mut Self>) -> bool {
+        let de = current_de().unwrap_or_default();
+        let Some(snap) = rexon_core::backup::panel_latest_live(&de) else {
+            let why = rexon_core::backup::msg_no_plasma_backups();
+            self.set_status(panel_status(&qd::panel_restore_result(false, &why)), dx::result_footer_kind(false));
+            return false;
+        };
+        // The same question as in "Settings": the desktop, the date, the other
+        // desktops whose shortcuts change too, a note when they wait for a login.
+        let (_, question) = crate::settings_actions::panel_restore_question(&snap);
         let agreed = crate::extensions_actions::ask_confirm(
             &QString::from(&qd::panel_restore_confirm_title()),
-            &QString::from(&qd::panel_restore_confirm_text()),
+            &QString::from(&question),
         );
         if !agreed {
             // The user changed their mind — there is nothing to say (as in Python).
             return false;
         }
-        let (ok, message) = match current_de().as_deref() {
-            // The same copy as for "Restore the previous panel" of the "Panel layout"
-            // section (`mate_panel::restore`).
-            Some("mate") => {
-                let text = rexon_core::mate_panel::restore(&rexon_core::animations::SystemIo, &rexon_core::mate_panel::PanelCtx::from_env());
-                (text.starts_with('✅'), text)
-            }
-            Some("xfce") => {
-                let data_home = utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref().filter(|v| !v.is_empty()), &std::env::var("HOME").unwrap_or_default());
-                rexon_core::backup::xfce_panel_restore_live(&data_home)
-            }
-            Some(de) if de != "kde" && rexon_core::backup::live_panel_copy_spec(de).is_some() => {
-                rexon_core::backup::panel_copy_restore_live(de)
-            }
-            _ => crate::settings_actions::panel_restore_now(None),
+        let (ok, message) = match crate::settings_actions::panel_restore_now(&snap.path) {
+            Ok((_, message)) => (true, message),
+            Err(message) => (false, message),
         };
         let status = panel_status(&qd::panel_restore_result(ok, &message));
         self.as_mut().set_status(status.clone(), dx::result_footer_kind(ok));
@@ -1696,16 +1707,17 @@ impl qobject::DesktopsActions {
         // are installed from extensions.gnome.org in a worker thread (the shell's
         // confirmation window waits for the user); the outcome is appended to the
         // status line.
-        if ok && current_de().as_deref() == Some("gnome") {
+        if ok && snap.de == "gnome" {
             let handle = self.as_mut().qt_thread();
+            let dir = snap.path.clone();
             std::thread::spawn(move || {
-                let Some(report) = rexon_core::backup::gnome_ext_copy_deliver_live() else {
+                let Some(report) = rexon_core::backup::gnome_ext_copy_deliver_live_from(&dir) else {
                     return;
                 };
                 let text = format!("{status} — {}", report.replace('\n', " "));
                 if let Err(e) = handle.queue(move |object| object.set_status(text, dx::FooterKind::Notice)) {
                     if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-                        rexon_core::log_warn!("desktops", "итог доставки расширений GNOME не доставлен: {e:?}");
+                        rexon_core::log_warn!("desktops", "GNOME extension delivery outcome was not delivered: {e:?}");
                     }
                 }
             });
@@ -2236,6 +2248,7 @@ fn pending_title(pending: &PendingOp) -> String {
         | PendingOp::Shell { operation_title, .. }
         | PendingOp::Look { operation_title, .. }
         | PendingOp::LookRevert { operation_title, .. } => operation_title.clone(),
+        PendingOp::ScreensaverRestore(_) => sg::restore_operation_title(),
     }
 }
 

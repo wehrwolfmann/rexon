@@ -2105,7 +2105,9 @@ pub fn nudge_noctalia_live() {
 //         `color_scheme_path=<path>` (that is how qt6ct's own «Appearance» page
 //         writes it). If the session does not hand Qt programs to
 //         qt6ct yet, our variables file `environment.d/rexon-qt-style.conf`
-//         (the same one used by Kvantum and «Application Style») gets
+//         (the same one used by Kvantum and «Application Style»; while Plasma,
+//         LXQt or Deepin is installed — `rexon/session-env/rexon-qt-style.conf`,
+//         see `themes::DESKTOP_BOUND_ENV_DIR`) gets
 //         `QT_QPA_PLATFORMTHEME=qt6ct` — then the palette appears after the
 //         next login. qt6ct did not know the icons before that — we put the current
 //         environment icons, otherwise Qt programs would be left with `hicolor`.
@@ -2184,9 +2186,6 @@ const SCHEME_EFFECT_KEYS: &[&str] = &[
     "ContrastEffect",
     "ContrastAmount",
 ];
-
-/// Rexon's session variables file for Qt — shared with the Qt style.
-const QT_ENV_REL: &str = "environment.d/rexon-qt-style.conf";
 
 // ── Editing INI in KConfig/QSettings format by lines ──────────────────────
 //
@@ -2622,6 +2621,11 @@ pub struct SchemeCtx {
     pub data_dirs: Vec<String>,
     /// `$QT_QPA_PLATFORMTHEME` of this session.
     pub session_platform_theme: String,
+    /// A desktop with its own Qt integration is installed
+    /// ([`crate::themes::own_qt_desktop_installed`]): the variable then goes
+    /// into Rexon's desktop-bound directory, not the shared `environment.d`
+    /// that Plasma imports — the same decision as the Qt style's.
+    pub qt_desktop_installed: bool,
 }
 
 impl SchemeCtx {
@@ -2632,6 +2636,10 @@ impl SchemeCtx {
             home: PaletteHome::live(),
             data_dirs: dirs.split(':').filter(|d| !d.is_empty()).map(str::to_string).collect(),
             session_platform_theme: std::env::var("QT_QPA_PLATFORMTHEME").unwrap_or_default(),
+            qt_desktop_installed: {
+                let path = std::env::var("PATH").ok();
+                crate::themes::own_qt_desktop_installed(&|b| crate::utils::which(b, path.as_deref()).is_some())
+            },
         }
     }
 
@@ -2649,8 +2657,12 @@ impl SchemeCtx {
         out
     }
 
+    /// Our Qt variables file: the shared one, or — while a desktop with its own
+    /// Qt integration is installed — the desktop-bound one
+    /// ([`crate::themes::qt_style_env_paths`]).
     fn qt_env_file(&self) -> PathBuf {
-        self.home.config().join(QT_ENV_REL)
+        let [shared, bound] = crate::themes::qt_style_env_paths(&self.home.config().to_string_lossy());
+        PathBuf::from(if self.qt_desktop_installed { bound } else { shared })
     }
 
     /// The layer memo.

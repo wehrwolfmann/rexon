@@ -82,7 +82,7 @@ fn ядро_ребёнком(доп: &[(&str, &str)]) -> String {
 
 /// The probe body runs only in the child process (see the header about `OnceLock`).
 #[test]
-#[ignore = "запускается дочерним процессом ядро_умножения_выбирается_по_cpuid"]
+#[ignore = "run as a child process by ядро_умножения_выбирается_по_cpuid"]
 fn печать_ядра_ребёнком() {
     assert!(std::env::var_os(РЕБЁНОК).is_some(), "только дочерний прогон");
     println!("{МЕТКА}{}", fxtranslate::gemm::backend());
@@ -167,7 +167,7 @@ fn ядро_умножения_выбирается_по_cpuid() {
 /// (`lex.*.bin`) is deliberately NOT used: it costs 0.4 chrF++ and 2.8 MB of
 /// distribution, and the speedup on dozens of short descriptions is not noticeable.
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn перевод_одной_фразы() {
     let корень = std::env::var(МОДЕЛЬ_ENV).unwrap_or_else(|_| default_model_dir());
     let модель = std::path::Path::new(&корень).join("model.enru.intgemm.alphas.bin");

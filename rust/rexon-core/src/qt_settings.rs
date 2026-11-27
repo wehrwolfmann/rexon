@@ -7186,13 +7186,19 @@ pub fn pretty_backup_ts(ts: &str) -> String {
     trf("%1.%2.%3 at %4:%5", &[&d, &mo, &y, &h, &mi])
 }
 
-/// Captions of the reasons a Plasma panel copy was made.
+/// Captions of the reasons a panel copy was made.
 pub fn backup_reason_label(reason: &str) -> String {
     match reason {
         // TRANSLATORS: why a copy of the Plasma panel was made.
         "before_install" => tr("automatically, before installing"),
         // TRANSLATORS: why a copy of the Plasma panel was made.
         "manual" => tr("manually"),
+        // TRANSLATORS: why a copy of the panel was made.
+        "before_switch" => tr("automatically, before switching desktops"),
+        // TRANSLATORS: why a copy of the panel was made: a panel layout was applied.
+        "before_layout" => tr("automatically, before changing the layout"),
+        // TRANSLATORS: why a copy of the panel was made: an earlier Rexon version took it.
+        "migrated" => tr("by an earlier version of Rexon"),
         other => other.to_string(),
     }
 }
@@ -7604,10 +7610,10 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
             when a new desktop is installed"),
     ),
     (
-        "plasmaGroup",
-        n_("🛡️ KDE Plasma Panel Protection"),
-        n_("Saves the panel layout, widgets and keyboard shortcuts — and brings them back \
-            if something breaks after installing another desktop"),
+        "panelGroup",
+        n_("🛡️ Panel Protection"),
+        n_("Saves the panel layout, applets and keyboard shortcuts of your desktop and brings \
+            them back if something broke after installing another desktop"),
     ),
     (
         "aeroGroup",
@@ -8131,32 +8137,52 @@ pub const TEXTS: &[(&str, &str)] = &[
             changes, Rexon gives such terminals readable colors of their own. Colors you \
             picked yourself are left alone, and “Return as It Was” brings the old ones back."),
     ),
-    // Plasma panel
-    ("plasma.backup_title", n_("<b>Save the current panel layout</b>")),
+    // Panel protection (every desktop since 25.11.2026)
+    ("panel.backup_title", n_("<b>Save the current panel layout</b>")),
     (
-        "plasma.backup_sub",
-        n_("Rexon will make a copy of the panel layout, widgets and keyboard shortcuts — \
-            you can bring it back in one click"),
+        "panel.backup_sub",
+        n_("Rexon will make a copy of the panels, applets and keyboard shortcuts of your \
+            desktop — you can bring it back in one click"),
     ),
+    // TRANSLATORS: %1 lists what a copy holds: "panels and applets, keyboard shortcuts".
+    ("panel.tip", n_("What gets copied: %1")),
+    // TRANSLATORS: a part of a panel copy.
+    ("panel.parts_panel", n_("panels and applets")),
+    // TRANSLATORS: a part of a panel copy.
+    ("panel.parts_shortcuts", n_("keyboard shortcuts")),
+    // TRANSLATORS: the desktop's very first copy, kept for good.
+    ("panel.original", n_("⭐ the original, before Rexon")),
+    ("panel.backup", n_("📦 Save Copy")),
+    ("panel.backups_header", n_("<b>Saved copies (%1):</b>")),
+    ("panel.no_backups", n_("No saved copies yet")),
+    // TRANSLATORS: %1 is how many other desktops have copies.
+    ("panel.others", n_("Copies of other desktops (%1)")),
+    ("panel.unsupported", n_("Rexon can't make copies of this desktop's panel yet.")),
+    ("panel.restore", n_("Restore")),
+    ("panel.backup_dir", n_("Copy folder: %1")),
+    ("panel.confirm_title", n_("Restore?")),
     (
-        "plasma.backup_tip",
-        n_("Settings files that get copied: plasma-org.kde.plasma.desktop-appletsrc, \
-            plasmashellrc, kglobalshortcutsrc"),
-    ),
-    ("plasma.backup", n_("📦 Save Copy")),
-    ("plasma.backups_header", n_("<b>Saved copies (%1):</b>")),
-    ("plasma.no_backups", n_("No saved copies yet")),
-    ("plasma.restore", n_("Restore")),
-    ("plasma.backup_dir", n_("Copy folder: %1")),
-    ("plasma.confirm_title", n_("Restore?")),
-    (
-        "plasma.confirm_text",
-        // TRANSLATORS: %1 is the date and time of the saved copy.
-        n_("Restore the Plasma panel from the copy made %1?\n\nThe current panel layout \
+        "panel.confirm_text",
+        // TRANSLATORS: %1 is the desktop name, %2 the date and time of the saved copy.
+        n_("Restore the panel of %1 from the copy made %2?\n\nThe current panel layout \
             will be replaced."),
     ),
+    // TRANSLATORS: %1 lists other desktops (Budgie, Pantheon).
+    ("panel.shared", n_("Keyboard shortcuts of %1 will change too: they use the same settings.")),
+    ("panel.relogin", n_("Keyboard shortcuts will take effect after you log in again.")),
+    (
+        "panel.services",
+        n_("The desktop's services restart for a moment: the theme, the wallpaper slideshow and \
+            power settings may blink."),
+    ),
+    // TRANSLATORS: %1 is the desktop name.
+    ("panel.other_de", n_("%1 will pick the copy up the next time you log in to it.")),
+    // TRANSLATORS: %1 lists what was saved: "panels and applets, keyboard shortcuts".
+    ("panel.saved", n_("Copy saved: %1")),
+    // TRANSLATORS: %1 is the date and time of the copy.
+    ("panel.restored", n_("Restored the copy of %1")),
     // Fix: it was «⚠️ Error backup: …», the same jargon word.
-    ("plasma.backup_error", n_("⚠️ Could not save a copy: %1")),
+    ("panel.backup_error", n_("⚠️ Could not save a copy: %1")),
     // desktop look (AeroShell)
     ("aero.check", n_("Check the desktop appearance when Rexon starts")),
     (
@@ -8738,33 +8764,80 @@ pub fn protection_row_texts(app_type: &str, remembered: &str) -> (String, String
     )
 }
 
-// ── Plasma panel ────────────────────────────────────────────────────
+// ── Panel protection ────────────────────────────────────────────────
 
-/// How many of the latest panel copies to show in the section.
-pub const PLASMA_BACKUPS_SHOWN: usize = 5;
+/// How many of the latest copies of one desktop to show in the section.
+pub const PANEL_BACKUPS_SHOWN: usize = 5;
 
 /// Heading of the panel copy list.
-pub fn plasma_backups_header(total: usize) -> String {
-    tf("plasma.backups_header", &[&total.to_string()])
+pub fn panel_backups_header(total: usize) -> String {
+    tf("panel.backups_header", &[&total.to_string()])
 }
 
-/// The question before restoring a copy: (dialog title, text).
+/// Heading of the folded block with the copies of other desktops.
+pub fn panel_others_header(desktops: usize) -> String {
+    tf("panel.others", &[&desktops.to_string()])
+}
+
+/// What a copy holds, in words: "panels and applets, keyboard shortcuts".
+pub fn panel_parts_label(parts: &[String]) -> String {
+    let mut words = Vec::new();
+    if parts.iter().any(|p| p == crate::backup::snapshot_part::PANEL) {
+        words.push(t("panel.parts_panel"));
+    }
+    if parts.iter().any(|p| p == crate::backup::snapshot_part::SHORTCUTS) {
+        words.push(t("panel.parts_shortcuts"));
+    }
+    words.join(", ")
+}
+
+/// The tooltip of the section's subtitle: what a copy of this desktop takes.
+pub fn panel_tip(parts: &[String]) -> String {
+    tf("panel.tip", &[&panel_parts_label(parts)])
+}
+
+/// The line of one copy: «📁 25.11.2026 at 10:00 · manually · panels and applets, keyboard shortcuts».
+pub fn panel_row_label(snap: &crate::backup::PanelSnapshot) -> String {
+    let what = panel_parts_label(&snap.parts);
+    let what = if what.is_empty() {
+        // TRANSLATORS: number of items in a saved panel copy.
+        ntr("%n file", "%n files", snap.items as u64)
+    } else {
+        what
+    };
+    let mut line = format!("📁 {}  ·  {}  ·  {what}", pretty_backup_ts(&snap.timestamp), backup_reason_label(&snap.reason));
+    if snap.original {
+        line.push_str(&format!("  ·  {}", t("panel.original")));
+    }
+    line
+}
+
+/// The question before restoring a copy: (dialog title, text). `shared` are
+/// the installed desktops whose shortcuts change too; `relogin` says the
+/// shortcuts apply only after logging in again; `services` warns that the
+/// desktop's services restart for a moment (Deepin).
 ///
-/// Fix (rule #13): the question had a machine timestamp («20.06.2026 at
-/// 01:10» turned into «20260620_011005»). In the list above the same copy is
-/// labeled in a human way ([`backup_row_label`]), and the person did not
-/// recognize in the question the line they had just clicked. The timestamp is
-/// made human by the same [`pretty_backup_ts`]: there must be no second date
-/// table here.
-pub fn plasma_restore_confirm(ts: &str) -> (String, String) {
-    (
-        t("plasma.confirm_title"),
-        tf("plasma.confirm_text", &[&pretty_backup_ts(ts)]),
-    )
+/// The timestamp is made human by the same [`pretty_backup_ts`] as the list
+/// row the person has just clicked.
+pub fn panel_restore_confirm(de_name: &str, ts: &str, shared: &[String], relogin: bool, services: bool) -> (String, String) {
+    let mut text = tf("panel.confirm_text", &[de_name, &pretty_backup_ts(ts)]);
+    if !shared.is_empty() {
+        text.push_str("\n\n");
+        text.push_str(&tf("panel.shared", &[&shared.join(", ")]));
+    }
+    if relogin {
+        text.push_str("\n\n");
+        text.push_str(&t("panel.relogin"));
+    }
+    if services {
+        text.push_str("\n\n");
+        text.push_str(&t("panel.services"));
+    }
+    (t("panel.confirm_title"), text)
 }
 
 /// The copy engine's answer as a status line: an icon by success + its message.
-pub fn plasma_status(ok: bool, msg: &str) -> String {
+pub fn panel_status(ok: bool, msg: &str) -> String {
     if ok {
         format!("✅ {msg}")
     } else {
@@ -8903,8 +8976,9 @@ pub fn restart_args(args: &[String]) -> Vec<String> {
 pub struct SectionFacts {
     /// Onboarding is available at all (the wheel with its API is built).
     pub onboarding_available: bool,
-    /// Plasma is running, OR panel copies from it remain.
-    pub plasma_available: bool,
+    /// Rexon can copy the current desktop's panel, OR panel copies remain
+    /// (of any desktop).
+    pub panel_available: bool,
     /// A Plasma look fork is installed in the system (AeroShell and kin).
     pub aeroshell_installed: bool,
 }
@@ -8913,12 +8987,12 @@ impl SectionFacts {
     /// Facts from the answers of live probes, in the order the window collects them.
     pub fn new(
         onboarding_available: bool,
-        plasma_available: bool,
+        panel_available: bool,
         aeroshell_installed: bool,
     ) -> Self {
         Self {
             onboarding_available,
-            plasma_available,
+            panel_available,
             aeroshell_installed,
         }
     }
@@ -8933,7 +9007,7 @@ impl SectionFacts {
 pub fn section_visible(id: &str, facts: &SectionFacts) -> bool {
     match id {
         "obGroup" => facts.onboarding_available,
-        "plasmaGroup" => facts.plasma_available,
+        "panelGroup" => facts.panel_available,
         "aeroGroup" => facts.aeroshell_installed,
         _ => true,
     }
@@ -9171,5 +9245,5 @@ pub fn lib_placeholder_color(dark: bool) -> String {
 pub const SOUND_PREVIEW_SPACING: i32 = 6;
 pub const FONT_ROW_SPACING: i32 = 6;
 pub const FONT_COL_SPACING: i32 = 2;
-pub const PLASMA_ROW_SPACING: i32 = 6;
+pub const PANEL_ROW_SPACING: i32 = 6;
 pub const INFO_BOX_SPACING: i32 = 0;

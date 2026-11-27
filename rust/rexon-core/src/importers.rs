@@ -4353,7 +4353,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
     /// Converting real sets: `REXON_CUR_SETS` (paths separated by `:`) →
     /// `.rxn` in `REXON_CUR_OUT`. Run manually: `cargo test … -- --ignored real_sets`.
     #[test]
-    #[ignore = "нужны настоящие наборы курсоров на диске"]
+    #[ignore = "needs real cursor sets on disk"]
     fn real_sets_from_env() {
         let sets = std::env::var("REXON_CUR_SETS").expect("REXON_CUR_SETS");
         let out = std::env::var("REXON_CUR_OUT").expect("REXON_CUR_OUT");

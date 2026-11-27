@@ -33,8 +33,10 @@ pkexec logic (pacman provides root):
 
 - `/usr/lib/rexon/rexon/` — product DATA (not code): the vendored QML of the
   wallpaper tab with its translation catalog, `qt_wallpaper_engine/proto/UPSTREAM_TAG`,
-  `kpackage/org.waywallen.kde` (the official waywallen-display release archive,
-  unmodified, + our `vendor.toml`), `themes.json`, `assets/fonts`;
+  `kpackage/org.waywallen.kde` (bundled engine variant only: the official
+  waywallen-display release archive, unmodified, + our `vendor.toml`; the default
+  package leaves the Plasma plugin to `plasma-wallpaper-waywallen`, which Rexon
+  installs on KDE by itself), `themes.json`, `assets/fonts`;
   next to it `/usr/lib/rexon/rexon_icon.png` — the tray icon (`tray::icon_candidates`);
 - `/usr/lib/rexon/rexon-main-window` — the Rust window, the main entry point of the desktop entry (QML is baked into the binary);
 - `/usr/bin/{rexon-wallpaper-host,rexon-splash-overlay}` — the wallpaper host (modes `--mode video|web`) and the login splash (the core looks for them in PATH);

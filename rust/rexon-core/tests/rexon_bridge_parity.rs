@@ -10,6 +10,8 @@
 //! against the golden but by separate marked tests — the Python behaviour there
 //! was a crash or data loss.
 
+mod i18n_pin;
+
 use rexon_core::rexon_bridge::{
     all_de_reactions_value, app_running, build_command, build_event, de_reactions_value,
     de_switch_updates, event_reactions, get_app_state, get_bonzi_mood, get_bonzi_position,
@@ -80,6 +82,8 @@ fn golden_snap(v: &Value) -> (Option<String>, BTreeMap<String, String>) {
 /// (the set of DEs, the order and the contents of all lines).
 #[test]
 fn all_de_reactions_match_golden() {
+    // The golden holds the original Russian lines: they come from po/ru.po now.
+    let _lang = i18n_pin::ru();
     let g = golden();
     assert_eq!(all_de_reactions_value(), g["all_de_reactions"]);
     // The DE order as in the original.
@@ -96,12 +100,14 @@ fn all_de_reactions_match_golden() {
 /// The full dictionary of event reactions matches Python's `EVENT_REACTIONS`.
 #[test]
 fn event_reactions_match_golden() {
+    // The golden holds the original Russian lines: they come from po/ru.po now.
+    let _lang = i18n_pin::ru();
     let g = golden();
     let mut built = Map::new();
-    for (k, list) in EVENT_REACTIONS {
+    for (k, _) in EVENT_REACTIONS {
         built.insert(
             (*k).to_string(),
-            Value::Array(list.iter().map(|s| Value::from(*s)).collect()),
+            Value::Array(event_reactions(k).into_iter().map(Value::from).collect()),
         );
     }
     assert_eq!(Value::Object(built), g["event_reactions_full"]);
@@ -111,6 +117,8 @@ fn event_reactions_match_golden() {
 /// "cinnamon", unknown/empty → `{}` — all inputs from the golden.
 #[test]
 fn de_reactions_lookup_matches_golden() {
+    // The golden holds the original Russian lines: they come from po/ru.po now.
+    let _lang = i18n_pin::ru();
     let g = golden();
     for (input, expected) in g["de_reactions_lookup"].as_object().unwrap() {
         assert_eq!(
@@ -127,12 +135,11 @@ fn de_reactions_lookup_matches_golden() {
 /// `get_event_reactions`: known types, the unknown `de_switched` → [].
 #[test]
 fn event_reactions_lookup_matches_golden() {
+    // The golden holds the original Russian lines: they come from po/ru.po now.
+    let _lang = i18n_pin::ru();
     let g = golden();
     for (input, expected) in g["event_reactions_lookup"].as_object().unwrap() {
-        let got: Vec<Value> = event_reactions(input)
-            .iter()
-            .map(|s| Value::from(*s))
-            .collect();
+        let got: Vec<Value> = event_reactions(input).into_iter().map(Value::from).collect();
         assert_eq!(Value::Array(got), *expected, "get_event_reactions({input:?})");
     }
 }
@@ -256,6 +263,8 @@ fn video_wallpaper_events_carry_name_and_stop() {
 /// (including normalization of current_de "cinnamon-mint" in get_de_reactions).
 #[test]
 fn getters_filled_match_golden() {
+    // The golden holds the original Russian lines: they come from po/ru.po now.
+    let _lang = i18n_pin::ru();
     let g = golden();
     let exp = &g["getters_filled"];
     let b = fresh_bridge("getters");

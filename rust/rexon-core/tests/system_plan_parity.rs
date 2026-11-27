@@ -257,7 +257,7 @@ fn scripts_match_python_verbatim() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn cmd_tables_match_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -422,7 +422,7 @@ fn update_db_plan_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn install_plan_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -550,7 +550,7 @@ fn remove_plan_matches_python() {
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn install_batch_plan_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     // Retaken 01.10.2026 (both SteamOS cases): the install script on SteamOS
@@ -1044,7 +1044,7 @@ fn plasma_fork_split_and_recovery_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn plasma_fork_reset_plan_matches_python_trace() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1094,7 +1094,7 @@ fn plasma_fork_reset_plan_matches_python_trace() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn plasma_fork_preview_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1165,7 +1165,7 @@ fn target_exists_memo_asks_each_name_once() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn plasma_fork_reset_outcome_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1208,7 +1208,7 @@ fn denied_hint_never_says_none() {
 /// closed the password window. The first line must match the install and
 /// removal refusals, the terminal command must arrive as is.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn denied_message_speaks_plain_russian() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1355,7 +1355,7 @@ fn repo_target_exists_matches_live_pacman() {
 /// The customer was shown parentheses instead of a Russian word. Kept as a separate
 /// test so it does not drop out when the golden data is retaken.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn package_counts_are_declined_not_bracketed() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1451,7 +1451,7 @@ fn plymouth_reset_command_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn plymouth_reset_plan_matches_python_trace() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1657,7 +1657,7 @@ fn pkg_installed_from_rc_matches_golden() {
 
 /// The pkexec result for Plymouth: exit code and both streams → (ok, message).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn plymouth_reset_outcome_matches_golden() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2005,7 +2005,7 @@ fn live_machine_is_on_plasma_login_manager() {
 /// package script messages and snapper/limine hook chatter do not go into the window;
 /// "installing x..." — in Russian; a hook — as a counter without its own name.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn pacman_transaction_chatter_stays_out_of_the_window() {
     let _lang = i18n_pin::ru();
     use rexon_core::system_plan::parse_pacman_line;
@@ -2037,7 +2037,7 @@ fn pacman_transaction_chatter_stays_out_of_the_window() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn pacman_progress_lines_match_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2064,7 +2064,7 @@ fn pacman_progress_lines_match_python() {
 /// pkexec was never called (the rule "system-install paths are not touched on
 /// a live machine").
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn ensure_dm_plan_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2142,7 +2142,7 @@ fn ensure_dm_plan_matches_python() {
 /// "install by hand" hint BEFORE branching — even where no command is needed at all.
 /// Instead of crashing, the core explains to the person what happened.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn batch_main_result_matches_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2193,7 +2193,7 @@ fn batch_main_result_matches_python() {
 /// The AUR tail of the install: 10 recorded runs (SteamOS and the normal path,
 /// success, full and partial failure, "command not found").
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn batch_aur_messages_match_python() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2452,7 +2452,7 @@ fn package_file_paths_matches_golden() {
 
 /// The lock wait step: the same loop as for installing packages.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn lock_wait_step_matches_golden() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2632,7 +2632,7 @@ fn tail_log_reads_a_growing_file() {
 
 /// The rebuild plan: the order of refusals and the builder command.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn rebuild_plan_matches_golden() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2664,7 +2664,7 @@ fn rebuild_line_matches_golden() {
 
 /// The rebuild result by exit code and the output tail.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn rebuild_outcome_matches_golden() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2678,7 +2678,7 @@ fn rebuild_outcome_matches_golden() {
 /// As a separate test — a fix that must not be lost when retaking the
 /// golden data: the person is no longer shown «1 пакет(ов)».
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn rebuild_start_message_declines_package_word() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -2703,7 +2703,7 @@ fn rebuild_start_message_declines_package_word() {
 /// The AeroShell rebuild texts in Russian — verbatim as before moving to the
 /// catalog (snapshot `ca42e74^`: the `REBUILD_*` constants and `format!`).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn aeroshell_russian_texts_as_before() {
     use rexon_core::aeroshell as a;
     let _lang = i18n_pin::ru();

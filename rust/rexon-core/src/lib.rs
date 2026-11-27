@@ -136,11 +136,12 @@ pub mod rexon_bridge;
 pub mod ruffle_manager;
 pub mod rxn_build;
 pub mod rxn_manifest;
-pub mod rxn_v4_installer;
 pub mod screen_effects;
 pub mod screenshots;
 /// "Keep the screen on" bridge: org.freedesktop.ScreenSaver where it is missing.
 pub mod screensaver_bridge;
+/// Each desktop keeps its own screen saver: foreign launchers hidden, the session checked.
+pub mod screensaver_guard;
 /// Guard before a Plasma session: logging in without AeroThemePlasma when it has drifted from Plasma.
 pub mod session_guard;
 /// Game-mode guard (gamescope-session-plus): the display map before login, a refusal instead of a black screen.

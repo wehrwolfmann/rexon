@@ -28,7 +28,7 @@ use rexon_core::system::{self, PkgFamily, DE_META};
 // ── The list on the left ────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn window_and_list_texts_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::window_title(), "Rexon — Рабочие столы");
@@ -78,7 +78,7 @@ fn item_text_is_icon_and_name() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn item_tooltip_matches_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::item_tooltip("xfce", false, true), "");
@@ -100,7 +100,7 @@ fn item_tooltip_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn list_rows_split_into_three_sections() {
     let _lang = i18n_pin::ru();
     let rows = qd::list_rows(PkgFamily::Arch, &|_| false);
@@ -139,7 +139,7 @@ fn list_rows_split_into_three_sections() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn list_rows_carry_installed_flag() {
     let _lang = i18n_pin::ru();
     let rows = qd::list_rows(PkgFamily::Arch, &|id| id == "kde");
@@ -153,7 +153,7 @@ fn list_rows_carry_installed_flag() {
 // ── The «Tools» panel ───────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn tool_buttons_match_python() {
     let _lang = i18n_pin::ru();
     // Where there is nothing to take a panel backup with — there are no panel buttons.
@@ -184,19 +184,16 @@ fn tool_buttons_match_python() {
         assert!(b[2].tooltip.starts_with("Сохранить копию настроек панели"), "{}", b[2].tooltip);
         assert!(!b[2].tooltip.contains("KDE") && !b[3].tooltip.contains("KDE"), "{de}");
     }
-    assert!(!qd::panel_restore_confirm_text().contains("KDE"));
     assert!(!qd::panel_backup_result(true, "x").text.contains("KDE"));
     assert!(!qd::panel_restore_result(true, "x").text.contains("KDE"));
-    // What takes the backup in which environment.
-    let have = |t: &str| ["mate-panel", "dconf", "xfce4-panel-profiles"].contains(&t);
-    for de in ["kde", "mate", "xfce"] {
+    // What takes the backup in which environment: the common copy spec of
+    // every desktop (25.11.2026); XFCE no longer needs xfce4-panel-profiles.
+    let have = |t: &str| ["plasmashell", "mate-panel", "xfce4-panel", "xfconf-query", "lxqt-panel"].contains(&t);
+    for de in ["kde", "mate", "xfce", "lxqt", "cinnamon-mint"] {
         assert!(qd::panel_backup_supported(de, &have), "{de}");
     }
-    assert!(!qd::panel_backup_supported("xfce", &|_| false), "без xfce4-panel-profiles нечем");
+    assert!(!qd::panel_backup_supported("xfce", &|_| false), "без xfce4-panel нечем");
     assert!(!qd::panel_backup_supported("gnome", &have));
-    // «Replace the backup?» about «Restore the previous panel» — only for MATE.
-    assert!(qd::panel_backup_replace_confirm(true).1.contains("Вернуть прежнюю панель"));
-    assert!(!qd::panel_backup_replace_confirm(false).1.contains("Вернуть прежнюю панель"));
     assert_eq!(qd::tools_header(), "🧰 Инструменты");
     assert_eq!(qd::TOOL_BUTTON_MIN_HEIGHT, 40);
 }
@@ -204,7 +201,7 @@ fn tool_buttons_match_python() {
 // ── Card ────────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn status_view_matches_python() {
     let _lang = i18n_pin::ru();
     let installed = qd::status_view(true, true);
@@ -234,7 +231,7 @@ fn status_view_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn stats_match_de_database() {
     let _lang = i18n_pin::ru();
     for meta in DE_META {
@@ -263,7 +260,7 @@ fn stats_match_de_database() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn description_drops_leading_emoji() {
     let _lang = i18n_pin::ru();
     // The card title already carries the icon: it is not needed a second time.
@@ -289,7 +286,7 @@ fn description_drops_leading_emoji() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn packages_text_matches_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(
@@ -306,7 +303,7 @@ fn packages_text_matches_python() {
 /// COSMIC showed «29 packages to install», for Pantheon names were counted rather than
 /// the expanded group). The trial transaction's answer is fake.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn packages_view_is_honest() {
     use rexon_core::system_plan::InstallPreview;
     let _lang = i18n_pin::ru();
@@ -400,7 +397,7 @@ fn packages_view_is_honest() {
 /// a machine with KDE Plasma — deepin-kwin versus kwin). The card and the refusal before
 /// the password explain it in a human way; Rexon does not take it upon itself to remove another desktop.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn package_conflict_is_explained() {
     use rexon_core::system_plan::{conflict_explanation, InstallPreview, PkgConflict};
     let _lang = i18n_pin::ru();
@@ -432,7 +429,7 @@ fn package_conflict_is_explained() {
 /// mutter 51 is held by Budgie. We name the desktops and versions, not "pacman would have
 /// to remove mutter"; not a desktop — we name who requires the package.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn package_conflict_names_the_holding_desktop() {
     use rexon_core::system_plan::{conflict_explanation, PkgConflict};
     let _lang = i18n_pin::ru();
@@ -470,7 +467,7 @@ fn package_conflict_names_the_holding_desktop() {
 /// is held by GNOME and Budgie. The desktop is installed without the login screen, «Install»
 /// is active, and the text honestly says what will not be there and why.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn optional_conflict_is_explained_and_does_not_block() {
     use rexon_core::system_plan::{conflict_skip_explanation, ConflictSkip, InstallPreview, PkgConflict};
     let _lang = i18n_pin::ru();
@@ -544,7 +541,7 @@ fn conflict_disables_install_and_rebuild_offer() {
 
 /// Card buttons by the desktop's state — and with them the first protection.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn card_buttons_match_python() {
     let _lang = i18n_pin::ru();
     // Not available on the distribution — no buttons at all, only an explanation.
@@ -602,7 +599,7 @@ fn current_desktop_has_no_switch_and_no_remove() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn version_line_matches_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::version_checking(), "Проверяю версию…");
@@ -617,7 +614,7 @@ fn version_line_matches_python() {
 // ── Carousel ────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn carousel_texts_and_dots_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::no_screenshots_text(), "📷  Нет скриншотов");
@@ -748,7 +745,7 @@ fn screenshot_zoom_opens_a_real_fullscreen_window() {
 // ── Operation texts ─────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn install_texts_match_python() {
     let _lang = i18n_pin::ru();
     let t = qd::install_texts("KDE Plasma");
@@ -777,7 +774,7 @@ Rexon попросит пароль администратора."
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn repair_texts_match_python() {
     let _lang = i18n_pin::ru();
     let t = qd::repair_texts("XFCE");
@@ -806,7 +803,7 @@ fn repair_texts_match_python() {
 /// does not keep its own copy — it takes `qt_compare::switch_texts`; this test
 /// guards that they stayed there.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn switch_texts_are_shared_with_compare_tab() {
     let _lang = i18n_pin::ru();
     let t = qc::switch_texts("GNOME");
@@ -820,7 +817,7 @@ Rexon сохранит копию настроек текущего рабоче
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn repair_current_unknown_texts_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::repair_current_unknown_title(), "Рабочий стол не определён");
@@ -834,7 +831,7 @@ fn repair_current_unknown_texts_match_python() {
 // ── ⛔ Removal protections ──────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn remove_current_desktop_is_blocked() {
     let _lang = i18n_pin::ru();
     let plan = qd::remove_plan("kde", "KDE Plasma", "kde", 5);
@@ -854,7 +851,7 @@ fn remove_current_desktop_is_blocked() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn remove_last_desktop_is_blocked() {
     let _lang = i18n_pin::ru();
     let plan = qd::remove_plan("xfce", "XFCE", "kde", 0);
@@ -871,7 +868,7 @@ fn remove_last_desktop_is_blocked() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn remove_other_desktop_asks_confirmation() {
     let _lang = i18n_pin::ru();
     let plan = qd::remove_plan("xfce", "XFCE", "kde", 2);
@@ -917,15 +914,12 @@ fn remove_guards_hold_for_every_desktop() {
 // ── Panel backup (KDE, MATE, XFCE) ─────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn panel_texts_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::panel_restore_confirm_title(), "Вернуть панель?");
-    assert_eq!(
-        qd::panel_restore_confirm_text(),
-        "Вернуть панель из последней сохранённой копии?\n\n\
-Текущие настройки панели будут заменены сохранёнными."
-    );
+    // The question itself is the core's common one since 25.11.2026: it names the
+    // desktop and the copy's date (`qt_settings::panel_restore_confirm`).
 
     let ok = qd::panel_backup_result(true, "снимок 2026-08-23");
     assert_eq!(ok.title, "Панель сохранена");
@@ -1287,7 +1281,7 @@ fn split_handle_is_painted_from_the_core() {
 /// The former texts said «DE», «logout/reboot», «через pkexec», «бэкап»;
 /// the next such line will go red here, not in a buyer's review.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn operation_texts_have_no_jargon() {
     let _lang = i18n_pin::ru();
     let mut texts: Vec<String> = Vec::new();
@@ -1427,7 +1421,7 @@ fn operation_dialog_tones_are_shared_by_both_pages() {
 /// words as the operation window (`operation_texts_have_no_jargon`); a new
 /// «DE» here goes red before the buyer sees it.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn visible_texts_say_desktop_not_de() {
     let _lang = i18n_pin::ru();
     use rexon_core::compliance;
@@ -1593,7 +1587,6 @@ fn english_desktops_tab_has_no_russian() {
         qd::repair_current_unknown_title(),
         qd::repair_current_unknown_text(),
         qd::panel_restore_confirm_title(),
-        qd::panel_restore_confirm_text(),
         qd::remove_operation_title("XFCE"),
     ];
     for row in qd::list_rows(PkgFamily::Arch, &|id| id == "cosmic") {
@@ -2070,7 +2063,10 @@ fn session_packages_by_choice() {
     }
     let mate = system::desktop_packages("mate", arch);
     assert!(!mate.iter().any(|p| p == "wayfire" || p == "mate-wayland-session"), "{mate:?}");
-    assert!(system::session_removal_packages("mate", arch).is_empty());
+    // …but a `mate-wayland-session` installed by an earlier release still goes
+    // away with MATE: it holds MATE's packages as a dependency (16.11.2026).
+    assert_eq!(system::session_removal_packages("mate", arch), ["mate-wayland-session"]);
+    assert!(system::session_removal_packages("mate", PkgFamily::Debian).is_empty());
     // The package helper's allow-list knows the add-on.
     let allow = rexon_core::system_plan::pkg_helper_install_allowlist(arch);
     for p in ["labwc", "xorg-xwayland", "lxqt-wayland-session", "wayfire"] {

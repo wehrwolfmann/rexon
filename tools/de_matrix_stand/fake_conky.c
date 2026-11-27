@@ -1,7 +1,7 @@
-/* Подставной conky для стенда кнопок разделов (inner_sections.sh): живёт
- * минуту под именем `conky` с тем же argv (`-d` — уходит в фон, как
- * настоящий), чтобы «Запустить»/«Остановить» и чтение «что работает» из
- * /proc проверялись без X и без настоящего виджета. */
+/* A stand-in conky for the section buttons stand (inner_sections.sh): lives
+ * for a minute under the name `conky` with the same argv (`-d` — goes to the background, like
+ * the real one), so that «Запустить»/«Остановить» and reading «what is running» from
+ * /proc are checked without X and without a real widget. */
 #include <string.h>
 #include <unistd.h>
 int main(int argc, char **argv) {

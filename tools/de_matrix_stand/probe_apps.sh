@@ -1,12 +1,12 @@
 #!/bin/bash
 # probe_apps.sh <de> <qt|gtk3|gtk4|adw> [with-env 0|1]
 #
-# Что ПРОГРАММА действительно подхватила из профиля, собранного run_de.sh:
-# Qt (стиль, шрифты, тема значков, PySide6 на системном Qt) или GTK3 / GTK4 /
-# libadwaita (тема, значки, курсор, шрифт + снимок окна в $WORK/shot-<de>-<вид>.png).
-# Окно — на отдельном X-экране (Xvfb), со своей шиной без сервисов.
-# with-env=1 — как после перезахода в сеанс, который читает
-# ~/.config/environment.d (Plasma, GNOME, niri, Hyprland через uwsm).
+# What the PROGRAM really picked up from the profile built by run_de.sh:
+# Qt (style, fonts, icon theme, PySide6 on the system Qt) or GTK3 / GTK4 /
+# libadwaita (theme, icons, cursor, font + a window snapshot in $WORK/shot-<de>-<kind>.png).
+# The window is on a separate X screen (Xvfb), with its own bus without services.
+# with-env=1 — as after logging into a session again that reads
+# ~/.config/environment.d (Plasma, GNOME, niri, Hyprland through uwsm).
 set -u
 DE=$1; KIND=$2; WITH=${3:-0}
 S=$(cd "$(dirname "$0")" && pwd)

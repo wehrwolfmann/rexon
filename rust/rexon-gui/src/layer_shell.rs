@@ -119,6 +119,16 @@ pub mod qobject {
         #[cxx_name = "applyWallpaperLayer"]
         unsafe fn apply_wallpaper_layer(self: &WallpaperLayer, window: *mut QObject) -> bool;
 
+        /// Give the window the CANONICAL idle screensaver layer
+        /// (`LayerSpec::SCREENSAVER`: OVERLAY, all anchors, zone -1, exclusive
+        /// keyboard) regardless of the object's properties.
+        ///
+        /// # Safety
+        /// `window` is a live QWindow, not yet shown.
+        #[qinvokable]
+        #[cxx_name = "applyScreensaverLayer"]
+        unsafe fn apply_screensaver_layer(self: &WallpaperLayer, window: *mut QObject) -> bool;
+
         /// Give the window a layer according to the object's current properties —
         /// for cases that are not wallpapers (panels, overlays).
         ///
@@ -226,6 +236,22 @@ impl LayerSpec {
         exclusion_zone: -1,
         keyboard_interactivity: keyboard::NONE,
     };
+
+    /// The canonical idle screensaver layer: above every window and panel,
+    /// over the whole output, and it takes the keyboard so the key that wakes
+    /// the screensaver does not reach the program underneath
+    /// (`idle_screensaver::InputWatch::LayerExclusiveKeyboard`). A lock screen
+    /// (ext-session-lock) is still above it by the protocol.
+    ///
+    /// Checked by the overlay bench (`layer_shell_selftest::overlay`) on a
+    /// nested compositor; every screensaver path must take these values from
+    /// here (rule #12), not assemble them anew.
+    pub const SCREENSAVER: LayerSpec = LayerSpec {
+        layer: layer::OVERLAY,
+        anchors: anchor::ALL,
+        exclusion_zone: -1,
+        keyboard_interactivity: keyboard::EXCLUSIVE,
+    };
 }
 
 /// Rust state of the configurator. The default is the wallpaper layer: a
@@ -306,6 +332,12 @@ impl qobject::WallpaperLayer {
             crate::wallpaper_host::cinnamon_layer::surface_up("окно обоев слоем стола");
         }
         ok
+    }
+
+    unsafe fn apply_screensaver_layer(&self, window: *mut qobject::QObject) -> bool {
+        // No Cinnamon background restack here: that is about the BACKGROUND layer,
+        // and an OVERLAY surface is above the shell's background service anyway.
+        unsafe { apply_spec(window, &LayerSpec::SCREENSAVER, &self.scope) }
     }
 
     unsafe fn apply(&self, window: *mut qobject::QObject) -> bool {

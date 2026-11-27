@@ -1644,7 +1644,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "запускается дочерним процессом exported_set_installs_into_another_home"]
+    #[ignore = "run as a child process by exported_set_installs_into_another_home"]
     fn roundtrip_child() {
         let base = PathBuf::from(std::env::var_os(ROUNDTRIP_BASE_ENV).expect("только дочерний прогон"));
         let io = crate::animations::SystemIo;

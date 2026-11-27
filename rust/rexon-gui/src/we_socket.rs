@@ -1943,7 +1943,7 @@ fn start_gnome_display_extension() {
 
 /// The wallpaper host: next to the Rexon window (the developer tree),
 /// otherwise by `PATH`.
-fn display_host_binary() -> Option<String> {
+pub(crate) fn display_host_binary() -> Option<String> {
     use rexon_core::we_client::DaemonFs;
     let mut fs = crate::we_env::FsProbe;
     std::env::current_exe()
@@ -2015,6 +2015,7 @@ fn start_rexon_display_host() {
                 false
             }
             Some(host) => {
+                ensure_x11_output_element();
                 match ensure_display_manifest(&host) {
                     Ok(true) => rexon_core::log_info!("x11-display", "движку обоев записано определение вывода (хост {host}) — со следующего старта движок поднимает вывод сам"),
                     Ok(false) => {}
@@ -2260,7 +2261,16 @@ struct KdeEnv {
     pkg_dir: String,
     /// `PATH` for finding the tools.
     path: Option<String>,
+    /// `XDG_DATA_DIRS`: where the packaged plugin is looked for.
+    data_dirs: String,
+    /// Installs a distribution package and reports the build stage for the
+    /// person while it runs. The live one builds through the shared AUR queue;
+    /// the stand tests substitute their own.
+    install_package: PackageInstaller,
 }
+
+/// `(package, on_stage) → Ok | the reason for the person`.
+type PackageInstaller = fn(&str, &mut dyn FnMut(&str)) -> Result<(), String>;
 
 impl KdeEnv {
     fn live() -> KdeEnv {
@@ -2269,7 +2279,165 @@ impl KdeEnv {
             home: crate::we_env::home(),
             pkg_dir: crate::we_env::pkg_dir(),
             path: std::env::var("PATH").ok(),
+            data_dirs: std::env::var("XDG_DATA_DIRS").unwrap_or_default(),
+            install_package: install_package_live,
         }
+    }
+}
+
+/// Install a distribution package the way Rexon installs every missing program:
+/// at once, without a Yes/No question (the password window is the protection),
+/// through the ONE AUR queue of the application (`appearance_actions`), so that
+/// a theme build and this one never run side by side.
+fn install_package_live(package: &str, on_stage: &mut dyn FnMut(&str)) -> Result<(), String> {
+    use rexon_core::system::PkgFamily;
+    let family = rexon_core::system::DistroDetector::detect_live().family_live();
+    if family != PkgFamily::Arch {
+        return Err(rexon_core::waywallen_kde_plugin::package_unsupported_reason());
+    }
+    crate::appearance_actions::aur_install_wait_with(package, on_stage)
+}
+
+/// Installing the plugin package failed in this process: it is not retried by
+/// itself on every tab opening (each attempt is a password window and a long
+/// build), only by the banner button. The reason is shown in the banner. Keyed
+/// by the home directory: the live process has one, the stand tests run side by
+/// side with their own.
+static KDE_PACKAGE_FAILURE: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+fn package_failure(env: &KdeEnv) -> Option<String> {
+    KDE_PACKAGE_FAILURE.lock().ok()?.iter().find(|(home, _)| *home == env.home).map(|(_, r)| r.clone())
+}
+
+fn set_package_failure(env: &KdeEnv, reason: Option<String>) {
+    if let Ok(mut list) = KDE_PACKAGE_FAILURE.lock() {
+        list.retain(|(home, _)| *home != env.home);
+        if let Some(reason) = reason {
+            list.push((env.home.clone(), reason));
+        }
+    }
+}
+
+/// The packaged plugin: the first `$XDG_DATA_DIRS/plasma/wallpapers/org.waywallen.kde`
+/// with `metadata.json`, and its owner by `pacman -Qo` (`LANG=C`). Other package
+/// managers are not asked: the version is then unknown, and the version watcher
+/// does not guess.
+fn read_system_plugin(env: &KdeEnv) -> rexon_core::waywallen_kde_plugin::SystemPlugin {
+    use rexon_core::waywallen_kde_plugin as wkp;
+    let Some(dir) = wkp::system_install_dirs(&env.data_dirs, &env.home)
+        .into_iter()
+        .find(|d| std::path::Path::new(&wkp::metadata_json_path(d)).is_file())
+    else {
+        return wkp::SystemPlugin::default();
+    };
+    let owner = rexon_core::utils::resolve_tool("pacman", &[], env.path.as_deref()).and_then(|pacman| {
+        let report = rexon_core::utils::run(
+            &rexon_core::utils::RunSpec {
+                argv: wkp::pacman_owner_argv(&pacman, &wkp::metadata_json_path(&dir)),
+                output: rexon_core::utils::RunOutput::Capture,
+                timeout_secs: Some(10),
+                lang_c: true,
+                env: Vec::new(),
+                stderr_to_stdout: false,
+            },
+            env.path.as_deref(),
+        );
+        wkp::parse_pacman_owner(&String::from_utf8_lossy(&report.stdout))
+    });
+    let (package, version) = owner.map_or((None, None), |(p, v)| (Some(p), Some(v)));
+    wkp::SystemPlugin { present: true, dir: Some(dir), version, package }
+}
+
+/// Move the copy in `~/.local` that hides the packaged plugin to a backup
+/// (`waywallen_kde_plugin::user_copy_backup_dir`) — never deleted silently. The
+/// "we installed it" marker lies inside the copy and moves with it. `Ok` — where
+/// the copy went.
+fn move_user_copy_away(env: &KdeEnv) -> Result<String, String> {
+    use rexon_core::waywallen_kde_plugin as wkp;
+    let install = wkp::install_dir(&env.home);
+    let stamp = rexon_core::qt_app::Timestamp::now_local().map(|t| t.file_stamp()).unwrap_or_else(|| "0".to_owned());
+    let dest = wkp::user_copy_backup_dir(&env.home, &stamp);
+    if let Some(parent) = std::path::Path::new(&dest).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    std::fs::rename(&install, &dest).map_err(|e| format!("{install} -> {dest}: {e}"))?;
+    Ok(dest)
+}
+
+/// Install a package for live wallpapers with the banner of the tab showing the
+/// build: "installing", the stage, and at the end either nothing (the caller
+/// publishes what follows) or the reason it failed.
+fn install_package_with_banner(install: PackageInstaller, package: &str, why: &str) -> Result<(), String> {
+    use rexon_core::waywallen_kde_plugin::PluginNotice;
+    let publish_stage = |stage: &str| {
+        publish_kde_plugin(KdePluginState {
+            notice: Some(PluginNotice::PackageInstalling { package: package.to_owned(), stage: stage.to_owned() }),
+            installing: true,
+            failure: None,
+        });
+    };
+    publish_stage("");
+    rexon_core::log_info!("kde-plugin", "installing the {package} package ({why})");
+    let started = std::time::Instant::now();
+    let result = install(package, &mut |stage| {
+        rexon_core::log_info!("kde-plugin", "{package}: {stage}");
+        publish_stage(stage);
+    });
+    let secs = started.elapsed().as_secs();
+    match &result {
+        Ok(()) => rexon_core::log_info!("kde-plugin", "{package} installed in {secs} s"),
+        Err(reason) => {
+            rexon_core::log_warn!("kde-plugin", "{package} not installed after {secs} s: {reason}");
+            publish_kde_plugin(KdePluginState {
+                notice: Some(PluginNotice::PackageMissing { package: package.to_owned(), reason: reason.clone() }),
+                installing: false,
+                failure: None,
+            });
+        }
+    }
+    result
+}
+
+/// Install the Plasma plugin package; a failure is remembered — no automatic
+/// retry in this process.
+fn install_plugin_package(env: &KdeEnv) -> Result<(), String> {
+    use rexon_core::waywallen_kde_plugin::PACKAGE_NAME;
+    let result = install_package_with_banner(env.install_package, PACKAGE_NAME, "no plugin and no bundled copy");
+    set_package_failure(env, result.as_ref().err().cloned());
+    result
+}
+
+/// Installing `waywallen-display` for the X11 output already failed in this
+/// process — not retried on every apply.
+static X11_MODULE_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// X11 (XFCE, MATE, Cinnamon on X11): the output host needs the output element —
+/// the `Waywallen.Display` module of the `waywallen-display` package, or a
+/// plasmoid. A distribution build of Rexon carries no plasmoid, so without the
+/// package the output would silently disappear: Rexon installs it itself, like
+/// any missing program (once per process; the reason stays in the banner).
+fn ensure_x11_output_element() {
+    use rexon_core::waywallen_kde_plugin as wkp;
+    let env = |name: &str| std::env::var(name).unwrap_or_default();
+    let is_file = |p: &str| std::path::Path::new(p).is_file();
+    let available = || {
+        let plasmoids = wkp::plasmoid_display_wrappers(Some(&crate::we_env::pkg_dir()), &crate::we_env::home());
+        let dirs = wkp::qml_import_dirs(&env("QML_IMPORT_PATH"), &env("QML2_IMPORT_PATH"));
+        // Only "is there an element at all": the host itself picks where the wrapper goes.
+        wkp::pick_display_item(&dirs, Some("-"), &plasmoids, &is_file).is_some()
+    };
+    if available() || X11_MODULE_FAILED.load(Ordering::SeqCst) {
+        return;
+    }
+    let result = install_package_with_banner(
+        install_package_live,
+        wkp::DISPLAY_MODULE_PACKAGE,
+        "no output element for the X11 output host",
+    );
+    if result.is_err() {
+        X11_MODULE_FAILED.store(true, Ordering::SeqCst);
+    } else {
+        publish_kde_plugin(KdePluginState::default());
     }
 }
 
@@ -2308,6 +2476,7 @@ fn read_plugin_check(
         installed,
         daemon_version,
         consent,
+        ..Default::default()
     }
 }
 
@@ -2339,8 +2508,29 @@ fn ensure_kde_plugin(
     let path_env = env.path.clone();
     let tool = rexon_core::utils::resolve_tool("kpackagetool6", &[], path_env.as_deref());
 
-    let check = read_plugin_check(&bundle, &install, &marker, daemon_version, consent);
-    let plan = wkp::plan_plugin(&check);
+    let read_check = || {
+        let mut check = read_plugin_check(&bundle, &install, &marker, daemon_version.clone(), consent);
+        check.system = read_system_plugin(env);
+        check.bundle_missing = !bundle_is_valid(&bundle);
+        check.package_failed = package_failure(env).is_some();
+        check
+    };
+    let mut check = read_check();
+    let mut plan = wkp::plan_plugin(&check);
+    if plan.action == wkp::PluginAction::InstallPackage {
+        if let Err(reason) = install_plugin_package(env) {
+            return (false, false, None, format!("{reason}; {}", plan.reason));
+        }
+        // The package brought the plugin: decide anew (usually "use the packaged
+        // one", or "move our old copy away").
+        check = read_check();
+        plan = wkp::plan_plugin(&check);
+    }
+    if plan.action == wkp::PluginAction::NeedPackage {
+        // The banner names the reason of the last failure.
+        let reason = package_failure(env).unwrap_or_default();
+        plan.notice = Some(wkp::PluginNotice::PackageMissing { package: wkp::PACKAGE_NAME.to_owned(), reason });
+    }
     let summary = format!(
         "{} (бандл {}, установлен {}, демон {})",
         plan.reason,
@@ -2348,8 +2538,39 @@ fn ensure_kde_plugin(
         plan.installed_version.as_deref().unwrap_or(if check.installed.present { "?" } else { "—" }),
         check.daemon_version.as_deref().unwrap_or("?"),
     );
+    let summary = match (&check.system.dir, plan.action) {
+        (Some(dir), _) => format!(
+            "{summary}; packaged plugin {} ({}) in {dir}",
+            check.system.version.as_deref().unwrap_or("?"),
+            check.system.package.as_deref().unwrap_or("owner unknown"),
+        ),
+        _ => summary,
+    };
 
-    let outcome = if plan.action.installs() {
+    let outcome = if plan.action == wkp::PluginAction::RemoveUserCopy {
+        match move_user_copy_away(env) {
+            Ok(dest) => {
+                publish_kde_plugin(KdePluginState { notice: plan.notice.clone(), installing: false, failure: None });
+                // The plugin under the same Id changed (copy → package): a shell that
+                // has the copy's `.so` in memory is restarted by the same rule as after
+                // an update.
+                wkp::InstallOutcome {
+                    calls: Vec::new(),
+                    ok: true,
+                    message: format!("copy in ~/.local moved to {dest}"),
+                    installed_now: true,
+                    marker_to_write: None,
+                }
+            }
+            Err(reason) => {
+                if consent {
+                    let previous = KDE_STATE.lock().ok().and_then(|s| s.clone()).unwrap_or_default();
+                    publish_kde_plugin(KdePluginState { installing: false, failure: Some(reason.clone()), ..previous });
+                }
+                return (false, false, None, format!("could not move the copy away: {reason}; {summary}"));
+            }
+        }
+    } else if plan.action.installs() {
         let bundle_valid = bundle_is_valid(&bundle);
         match run_kpackagetool(tool.as_deref(), &bundle, bundle_valid, &check, &marker) {
             Ok(outcome) => {
@@ -2378,7 +2599,8 @@ fn ensure_kde_plugin(
             marker_to_write: None,
         }
     };
-    let base = if plan.action.installs() { format!("{}; {summary}", outcome.message) } else { summary };
+    let changed = plan.action.installs() || plan.action == wkp::PluginAction::RemoveUserCopy;
+    let base = if changed { format!("{}; {summary}", outcome.message) } else { summary };
 
     // What is set as the desktops' wallpaper now. `None` — Plasma did not
     // answer.
@@ -2528,6 +2750,11 @@ fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
     let bundle_valid = bundle_is_valid(&bundle);
 
     let mut check = read_plugin_check(&bundle, &install, &marker, None, false);
+    // Only when there is a copy to judge: an ordinary start without one asks nothing.
+    if check.installed.present {
+        check.system = read_system_plugin(env);
+    }
+    check.bundle_missing = !bundle_valid;
     let mut decision = wkp::refresh_decision(&check, tool.is_some(), bundle_valid);
     // We ask for the daemon version only when it cannot be decided without
     // it: the bundle may not suit the daemon, and then we do not spoil a
@@ -2549,9 +2776,28 @@ fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
         RefreshDecision::NoTool => {
             return Ok(Some(format!("kpackagetool6 не найден — пропускаем ({versions})")))
         }
-        RefreshDecision::NoBundle => return Err(format!("забандленный пакет не найден: {bundle}")),
+        // A distribution build of Rexon has no bundle: the plugin comes as a package,
+        // and there is nothing to refresh the copy with — not an error.
+        RefreshDecision::NoBundle => {
+            return Ok(Some(format!("no bundled plugin in this Rexon build, the copy is left as is ({versions})")))
+        }
         RefreshDecision::Skip(action) => {
             return Ok(Some(format!("сторож версии против ({}) — не трогаем ({versions})", action.as_str())))
+        }
+        RefreshDecision::RemoveUserCopy => {
+            let dest = move_user_copy_away(env).map_err(|reason| format!("could not move the copy away: {reason}"))?;
+            publish_kde_plugin(KdePluginState::default());
+            let on_kde = wkp::is_kde(&env.desktop);
+            let in_use = on_kde
+                && plasma_evaluate(env, &wkp::current_plugins_js(), 10.0)
+                    .is_some_and(|out| wkp::any_selected(&wkp::parse_current_plugins(&out)));
+            let restarted = wkp::refresh_restarts(on_kde, true, in_use) && restart_plasmashell(env);
+            return Ok(Some(format!(
+                "packaged plugin {} ({}), our copy in ~/.local moved to {dest}{}",
+                check.system.version.as_deref().unwrap_or("?"),
+                check.system.package.as_deref().unwrap_or("owner unknown"),
+                if restarted { "; plasmashell restarted" } else { "" }
+            )));
         }
         RefreshDecision::Upgrade => {}
     }
@@ -2882,6 +3128,8 @@ mod kde_plugin_tests {
             };
             script("kpackagetool6", "");
             script("systemctl", "");
+            // The packaged plugin's owner, as pacman says it under LANG=C.
+            script("pacman", "echo \"$2 is owned by plasma-wallpaper-waywallen 0.4.6-1\"");
             // Reading the desktops' plugins answers with a list, assigning — with
             // an empty answer, like the real Plasma.
             // A snapshot per desktop (`id=plugin`) — desktop numbers from one.
@@ -2906,8 +3154,45 @@ mod kde_plugin_tests {
                 home: home.to_string_lossy().into_owned(),
                 pkg_dir: pkg.to_string_lossy().into_owned(),
                 path: Some(bin.to_string_lossy().into_owned()),
+                data_dirs: root.join("share").to_string_lossy().into_owned(),
+                install_package: fake_install_package,
             };
+            STAND_ROOT.with(|r| *r.borrow_mut() = Some(root.clone()));
             Stand { root, env }
+        }
+
+        /// The distribution package `plasma-wallpaper-waywallen` is installed.
+        fn packaged(self) -> Stand {
+            packaged_plugin(&self.root);
+            self
+        }
+
+        /// A distribution build of Rexon: no bundled plugin.
+        fn without_bundle(self) -> Stand {
+            std::fs::remove_dir_all(wkp::bundle_dir(&self.env.pkg_dir)).unwrap();
+            self
+        }
+
+        /// The installed copy is foreign (KDE Store): no `vendor.toml`.
+        fn foreign_copy(self) -> Stand {
+            std::fs::remove_file(wkp::vendor_toml_path(&wkp::install_dir(&self.env.home))).unwrap();
+            self
+        }
+
+        fn kpackagetool_installs(&self) -> bool {
+            self.calls()
+                .lines()
+                .any(|l| l.starts_with("kpackagetool6") && (l.contains(" -i ") || l.contains(" -u ")))
+        }
+
+        fn user_copy_present(&self) -> bool {
+            Path::new(&wkp::install_dir(&self.env.home)).exists()
+        }
+
+        /// Copies moved to the backup next to waywallen's data.
+        fn backups(&self) -> Vec<PathBuf> {
+            let dir = Path::new(&self.env.home).join(".local/share/waywallen");
+            std::fs::read_dir(dir).map(|it| it.flatten().map(|e| e.path()).collect()).unwrap_or_default()
         }
 
         fn calls(&self) -> String {
@@ -2929,6 +3214,123 @@ mod kde_plugin_tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    thread_local! {
+        /// The stand of this test thread — for the package installer substitute
+        /// (a plain `fn`, it cannot capture the stand).
+        static STAND_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+        /// The substitute's answer: `None` — the package "installs".
+        static INSTALL_FAILS: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    }
+
+    fn packaged_plugin(root: &Path) {
+        let dir = root.join("share/plasma/wallpapers").join(wkp::PLUGIN_ID);
+        std::fs::create_dir_all(dir.join("contents/ui/Plugin")).unwrap();
+        std::fs::write(dir.join("metadata.json"), "{}").unwrap();
+    }
+
+    /// Instead of the AUR build: records the call and puts the packaged plugin into
+    /// the stand's `XDG_DATA_DIRS` (or fails with the given reason).
+    fn fake_install_package(package: &str, on_stage: &mut dyn FnMut(&str)) -> Result<(), String> {
+        let root = STAND_ROOT.with(|r| r.borrow().clone()).expect("stand of this thread");
+        let mut log = std::fs::OpenOptions::new().append(true).create(true).open(root.join("calls.log")).unwrap();
+        std::io::Write::write_all(&mut log, format!("install-package {package}\n").as_bytes()).unwrap();
+        on_stage("Building");
+        if let Some(reason) = INSTALL_FAILS.with(|f| f.borrow().clone()) {
+            return Err(reason);
+        }
+        packaged_plugin(&root);
+        Ok(())
+    }
+
+    /// The packaged plugin is used as is: no copy into `~/.local`, neither on
+    /// opening the tab nor on applying (which still assigns it to the desktops).
+    #[test]
+    fn packaged_plugin_is_used_without_installing_a_copy() {
+        let stand = Stand::new("packaged", "org.kde.image", None).packaged();
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert!(!stand.kpackagetool_installs(), "{}", stand.calls());
+        assert!(message.contains("0.4.6 (plasma-wallpaper-waywallen)"), "{message}");
+        let (ok, selected_now, _, message) = ensure_kde_plugin(&stand.env, None, true, KdePurpose::Apply);
+        assert!(ok && selected_now, "{message}");
+        assert!(!stand.kpackagetool_installs(), "even with consent: {}", stand.calls());
+        assert!(!stand.user_copy_present());
+    }
+
+    /// Our copy in `~/.local` hides the package: moved to the backup, not deleted;
+    /// the shell that has the copy in memory is restarted.
+    #[test]
+    fn our_copy_is_moved_away_from_the_package() {
+        let stand = Stand::new("ourcopy", "org.waywallen.kde", Some("0.4.3")).packaged();
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert!(!stand.user_copy_present(), "the copy still hides the package");
+        let backups = stand.backups();
+        assert_eq!(backups.len(), 1, "{backups:?}");
+        assert!(backups[0].join("vendor.toml").is_file(), "the copy is kept whole: {backups:?}");
+        assert!(!stand.kpackagetool_installs(), "{}", stand.calls());
+        assert!(stand.restarted(), "the copy's .so was in the shell: {}", stand.calls());
+    }
+
+    /// The same at Rexon start (any desktop): the quiet refresh never upgrades
+    /// over a package, it moves our copy away.
+    #[test]
+    fn refresh_moves_our_copy_away_from_the_package() {
+        let mut stand = Stand::new("refresh", "org.kde.image", Some("0.4.0")).packaged();
+        stand.env.desktop = "MATE".to_owned();
+        let message = super::refresh_kde_plugin(&stand.env).expect("refresh");
+        assert!(message.is_some_and(|m| m.contains("moved to")));
+        assert!(!stand.user_copy_present());
+        assert!(!stand.kpackagetool_installs(), "{}", stand.calls());
+        assert!(!stand.restarted(), "no shell outside Plasma: {}", stand.calls());
+    }
+
+    /// A foreign copy (KDE Store) is not touched without consent; with it — moved
+    /// to the backup as well.
+    #[test]
+    fn foreign_copy_moves_only_by_consent() {
+        let stand = Stand::new("foreign", "org.kde.image", Some("0.4.0")).packaged().foreign_copy();
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert!(stand.user_copy_present(), "moved without consent");
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, true, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert!(!stand.user_copy_present());
+        assert_eq!(stand.backups().len(), 1);
+        assert!(!stand.kpackagetool_installs(), "{}", stand.calls());
+    }
+
+    /// A distribution build without the bundle and without the package: Rexon
+    /// installs the package itself (no question) and then uses it.
+    #[test]
+    fn missing_plugin_installs_the_package() {
+        let stand = Stand::new("nopkg", "org.kde.image", None).without_bundle();
+        let (ok, selected_now, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Apply);
+        assert!(ok && selected_now, "{message}");
+        assert!(stand.calls().contains("install-package plasma-wallpaper-waywallen"), "{}", stand.calls());
+        assert!(message.contains("packaged plugin"), "{message}");
+        assert!(!stand.kpackagetool_installs(), "{}", stand.calls());
+    }
+
+    /// A failed package install is not retried by itself (a password window on every
+    /// opening), only by the button.
+    #[test]
+    fn failed_package_install_waits_for_the_button() {
+        let stand = Stand::new("pkgfail", "org.kde.image", None).without_bundle();
+        INSTALL_FAILS.with(|f| *f.borrow_mut() = Some("no AUR helper".to_owned()));
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Prepare);
+        assert!(!ok && message.contains("no AUR helper"), "{message}");
+        let attempts = || stand.calls().matches("install-package").count();
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, false, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert_eq!(attempts(), 1, "retried by itself: {}", stand.calls());
+        INSTALL_FAILS.with(|f| *f.borrow_mut() = None);
+        let (ok, _, _, message) = ensure_kde_plugin(&stand.env, None, true, KdePurpose::Prepare);
+        assert!(ok, "{message}");
+        assert_eq!(attempts(), 2, "the button retries");
+        assert!(super::package_failure(&stand.env).is_none(), "success clears the failure");
     }
 
     /// Never: defect of 30.10.2026: the first tab opening with an empty

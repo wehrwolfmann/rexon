@@ -135,6 +135,11 @@ pub trait AppDefaultsIo {
     fn write_text(&self, path: &str, content: &str) -> Result<(), String>;
     /// `os.makedirs(path, exist_ok=True)`.
     fn makedirs(&self, path: &str) -> Result<(), String>;
+    /// Delete a file (only Rexon's own files are ever passed here). By default
+    /// nothing is deleted: a fake executor that does not care keeps its files.
+    fn remove_file(&self, path: &str) -> Result<(), String> {
+        Err(format!("{path}: removing is not supported here"))
+    }
     /// File names in a directory (a nonexistent directory — empty).
     fn list_dir(&self, dir: &str) -> Vec<String>;
     /// `safe_run(argv, capture_output=True)`.
@@ -242,9 +247,9 @@ pub const AUTOSTART_FILE: &str = "rexon-appdefaults.desktop";
 /// Port of the `DEAppSwitcher` class — switching default applications when
 /// the desktop changes.
 ///
-/// Unlike the original, nobody creates the `~/.config/rexon` directory here:
-/// the Python constructor did it on every object creation, while the
-/// class itself never once wrote into that directory.
+/// Unlike the original, the constructor does not create `~/.config/rexon`
+/// (Python did it on every object creation without writing there); only the
+/// login route creates it, for [`crate::defaults::CHOICES_SEEN_FILE`].
 pub struct DeAppSwitcher<'a, IO: AppDefaultsIo + ?Sized> {
     io: &'a IO,
     env: AppDefaultsEnv,
@@ -266,12 +271,27 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         let user_dir = join(&self.cfg_dir, "autostart");
         for entry in ad::CONFINED_AUTOSTARTS {
             let system_path = join(SYSTEM_DIR, entry.file);
-            let Some(system_text) = self.io.read_text(&system_path) else {
-                continue;
-            };
+            let system_text = self.io.read_text(&system_path);
             let user_path = join(&user_dir, entry.file);
             let user_text = self.io.read_text(&user_path);
-            if !ad::needs_confined_autostart(&system_text, user_text.as_deref()) {
+            let text = match ad::confined_copy_action(system_text.as_deref(), user_text.as_deref(), entry.only_show_in) {
+                ad::ConfinedCopy::Keep => continue,
+                ad::ConfinedCopy::Remove => {
+                    match self.io.remove_file(&user_path) {
+                        Ok(()) => crate::log_info!("appdefaults", "{}: system record gone or restricted, removed our copy", entry.file),
+                        Err(e) => crate::log_info!("appdefaults", "{}: {e}", entry.file),
+                    }
+                    continue;
+                }
+                ad::ConfinedCopy::Write(text) => text,
+            };
+            // Our copy after a package update: refreshed silently (the decision
+            // was made when it was created).
+            if user_text.is_some() {
+                match self.io.write_text(&user_path, &text) {
+                    Ok(()) => crate::log_info!("appdefaults", "{}: refreshed our confined copy", entry.file),
+                    Err(e) => logs.push(format!("⚠️ {e}")),
+                }
                 continue;
             }
             if let Some(pkg) = entry.only_if_dependency {
@@ -284,7 +304,6 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
                 logs.push(format!("⚠️ {e}"));
                 continue;
             }
-            let text = ad::confined_autostart_text(&system_text, entry.only_show_in);
             match self.io.write_text(&user_path, &text) {
                 // TRANSLATORS: %1 is an autostart file name, %2 a list of desktop names.
                 Ok(()) => logs.push(trf(
@@ -292,6 +311,31 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
                     &[&entry.file, &entry.only_show_in.trim_end_matches(';').replace(';', ", ")],
                 )),
                 Err(e) => logs.push(format!("⚠️ {e}")),
+            }
+        }
+    }
+
+    /// labwc: the file chooser and the colour scheme from GTK, not from whichever
+    /// portal sorts first ([`ad::labwc_portals_action`]). The portal reads its
+    /// configs once at start, so the file takes effect from the next labwc login.
+    pub fn ensure_labwc_portals(&self) {
+        const SYSTEM_DIR: &str = "/usr/share/xdg-desktop-portal";
+        let system = self.io.read_text(&join(SYSTEM_DIR, ad::LABWC_PORTALS_FILE));
+        let user_dir = join(&self.cfg_dir, "xdg-desktop-portal");
+        let user_path = join(&user_dir, ad::LABWC_PORTALS_FILE);
+        let user = self.io.read_text(&user_path);
+        let gtk = self.io.exists(&join(SYSTEM_DIR, "portals/gtk.portal"));
+        match ad::labwc_portals_action(system.as_deref(), user.as_deref(), self.io.which("labwc"), gtk) {
+            ad::ConfinedCopy::Keep => {}
+            ad::ConfinedCopy::Remove => {
+                let _ = self.io.remove_file(&user_path);
+                crate::log_info!("appdefaults", "{user_path}: no longer needed, removed");
+            }
+            ad::ConfinedCopy::Write(text) => {
+                match self.io.makedirs(&user_dir).and_then(|()| self.io.write_text(&user_path, &text)) {
+                    Ok(()) => crate::log_info!("appdefaults", "{user_path}: FileChooser/Settings/AppChooser -> gtk"),
+                    Err(e) => crate::log_info!("appdefaults", "{user_path}: {e}"),
+                }
             }
         }
     }
@@ -327,11 +371,54 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             ProfileOutcome::NoApps { message } => GenerateOutcome::Failed(message),
             ProfileOutcome::Write { filename, content, .. } => {
                 let filepath = join(&self.cfg_dir, &filename);
+                // The original overwrote the whole file («Switch desktop» did it
+                // every time), throwing away what the person had chosen in that
+                // desktop. Now what is in the file wins while its program is
+                // installed (`defaults::merge_native_entries`), and the file
+                // carries Rexon's marker.
+                use crate::defaults as dfl;
+                let native = dfl::parse_mimeapps_list(&content);
+                let existing = self
+                    .io
+                    .read_text(&filepath)
+                    .map(|t| dfl::parse_mimeapps_list(&t))
+                    .unwrap_or_default();
+                let merged =
+                    dfl::merge_native_entries(&existing, &native, &|d| self.desktop_exists(d));
+                let content = dfl::serialize_mimeapps_list(&merged, "");
                 match self.io.write_text(&filepath, &content) {
                     Ok(()) => GenerateOutcome::Wrote(filepath),
                     Err(e) => {
                         GenerateOutcome::Failed(trf("Couldn't write %1: %2", &[&filepath, &e]))
                     }
+                }
+            }
+        }
+    }
+
+    /// Move the lists older versions wrote under a name no desktop reads
+    /// ([`crate::defaults::MISNAMED_MIMEAPPS`], Cinnamon) to the right name.
+    /// Only Rexon's own files are touched. Silent for the person: the move goes
+    /// to the Rexon log.
+    pub fn fix_misnamed_mimeapps(&self) {
+        use crate::defaults::{misnamed_mimeapps_fix, MisnamedFix, MISNAMED_MIMEAPPS};
+        for (old, right) in MISNAMED_MIMEAPPS {
+            let old_path = join(&self.cfg_dir, old);
+            let right_path = join(&self.cfg_dir, right);
+            let old_text = self.io.read_text(&old_path);
+            let right_text = self.io.read_text(&right_path);
+            match misnamed_mimeapps_fix(old_text.as_deref(), right_text.as_deref()) {
+                MisnamedFix::Nothing => {}
+                MisnamedFix::Move { content } => match self.io.write_text(&right_path, &content) {
+                    Ok(()) => {
+                        let _ = self.io.remove_file(&old_path);
+                        crate::log_info!("appdefaults", "moved {old_path} -> {right_path}");
+                    }
+                    Err(e) => crate::log_info!("appdefaults", "could not move {old_path}: {e}"),
+                },
+                MisnamedFix::DropOld => {
+                    let _ = self.io.remove_file(&old_path);
+                    crate::log_info!("appdefaults", "removed unread {old_path} ({right} exists)");
                 }
             }
         }
@@ -505,6 +592,9 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         // TRANSLATORS: %1 is a desktop environment id (kde, gnome…).
         let mut logs = vec![trf("🖥️ Current desktop: %1", &[&de_id])];
 
+        // 0. Lists of older versions under a name no desktop reads (Cinnamon).
+        self.fix_misnamed_mimeapps();
+
         // 1. Make sure the per-DE mimeapps.list exists. EVERY desktop has a name
         //    (an unknown one gives `<id>-mimeapps.list`), so unlike the original
         //    there is never a "no name" branch here.
@@ -519,6 +609,10 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
                 GenerateOutcome::Failed(m) => logs.push(format!("⚠️ {m}")),
             }
         }
+
+        // 1a. What the person chose during the previous session goes into that
+        //     session's desktop list, where it must win.
+        self.adopt_previous_session_choices(&filename);
 
         // 2. The desktop's own terminal list: `xdg-terminal-exec` reads it
         //    before the shared one (see `ad::native_terminals_list_plan`).
@@ -538,11 +632,53 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         //    hijacks keyboard layouts in MATE.
         self.confine_desktop_autostarts(&mut logs);
 
+        // 5a. labwc: the "Open file" dialog and the colour scheme from GTK, not
+        //     from COSMIC (`ad::labwc_portals_action`).
+        self.ensure_labwc_portals();
+
         // 6. Our own autostart record from earlier versions — without the
         //    gnome-session phase (`ad::heal_autostart_text`).
         self.heal_autostart();
 
         (true, logs)
+    }
+
+    /// Carry the choices made during the previous session into its desktop
+    /// list, then remember the shared list for the next login.
+    ///
+    /// Desktops (GLib, KDE, `xdg-mime`) write "always open with" only into the
+    /// shared `mimeapps.list`, while their own `<desktop>-mimeapps.list` is read
+    /// first: without this the person's choice for a type in our list never
+    /// took effect. A change of the shared file between two logins was made in
+    /// the session between them — so it goes into THAT session's list
+    /// (`defaults::adopt_session_choices`), not into the one starting now.
+    /// `current_list` is the list of the session starting now.
+    pub fn adopt_previous_session_choices(&self, current_list: &str) {
+        use crate::defaults as dfl;
+        let general_path = join(&self.cfg_dir, "mimeapps.list");
+        let general = self
+            .io
+            .read_text(&general_path)
+            .map(|t| dfl::parse_mimeapps_list(&t))
+            .unwrap_or_default();
+        let seen_dir = join(&self.cfg_dir, "rexon");
+        let seen_path = join(&seen_dir, dfl::CHOICES_SEEN_FILE);
+        if let Some(seen) = self.io.read_text(&seen_path).and_then(|t| dfl::parse_choices_seen(&t)) {
+            let list_path = join(&self.cfg_dir, &seen.list);
+            if let Some(text) = self.io.read_text(&list_path) {
+                if let Some(next) = dfl::adopt_session_choices(&text, &seen.general, &general) {
+                    match self.io.write_text(&list_path, &next) {
+                        Ok(()) => crate::log_info!("appdefaults", "{}: took the choices of the last session", seen.list),
+                        Err(e) => crate::log_info!("appdefaults", "{}: {e}", seen.list),
+                    }
+                }
+            }
+        }
+        let now = dfl::ChoicesSeen { list: current_list.to_string(), general };
+        let _ = self
+            .io
+            .makedirs(&seen_dir)
+            .and_then(|()| self.io.write_text(&seen_path, &dfl::serialize_choices_seen(&now)));
     }
 
     /// Remove from the existing defaults autostart record the phase line
@@ -1054,7 +1190,11 @@ pub fn apply_defaults_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     let env = AppDefaultsEnv::from_process();
     let mut cio = LiveComplianceIo;
     let cenv = ComplianceEnv::from_live_machine();
-    apply_defaults_route(&io, &env, &mut cio, &cenv, out)
+    let code = apply_defaults_route(&io, &env, &mut cio, &cenv, out);
+    // At every login: screen saver launchers of other desktops stay hidden in
+    // this one (a package update may have brought them back unconfined).
+    crate::screensaver_guard::sync_live();
+    code
 }
 
 // ============================================================================
@@ -1144,6 +1284,14 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
 
     fn makedirs(&self, path: &str) -> Result<(), String> {
         std::fs::create_dir_all(path).map_err(|e| e.to_string())
+    }
+
+    fn remove_file(&self, path: &str) -> Result<(), String> {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("{path}: {e}")),
+        }
     }
 
     fn list_dir(&self, dir: &str) -> Vec<String> {

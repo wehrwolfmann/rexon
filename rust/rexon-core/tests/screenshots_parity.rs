@@ -59,7 +59,7 @@ fn de_tables_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn generate_svg_byte_for_byte() {
     let _lang = i18n_pin::ru();
     let fx = fixture();
@@ -90,7 +90,7 @@ fn file_names_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn screenshot_tools_argv_match_python() {
     let _lang = i18n_pin::ru();
     let fx = fixture();
@@ -286,7 +286,7 @@ fn wikimedia_html_instead_of_json() {
 /// same decisions and THE SAME reason TEXTS as in Python (the user sees them).
 /// The battery has a live case «an HTML page instead of an image».
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn validate_image_response_matches_python() {
     let _lang = i18n_pin::ru();
     for c in fixture()["validate_image"].as_array().unwrap() {
@@ -316,7 +316,7 @@ fn retry_wait_matches_python() {
 
 /// Auto-download file tag: the first URL has no suffix, then `_1`, `_2`…
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn auto_download_tag_matches_python() {
     let _lang = i18n_pin::ru();
     for (key, want) in fixture()["auto_download_tags"].as_object().unwrap() {
@@ -337,7 +337,7 @@ fn auto_download_tag_matches_python() {
 /// (non-deterministic), so it is compared as a set; separately we check that
 /// the core plan follows the `SCREENSHOT_URLS` order.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn auto_download_plan_matches_python() {
     let _lang = i18n_pin::ru();
     let fx = fixture();
@@ -555,7 +555,7 @@ fn run(de: &str) -> (Result<String, String>, ScriptedNet) {
 
 /// The direct address returns the image right away — the API is not touched at all.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn download_direct_image() {
     let _lang = i18n_pin::ru();
     let (got, io) = run("kde");
@@ -567,7 +567,7 @@ fn download_direct_image() {
 /// The direct address returns an HTML page → we resolve the real address via
 /// the Commons API (LIVE response) → the image arrives from the CDN.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn download_falls_back_to_commons_api() {
     let _lang = i18n_pin::ru();
     let (got, io) = run("gnome");
@@ -582,7 +582,7 @@ fn download_falls_back_to_commons_api() {
 /// The API answers «no such file on Commons» — the buyer gets the reason of
 /// the FIRST failure, not details about the API.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn download_reports_first_failure_when_commons_has_no_file() {
     let _lang = i18n_pin::ru();
     let (got, io) = run("xfce");
@@ -596,7 +596,7 @@ fn download_reports_first_failure_when_commons_has_no_file() {
 
 /// The image arrived, but is too small — the same text as in the original.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn download_rejects_too_small_image() {
     let _lang = i18n_pin::ru();
     let (got, _) = run("mate");
@@ -607,7 +607,7 @@ fn download_rejects_too_small_image() {
 /// will be the same), and the API response turned out not to be an object →
 /// refusal with the reason of the first failure.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn download_forbidden_is_not_retried() {
     let _lang = i18n_pin::ru();
     let (got, io) = run("budgie");
@@ -665,7 +665,7 @@ fn english_screenshots_have_no_russian() {
 /// The same labels in Russian — word for word as before moving to the catalog
 /// (snapshot `ca42e74^`), the cases of the unrecognised desktop are the former ones.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_screenshot_texts_as_before() {
     let _lang = i18n_pin::ru();
     assert_eq!(sc::PlaceholderState::Loading.caption(), "Скриншот загружается…");

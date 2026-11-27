@@ -149,6 +149,28 @@ pub mod qobject {
                     READ = sv_test_no_item_text, CONSTANT)]
         #[qproperty(QString, sv_thumb_placeholder, cxx_name = "svThumbPlaceholder",
                     READ = sv_thumb_placeholder, CONSTANT)]
+        #[qproperty(QString, sv_import_cancel_text, cxx_name = "svImportCancelText",
+                    READ = sv_import_cancel_text, CONSTANT)]
+        #[qproperty(QString, sv_delete_glyph, cxx_name = "svDeleteGlyph",
+                    READ = sv_delete_glyph, CONSTANT)]
+        #[qproperty(QString, sv_delete_tooltip, cxx_name = "svDeleteTooltip",
+                    READ = sv_delete_tooltip, CONSTANT)]
+        #[qproperty(QString, sv_delete_title, cxx_name = "svDeleteTitle",
+                    READ = sv_delete_title, CONSTANT)]
+        #[qproperty(QString, sv_delete_confirm_text, cxx_name = "svDeleteConfirmText",
+                    READ = sv_delete_confirm_text, CONSTANT)]
+        #[qproperty(QString, sv_delete_keep_text, cxx_name = "svDeleteKeepText",
+                    READ = sv_delete_keep_text, CONSTANT)]
+        #[qproperty(QString, sv_steam_choice_glyph, cxx_name = "svSteamChoiceGlyph",
+                    READ = sv_steam_choice_glyph, CONSTANT)]
+        #[qproperty(QString, sv_steam_choice_tooltip, cxx_name = "svSteamChoiceTooltip",
+                    READ = sv_steam_choice_tooltip, CONSTANT)]
+        /// A clip is being added (checked, copied or converted) — the add button
+        /// is disabled, the progress line and «Cancel» are shown.
+        #[qproperty(bool, import_busy, cxx_name = "importBusy",
+                    READ = import_busy, NOTIFY = import_changed)]
+        #[qproperty(QString, import_text, cxx_name = "importText",
+                    READ = import_text, NOTIFY = import_changed)]
         #[qproperty(i32, sv_thumb_width, cxx_name = "svThumbWidth",
                     READ = sv_thumb_width, CONSTANT)]
         #[qproperty(i32, sv_thumb_height, cxx_name = "svThumbHeight",
@@ -325,6 +347,17 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "statusChanged"]
         fn status_changed(self: Pin<&mut SteamModel>);
+
+        /// The progress of adding a clip changed.
+        #[qsignal]
+        #[cxx_name = "importChanged"]
+        fn import_changed(self: Pin<&mut SteamModel>);
+
+        /// A clip was added or moved: the page re-reads the showcase
+        /// (`actions.scan()` — the snapshot is the page host's).
+        #[qsignal]
+        #[cxx_name = "moviesOnDiskChanged"]
+        fn movies_on_disk_changed(self: Pin<&mut SteamModel>);
     }
 
     // ── Inherited methods of the base class ─────────────────────────────
@@ -413,6 +446,26 @@ pub mod qobject {
         fn sv_test_no_item_text(self: &SteamModel) -> QString;
         #[cxx_name = "svThumbPlaceholder"]
         fn sv_thumb_placeholder(self: &SteamModel) -> QString;
+        #[cxx_name = "svImportCancelText"]
+        fn sv_import_cancel_text(self: &SteamModel) -> QString;
+        #[cxx_name = "svDeleteGlyph"]
+        fn sv_delete_glyph(self: &SteamModel) -> QString;
+        #[cxx_name = "svDeleteTooltip"]
+        fn sv_delete_tooltip(self: &SteamModel) -> QString;
+        #[cxx_name = "svDeleteTitle"]
+        fn sv_delete_title(self: &SteamModel) -> QString;
+        #[cxx_name = "svDeleteConfirmText"]
+        fn sv_delete_confirm_text(self: &SteamModel) -> QString;
+        #[cxx_name = "svDeleteKeepText"]
+        fn sv_delete_keep_text(self: &SteamModel) -> QString;
+        #[cxx_name = "svSteamChoiceGlyph"]
+        fn sv_steam_choice_glyph(self: &SteamModel) -> QString;
+        #[cxx_name = "svSteamChoiceTooltip"]
+        fn sv_steam_choice_tooltip(self: &SteamModel) -> QString;
+        #[cxx_name = "importBusy"]
+        fn import_busy(self: &SteamModel) -> bool;
+        #[cxx_name = "importText"]
+        fn import_text(self: &SteamModel) -> QString;
         #[cxx_name = "svThumbWidth"]
         fn sv_thumb_width(self: &SteamModel) -> i32;
         #[cxx_name = "svThumbHeight"]
@@ -629,6 +682,25 @@ pub mod qobject {
         #[cxx_name = "setStatus"]
         fn set_status_text(self: Pin<&mut SteamModel>, text: &QString);
 
+        /// Add the person's own clip from `path` in the background (check,
+        /// copy or convert, choose). `false` — one is already being added.
+        #[qinvokable]
+        #[cxx_name = "importMovie"]
+        fn import_movie(self: Pin<&mut SteamModel>, path: &QString) -> bool;
+
+        /// Keep a copy of the OLD selection `path` (a path to someone else's
+        /// file) in the background — without conversion and installation.
+        /// `false` — not started (the tasks are not up yet, or a clip is being
+        /// added): the page asks again later.
+        #[qinvokable]
+        #[cxx_name = "migrateMovie"]
+        fn migrate_movie(self: Pin<&mut SteamModel>, path: &QString) -> bool;
+
+        /// Stop adding the clip.
+        #[qinvokable]
+        #[cxx_name = "cancelImport"]
+        fn cancel_import(self: Pin<&mut SteamModel>);
+
         /// The answer of the "Show at login" toggle: `on` is what was asked,
         /// `reason` the answer of `actions.setAutostart` ("" — it worked). A refusal
         /// is shown in the status line in simple words from the core.
@@ -790,7 +862,7 @@ const ROLE_BASE: i32 = 256 + 1;
 
 /// Role names in number order — the single source of truth for roleNames,
 /// data() and roleNumber().
-const ROLE_NAMES: [&str; 10] = [
+const ROLE_NAMES: [&str; 12] = [
     "path",
     "title",
     "badge",
@@ -801,6 +873,10 @@ const ROLE_NAMES: [&str; 10] = [
     "starColor",
     "starOn",
     "selected",
+    // The person's own clip (in our folders) — the card shows «🗑».
+    "deletable",
+    // Steam itself plays this clip at startup — the card shows «🎮».
+    "steamChosen",
 ];
 
 // ============================================================================
@@ -932,6 +1008,9 @@ pub struct SteamModelRust {
     autostart_on: bool,
     rotate_on: bool,
     sound_on: bool,
+    /// A clip is being added; the current stage line.
+    import_busy: bool,
+    import_text: String,
 
     // ── Live clip preview in the large card ──
     /// The large card is in view (set by the markup).
@@ -1274,6 +1353,36 @@ impl qobject::SteamModel {
     }
     pub fn sv_thumb_placeholder(&self) -> QString {
         QString::from(qs::SV_THUMB_PLACEHOLDER)
+    }
+    pub fn sv_import_cancel_text(&self) -> QString {
+        QString::from(&qs::sv_import_cancel_text())
+    }
+    pub fn sv_delete_glyph(&self) -> QString {
+        QString::from(qs::SV_DELETE_GLYPH)
+    }
+    pub fn sv_delete_tooltip(&self) -> QString {
+        QString::from(&qs::sv_delete_tooltip())
+    }
+    pub fn sv_delete_title(&self) -> QString {
+        QString::from(&qs::sv_delete_title())
+    }
+    pub fn sv_delete_confirm_text(&self) -> QString {
+        QString::from(&qs::sv_delete_confirm_text())
+    }
+    pub fn sv_delete_keep_text(&self) -> QString {
+        QString::from(&qs::sv_delete_keep_text())
+    }
+    pub fn sv_steam_choice_glyph(&self) -> QString {
+        QString::from(qs::SV_STEAM_CHOICE_GLYPH)
+    }
+    pub fn sv_steam_choice_tooltip(&self) -> QString {
+        QString::from(&qs::sv_steam_choice_tooltip())
+    }
+    pub fn import_busy(&self) -> bool {
+        self.rust().import_busy
+    }
+    pub fn import_text(&self) -> QString {
+        QString::from(&self.rust().import_text)
     }
     pub fn sv_thumb_width(&self) -> i32 {
         qs::SV_THUMB_W
@@ -1873,6 +1982,8 @@ impl qobject::SteamModel {
             }
             "starOn" => QVariant::from(&me.favorites.iter().any(|f| f == path)),
             "selected" => QVariant::from(&(path == me.current_path)),
+            "deletable" => QVariant::from(&item.get("deletable").and_then(Value::as_bool).unwrap_or(false)),
+            "steamChosen" => QVariant::from(&item.get("steam_selected").and_then(Value::as_bool).unwrap_or(false)),
             _ => QVariant::default(),
         }
     }
@@ -2055,6 +2166,51 @@ impl qobject::SteamModel {
     pub fn set_status_text(mut self: Pin<&mut Self>, text: &QString) {
         let text = text.to_string();
         self.as_mut().set_status(&text);
+    }
+
+    pub fn import_movie(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        self.as_mut().start_import(path.to_string(), false)
+    }
+
+    pub fn migrate_movie(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        self.as_mut().start_import(path.to_string(), true)
+    }
+
+    pub fn cancel_import(self: Pin<&mut Self>) {
+        if let Some(tasks) = self.rust().tasks.clone() {
+            tasks.cancel_movie_import();
+        }
+    }
+
+    /// The shared door of adding and moving a clip: the background task and
+    /// the progress line. Without the task runtime nothing can be done in the
+    /// background — saying so instead of freezing the window.
+    fn start_import(mut self: Pin<&mut Self>, path: String, migrate: bool) -> bool {
+        if path.is_empty() {
+            return false;
+        }
+        let Some(tasks) = self.rust().tasks.clone() else {
+            // Moving an old selection simply waits for the tasks; an addition the
+            // person asked for must not stay silent.
+            if !migrate {
+                self.as_mut().set_status(&rexon_core::session_splash::msg_import_failed(&qs::sv_no_reason()));
+            }
+            return false;
+        };
+        if !tasks.start_movie_import(path, migrate) {
+            return false;
+        }
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.import_busy = true;
+            me.import_text = if migrate {
+                rexon_core::session_splash::import_stage_text(rexon_core::session_splash::ImportStage::Copying)
+            } else {
+                rexon_core::session_splash::import_stage_text(rexon_core::session_splash::ImportStage::Checking)
+            };
+        }
+        self.as_mut().import_changed();
+        true
     }
 
     pub fn autostart_answered(mut self: Pin<&mut Self>, on: bool, reason: &QString) {
@@ -2380,6 +2536,24 @@ impl qobject::SteamModel {
                     me.full_done.insert(id);
                 }
                 self.as_mut().backgrounds_changed();
+            }
+            SteamEvent::MovieImportStage(text) => {
+                if self.rust().import_text != text {
+                    self.as_mut().rust_mut().import_text = text;
+                    self.as_mut().import_changed();
+                }
+            }
+            SteamEvent::MovieImportDone { ok, message } => {
+                {
+                    let mut me = self.as_mut().rust_mut();
+                    me.import_busy = false;
+                    me.import_text.clear();
+                }
+                self.as_mut().import_changed();
+                self.as_mut().set_status(&message);
+                if ok {
+                    self.as_mut().movies_on_disk_changed();
+                }
             }
         }
     }

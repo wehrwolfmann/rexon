@@ -550,7 +550,7 @@ fn compiled_catalog(lang: &str) -> i18n::Catalog {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let ru = compiled_catalog("ru");
     let t = |msgid: &str| ru.get(None, msgid).unwrap_or_else(|| panic!("нет перевода «{msgid}»")).to_string();

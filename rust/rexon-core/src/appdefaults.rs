@@ -376,24 +376,84 @@ pub const CONFINED_AUTOSTARTS: &[ConfinedAutostart] = &[
 /// A mark in the user copy: Rexon created it.
 pub const CONFINED_AUTOSTART_MARK: &str = "X-Rexon-Confined=true";
 
-/// Whether a copy is needed: the system record is not restricted to desktops, and the person
-/// has no copy of their own (they might have created it themselves — then it is their call).
-pub fn needs_confined_autostart(system_text: &str, user_text: Option<&str>) -> bool {
-    if user_text.is_some() {
-        return false;
+/// Whether an autostart copy is Rexon's ([`CONFINED_AUTOSTART_MARK`]).
+pub fn is_confined_copy(text: &str) -> bool {
+    text.lines().any(|l| l.trim() == CONFINED_AUTOSTART_MARK)
+}
+
+/// What to do with our user copy of a confined autostart record at login.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfinedCopy {
+    /// Nothing: the copy is up to date, or it is the person's own (no mark).
+    Keep,
+    /// Write this text (no copy yet, or our copy is stale after a package update).
+    Write(String),
+    /// Remove our copy: the system record is gone (the package was removed) or
+    /// restricts itself now.
+    Remove,
+}
+
+/// The decision for one record of [`CONFINED_AUTOSTARTS`]. `system_text` — the
+/// record in `/etc/xdg/autostart` (`None` — no record), `user_text` — the copy
+/// of the same name in `~/.config/autostart` (`None` — no copy).
+///
+/// The former check only answered "is a copy needed" and gave "no" as soon as
+/// any copy existed: ours was never refreshed (a new `Exec=` after a package
+/// update stayed out), and it outlived the package. Now our copy (the
+/// [`CONFINED_AUTOSTART_MARK`]) follows the system record; a copy without the
+/// mark is the person's and is never touched.
+pub fn confined_copy_action(
+    system_text: Option<&str>,
+    user_text: Option<&str>,
+    only_show_in: &str,
+) -> ConfinedCopy {
+    let ours = user_text.map(is_confined_copy);
+    if ours == Some(false) {
+        return ConfinedCopy::Keep;
     }
-    !system_text
-        .lines()
-        .any(|l| l.trim_start().starts_with("OnlyShowIn=") || l.trim_start().starts_with("NotShowIn="))
+    let restricted = |t: &str| {
+        t.lines().any(|l| l.trim_start().starts_with("OnlyShowIn=") || l.trim_start().starts_with("NotShowIn="))
+    };
+    match system_text {
+        None => {
+            if ours == Some(true) {
+                ConfinedCopy::Remove
+            } else {
+                ConfinedCopy::Keep
+            }
+        }
+        Some(sys) if restricted(sys) => {
+            if ours == Some(true) {
+                ConfinedCopy::Remove
+            } else {
+                ConfinedCopy::Keep
+            }
+        }
+        Some(sys) => {
+            let want = confined_autostart_text(sys, only_show_in);
+            if user_text == Some(want.as_str()) {
+                ConfinedCopy::Keep
+            } else {
+                ConfinedCopy::Write(want)
+            }
+        }
+    }
 }
 
 /// Text of the user copy: the system record without its own `OnlyShowIn=`/
-/// `NotShowIn=`, plus the desktop restriction and the Rexon mark.
+/// `NotShowIn=`/`Hidden=`, plus the desktop restriction and the Rexon mark.
+///
+/// ⚠️ The restriction is `OnlyShowIn=`, NEVER `Hidden=true`: cosmic-session
+/// does not read `Hidden` at all and would start the record anyway, and
+/// `Hidden=true` would also switch it off in its own desktop.
 pub fn confined_autostart_text(system_text: &str, only_show_in: &str) -> String {
     let mut out = String::new();
     for line in system_text.lines() {
         let t = line.trim_start();
-        if t.starts_with("OnlyShowIn=") || t.starts_with("NotShowIn=") {
+        if t.starts_with("OnlyShowIn=") || t.starts_with("NotShowIn=") || t.starts_with("Hidden=") {
+            continue;
+        }
+        if t == CONFINED_AUTOSTART_MARK {
             continue;
         }
         out.push_str(line);
@@ -401,6 +461,128 @@ pub fn confined_autostart_text(system_text: &str, only_show_in: &str) -> String 
     }
     out.push_str(&format!("OnlyShowIn={only_show_in}\n{CONFINED_AUTOSTART_MARK}\n"));
     out
+}
+
+// ── labwc: the file chooser and the colour scheme must not come from COSMIC ──
+//
+// labwc ships `labwc-portals.conf` with `default=wlr;*`. In xdg-desktop-portal
+// `*` means "the first backend that implements the interface", and backends
+// are sorted by name after the ones whose `UseIn` matches the desktop — so with
+// COSMIC installed, `cosmic.portal` (FileChooser, Settings) wins in a plain
+// labwc session: its "Open file" dialog and dark/light scheme come from COSMIC.
+// Rexon puts a user `~/.config/xdg-desktop-portal/labwc-portals.conf` that
+// keeps the system lines and sends these interfaces to GTK.
+
+/// The file name (system: `/usr/share/xdg-desktop-portal/`, ours:
+/// `$XDG_CONFIG_HOME/xdg-desktop-portal/`).
+pub const LABWC_PORTALS_FILE: &str = "labwc-portals.conf";
+/// First line of our portals file: by it Rexon knows the file is its own.
+pub const PORTALS_MARK: &str = "# Rexon: portals";
+/// Interfaces that `*` would hand to whichever backend sorts first.
+const LABWC_GTK_INTERFACES: &[&str] = &[
+    "org.freedesktop.impl.portal.FileChooser",
+    "org.freedesktop.impl.portal.Settings",
+    "org.freedesktop.impl.portal.AppChooser",
+];
+
+/// Whether a portals file is Rexon's (its first line is [`PORTALS_MARK`]).
+pub fn is_rexon_portals_file(text: &str) -> bool {
+    text.lines().next().map(str::trim) == Some(PORTALS_MARK)
+}
+
+/// Rexon's protective files in the person's config folder (`config_home` —
+/// `$XDG_CONFIG_HOME` or `~/.config`) that exist on this machine: our confined
+/// autostart copies and our `labwc-portals.conf`. `read` — file text (`None`
+/// — missing).
+///
+/// Uninstalling Rexon leaves them on purpose: they keep the desktops from
+/// getting in each other's way (without the copies fcitx5 starts in every
+/// desktop again, without the portals file labwc's file chooser and colour
+/// scheme come from COSMIC), and nothing in them needs Rexon to work. The
+/// uninstall window says so ([`crate::window_menu::uninstall_kept_fixes_line`]).
+/// Our per-desktop `<desktop>-mimeapps.list` files are different: they DO go
+/// with Rexon (`installer_exec::release_session_guard`) — without Rexon
+/// nobody carries the person's later choices into them, and they are read
+/// before the person's own `mimeapps.list`.
+pub fn protective_files(config_home: &str, read: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for entry in CONFINED_AUTOSTARTS {
+        let path = format!("{config_home}/autostart/{}", entry.file);
+        if read(&path).is_some_and(|t| is_confined_copy(&t)) {
+            out.push(path);
+        }
+    }
+    let portals = format!("{config_home}/xdg-desktop-portal/{LABWC_PORTALS_FILE}");
+    if read(&portals).is_some_and(|t| is_rexon_portals_file(&t)) {
+        out.push(portals);
+    }
+    out
+}
+
+/// What to do with our `labwc-portals.conf`. `system` — labwc's own file
+/// (`None` — none), `user` — the file in the user directory (`None` — none),
+/// `labwc` — labwc is installed, `gtk_portal` — the GTK backend is installed.
+///
+/// The system lines are copied (an older xdg-desktop-portal does not merge a
+/// user file with the system one), and our lines replace only the interfaces
+/// above; the copy is renewed when the system file changes. A file without
+/// [`PORTALS_MARK`] is the person's and is never touched.
+pub fn labwc_portals_action(
+    system: Option<&str>,
+    user: Option<&str>,
+    labwc: bool,
+    gtk_portal: bool,
+) -> ConfinedCopy {
+    let ours = user.map(is_rexon_portals_file);
+    if ours == Some(false) {
+        return ConfinedCopy::Keep;
+    }
+    let wildcard = system.is_some_and(|s| {
+        s.lines().any(|l| {
+            let l = l.trim();
+            l.strip_prefix("default=").is_some_and(|v| v.split(';').any(|b| b.trim() == "*"))
+        })
+    });
+    let (Some(system), true, true, true) = (system, labwc, gtk_portal, wildcard) else {
+        return if ours == Some(true) { ConfinedCopy::Remove } else { ConfinedCopy::Keep };
+    };
+    let mut out = format!(
+        "{PORTALS_MARK}\n# labwc's own file has default=wlr;* and \"*\" picks the first backend by\n\
+         # name (COSMIC when it is installed); these interfaces go to GTK instead.\n"
+    );
+    let mut in_preferred = false;
+    let mut wrote_ours = false;
+    for line in system.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            if in_preferred && !wrote_ours {
+                for i in LABWC_GTK_INTERFACES {
+                    out.push_str(&format!("{i}=gtk;\n"));
+                }
+                wrote_ours = true;
+            }
+            in_preferred = t == "[preferred]";
+        } else if in_preferred
+            && t.split_once('=').is_some_and(|(k, _)| LABWC_GTK_INTERFACES.contains(&k.trim()))
+        {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !wrote_ours {
+        if !in_preferred {
+            out.push_str("[preferred]\n");
+        }
+        for i in LABWC_GTK_INTERFACES {
+            out.push_str(&format!("{i}=gtk;\n"));
+        }
+    }
+    if user == Some(out.as_str()) {
+        ConfinedCopy::Keep
+    } else {
+        ConfinedCopy::Write(out)
+    }
 }
 
 /// Name of the desktop's own terminal list — `<desktop>-xdg-terminals.list`, where
@@ -631,6 +813,10 @@ pub fn generate_profile(de_id: &str, exists: &dyn Fn(&str) -> bool) -> ProfileOu
             continue;
         };
         for mime in mime_group(category) {
+            // The browser is the person's choice in every desktop: never written.
+            if crate::defaults::is_browser_mime(mime) {
+                continue;
+            }
             // dict[mime] = resolved (overwritten on repeat; MIME groups
             // do not overlap, so there are no overwrites).
             if let Some(e) = associations.iter_mut().find(|(m, _)| m == mime) {

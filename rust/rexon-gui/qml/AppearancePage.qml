@@ -2598,9 +2598,10 @@ Item {
                     id: submodeRow
                     spacing: 4
                     visible: page.styleBarVisible || page.lockBarVisible || page.toneBarVisible
+                             || page.orientationBarVisible
 
                     RexonText {
-                        text: page.submodeLabel
+                        text: page.orientationBarVisible ? page.orientationBarLabel : page.submodeLabel
                         color: root.colTextSecondary
                         font.weight: Font.DemiBold   // `#SrcLabel`, weight 600
                         height: headerRow.rowHeight
@@ -2649,6 +2650,23 @@ Item {
                             ToolTip.delay: 600
                             checked: modelData.checked
                             onClicked: page.setToneFilter(modelData.key)
+                        }
+                    }
+
+                    // "All / Horizontal / Vertical" in a store that knows the
+                    // picture size (Wallhaven); the server filters by it.
+                    Repeater {
+                        model: page.orientationBarVisible ? page.orientationChips : []
+                        delegate: RexonChip {
+                            required property var modelData
+                            objectName: "orientationChip_" + (modelData.key || "all")
+                            pal: root.pal
+                            text: modelData.label
+                            ToolTip.text: modelData.tooltip
+                            ToolTip.visible: hovered && modelData.tooltip !== ""
+                            ToolTip.delay: 600
+                            checked: modelData.checked
+                            onClicked: page.setOrientationFilter(modelData.key)
                         }
                     }
                 }

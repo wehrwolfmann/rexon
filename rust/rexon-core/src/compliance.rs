@@ -81,13 +81,22 @@ pub const AYATANA_PACKAGES: &[&str] = &[
 ];
 
 /// `ComplianceCheck.MATE_AUR_PACKAGES` — core + appmenu.
+///
+/// ⛔ No `brisk-menu` (Wehrwolfmann's decision of 24.11.2026: abandoned upstream):
+/// a panel that still has it is moved to the MATE Menu by the last MATE step.
+/// `mate-menu` is not in this list either: it is installed on its own (see
+/// [`MATE_MENU_PACKAGE`]), so that its failure does not take the whole set down.
 pub const MATE_AUR_PACKAGES: &[&str] = &[
-    "mate-tweak", "brisk-menu",
+    "mate-tweak",
     "mate-indicator-applet",
     // Not the shared `vala-panel-appmenu` — it pulls in budgie-desktop and vala-panel.
     "vala-panel-appmenu-mate",
     "vala-panel-appmenu-registrar",
 ];
+
+/// The MATE Menu (`mate-menu`, AUR): the menu that replaces the Brisk menu on
+/// the panel ([`Compliance::check_mate_brisk_menu`]).
+pub const MATE_MENU_PACKAGE: &str = "mate-menu";
 
 /// Packages the compliance fix installs the standard way (`install_pkg`
 /// → the package helper): Ubuntu fonts (MATE), COSMIC wallpapers and icons,
@@ -533,6 +542,7 @@ pub const FIX_LABELS: &[(&str, &str)] = &[
     ("mate_yaru_theme", n_("Yaru theme for MATE (from the AUR)")),
     ("mate_ubuntu_fonts", n_("Ubuntu fonts")),
     ("mate_aur_pkgs", n_("MATE panel add-ons and system tray icons (from the AUR)")),
+    ("mate_menu", n_("MATE Menu in place of the Brisk menu (from the AUR)")),
     ("cosmic_wallpapers", n_("COSMIC wallpapers")),
     ("cosmic_icons", n_("COSMIC icons")),
     ("cinnamon_themes", n_("Linux Mint themes (from the AUR)")),
@@ -1349,7 +1359,87 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
+        // 10. The Brisk menu on the panel → the MATE Menu.
+        self.check_mate_brisk_menu(&mut results, log);
+
         results
+    }
+
+    /// Applets on the system (`Factory::Applet`) — from mate-panel's applet
+    /// directory, as [`crate::mate_panel::installed_applets`] reads them.
+    fn mate_applets(&mut self) -> std::collections::BTreeSet<String> {
+        let dir = crate::mate_panel::SYSTEM_APPLETS_DIR;
+        let mut out = std::collections::BTreeSet::new();
+        for name in self.io.listdir(dir) {
+            if !name.ends_with(".mate-panel-applet") {
+                continue;
+            }
+            if let Some(text) = self.io.read_text(&join(dir, &name)) {
+                out.extend(crate::mate_panel::applets_in_description(&text));
+            }
+        }
+        out
+    }
+
+    /// The Brisk menu on the live panel → the MATE Menu (Wehrwolfmann's decision
+    /// of 24.11.2026: Brisk is abandoned and Rexon no longer installs it).
+    /// Without mate-menu on the system Rexon builds it from the AUR on its own
+    /// (its own transaction); if it does not install — the built-in menu
+    /// button, so the panel never stays without a menu. At login (no password,
+    /// no network) a still working Brisk menu is left until "Check my desktop";
+    /// a Brisk menu whose applet is gone is replaced right away. No Brisk on the
+    /// panel — the step says nothing.
+    fn check_mate_brisk_menu(&mut self, results: &mut Results, log: &mut Vec<String>) {
+        let dump_argv: Vec<String> =
+            ["dconf", "dump", crate::mate_panel::PANEL_DCONF_DIR].iter().map(|s| s.to_string()).collect();
+        let Some(dump) = self.io.run(&dump_argv, None).filter(|r| r.ok).map(|r| r.stdout) else {
+            return;
+        };
+        if crate::mate_panel::brisk_migration(&dump, false).is_none() {
+            return;
+        }
+        log.push(l2(tr("🧭 Checking the panel menu...")));
+        log.push(l4(tr("⚠️ The panel has the Brisk menu, which is no longer supported")));
+        let mut applets = self.mate_applets();
+        if !applets.contains(crate::mate_panel::MATE_MENU_IID) {
+            let brisk_works = applets.contains(crate::mate_panel::BRISK_MENU_IID);
+            match self.pkg_state(MATE_MENU_PACKAGE) {
+                PkgState::Missing => match self.install_aur_packages(&[MATE_MENU_PACKAGE.to_string()], log) {
+                    FixOutcome::Done => applets = self.mate_applets(),
+                    FixOutcome::Failed => log.push(l4(tr(
+                        "ℹ️ The MATE Menu couldn't be installed — the standard MATE menu button is used instead",
+                    ))),
+                    // At login: a working Brisk menu waits for "Check my desktop".
+                    FixOutcome::Deferred if brisk_works => {
+                        put(results, "mate_menu", NEEDS_ACTION);
+                        return;
+                    }
+                    FixOutcome::Deferred => {}
+                },
+                // Installed, but its applet is not where mate-panel looks, or a
+                // family without package steps: the built-in button.
+                PkgState::Installed | PkgState::Unsupported => {}
+            }
+        }
+        let mate_menu = applets.contains(crate::mate_panel::MATE_MENU_IID);
+        let Some(plan) = crate::mate_panel::brisk_migration(&dump, mate_menu) else {
+            return;
+        };
+        for argv in &plan.commands {
+            if !matches!(self.io.run(argv, None), Some(r) if r.ok) {
+                log.push(l4(tr("⚠️ Couldn't replace the Brisk menu on the panel")));
+                put(results, "mate_menu", "failed");
+                return;
+            }
+        }
+        log.push(l4(if mate_menu {
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+            tr("✅ Fixed: Brisk menu → MATE Menu")
+        } else {
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+            tr("✅ Fixed: Brisk menu → standard MATE menu")
+        }));
+        put(results, "mate_menu", "fixed");
     }
 
     fn download_mate_layouts(&mut self, log: &mut Vec<String>) -> bool {

@@ -58,17 +58,34 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     Ok(args)
 }
 
-/// Wrapper of the output element from the `org.waywallen.kde` package: the
-/// one bundled into Rexon first, the installed Plasma plugin as a fallback.
+/// The output element (the core's choice, `waywallen_kde_plugin::pick_display_item`):
+/// the `Waywallen.Display` module of the `waywallen-display` distribution package
+/// first, then the wrapper of the `org.waywallen.kde` plasmoid — the one bundled
+/// into Rexon, the installed Plasma plugin as the last fallback.
 fn find_display_item() -> Option<String> {
     let is_file = |p: &str| Path::new(p).is_file();
+    let env = |name: &str| std::env::var(name).unwrap_or_default();
     let data_dir = rexon_core::installer::pick_package_data_dir(&rexon_core::cli::repo_root(), &is_file);
-    let home = std::env::var("HOME").unwrap_or_default();
-    wkp::display_package_candidates(data_dir.as_deref(), &home)
-        .iter()
-        .filter_map(|base| wkp::find_runtime_so(base, Some(wkp::RUNTIME_SO_REL)))
-        .filter_map(|so| wkp::display_item_qml_of(&so))
-        .find(|qml| is_file(qml))
+    let home = env("HOME");
+    let plasmoids = wkp::plasmoid_display_wrappers(data_dir.as_deref(), &home);
+    let import_dirs = wkp::qml_import_dirs(&env("QML_IMPORT_PATH"), &env("QML2_IMPORT_PATH"));
+    let wrapper = wkp::system_display_wrapper_path(&env("XDG_RUNTIME_DIR"), &home);
+    let choice = wkp::pick_display_item(&import_dirs, wrapper.as_deref(), &plasmoids, &is_file)?;
+    if let wkp::DisplayItemSource::SystemModule { wrapper } = &choice {
+        let written = Path::new(wrapper)
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .map_err(|e| e.to_string())
+            .and_then(|()| rexon_core::utils::atomic_write(wrapper, wkp::SYSTEM_DISPLAY_WRAPPER_QML).map_err(|e| e.to_string()));
+        if let Err(e) = written {
+            // The packaged module is there, but the wrapper could not be written —
+            // fall back to a plasmoid rather than lose the output.
+            rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN wrapper {wrapper} not written: {e}");
+            return plasmoids.into_iter().find(|qml| is_file(qml));
+        }
+        rexon_core::log_info!("wallpaper-host", "{TAG} output element: packaged Waywallen.Display module");
+    }
+    Some(choice.qml().to_string())
 }
 
 /// Wait forever, showing nothing (Wayland, no `DISPLAY`, another instance
@@ -102,7 +119,11 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     }
 
     let Some(item) = find_display_item() else {
-        return Err("нет элемента вывода waywallen (пакет org.waywallen.kde в данных Rexon) — выводить нечем".to_string());
+        return Err(format!(
+            "no waywallen output element: neither the {} package (Waywallen.Display module) nor the \
+             org.waywallen.kde plasmoid in Rexon's data — nothing to show the output with",
+            wkp::DISPLAY_MODULE_PACKAGE
+        ));
     };
     plan_display(&args, item)
 }

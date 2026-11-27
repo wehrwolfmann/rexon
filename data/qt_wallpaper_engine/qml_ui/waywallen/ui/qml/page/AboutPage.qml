@@ -44,14 +44,14 @@ MD.Page {
 
         MD.Text {
             Layout.alignment: Qt.AlignHCenter
-            // ПРАВКА REXON (починка при переносе, не доработка): у апстрима
-            // здесь `Qt.application.version` — версия ПРИЛОЖЕНИЯ, то есть его
-            // интерфейса. Внутри Rexon страницу показывает чужое приложение
-            // со своей версией (`Qt.application.version` у нас пуст), поэтому
-            // берём версию ВЕНДОРНОГО интерфейса — тег из `ui/UPSTREAM_TAG`,
-            // который Rexon выставляет на `W.App.uiVersion`. Смысл тот же,
-            // что у апстрима: строка 1 — интерфейс, строка 2 — демон, если
-            // его версия другая.
+            // REXON EDIT (a porting fix, not a feature): upstream has
+            // `Qt.application.version` here — the APPLICATION version, i.e. of its
+            // interface. Inside Rexon the page is shown by another application
+            // with its own version (`Qt.application.version` is empty for us), so
+            // we take the version of the VENDORED interface — the tag from `ui/UPSTREAM_TAG`,
+            // which Rexon exposes as `W.App.uiVersion`. The meaning is the same
+            // as upstream: line 1 — the interface, line 2 — the daemon, if
+            // its version differs.
             text: qsTr("Version %1").arg(W.App.uiVersion)
             typescale: MD.Token.typescale.body_medium
             color: MD.Token.color.on_surface_variant

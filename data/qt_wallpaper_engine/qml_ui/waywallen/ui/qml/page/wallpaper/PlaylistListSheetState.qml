@@ -32,12 +32,12 @@ QtObject {
     readonly property bool mutationQuerying: playlistMutation.querying || playlistCreateMutation.querying
     readonly property bool createQuerying: playlistCreateMutation.querying
     readonly property var playlists: playlistListQuery.playlists || []
-    // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
-    // появляется, только когда плагин обоев уже назначен, а назначает его
-    // Rexon при запуске плейлиста — без этой ветки запуск на свежей системе
-    // был недоступен, пока человек сам не выберет «Все». Пока дисплеев нет,
-    // цель — «все рабочие столы»; кадр придерживает транспорт Rexon до
-    // регистрации дисплея. Правка живёт в
+    // REXON EDIT (a defect fix, not a feature): on KDE a display
+    // appears only once the wallpaper plugin is assigned, and Rexon
+    // assigns it when a playlist starts — without this branch, starting on a fresh
+    // system was unavailable until the person picked «All» by hand. While there are
+    // no displays, the target is «all desktops»; the Rexon transport holds the frame
+    // until a display registers. The edit lives in
     // patches/0011-playlist-without-displays-on-kde.patch.
     readonly property bool playWithoutDisplays: !targetState.hasTargets && W.App.playWithoutDisplays
     readonly property bool hasPlayTarget: targetState.allTargets || targetState.hasSelection || playWithoutDisplays
@@ -101,8 +101,8 @@ QtObject {
             return;
         }
         if (root.playWithoutDisplays && !targetState.allTargets) {
-            // ПРАВКА REXON: «все рабочие столы» — как вендорное «все»
-            // (пустые цели и подключение новых дисплеев).
+            // REXON EDIT: «all desktops» — like the vendor «all»
+            // (empty targets and attaching new displays).
             targetState.selectAll();
         }
         playlistPlaybackMutation.activate(playlist.id, targetState.wireTargets, targetState.allTargets);

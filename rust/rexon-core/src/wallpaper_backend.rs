@@ -224,9 +224,11 @@ pub fn pick(
 //
 // The way out without changing the daemon: Rexon's wallpaper host in
 // `--mode waywallen` becomes the output client. It loads the waywallen
-// output element from the same `org.waywallen.kde` package Rexon already
-// ships for Plasma (the waywallen-display library, MIT, Qt6 only; on X11 —
-// via EGL), and puts one desktop window per monitor. Verified on Xvfb
+// output element (the waywallen-display library, MIT, Qt6 only; on X11 —
+// via EGL): the `Waywallen.Display` module of the `waywallen-display`
+// distribution package first, the `org.waywallen.kde` plasmoid as a fallback
+// (`waywallen_kde_plugin::pick_display_item`), and puts one desktop window
+// per monitor. Verified on Xvfb
 // 30.10.2026: the display registers, the scene runs at ~30 fps.
 //
 // Who starts it:
@@ -1276,8 +1278,8 @@ fn toml_str(value: &str) -> String {
 pub fn rexon_display_manifest(host_bin: &str) -> String {
     let list = |items: &[&str]| items.iter().map(|s| toml_str(s)).collect::<Vec<_>>().join(", ");
     format!(
-        "# Rexon: живые обои на рабочих столах X11, где у waywallen нет своего\n\
-         # вывода. Файл пишет Rexon сам; правки руками он перезапишет.\n\
+        "# Rexon: live wallpaper on X11 desktops where waywallen has no output\n\
+         # of its own. Rexon writes the file itself; manual edits will be overwritten.\n\
          [display]\n\
          name = {}\n\
          bin = {}\n\

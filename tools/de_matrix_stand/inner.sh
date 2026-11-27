@@ -1,6 +1,6 @@
 #!/bin/bash
-# Вызывается из run_de.sh внутри своей шины: действие стенда → чтение родным
-# читателем окружения. Отдельно не запускать.
+# Called from run_de.sh inside its own bus: the stand's action → reading with the
+# desktop's native reader. Do not run on its own.
 C=$XDG_CONFIG_HOME
 st() { echo; echo "### $*"; timeout -k 2 40 "$BIN" "$@" 2>&1 | sed 's/^/    /'; }
 gs() { printf '  gsettings %-45s %-22s = %s\n' "$1" "$2" "$(timeout 5 gsettings get "$1" "$2" 2>&1)"; }
@@ -9,8 +9,8 @@ xq() { printf '  xfconf-query -c %-12s -p %-28s = %s\n' "$1" "$2" "$(timeout 5 x
 ini() { local v; v=$(awk -v s="[$2]" -v k="$3" '$0==s{f=1;next} /^\[/{f=0} f&&index($0,k"=")==1{sub(/^[^=]*=/,"");print}' "$1" 2>/dev/null); printf '  ini %-40s [%s] %-22s = %s\n' "${1#$H/}" "$2" "$3" "${v:-<нет>}"; }
 fl() { printf '  file %s:\n' "${1#$H/}"; if [ -f "$1" ]; then sed 's/^/      | /' "$1"; else echo "      <нет файла>"; fi; }
 
-# Hyprland: свой конфиг уже заведён (Hyprland кладёт его при первом входе) —
-# иначе Rexon честно не пишет в него ни курсор, ни переменные сеанса.
+# Hyprland: its own config already exists (Hyprland creates it on the first login) —
+# otherwise Rexon honestly writes neither the cursor nor the session variables into it.
 if [ "$DE" = hyprland ] && [ -f /usr/share/hypr/hyprland.lua ]; then
   mkdir -p "$C/hypr" && cp /usr/share/hypr/hyprland.lua "$C/hypr/hyprland.lua"
 fi
@@ -18,7 +18,7 @@ fi
 st de
 st categories
 
-# ── Pantheon: родные значения ДО Rexon (переопределения `:Pantheon`) ──
+# ── Pantheon: native values BEFORE Rexon (the `:Pantheon` overrides) ──
 if [ "$DE" = pantheon ]; then
   echo; echo "### pantheon: умолчания до Rexon"
   gs org.gnome.desktop.interface gtk-theme
@@ -33,7 +33,7 @@ if [ "$DE" = pantheon ]; then
   gs net.launchpad.plank.dock.settings:/net/launchpad/plank/docks/dock1/ theme
 fi
 
-# ── Deepin: чтение ключей подставной службы (dde_shim.sh) ──
+# ── Deepin: reading the keys of the stand-in service (dde_shim.sh) ──
 dc() { printf '  dde-dconfig %-42s %-24s = %s\n' "$1/$2" "$3" "$(timeout 5 dde-dconfig get -a "$1" -r "$2" -k "$3" 2>&1)"; }
 deepin_keys() {
   [ "$DE" = deepin ] || return 0
@@ -48,7 +48,7 @@ deepin_keys() {
   done
 }
 
-# ── Тема GTK ──
+# ── GTK theme ──
 st gtk Materia-dark
 deepin_keys Gtk_Theme xs:gtk-theme-name
 gs org.gnome.desktop.interface gtk-theme
@@ -60,7 +60,7 @@ ini $C/gtk-4.0/settings.ini Settings gtk-theme-name
 fl $C/gtk-4.0/gtk.css
 fl $H/.gtkrc-2.0
 
-# ── Значки ──
+# ── Icons ──
 st icons Papirus
 deepin_keys Icon_Theme xs:icon-theme-name
 gs org.gnome.desktop.interface icon-theme
@@ -72,7 +72,7 @@ ini $C/gtk-3.0/settings.ini Settings gtk-icon-theme-name
 ini $C/lxqt/lxqt.conf General icon_theme
 fl $C/cosmic/com.system76.CosmicTk/v1/icon_theme
 
-# ── Курсор ──
+# ── Cursor ──
 st cursor capitaine-cursors
 st cursor-size 48
 deepin_keys Cursor_Theme cursorSize xs:gtk-cursor-theme-name
@@ -96,7 +96,7 @@ for f in $C/sway/config $C/sway/rexon-cursor.conf $C/niri/config.kdl $C/niri/rex
   [ -f "$f" ] && { echo "  file ${f#$H/}: $(wc -l < "$f") строк; блок Rexon:"; grep -n -i -A3 "rexon" "$f" | sed 's/^/      | /'; }
 done
 
-# ── Стиль приложений и Kvantum ──
+# ── Application style and Kvantum ──
 st widgetstyle Fusion
 kr kdeglobals KDE widgetStyle
 ini $C/lxqt/lxqt.conf Qt style
@@ -109,7 +109,7 @@ ini $C/lxqt/lxqt.conf Qt style
 ini $C/qt6ct/qt6ct.conf Appearance style
 fl $C/environment.d/rexon-qt-style.conf
 
-# Переменные сеанса там, где environment.d не читают (Д1).
+# Session variables where environment.d is not read (D1).
 fl $H/.xprofile
 fl $C/xfce4/labwc/environment
 fl $C/budgie-desktop/labwc/environment
@@ -117,11 +117,11 @@ for f in $C/hypr/hyprland.conf $C/hypr/hyprland.lua; do
   [ -f "$f" ] && { echo "  file ${f#$H/}: блок переменных:"; grep -n -A4 "rexon:session-env" "$f" | sed 's/^/      | /'; }
 done
 
-# ── Цветовая схема (раздел KDE) ──
+# ── Color scheme (KDE section) ──
 st colors BreezeDark
 kr kdeglobals General ColorScheme
 
-# ── Звуки: «Оформление» ──
+# ── Sounds: «Оформление» ──
 st sounds oxygen
 deepin_keys Sound_Theme xs:sound-theme-name
 gs org.gnome.desktop.sound theme-name
@@ -129,7 +129,7 @@ gs org.cinnamon.desktop.sound theme-name
 gs org.mate.sound theme-name
 xq xsettings /Net/SoundThemeName
 kr kdeglobals Sounds Theme
-# ── Звуки: «Настройки» ──
+# ── Sounds: «Настройки» ──
 st sound-theme ocean
 deepin_keys Sound_Theme xs:sound-theme-name
 gs org.gnome.desktop.sound theme-name
@@ -146,7 +146,7 @@ xq xsettings /Net/EnableEventSounds
 kr kdeglobals Sounds Enable
 kr kdeglobals Sounds EnableNotificationSounds
 
-# ── Шрифты ──
+# ── Fonts ──
 st font-system "Noto Serif,13"
 st font-mono "Hack,11"
 st font-title "Noto Sans,12"
@@ -174,7 +174,7 @@ fl $C/cosmic/com.system76.CosmicTk/v1/interface_font
 fl $C/cosmic/com.system76.CosmicTk/v1/monospace_font
 fl $C/qt6ct/qt6ct.conf
 
-# ── Терминал ──
+# ── Terminal ──
 st terminal org.kde.konsole.desktop
 [ "$DE" = deepin ] && { gs com.deepin.desktop.default-applications.terminal app-id; gs com.deepin.desktop.default-applications.terminal exec; gs com.deepin.desktop.default-applications.terminal exec-arg; }
 fl $C/xdg-terminals.list
@@ -189,7 +189,7 @@ fl $C/xfce4/helpers.rc
 printf '  qtxdg-mat def-terminal = %s\n' "$(timeout 5 qtxdg-mat def-terminal 2>&1 | tr '\n' ' ')"
 fl $C/environment.d/rexon-terminal.conf
 
-# ── Файловый менеджер ──
+# ── File manager ──
 st file-manager org.kde.dolphin.desktop
 fl $C/dde-mimeapps.list
 printf '  xdg-mime query default inode/directory = %s\n' "$(timeout 5 xdg-mime query default inode/directory 2>&1)"
@@ -198,7 +198,7 @@ fl $H/.local/share/xfce4/helpers/custom-FileManager.desktop
 fl $H/.local/share/xfce4/helpers/custom-TerminalEmulator.desktop
 fl $C/xfce4/helpers.rc
 
-# ── Обои (статичная картинка) ──
+# ── Wallpaper (a static picture) ──
 st wallpaper test.png
 deepin_keys Wallpaper_Uris
 gs org.gnome.desktop.background picture-uri
@@ -209,7 +209,7 @@ gs org.mate.background picture-filename
 fl $C/cosmic/com.system76.CosmicBackground/v1/all
 fl $C/pcmanfm-qt/lxqt/settings.conf
 
-# ── Окна Deepin (раздел «Настройки») ──
+# ── Deepin windows (the «Настройки» section) ──
 if [ "$DE" = deepin ]; then
   st dde-look radius 6
   st dde-look opacity 60

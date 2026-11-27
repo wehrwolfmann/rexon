@@ -1,15 +1,15 @@
 #!/bin/bash
-# Подставная служба Deepin для стенда «настройка × окружение» (deepin).
-# run_de.sh кладёт этот файл в PATH стенда под именами `busctl` и
-# `dde-dconfig`. Живых служб DDE стенд НЕ запускает (ни dde-daemon, ни
-# deepin-service-manager, ни dde-dconfig-daemon): вместо них — эта модель,
-# написанная по исходникам linuxdeepin (dde-appearance `doSetByType` и
-# свойства `Appearance1`, dde-daemon `soundeffect1`), а хранилище DConfig —
-# файлы $H/.dde-shim/<appid>/<resource>/<key>. Все вызовы — в $H/dde-calls.log.
+# A stand-in Deepin service for the «setting × desktop» stand (deepin).
+# run_de.sh puts this file into the stand's PATH under the names `busctl` and
+# `dde-dconfig`. The stand does NOT start live DDE services (neither dde-daemon, nor
+# deepin-service-manager, nor dde-dconfig-daemon): instead of them there is this model,
+# written from the linuxdeepin sources (dde-appearance `doSetByType` and the
+# `Appearance1` properties, dde-daemon `soundeffect1`), and the DConfig storage is
+# files $H/.dde-shim/<appid>/<resource>/<key>. All calls go to $H/dde-calls.log.
 #
-# Это проверка «команда Rexon дошла до нужного ключа Deepin», а не проверка
-# самого Deepin: что служба делает с ключом дальше, стенд не видит.
-# DDE_SHIM_SERVICE=0 — «службы оформления на шине нет» (busctl отказывает).
+# This checks «the Rexon command reached the right Deepin key», not
+# Deepin itself: what the service does with the key afterwards, the stand does not see.
+# DDE_SHIM_SERVICE=0 — «no appearance service on the bus» (busctl refuses).
 set -u
 me=$(basename "$0")
 store=${H:-$HOME}/.dde-shim

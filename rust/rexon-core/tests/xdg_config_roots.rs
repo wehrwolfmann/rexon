@@ -93,7 +93,7 @@ fn env_backed_paths_follow_xdg_config_home() {
 
 /// Check body — only in the child process (see above).
 #[test]
-#[ignore = "запускается дочерним процессом env_backed_paths_follow_xdg_config_home"]
+#[ignore = "run as a child process by env_backed_paths_follow_xdg_config_home"]
 fn env_backed_paths_child() {
     assert!(std::env::var_os(CHILD_ENV).is_some(), "только дочерний прогон");
     let root = PathBuf::from(CHILD_XDG).join("rexon");

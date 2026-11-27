@@ -335,8 +335,8 @@ const CASES: &[Case] = &[
         body: r##"
     property QtObject target: W.LibraryRemoveQuery { libraryId: 1000000 }
     readonly property string shown: qsTr("#%1").arg(target.libraryId)
-    // ⚠️ Ждём ИМЕННО экспоненту: это замер поведения Qt, а не пожелание.
-    // Сойдёт с места — значит Qt переменился, и запас можно пересчитать.
+    // ⚠️ We expect EXACTLY the exponent: this is a measurement of Qt behaviour, not a wish.
+    // If it moves — Qt has changed, and the margin can be recomputed.
     readonly property bool probeOk: shown === "#1e+06"
     readonly property string probeWhy: shown
 "##,
@@ -434,8 +434,8 @@ const CASES: &[Case] = &[
     Case {
         name: "вендорный I18n (qmldir 0.3) зовёт наш PluginTranslations (1.0)",
         body: r#"
-    // `I18n.revision` — привязка к `PluginTranslations.revision`, `tr()`
-    // зовёт `PluginTranslations.translate()`: обе живы — модуль один.
+    // `I18n.revision` is bound to `PluginTranslations.revision`, `tr()`
+    // calls `PluginTranslations.translate()`: both alive — the module is one.
     readonly property bool probeOk: typeof W.I18n.revision === "number"
         && W.I18n.revision === W.PluginTranslations.revision
         && typeof W.I18n.tr("Plain text") === "string"
@@ -450,8 +450,8 @@ const CASES: &[Case] = &[
         name: "WallpaperListQuery.hiddenLibraryIds: [3,1,3] → [1,3], toggle(1) → [3]",
         body: r#"
     property QtObject query: W.WallpaperListQuery {}
-    // Расчёт в onCompleted, а не привязкой: он сам пишет свойства запроса,
-    // и привязка к ним дала бы петлю.
+    // The computation is in onCompleted, not a binding: it writes the query properties itself,
+    // and a binding to them would give a loop.
     property string why: "не звали"
     property bool probeOk: false
     readonly property string probeWhy: why
@@ -523,12 +523,12 @@ const CASES: &[Case] = &[
         const opaque = base instanceof ArrayBuffer;
         let sel = 0;
         query.selectionChanged.connect(() => ++sel);
-        // Восстановление текущей выборки — молчание (и без перезагрузки).
+        // Restoring the current selection — silence (and no reload).
         query.restoreSelection(base);
         const silent = sel === 0 && query.matchesSelection(base);
         const notSelection = !query.matchesSelection(undefined)
             && !query.matchesSelection(null) && !query.matchesSelection("x");
-        // `limit` до первого запуска: selectionChanged, но не запрос.
+        // `limit` before the first start: selectionChanged, but not a query.
         query.limit = 50;
         const limitOk = sel === 1 && query.status === 0;
         sel = 0;
@@ -553,8 +553,8 @@ const CASES: &[Case] = &[
             && query.hiddenFilter === 2 && query.filters.length === 1;
         const paging = typeof query.fetchMore === "function" && query.offset === 0
             && query.noMore === false && query.limit === 50;
-        // Без демона догрузка уходит в «нет соединения», но вызов обязан
-        // существовать и принимать число (иначе TypeError в журнале).
+        // Without a daemon, loading more goes to «no connection», but the call must
+        // exist and accept a number (otherwise a TypeError in the journal).
         query.fetchMore(50);
         why = "opaque=" + opaque + " silent=" + silent + " notSelection=" + notSelection
             + " limit=" + limitOk + " each=" + each + "(" + sel + ") changed=" + changed
@@ -584,14 +584,14 @@ const CASES: &[Case] = &[
         detail.reload();
         const quiet = detail.status === 0 && detail.error === "";
         try {
-            // Кадры и ответы сверяет стенд страницы «Обои»
-            // (`run_v050_playlists`); здесь — что вызов с числами-`double`
-            // и выборкой-`ArrayBuffer` движок принимает.
+            // Frames and replies are checked by the «Wallpapers» page stand
+            // (`run_v050_playlists`); here — that a call with `double` numbers
+            // and an `ArrayBuffer` selection is accepted by the engine.
             mutation.saveSmart(0, "Новый", 1, 300, true, preview.selection, 0);
             mutation.saveSmart(7, "Море", 2, 600, false, preview.selection, 3);
         } catch (e) { why = "" + e; return false; }
         const sent = true;
-        // Не выборка: кадра нет, сразу ошибка и ровно один `done()`.
+        // Not a selection: no frame, an error right away and exactly one `done()`.
         const before = done;
         mutation.saveSmart(7, "Море", 2, 600, false, undefined, 3);
         const invalid = done === before + 1 && mutation.status === 3 && mutation.error !== "";
@@ -704,7 +704,7 @@ QtObject {{
     readonly property var files: [{list}]
     readonly property string dir: "file://{dir}/"
 
-    // Сторож срока — в ГЛАВНОМ потоке, внутри цикла событий.
+    // The deadline watchdog — in the MAIN thread, inside the event loop.
     property Timer guard: Timer {{
         interval: {GUARD_MS}
         running: true
@@ -714,8 +714,8 @@ QtObject {{
         }}
     }}
 
-    // Нулевой интервал: случаи проигрываются, когда цикл событий УЖЕ
-    // работает, иначе Qt.exit() из onCompleted некому услышать.
+    // A zero interval: the cases are played when the event loop is ALREADY
+    // running, otherwise there is nobody to hear Qt.exit() from onCompleted.
     property Timer go: Timer {{
         interval: 0
         running: true

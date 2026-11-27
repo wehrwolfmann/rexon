@@ -1654,7 +1654,8 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_installer.rs
 #: rust/rexon-core/src/conky_preview.rs rust/rexon-core/src/conky_safety.rs
-#: rust/rexon-core/src/de_apply.rs
+#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/session_splash.rs
+#: rust/rexon-core/src/splash_exec.rs
 msgid "Rexon can't install programs on this system by itself."
 msgstr "У цій системі Rexon не може встановлювати програми сам."
 
@@ -2696,6 +2697,29 @@ msgstr "Стилі, вбудовані в Qt і встановлені моду�
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Kvantum themes (Kvantum engine)"
 msgstr "Теми Kvantum (рушій Kvantum)"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Orientation:"
+msgstr "Орієнтація:"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgctxt "orientation filter"
+msgid "All"
+msgstr "Усі"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Horizontal and vertical wallpapers together"
+msgstr "Горизонтальні й вертикальні шпалери разом"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Wallpapers wider than tall — for a regular monitor"
+msgstr "Шпалери, ширші, ніж вищі, — для звичайного монітора"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Wallpapers taller than wide — for a screen turned upright or for a phone"
+msgstr ""
+"Шпалери, вищі, ніж ширші, — для повернутого вертикально екрана або телефона"
 
 #: rust/rexon-core/src/aur.rs
 msgid "Font sample — after installation"
@@ -3829,6 +3853,27 @@ msgid "AVAILABLE FOR SYNC"
 msgstr "МОЖНА СИНХРОНІЗУВАТИ"
 
 #: rust/rexon-core/src/axon_window.rs
+msgid ""
+"Available in your Razer account, but not downloaded to this computer. Only "
+"Razer Axon can download them."
+msgstr ""
+"Є у вашому обліковому записі Razer, але не завантажені на цей комп'ютер. "
+"Завантажити їх може лише Razer Axon."
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Open Razer Axon"
+msgstr "Відкрити Razer Axon"
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Razer Axon is starting…"
+msgstr "Razer Axon запускається…"
+
+#. TRANSLATORS: %1 is the reason from the system, e.g. "No such file or directory".
+#: rust/rexon-core/src/axon_window.rs
+msgid "Couldn't start Razer Axon: %1"
+msgstr "Не вдалося запустити Razer Axon: %1"
+
+#: rust/rexon-core/src/axon_window.rs
 msgctxt "Razer Axon"
 msgid "No items"
 msgstr "Немає елементів"
@@ -3964,6 +4009,16 @@ msgid "There is no saved panel copy yet."
 msgstr "Збереженої копії панелі ще немає."
 
 #: rust/rexon-core/src/backup.rs
+msgid "%n keyboard shortcut will take effect after you log in again."
+msgid_plural "%n keyboard shortcuts will take effect after you log in again."
+msgstr[0] ""
+"%n сполучення клавіш набуде чинності після повторного входу в систему."
+msgstr[1] ""
+"%n сполучення клавіш набудуть чинності після повторного входу в систему."
+msgstr[2] ""
+"%n сполучень клавіш набудуть чинності після повторного входу в систему."
+
+#: rust/rexon-core/src/backup.rs
 msgid ""
 "“%1” is a system extension and isn't on this computer — it comes with a "
 "distribution package."
@@ -3984,6 +4039,18 @@ msgstr "Розширення «%1» не має випуску для GNOME %2, 
 #: rust/rexon-core/src/backup.rs
 msgid "“%1” wasn't installed: %2"
 msgstr "Розширення «%1» не встановлено: %2"
+
+#: rust/rexon-core/src/backup.rs
+msgid ""
+"This copy was made by an earlier version of Rexon with xfce4-panel-profiles; "
+"install that program to restore it. (%1)"
+msgstr ""
+"Цю копію зробила попередня версія Rexon за допомогою xfce4-panel-profiles; "
+"щоб її повернути, встановіть цю програму. (%1)"
+
+#: rust/rexon-core/src/backup.rs rust/rexon-core/src/mate_panel.rs
+msgid "⚠️ There is no saved panel to restore."
+msgstr "⚠️ Збереженої панелі для повернення немає."
 
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
@@ -4940,6 +5007,10 @@ msgid "MATE panel add-ons and system tray icons (from the AUR)"
 msgstr "доповнення панелі MATE і піктограми області сповіщень (з AUR)"
 
 #: rust/rexon-core/src/compliance.rs
+msgid "MATE Menu in place of the Brisk menu (from the AUR)"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
 msgid "COSMIC wallpapers"
 msgstr "шпалери COSMIC"
 
@@ -5134,6 +5205,34 @@ msgstr ""
 #: rust/rexon-core/src/compliance.rs
 msgid "⚠️ Translation file mate-utils.mo is missing"
 msgstr "⚠️ Файла перекладу mate-utils.mo немає"
+
+#: rust/rexon-core/src/compliance.rs
+msgid "🧭 Checking the panel menu..."
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid "⚠️ The panel has the Brisk menu, which is no longer supported"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid ""
+"ℹ️ The MATE Menu couldn't be installed — the standard MATE menu button is "
+"used instead"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid "⚠️ Couldn't replace the Brisk menu on the panel"
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/compliance.rs
+msgid "✅ Fixed: Brisk menu → MATE Menu"
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/compliance.rs
+msgid "✅ Fixed: Brisk menu → standard MATE menu"
+msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
 msgid "⚠️ Couldn't clone the repository"
@@ -7185,6 +7284,15 @@ msgstr ""
 "Запускайте %1 через uwsm або самі додайте рядки з ~/.config/environment.d/"
 "rexon-qt-style.conf до його середовища."
 
+#. TRANSLATORS: Appended to the Qt-style caveat on window managers Rexon can't pass environment variables to, while KDE Plasma, LXQt or Deepin is also installed. %1 is the window manager (sway, river…), %2 a file path.
+#: rust/rexon-core/src/de_customization.rs
+msgid ""
+"%1 is the exception: it has no setting Rexon could put this in. Add the "
+"lines from %2 to its environment yourself."
+msgstr ""
+"Виняток — %1: у його налаштуваннях для цього параметра немає місця. Самі "
+"додайте рядки з %2 до його середовища."
+
 #. TRANSLATORS: %1 is a GNOME version number.
 #: rust/rexon-core/src/de_customization.rs
 msgid ""
@@ -7198,8 +7306,8 @@ msgid "Remembering your default apps…"
 msgstr "Запам’ятовуємо типові програми..."
 
 #: rust/rexon-core/src/de_progress.rs
-msgid "Saving a copy of the KDE Plasma panel…"
-msgstr "Зберігаємо копію панелі KDE Plasma..."
+msgid "Saving copies of desktop panels…"
+msgstr "Зберігаємо копії панелей..."
 
 #: rust/rexon-core/src/de_progress.rs
 msgid "Saving a copy of your desktop settings…"
@@ -8412,6 +8520,10 @@ msgid "there is no AUR helper (yay or paru)"
 msgstr "немає помічника AUR (yay або paru)"
 
 #: rust/rexon-core/src/distro_looks.rs
+msgid "couldn't download %1"
+msgstr "не вдалося завантажити %1"
+
+#: rust/rexon-core/src/distro_looks.rs
 msgid ""
 "the file from %1 does not match its pinned checksum — Rexon won't use it"
 msgstr ""
@@ -8420,10 +8532,6 @@ msgstr ""
 #: rust/rexon-core/src/distro_looks.rs
 msgid "couldn't unpack %1"
 msgstr "не вдалося розпакувати %1"
-
-#: rust/rexon-core/src/distro_looks.rs
-msgid "couldn't download %1"
-msgstr "не вдалося завантажити %1"
 
 #: rust/rexon-core/src/distro_looks.rs
 msgid "the download of %1 is not the pinned version — Rexon won't use it"
@@ -11580,6 +11688,13 @@ msgstr[2] ""
 msgid "The “%1” layout wasn't applied: couldn't install %2: %3."
 msgstr "Компонування «%1» не застосовано: не вдалося встановити %2: %3."
 
+#. TRANSLATORS: %1 is the reason the install failed.
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The MATE Menu couldn't be installed (%1) — the standard MATE menu button is "
+"used instead."
+msgstr ""
+
 #: rust/rexon-core/src/mate_panel.rs
 msgid ""
 "%1 is not installed — the standard MATE menu button will be used instead."
@@ -11592,6 +11707,17 @@ msgstr "Індикатори не встановлено — замість ни
 #: rust/rexon-core/src/mate_panel.rs
 msgid "Not installed and will be left out: %1."
 msgstr "Не встановлено, цього на панелі не буде: %1."
+
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The Brisk menu is no longer supported — the MATE Menu will be used instead."
+msgstr ""
+
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The Brisk menu is no longer supported — the standard MATE menu button will "
+"be used instead."
+msgstr ""
 
 #: rust/rexon-core/src/mate_panel.rs
 msgid "at the bottom"
@@ -11680,10 +11806,6 @@ msgstr "⚠️ Не вдалося застосувати компонуванн
 #: rust/rexon-core/src/mate_panel.rs
 msgid "✅ MATE panel: layout “%1” applied."
 msgstr "✅ Панель MATE: застосовано компонування «%1»."
-
-#: rust/rexon-core/src/mate_panel.rs
-msgid "⚠️ There is no saved panel to restore."
-msgstr "⚠️ Збереженої панелі для повернення немає."
 
 #: rust/rexon-core/src/mate_panel.rs
 msgid "⚠️ Could not restore the previous panel: %1"
@@ -13710,35 +13832,8 @@ msgid "Removing %1"
 msgstr "Вилучення %1"
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"A saved copy of the panel already exists — the same one “Restore previous "
-"panel” brings back. The new copy will replace it."
-msgstr ""
-"Збережена копія панелі вже є — та сама, яку повертає «Повернути попередню "
-"панель». Нова копія її замінить."
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"A saved copy of the panel already exists — the new copy will replace it."
-msgstr "Збережена копія панелі вже є — нова її замінить."
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid "Replace the saved panel copy?"
-msgstr "Замінити збережену копію панелі?"
-
-#: rust/rexon-core/src/qt_desktops.rs
 msgid "Restore Panel?"
 msgstr "Повернути панель?"
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"Restore the panel from the last saved copy?\n"
-"\n"
-"Your current panel settings will be replaced with the saved ones."
-msgstr ""
-"Повернути панель з останньої збереженої копії?\n"
-"\n"
-"Поточні налаштування панелі буде замінено збереженими."
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "Panel Saved"
@@ -16199,7 +16294,23 @@ msgstr "автоматично, перед встановленням"
 msgid "manually"
 msgstr "вручну"
 
+#. TRANSLATORS: why a copy of the panel was made.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "automatically, before switching desktops"
+msgstr "автоматично, перед зміною стільниці"
+
+#. TRANSLATORS: why a copy of the panel was made: a panel layout was applied.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "automatically, before changing the layout"
+msgstr "автоматично, перед зміною розкладки"
+
+#. TRANSLATORS: why a copy of the panel was made: an earlier Rexon version took it.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "by an earlier version of Rexon"
+msgstr "попередньою версією Rexon"
+
 #. TRANSLATORS: number of files in a saved copy of the Plasma panel.
+#. TRANSLATORS: number of items in a saved panel copy.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "%n file"
 msgid_plural "%n files"
@@ -16592,16 +16703,16 @@ msgstr ""
 "(браузер, програвач тощо) лишилися типовими"
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "🛡️ KDE Plasma Panel Protection"
-msgstr "🛡️ Захист панелі KDE Plasma"
+msgid "🛡️ Panel Protection"
+msgstr "🛡️ Захист панелі"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Saves the panel layout, widgets and keyboard shortcuts — and brings them "
-"back if something breaks after installing another desktop"
+"Saves the panel layout, applets and keyboard shortcuts of your desktop and "
+"brings them back if something broke after installing another desktop"
 msgstr ""
-"Зберігає вигляд панелі, віджети й комбінації клавіш — і повертає їх, якщо "
-"після встановлення іншої стільниці щось зламалося"
+"Зберігає вигляд панелі, аплети та сполучення клавіш вашої стільниці й "
+"повертає їх, якщо після встановлення іншої стільниці щось зламалося"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🪟 Desktop Appearance"
@@ -17442,19 +17553,31 @@ msgstr "<b>Зберегти поточний вигляд панелі</b>"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Rexon will make a copy of the panel layout, widgets and keyboard shortcuts — "
-"you can bring it back in one click"
+"Rexon will make a copy of the panels, applets and keyboard shortcuts of your "
+"desktop — you can bring it back in one click"
 msgstr ""
-"Rexon зробить копію розташування панелі, віджетів і комбінацій клавіш — "
+"Rexon зробить копію панелей, аплетів і сполучень клавіш вашої стільниці — "
 "повернути її можна буде одним клацанням"
 
+#. TRANSLATORS: %1 lists what a copy holds: "panels and applets, keyboard shortcuts".
 #: rust/rexon-core/src/qt_settings.rs
-msgid ""
-"Settings files that get copied: plasma-org.kde.plasma.desktop-appletsrc, "
-"plasmashellrc, kglobalshortcutsrc"
-msgstr ""
-"Копіюються файли налаштувань: plasma-org.kde.plasma.desktop-appletsrc, "
-"plasmashellrc, kglobalshortcutsrc"
+msgid "What gets copied: %1"
+msgstr "Що копіюється: %1"
+
+#. TRANSLATORS: a part of a panel copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "panels and applets"
+msgstr "панелі та аплети"
+
+#. TRANSLATORS: a part of a panel copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "keyboard shortcuts"
+msgstr "сполучення клавіш"
+
+#. TRANSLATORS: the desktop's very first copy, kept for good.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "⭐ the original, before Rexon"
+msgstr "⭐ початкова, до Rexon"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "📦 Save Copy"
@@ -17468,6 +17591,15 @@ msgstr "<b>Збережені копії (%1):</b>"
 msgid "No saved copies yet"
 msgstr "Збережених копій поки що немає"
 
+#. TRANSLATORS: %1 is how many other desktops have copies.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Copies of other desktops (%1)"
+msgstr "Копії інших стільниць (%1)"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Rexon can't make copies of this desktop's panel yet."
+msgstr "Rexon поки не вміє робити копії панелі цієї стільниці."
+
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Restore"
 msgstr "Відновити"
@@ -17480,16 +17612,44 @@ msgstr "Тека копії: %1"
 msgid "Restore?"
 msgstr "Відновити?"
 
-#. TRANSLATORS: %1 is the date and time of the saved copy.
+#. TRANSLATORS: %1 is the desktop name, %2 the date and time of the saved copy.
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Restore the Plasma panel from the copy made %1?\n"
+"Restore the panel of %1 from the copy made %2?\n"
 "\n"
 "The current panel layout will be replaced."
 msgstr ""
-"Відновити панель Plasma з копії від %1?\n"
+"Відновити панель %1 з копії від %2?\n"
 "\n"
 "Поточний вигляд панелі буде замінено."
+
+#. TRANSLATORS: %1 lists other desktops (Budgie, Pantheon).
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Keyboard shortcuts of %1 will change too: they use the same settings."
+msgstr "Сполучення клавіш %1 теж зміняться: у них спільні налаштування."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Keyboard shortcuts will take effect after you log in again."
+msgstr "Сполучення клавіш набудуть чинності після повторного входу в систему."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "The desktop's services restart for a moment: the theme, the wallpaper slideshow and power settings may blink."
+msgstr "Служби стільниці на секунду перезапустяться: тема, слайд-шоу шпалер і живлення можуть блимнути."
+
+#. TRANSLATORS: %1 is the desktop name.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "%1 will pick the copy up the next time you log in to it."
+msgstr "%1 підхопить копію під час наступного входу в цю стільницю."
+
+#. TRANSLATORS: %1 lists what was saved: "panels and applets, keyboard shortcuts".
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Copy saved: %1"
+msgstr "Копію збережено: %1"
+
+#. TRANSLATORS: %1 is the date and time of the copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Restored the copy of %1"
+msgstr "Повернуто копію від %1"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "⚠️ Could not save a copy: %1"
@@ -17657,13 +17817,20 @@ msgstr ""
 msgid "🔍 Search by title, game or event…"
 msgstr "🔍 Пошук за назвою, грою або подією…"
 
+#. TRANSLATORS: button: add the user's own video as a startup movie.
 #: rust/rexon-core/src/qt_steam.rs
-msgid "📁 Choose File…"
-msgstr "📁 Свій файл…"
+msgid "➕ Add Your Own Movie…"
+msgstr "➕ Додати власний ролик…"
 
 #: rust/rexon-core/src/qt_steam.rs
-msgid "Choose your own video (webm/mp4) from disk"
-msgstr "Вибрати своє відео (webm/mp4) з диска"
+msgid ""
+"Choose a video on disk. Rexon keeps a copy of it in Steam's folder for your "
+"own startup movies (converting it if Steam can't play it), so it shows up in "
+"Steam too. The original stays as it is."
+msgstr ""
+"Вибрати відео на диску. Rexon збереже його копію в теці Steam для власних "
+"відеозаставок (перекодує, якщо Steam не зможе його показати) — ролик "
+"з'явиться і в самому Steam. Початковий файл залишиться як є."
 
 #: rust/rexon-core/src/qt_steam.rs
 msgid "Choose a Startup Movie"
@@ -17671,8 +17838,38 @@ msgstr "Вибрати відеозаставку"
 
 #. TRANSLATORS: file dialog filter: translate only the group names ("Video", "All files"); keep the patterns in parentheses and the ";;" separator as they are.
 #: rust/rexon-core/src/qt_steam.rs
-msgid "Video (*.webm *.mp4 *.mkv);;All files (*)"
-msgstr "Відео (*.webm *.mp4 *.mkv);;Усі файли (*)"
+msgid "Video (*.webm *.mp4 *.mkv *.mov *.avi *.m4v);;All files (*)"
+msgstr "Відео (*.webm *.mp4 *.mkv *.mov *.avi *.m4v);;Усі файли (*)"
+
+#. TRANSLATORS: button: stop converting a startup movie that is being added.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "✖ Cancel"
+msgstr "✖ Скасувати"
+
+#. TRANSLATORS: tooltip of the delete mark on the user's own startup movie card.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Delete this movie of yours"
+msgstr "Видалити цей власний ролик"
+
+#. TRANSLATORS: title of the confirmation window before deleting the user's own startup movie.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Delete the startup movie?"
+msgstr "Видалити відеозаставку?"
+
+#. TRANSLATORS: button in the confirmation window: delete the startup movie.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "🗑 Delete"
+msgstr "🗑 Видалити"
+
+#. TRANSLATORS: button in the confirmation window: keep the startup movie (do not delete).
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Keep"
+msgstr "Залишити"
+
+#. TRANSLATORS: tooltip of the mark on the startup movie card that Steam itself currently plays at startup.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Steam plays this movie at startup (the Customization section)"
+msgstr "Цей ролик Steam сам показує під час запуску (розділ «Персоналізація»)"
 
 #: rust/rexon-core/src/qt_steam.rs
 msgid "Play at login"
@@ -17763,10 +17960,11 @@ msgstr "⭐ Обране"
 #: rust/rexon-core/src/qt_steam.rs
 msgid ""
 "No startup movies found. Steam isn't installed or the movies haven't been "
-"downloaded yet — you can pick your own video with the “Choose File…” button."
+"downloaded yet — you can add your own video with the “Add Your Own Movie…” "
+"button."
 msgstr ""
-"Заставок не знайдено. Steam не встановлено або ролики ще не завантажено — "
-"можна вибрати своє відео кнопкою «Свій файл…»."
+"Відеозаставок не знайдено. Steam не встановлено або ролики ще не завантажено "
+"— власний ролик можна додати кнопкою «Додати власний ролик…»."
 
 #: rust/rexon-core/src/qt_steam.rs
 msgid "No startup movie selected"
@@ -18640,6 +18838,750 @@ msgstr "Збирання завершилося, але файла пакунк�
 msgid "The rebuilt %1 couldn't be installed. Details are in the log above."
 msgstr "Перезібраний %1 не вдалося встановити. Подробиці — у журналі вище."
 
+#. TRANSLATORS: the lines of the BonziBuddy mascot (a purple gorilla,
+#. he speaks of himself as "he") about the desktop the person is in.
+#. Keep the playful tone and the jokes, not the exact words.
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, KDE! It's so pretty here that I forgot why I came."
+msgstr "О, KDE! Тут так гарно, що я забув, навіщо прийшов."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "KDE? So you love tweaking everything. We'll get along!"
+msgstr "KDE? Отже, ви любите все налаштовувати. Ми порозуміємося!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! What a beautiful desktop you have."
+msgstr "Привіт! Яка у вас гарна стільниця."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "KDE! It's cozy here. Just like home."
+msgstr "KDE! Тут затишно. Ну просто як удома."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many settings here that even I got lost!"
+msgstr "Тут стільки налаштувань, що навіть я заплутався!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Pretty windows, pretty buttons... And me? Am I pretty too?"
+msgstr "Гарні вікна, гарні кнопки... А я? Я теж гарний?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "They say you can tweak absolutely everything here. Even me?"
+msgstr "Кажуть, тут можна налаштувати геть усе. Навіть мене?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"I wandered around the settings for a bit... came back three hours later."
+msgstr "Я тут трохи походив налаштуваннями... повернувся через три години."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, a new desktop! It's pretty here!"
+msgstr "Ого, нова стільниця! Тут гарно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! I like it here, lots of buttons and panels."
+msgstr "Переїхали! Мені тут подобається, багато кнопок і панелей."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, everything's new! Let me look around..."
+msgstr "О, все по-новому! Дайте роздивитися..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just got used to these pretty windows..."
+msgstr "Ідемо? Я тільки звик до цих гарних вікон..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fine, we're moving. I hope it's pretty there too!"
+msgstr "Гаразд, переїжджаємо. Сподіваюся, там теж буде гарно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, I like it here. Nice and cozy."
+msgstr "Знаєте, мені тут подобається. Затишненько."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "And these desktop widgets are a neat thing!"
+msgstr "А ці віджети на стільниці — прикольна штука!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The panel at the bottom, like in Windows. Almost like home!"
+msgstr "Панель знизу, як у Windows. Майже як удома!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You can even set animated wallpapers here. Cool!"
+msgstr "Тут навіть анімовані шпалери можна поставити. Круто!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, everything here is so... simple and clean!"
+msgstr "О, тут усе таке... просте й чисте!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A minimalist desktop, I like it."
+msgstr "Привіт! Мінімалістична стільниця, мені подобається."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So roomy here! No extra buttons at all."
+msgstr "Тут просторо! Жодних зайвих кнопок."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Hi! Where's the taskbar here? Ah, got it, things work differently here..."
+msgstr "Привіт! А де тут панель завдань? А, зрозумів, тут по-іншому..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is so simple that even the settings are simple!"
+msgstr "Тут усе таке просте, що навіть налаштування прості!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Minimalism is fewer buttons and more beauty."
+msgstr "Мінімалізм — це коли менше кнопок і більше краси."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I'm the brightest thing on this desktop!"
+msgstr "Я тут найяскравіший елемент на стільниці!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's gray and stylish. And I'm purple. I stand out!"
+msgstr "Усе сіре й стильне. А я фіолетовий. Вирізняюся!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So clean and tidy here."
+msgstr "Нова стільниця! Тут так чисто й охайно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's roomy here. Plenty of space to stroll around."
+msgstr "Переїхали! Тут просторо. Є де погуляти."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new home! Unfamiliar, but pretty."
+msgstr "О, новий дім! Незвично, але гарно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just got used to this simplicity!"
+msgstr "Ідемо? Я тільки звик до цієї простоти!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fine, let's move on. I wonder what's over there."
+msgstr "Гаразд, рушаймо далі. Цікаво, що там буде."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, sometimes simple is good. Nothing extra."
+msgstr "Знаєте, іноді простота — це добре. Нічого зайвого."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so quiet and calm here... Not like on the last desktop!"
+msgstr "Тут так тихо й спокійно... Не те що на попередній стільниці!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "And I like that there isn't a million buttons here."
+msgstr "А мені подобається, що тут немає мільйона кнопок."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh! A classic desktop! Nostalgia!"
+msgstr "О! Класична стільниця! Ностальгія!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! It's just like the good old days here."
+msgstr "Привіт! Тут ну просто як у старі добрі часи."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Two panels! Top and bottom! Just like it used to be!"
+msgstr "Дві панелі! Згори і знизу! Як колись!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So familiar here... Like I'm back in 2005."
+msgstr "Тут так знайомо... Ніби повернувся у 2005-й."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Retro style! I'm retro too, so we're a match!"
+msgstr "Ретро-стиль! Я теж ретро, тож ми пара!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Classics never go out of style. Just like me!"
+msgstr "Класика ніколи не виходить з моди. Як і я!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Two panels mean twice as much room for me!"
+msgstr "Дві панелі — отже, удвічі більше місця для мене!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "This desktop reminds me of my youth..."
+msgstr "Ця стільниця нагадує мені молодість..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a classic desktop! Like the good old days!"
+msgstr "О, класична стільниця! Як у старі добрі!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's cozy here, like at grandma's."
+msgstr "Переїхали! Тут затишно, як у бабусі вдома."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Finally, proper panels! Top and bottom!"
+msgstr "Нарешті нормальні панелі! Згори і знизу!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the classics? Oh well, but I'll miss it."
+msgstr "Ідемо з класики? Ну гаразд, але я сумуватиму."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Farewell, cozy desktop! It was nice."
+msgstr "Прощавай, затишна стільнице! Було добре."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I feel right at home here. Everything's in its place."
+msgstr "Мені тут ну просто як удома. Усе на своїх місцях."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The classic look is the easiest to understand. No surprises!"
+msgstr "Класичний вигляд — найзрозуміліший. Без сюрпризів!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here works. Just works. And that's good!"
+msgstr "Тут усе працює. Просто працює. І це добре!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Xfce! Fast and light! I like it!"
+msgstr "Xfce! Швидка й легка! Мені подобається!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything runs so snappy here!"
+msgstr "Привіт! Тут усе так жваво працює!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, there's a mouse on the icon! Cute."
+msgstr "О, на значку мишка! Симпатична."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A light desktop. The computer isn't even breaking a sweat!"
+msgstr "Легка стільниця. Комп'ютер навіть не напружується!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything opens so fast here that I can barely keep up!"
+msgstr "Тут усе так швидко відкривається, що я ледве встигаю!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "This desktop runs even on weak computers. Respect!"
+msgstr "Ця стільниця працює навіть на слабких комп'ютерах. Респект!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Light, fast, simple. Three qualities I'm missing."
+msgstr "Легка, швидка, проста. Три якості, яких мені бракує."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It uses so few resources that I'm ashamed of myself."
+msgstr "Тут споживається так мало ресурсів, що мені соромно за себе."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! Everything's so fast here! Whoosh!"
+msgstr "Нова стільниця! Тут усе так швидко! Вжух!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! The computer just came back to life!"
+msgstr "Переїхали! Комп'ютер аж ожив!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I hope it's fast there too..."
+msgstr "Ідемо? Сподіваюся, там теж буде швидко..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fast, simple, reliable. What else do you need?"
+msgstr "Швидко, просто, надійно. Що ще треба?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything opens instantly here. Lovely!"
+msgstr "Тут усе відкривається миттєво. Краса!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A simple, handy desktop. Nothing extra."
+msgstr "Проста й зручна стільниця. Без зайвого."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! This looks very familiar... Kind of like Windows!"
+msgstr "Привіт! Тут дуже знайомо... Схоже на Windows!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a handy desktop! The Start menu — I mean, the \"Menu\"!"
+msgstr "О, зручна стільниця! Меню «Пуск» — тобто «Меню»!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Cinnamon! Everything here makes sense at first glance."
+msgstr "Cinnamon! Тут усе зрозуміло з першого погляду."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty and handy desktop. I like it!"
+msgstr "Привіт! Гарна й зручна стільниця. Мені подобається!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's like Windows, only better. And free!"
+msgstr "Тут як у Windows, тільки краще. І безкоштовно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Taskbar at the bottom, menu on the left... Just like home!"
+msgstr "Панель завдань знизу, меню зліва... Як удома!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The friendliest desktop for beginners. And for gorillas!"
+msgstr "Найдружніша стільниця для новачків. І для горил!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Even grandma could figure it out here. Tested!"
+msgstr "Тут навіть бабуся розбереться. Перевірено!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new desktop! Cozy here, everything's familiar."
+msgstr "О, нова стільниця! Тут затишненько, усе знайоме."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's just like Windows here, only better."
+msgstr "Переїхали! Тут ну просто як у Windows, тільки краще."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? But it was so handy here!"
+msgstr "Ідемо? Але ж тут було так зручно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, this is the handiest desktop for people coming from Windows."
+msgstr "Знаєте, це найзручніша стільниця для тих, хто прийшов з Windows."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's in its place. Panel, menu, clock. Lovely!"
+msgstr "Усе на своїх місцях. Панель, меню, годинник. Краса!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Pantheon — quiet, clean, nothing extra."
+msgstr "Привіт! Pantheon — тихо, чисто, нічого зайвого."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, elementary! Even I try to behave myself here."
+msgstr "О, elementary! Тут навіть я намагаюся поводитися пристойно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A pantheon is a temple! Can I be a god here?"
+msgstr "Пантеон — це ж храм! Можна, я буду тут божеством?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Dock at the bottom, panel at the top. Almost like the apple folks, only "
+"without the apples."
+msgstr "Док знизу, панель згори. Майже як у яблучних, тільки без яблук."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So peaceful!"
+msgstr "Нова стільниця! Яка спокійна!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the temple? It was cozy..."
+msgstr "Ідемо з храму? Було затишно..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so quiet here you can hear the processor thinking."
+msgstr "Тут так тихо, що чути, як думає процесор."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Minimalism. There's nothing for me to even knock over."
+msgstr "Мінімалізм. Мені навіть нічого впустити."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Deepin — round corners and glass, lovely!"
+msgstr "Привіт! Deepin — круглі кути й скло, краса!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, Deepin! Even the windows are transparent here, like my intentions."
+msgstr "О, Deepin! Тут навіть вікна прозорі, як мої наміри."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The corners are so round I'm afraid I'll roll away."
+msgstr "Кути такі круглі, що я боюся покотитися."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"The blur behind the windows isn't my bad eyesight, it's meant to be that way."
+msgstr "Розмиття за вікнами — це не я погано бачу, це так задумано."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So smooth!"
+msgstr "Нова стільниця! Яка гладенька!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving Deepin? The glass was pretty..."
+msgstr "Ідемо з Deepin? Скло було гарне..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"If you stare into the transparent panel long enough, it seems to stare back."
+msgstr ""
+"Якщо довго дивитися в прозору панель, здається, що вона дивиться у відповідь."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is so soft that even errors seem polite."
+msgstr "Тут усе таке м'яке, що навіть помилки здаються ввічливими."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty, modern desktop!"
+msgstr "Привіт! Гарна й сучасна стільниця!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Budgie! Simple, stylish, nothing extra."
+msgstr "Budgie! Проста, стильна, без зайвого."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, it's pretty here! I like this design."
+msgstr "О, тут гарно! Мені подобається цей дизайн."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A budgie is a parakeet! Hello, fellow animal!"
+msgstr "Budgie — це ж папужка! Привіт, колего-тварино!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A stylish desktop! Even I'm embarrassed to walk around in pajamas here."
+msgstr "Стильна стільниця! Тут навіть мені соромно ходити в піжамі."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Simple and pretty. Like me. Well, pretty for sure."
+msgstr "Проста й гарна. Як я. Ну, гарний — то точно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So stylish here!"
+msgstr "Нова стільниця! Стильненько тут!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? It was pretty..."
+msgstr "Ідемо? Було гарно..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's nice to be here. Everything's neat."
+msgstr "Тут приємно бути. Усе охайно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Modern design. I like it!"
+msgstr "Сучасний дизайн. Мені подобається!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "COSMIC! This is something new! Interesting!"
+msgstr "COSMIC! Це щось новеньке! Цікаво!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new desktop! Looks futuristic!"
+msgstr "О, нова стільниця! Виглядає футуристично!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything here is so... cosmic!"
+msgstr "Привіт! Тут усе таке... космічне!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A cosmic desktop! And I'm a cosmic gorilla!"
+msgstr "Космічна стільниця! А я — космічна горила!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"It's still in development, but already prettier than many finished ones!"
+msgstr "Вона ще в розробці, але вже гарніша за багато готових!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The future is here! And it looks pretty good."
+msgstr "Майбутнє настало! І воно виглядає непогано."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved into the future! Cool!"
+msgstr "Переїхали в майбутнє! Круто!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "COSMIC! We're pioneers!"
+msgstr "COSMIC! Ми першопрохідці!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the future? Oh well, back to the present."
+msgstr "Ідемо з майбутнього? Ну гаразд, повернімося в теперішнє."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Not everything's ready here yet, but the potential is huge!"
+msgstr "Тут ще не все готове, але потенціал величезний!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, the windows snap into place by themselves here! Magic!"
+msgstr "Ого, тут вікна самі стають на місце! Магія!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty desktop with animations!"
+msgstr "Привіт! Гарна стільниця з анімаціями!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything arranges itself automatically here. Handy!"
+msgstr "Тут усе розкладається автоматично. Зручно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows arrange themselves! I wish life worked like that..."
+msgstr "Вікна самі розкладаються! Мені б так у житті..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many animations! It's prettier than the movies here!"
+msgstr "Стільки анімацій! Тут гарніше, ніж у кіно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's on the keyboard here. The mouse gets a rest. I don't!"
+msgstr "Тут усе на клавіатурі. Мишка відпочиває. А я ні!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows snap into place by themselves here!"
+msgstr "Нова стільниця! Тут вікна самі стають на місце!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? But the animations here were so pretty!"
+msgstr "Ідемо? Але ж тут були такі гарні анімації!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything moves so smoothly here. Mesmerizing!"
+msgstr "Тут усе так плавно рухається. Аж залипаєш!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, LXQt! Modest and fast — respect."
+msgstr "О, LXQt! Скромно й швидко — поважаю."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything's light here, even I feel light as a feather."
+msgstr "Привіт! Тут усе легке, навіть я почуваюся пір'їнкою."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "LXQt? So you appreciate it when nothing lags."
+msgstr "LXQt? Отже, ви цінуєте, коли нічого не гальмує."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so light here that I almost floated away!"
+msgstr "Тут так легко, що я мало не полетів!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "No unnecessary animations. So I'll do the moving for everyone!"
+msgstr "Жодних зайвих анімацій. Зате я порухаюся за всіх!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "An old computer, and it flies. I wish I could do that!"
+msgstr "Старий комп'ютер, а літає. Мені б так!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! And such a fast one!"
+msgstr "Нова стільниця! І яка швидка!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? It was so snappy here..."
+msgstr "Ідемо? Тут було так жваво..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Quiet, fast, nothing in the way. Lovely!"
+msgstr "Тихо, швидко, ніщо не заважає. Краса!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, the windows lined up in a strip! Never seen anything like it."
+msgstr "Ого, вікна вишикувалися в стрічку! Ніколи такого не бачив."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Hi! The desktop slides off to the side here — I'm following it with my eyes."
+msgstr "Привіт! Тут стільниця їде вбік — я стежу за нею очима."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "niri? So you love horizontal order."
+msgstr "niri? Отже, ви любите порядок по горизонталі."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Windows in a row, like train cars. Then I'll be the locomotive!"
+msgstr "Вікна в ряд, як вагони. Тоді я буду паровозом!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The desktop rides left and right here. I'm already getting dizzy!"
+msgstr "Тут стільниця їздить вліво-вправо. У мене вже голова паморочиться!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I scrolled the desktop and lost a window. It'll come back, right?"
+msgstr "Прокрутив стільницю й загубив вікно. Воно повернеться, так?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! Everything lines up in a strip here!"
+msgstr "Нова стільниця! Тут усе шикується в стрічку!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just learned how to scroll!"
+msgstr "Ідемо? А я тільки навчився прокручувати!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Watching the windows slide off the edge. Mesmerizing."
+msgstr "Дивлюся, як вікна від'їжджають за край. Зачаровує."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, sway! The windows share the screen here without fighting."
+msgstr "О, sway! Тут вікна ділять екран без сварок."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! You can hide the mouse, everything's done from the keyboard here."
+msgstr "Привіт! Мишку можна сховати, тут усе з клавіатури."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "sway? So you know what you're doing. Respect!"
+msgstr "sway? Отже, ви знаєте, що робите. Поважаю!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is hotkeys. I remembered three and forgot the rest."
+msgstr "Тут усе гарячими клавішами. Я запам'ятав три, решту забув."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows split the screen fairly. Save a piece for me too!"
+msgstr "Вікна поділили екран по-чесному. Мені теж шматочок!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I pressed the wrong thing and a window ran off. Please bring it back."
+msgstr "Я натиснув щось не те, і вікно поїхало. Поверніть його, будь ласка."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows share the space by themselves here!"
+msgstr "Нова стільниця! Тут вікна самі ділять місце!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I only learned half the keys..."
+msgstr "Ідемо? Я вивчив лише половину клавіш..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Not a single wasted pixel. You keep it tidy here."
+msgstr "Жодного зайвого пікселя. Охайно тут у вас."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, River! The windows flow like a river — and each one in its place."
+msgstr "О, River! Вікна течуть, як річка, — і кожне на своєму місці."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Windows are sorted by tags here, not by desktops."
+msgstr "Привіт! Тут вікна розкладають за мітками, а не за стільницями."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "River? Quiet, fast, all from the keyboard. Respect!"
+msgstr "River? Тихо, швидко, усе з клавіатури. Поважаю!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A window with tag three, a window with tag five... And what tag am I?"
+msgstr "Вікно з міткою три, вікно з міткою п'ять... А я з якою міткою?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The river flows, the windows float. I think I'm drifting off too."
+msgstr "Річка тече, вікна пливуть. Здається, я теж поплив."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Super and a number — and the window's already here. I wish bananas worked "
+"like that!"
+msgstr "Super і цифра — і вікно вже тут. Мені б так із бананами!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows go with the flow by themselves here!"
+msgstr "Нова стільниця! Тут вікна самі стають за течією!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I had just figured out the tags..."
+msgstr "Ідемо? А я тільки розібрався з мітками..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Watching the windows share the screen. Calm, like a river."
+msgstr "Дивлюся, як вікна ділять екран. Спокійно, як біля річки."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, Wayfire! Any second now the desktop will spin into a cube!"
+msgstr "Ого, Wayfire! Зараз стільниця як закрутиться кубом!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! The windows wobble like jelly here. Lovely!"
+msgstr "Привіт! Вікна тут гойдаються, як желе. Краса!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Wayfire? So you love effects. Me too!"
+msgstr "Wayfire? Отже, ви любите ефекти. Я теж!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I shook a window — it wobbles. I shook myself — I wobble too!"
+msgstr "Потрусив вікно — воно гойдається. Потрусив себе — я теж гойдаюся!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A cube desktop! Can I sit inside?"
+msgstr "Стільниця-куб! А можна я всередині посиджу?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many effects that I forgot why I came."
+msgstr "Стільки ефектів, що я забув, навіщо прийшов."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows wiggle here like they're alive!"
+msgstr "Нова стільниця! Тут вікна ворушаться, як живі!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I never finished spinning the cube..."
+msgstr "Ідемо? А куб я так і не докрутив..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows float, the lights glow. Cozy here."
+msgstr "Вікна пливуть, вогники горять. Затишно тут."
+
+#. TRANSLATORS: the BonziBuddy mascot (a purple gorilla) reacts to an
+#. event in Rexon. Keep the playful tone, not the exact words.
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, a new desktop got installed! I want to see it!"
+msgstr "Ого, нову стільницю встановлено! Хочу подивитися!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop? I wonder what it's like there!"
+msgstr "Нова стільниця? Цікаво, як там буде!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop is installed! We can switch over and take a look."
+msgstr "Встановили нову стільницю! Можемо перемкнутися й глянути."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Removed a desktop? Farewell, old friend..."
+msgstr "Видалили стільницю? Прощавай, старий друже..."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "One desktop fewer. Oh well!"
+msgstr "На одну стільницю менше. Ну й гаразд!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new theme! Pretty!"
+msgstr "О, нова тема! Гарно!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Changed the look? I like it!"
+msgstr "Змінили оформлення? Мені подобається!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "New colors! I hope I fit in."
+msgstr "Нові кольори! Сподіваюся, я в них вписуюся."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new extension! What does it do?"
+msgstr "Нове розширення! Що воно робить?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Installed something new? Cool!"
+msgstr "Встановили щось нове? Круто!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Backup created! Great, we're covered."
+msgstr "Резервну копію створено! Чудово, підстрахувалися."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A good person is one who makes backups. Like you!"
+msgstr "Хороша людина — та, що робить резервні копії. Як ви!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Ooh, live wallpaper! It moves so nicely!"
+msgstr "Ооо, живі шпалери! Гарно рухаються!"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Live wallpaper? Can I move around too?"
+msgstr "Живі шпалери? А мені теж можна порухатися?"
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The wallpaper stopped. Back to staring at a boring desktop."
+msgstr "Шпалери зупинилися. Знову на стільницю дивитися нудно."
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "That's it, the picture doesn't move anymore. Oh well."
+msgstr "Усе, картинка більше не рухається. Ну й гаразд."
+
 #: rust/rexon-core/src/rxn_manifest.rs
 msgid "This package needs %1, and it is not installed."
 msgstr "Цьому пакунку потрібен %1, а його не встановлено."
@@ -19326,6 +20268,74 @@ msgid ""
 msgstr ""
 "Робочий стіл не зміг показати цей ефект (%1), тому екран залишено як був."
 
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Restore the screen saver?"
+msgstr "Повернути рідну заставку?"
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Restoring the screen saver"
+msgstr "Повернення рідної заставки"
+
+#. TRANSLATORS: %1 is a screen saver product name, e.g. "MATE Screensaver".
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"The screen saver of this desktop (%1) is not running, so the screen will not "
+"lock by itself when you step away."
+msgstr ""
+"Заставку цього робочого столу (%1) не запущено: коли ви відійдете, екран сам "
+"не заблокується."
+
+#. TRANSLATORS: %1 is a screen saver product name, e.g. "XScreenSaver".
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"A screen saver from another desktop (%1) is running in this session. It can "
+"replace or switch off the desktop's own screen lock."
+msgstr ""
+"У цьому сеансі працює заставка іншого робочого столу (%1). Вона може "
+"підмінити або вимкнути рідне блокування екрана."
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Rexon will close %1 in this session only — nothing is uninstalled."
+msgstr "Rexon закриє %1 лише в цьому сеансі — нічого не видаляється."
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Rexon will start %1 again."
+msgstr "Rexon знову запустить %1."
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Your screen saver settings are not changed."
+msgstr "Ваші налаштування заставки не змінюються."
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"Rexon found a problem with the screen saver and will offer to fix it when "
+"you close this window."
+msgstr ""
+"Rexon знайшов негаразд із заставкою й запропонує його виправити, коли ви "
+"закриєте це вікно."
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"The other screen saver has been closed. The desktop's own screen lock works "
+"as before."
+msgstr "Чужу заставку закрито. Рідне блокування екрана працює як раніше."
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"Could not start %1. Log out and log in again — the desktop starts it by "
+"itself."
+msgstr ""
+"Не вдалося запустити %1. Вийдіть із сеансу й увійдіть знову — робочий стіл "
+"запустить її сам."
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "%1 is running again: the screen will lock by itself as before."
+msgstr "%1 знову працює: екран, як і раніше, блокуватиметься сам."
+
 #: rust/rexon-core/src/screenshots.rs
 msgid "YOUR DESKTOP"
 msgstr "ВАША СТІЛЬНИЦЯ"
@@ -19559,6 +20569,104 @@ msgid ""
 msgstr ""
 "Ролик буде перекодовано у WebM, щоб його міг показати Steam. Початковий файл "
 "залишиться як є."
+
+#. TRANSLATORS: progress while adding a startup movie: the video tools (ffmpeg) are being installed.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Installing the video tools (ffmpeg)…"
+msgstr "⏳ Встановлюємо програми для відео (ffmpeg)…"
+
+#. TRANSLATORS: progress while adding a startup movie: the chosen file is being checked.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Checking the video…"
+msgstr "⏳ Перевіряємо ролик…"
+
+#. TRANSLATORS: progress while adding a startup movie: the file is being copied.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Copying the video…"
+msgstr "⏳ Копіюємо ролик…"
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Converting the video for Steam…"
+msgstr "⏳ Перекодовуємо ролик для Steam…"
+
+#. TRANSLATORS: progress while converting a startup movie; %1 is the percentage done.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Converting the video for Steam… %1%"
+msgstr "⏳ Перекодовуємо ролик для Steam… %1%"
+
+#. TRANSLATORS: a startup movie was added; %1 is its name. Steam lists it too.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"✅ Added “%1” — it's chosen for login and also appears in Steam (the "
+"Customization section)."
+msgstr ""
+"✅ Додано ролик «%1» — його вибрано для входу, і він з'явився в Steam "
+"(розділ «Персоналізація»)."
+
+#. TRANSLATORS: a startup movie was added (Steam isn't installed); %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid "✅ Added “%1” — it's chosen for login."
+msgstr "✅ Додано ролик «%1» — його вибрано для входу."
+
+#. TRANSLATORS: adding a startup movie was cancelled by the user.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Adding the video was cancelled."
+msgstr "Додавання ролика скасовано."
+
+#. TRANSLATORS: a startup movie couldn't be added; %1 is the system's reason.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Couldn't add the video: %1"
+msgstr "Не вдалося додати ролик: %1"
+
+#. TRANSLATORS: adding a startup movie needs ffmpeg, and installing it failed; %1 is the reason.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Adding a video needs the video tools (ffmpeg), and they couldn't be "
+"installed: %1"
+msgstr ""
+"Для додавання ролика потрібні програми для відео (ffmpeg), а встановити їх "
+"не вдалося: %1"
+
+#. TRANSLATORS: the startup movie chosen earlier was copied into Rexon's folder so it keeps working if the original is moved; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The startup movie “%1” is now kept as a copy — it keeps working even if the "
+"original file is moved or deleted."
+msgstr ""
+"Відеозаставка «%1» тепер зберігається копією — вона не зникне, навіть якщо "
+"початковий файл перемістити або видалити."
+
+#. TRANSLATORS: confirmation before deleting the user's own startup movie; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Delete the startup movie “%1”? The copy is removed from disk; the original "
+"video you added it from is not touched."
+msgstr ""
+"Видалити відеозаставку «%1»? Копію буде видалено з диска; початкове відео, з "
+"якого ви її додали, не постраждає."
+
+#. TRANSLATORS: extra warning in the delete confirmation: Steam currently uses this movie.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"⚠️ Steam currently plays this movie at startup — after deleting, Steam goes "
+"back to its standard one."
+msgstr ""
+"⚠️ Зараз цей ролик показує під час запуску сам Steam — після видалення Steam "
+"повернеться до стандартного."
+
+#. TRANSLATORS: the user's own startup movie was deleted; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid "🗑 Deleted “%1”."
+msgstr "🗑 Видалено ролик «%1»."
+
+#. TRANSLATORS: refusal to delete a startup movie that is built into Steam or bought in the Points Shop.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Only your own movies can be deleted — the ones built into Steam and bought "
+"in the Points Shop stay."
+msgstr ""
+"Видаляти можна лише власні ролики — вбудовані в Steam і куплені в Points "
+"Shop залишаються."
 
 #. TRANSLATORS: Description of Rexon's splash theme in KDE System Settings (Splash Screen). KSplash and mpv are program names.
 #: rust/rexon-core/src/session_splash.rs
@@ -19812,6 +20920,19 @@ msgstr "Не вдалося зберегти налаштування заста
 #: rust/rexon-core/src/session_splash.rs
 msgid "Couldn't start mpv: %1"
 msgstr "Помилка запуску mpv: %1"
+
+#. TRANSLATORS: %1 is a program name (ffmpeg/ffprobe) that is still missing after its package was installed.
+#: rust/rexon-core/src/session_splash.rs
+msgid "%1 is still not found after installing"
+msgstr "%1 так і не знайдено після встановлення"
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "the converter stopped with code %1"
+msgstr "програма перекодування завершилася з кодом %1"
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "the converter didn't start"
+msgstr "програма перекодування не запустилася"
 
 #: rust/rexon-core/src/session_splash.rs
 msgid "didn't start"
@@ -20156,9 +21277,16 @@ msgid "Couldn't download the theme to preview it"
 msgstr "Не вдалося завантажити тему для прослуховування"
 
 #: rust/rexon-core/src/splash_exec.rs rust/rexon-core/src/utils.rs
-#: rust/rexon-core/src/wallpaper_exec.rs rust/rexon-gui/src/window_menu.rs
+#: rust/rexon-core/src/wallpaper_exec.rs rust/rexon-gui/src/axon_actions.rs
+#: rust/rexon-gui/src/window_menu.rs
 msgid "empty command"
 msgstr "порожня команда"
+
+#. TRANSLATORS: %1 is a program name (ffmpeg) that Rexon can't install from the official repositories.
+#: rust/rexon-core/src/splash_exec.rs
+msgid ""
+"Install the package with %1 by hand: it isn't in this system's repositories."
+msgstr "Встановіть пакет з %1 вручну: у репозиторіях цієї системи його немає."
 
 #. TRANSLATORS: name shown for a Steam profile background that has none.
 #: rust/rexon-core/src/steam_profile.rs
@@ -20311,6 +21439,76 @@ msgstr "Заставку вилучено зі Steam."
 #: rust/rexon-core/src/steam_screensaver.rs
 msgid "Not in the list? Close Steam completely and start it again."
 msgstr "Немає в списку? Повністю закрийте Steam і запустіть знову."
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Game Slideshow"
+msgstr "Ігрове слайд-шоу"
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Bouncing Logo"
+msgstr "Логотип, що відскакує"
+
+#. TRANSLATORS: %1 is the folder name of a screensaver the person added to Steam themselves.
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "%1 (User Created)"
+msgstr "%1 (користувацька)"
+
+#. TRANSLATORS: card badge of a screensaver the person put into Steam themselves (not built into Steam).
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Added by you"
+msgstr "Додана вами"
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "✅ Selected in Steam"
+msgstr "✅ Вибрана в Steam"
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Installed in Steam"
+msgstr "Встановлена в Steam"
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"Steam is showing this screensaver now. Rexon doesn't change your choice in "
+"Steam."
+msgstr "Зараз Steam показує цю заставку. Rexon не змінює ваш вибір у Steam."
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them. %1 is the screensaver name as Steam lists it.
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"Steam shows this screensaver itself — there is nothing to install. To use "
+"it, open Steam Big Picture → Settings → Customization → Screensaver and "
+"choose «%1»."
+msgstr ""
+"Цю заставку Steam показує сам — нічого встановлювати не треба. Щоб увімкнути "
+"її, у Steam Big Picture відкрийте «Налаштування» → «Персоналізація» → "
+"«Заставка» і виберіть «%1»."
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Steam is showing this screensaver now."
+msgstr "Зараз Steam показує цю заставку."
+
+#. TRANSLATORS: %1 is the name of the Rexon screensaver in the Steam list, e.g. «rexon (User Created)».
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Installed — choose «%1» in Steam to see it there."
+msgstr "Встановлено — виберіть у Steam «%1», щоб побачити її там."
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Press «Install Screensaver» — Rexon puts it into Steam."
+msgstr "Натисніть «Встановити заставку» — Rexon додасть її до Steam."
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"There's nothing to show the screensaver with: the rexon-wallpaper-host "
+"program wasn't found. It's installed together with Rexon — reinstall Rexon."
+msgstr ""
+"Заставку нічим показати: не знайдено програму rexon-wallpaper-host. Вона "
+"встановлюється разом із Rexon — перевстановіть Rexon."
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "No preview picture: install Firefox or Chromium so Rexon can take one."
+msgstr ""
+"Немає зображення попереднього перегляду: встановіть Firefox або Chromium, "
+"щоб Rexon міг його зняти."
 
 #: rust/rexon-core/src/steam_showcase.rs
 msgid "Artwork Showcase"
@@ -21095,8 +22293,8 @@ msgid "🔒 Remembering your default apps"
 msgstr "🔒 Запам’ятовую ваші типові програми"
 
 #: rust/rexon-core/src/system_de_exec.rs
-msgid "🛡️ Saving a copy of the KDE Plasma panel"
-msgstr "🛡️ Зберігаю копію панелі KDE Plasma"
+msgid "🛡️ Saving copies of the panels of installed desktops"
+msgstr "🛡️ Зберігаємо копії панелей встановлених стільниць"
 
 #: rust/rexon-core/src/system_de_exec.rs
 msgid "🔧 Post-install setup"
@@ -21118,9 +22316,10 @@ msgstr "🛡️ Налаштовую, чим відкривати файли в 
 msgid "Couldn't remember the default apps: %1"
 msgstr "Не вдалося запам’ятати типові програми: %1"
 
+#. TRANSLATORS: %1 is a desktop name, %2 what went wrong.
 #: rust/rexon-core/src/system_de_exec.rs
-msgid "The KDE panel copy wasn't saved: %1"
-msgstr "Копію панелі KDE не збережено: %1"
+msgid "The panel copy of %1 wasn't saved: %2"
+msgstr "Копію панелі %1 не збережено: %2"
 
 #: rust/rexon-core/src/system_de_exec.rs
 msgid "📦 Installing: %n package"
@@ -23735,6 +24934,10 @@ msgid "📋 Checking the global menu in the panel (vala-panel-appmenu)…"
 msgstr "📋 Перевірка глобального меню на панелі (vala-panel-appmenu)…"
 
 #: rust/rexon-core/src/system_plan.rs
+msgid "📋 Checking the MATE Menu (mate-menu)…"
+msgstr ""
+
+#: rust/rexon-core/src/system_plan.rs
 msgid "✅ The MATE look was saved to your user settings:"
 msgstr "✅ Вигляд MATE записано в налаштування користувача:"
 
@@ -23824,6 +25027,21 @@ msgid ""
 msgstr ""
 "⚠️ River: не вдалося записати початкові налаштування (%1): %2. Без них River "
 "запуститься без жодного клавіатурного скорочення."
+
+#. TRANSLATORS: placeholder in the password field of the lock screen (hyprlock).
+#. `#` starts a comment in hyprlock.conf, a newline ends the value.
+#: rust/rexon-core/src/system_plan.rs
+msgid "Password…"
+msgstr "Пароль…"
+
+#. TRANSLATORS: %1 is a lock program (swaylock, hyprlock), %2 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"🎨 %1: the lock screen got a dark background and a visible password field "
+"(%2) — change it freely"
+msgstr ""
+"🎨 %1: екран блокування тепер має темне тло й помітне поле пароля (%2) — "
+"змінюйте як завгодно"
 
 #. TRANSLATORS: %1 is a desktop (Hyprland…), %2 program names (“hyprlock, hypridle”).
 #: rust/rexon-core/src/system_plan.rs
@@ -25845,6 +27063,40 @@ msgstr "Черга Razer Axon порожня."
 msgid "Nothing new in the Razer Axon queue."
 msgstr "У черзі Razer Axon немає нічого нового."
 
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgctxt "wallpaper orientation"
+msgid "Horizontal"
+msgstr "Горизонтальні"
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgctxt "wallpaper orientation"
+msgid "Vertical"
+msgstr "Вертикальні"
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid "Orientation"
+msgstr "Орієнтація"
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid ""
+"⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a "
+"regular landscape screen it fills the width, so only the middle part of the "
+"frame is visible — the top and bottom are cut off."
+msgstr ""
+"⚠️ Вертикальні шпалери: зроблені для повернутого вертикально екрана або для "
+"телефона. На звичайному горизонтальному екрані вони розтягуються на всю "
+"ширину, тож видно лише середню частину кадру — верх і низ обрізано."
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid ""
+"⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a "
+"regular landscape screen the desktop either cuts off the top and bottom or "
+"adds bars at the sides — it depends on its wallpaper settings."
+msgstr ""
+"⚠️ Вертикальні шпалери: зроблені для повернутого вертикально екрана або для "
+"телефона. На звичайному горизонтальному екрані робочий стіл або обріже верх "
+"і низ, або додасть смуги з боків — це залежить від його налаштувань шпалер."
+
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid "kpackagetool6 was not found — KDE Plasma 6 is required"
 msgstr "kpackagetool6 не знайдено — потрібен KDE Plasma 6"
@@ -27204,6 +28456,15 @@ msgstr ""
 "самого місця."
 
 #: rust/rexon-core/src/window_menu.rs
+msgid ""
+"Whichever you choose, a few small Rexon fixes stay in place, because they "
+"keep your desktops from getting in each other's way: for example, they stop "
+"one desktop's programs (such as the fcitx5 keyboard helper) from starting in "
+"all the others, and they make labwc use its own file chooser. They don't "
+"need Rexon to work. If you delete them, those problems come back:"
+msgstr "Що б ви не обрали, кілька невеликих виправлень Rexon залишаться: вони не дають робочим столам заважати одне одному. Наприклад, програми одного столу (скажімо, помічник розкладки fcitx5) не запускаються в усіх інших, а в labwc відкривається його власне вікно вибору файлів. Rexon для їхньої роботи не потрібен. Якщо їх видалити, ці негаразди повернуться:"
+
+#: rust/rexon-core/src/window_menu.rs
 msgid "Where it is stored:"
 msgstr "Де це лежить:"
 
@@ -27371,14 +28632,6 @@ msgstr ""
 msgid "Already working — please wait."
 msgstr "Уже працюю — зачекайте."
 
-#: rust/rexon-gui/src/steam_screensaver_actions.rs
-msgid "Install the screensaver first."
-msgstr "Спершу встановіть заставку."
-
-#: rust/rexon-gui/src/steam_screensaver_actions.rs
-msgid "Could not open the browser."
-msgstr "Не вдалося відкрити браузер."
-
 #: rust/rexon-gui/src/steam_showcase_actions.rs
 msgid "A video background needs ffmpeg to take a frame from it."
 msgstr "Щоб узяти кадр із відеофону, потрібна програма ffmpeg."
@@ -27476,6 +28729,49 @@ msgstr "процес не запустився або не відповів вч
 #: rust/rexon-gui/src/we_update_workers.rs
 msgid "could not create the staging directory"
 msgstr "не вдалося створити проміжний каталог"
+
+#. TRANSLATORS: stands in for the system loader's error text when it gives none.
+#: rust/rexon-gui/src/web_host.rs
+msgid "no reason given"
+msgstr "причину не названо"
+
+#. TRANSLATORS: printed to the terminal. %1 — the loader's error,
+#. %2 — the library file name.
+#: rust/rexon-gui/src/web_host.rs
+msgid ""
+"QtWebEngine failed to load (%1): web wallpapers need %2 from the qt6-"
+"webengine package"
+msgstr ""
+"QtWebEngine не завантажився (%1): вебшпалерам потрібна %2 з пакета qt6-"
+"webengine"
+
+#. TRANSLATORS: printed to the terminal. %1 — the library file name,
+#. %2 — the loader's error.
+#: rust/rexon-gui/src/web_host.rs
+msgid "%1 has no QtWebEngineQuick::initialize (%2)"
+msgstr "у %1 немає QtWebEngineQuick::initialize (%2)"
+
+#. TRANSLATORS: a command line error; %1 — the option, "video" is a mode name.
+#: rust/rexon-gui/src/web_host.rs
+msgid "the %1 option is only available in video mode"
+msgstr "ключ %1 є лише в режимі video"
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "--selftest= needs a number of milliseconds"
+msgstr "після --selftest= потрібні мілісекунди"
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "unknown option: %1"
+msgstr "невідомий ключ: %1"
+
+#. TRANSLATORS: a command line error: a second address after the first one.
+#: rust/rexon-gui/src/web_host.rs
+msgid "extra address: %1"
+msgstr "зайва адреса: %1"
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "no link, HTML file or wallpaper directory given"
+msgstr "не вказано посилання, HTML-файл або каталог шпалер"
 
 #
 #: rust/rexon-gui/qml/AnimationsSection.qml
@@ -27733,18 +29029,37 @@ msgstr "Застосовую…"
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid ""
-"Rexon makes a screensaver for Steam Big Picture: Steam shows it when you "
-"leave your Steam Deck, Steam Machine, TV or computer idle for a while. It "
-"shows the artwork of your recently played games and your screenshots, or a "
-"bouncing logo."
+"Steam shows a screensaver when you leave your Steam Deck, Steam Machine, TV "
+"or computer idle in Big Picture. Here are the screensavers of your Steam and "
+"the ones Rexon can make for it."
 msgstr ""
-"Rexon робить заставку для Steam Big Picture: Steam показує її, коли Steam "
-"Deck, Steam Machine, телевізор чи комп’ютер якийсь час простоює. На ній — "
-"арт нещодавніх ігор і ваші знімки екрана або логотип, що стрибає."
+"Steam показує заставку, коли Steam Deck, Steam Machine, телевізор або "
+"комп’ютер деякий час простоює в Big Picture. Тут — заставки вашого Steam і "
+"ті, що Rexon може для нього зробити."
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Show:"
-msgstr "Показувати:"
+msgid "Update Screensaver"
+msgstr "Оновити заставку"
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Install Screensaver"
+msgstr "Встановити заставку"
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Collects fresh artwork and screenshots and applies the settings above."
+msgstr "Наново збирає арт і знімки екрана та застосовує налаштування вище."
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Click again to remove"
+msgstr "Натисніть ще раз, щоб вилучити"
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Preparing the pictures…"
+msgstr "Готую зображення…"
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Press «Update Screensaver» to apply the changes."
+msgstr "Натисніть «Оновити заставку», щоб застосувати зміни."
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "Game artwork"
@@ -27773,38 +29088,6 @@ msgstr "Логотип:"
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "Show the clock"
 msgstr "Показувати годинник"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Update Screensaver"
-msgstr "Оновити заставку"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Install Screensaver"
-msgstr "Встановити заставку"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Collects fresh artwork and screenshots and applies the settings above."
-msgstr "Наново збирає арт і знімки екрана та застосовує налаштування вище."
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "👁️ Preview"
-msgstr "👁️ Переглянути"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Opens the screensaver in your web browser."
-msgstr "Відкриває заставку в браузері."
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Click again to remove"
-msgstr "Натисніть ще раз, щоб вилучити"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Preparing the pictures…"
-msgstr "Готую зображення…"
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Press «Update Screensaver» to apply the changes."
-msgstr "Натисніть «Оновити заставку», щоб застосувати зміни."
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "How to turn it on in Steam"
@@ -28083,6 +29366,63 @@ msgid "Window border size:"
 msgstr "Розмір рамки вікна:"
 
 #~ msgid ""
+#~ "A saved copy of the panel already exists — the same one “Restore previous "
+#~ "panel” brings back. The new copy will replace it."
+#~ msgstr ""
+#~ "Збережена копія панелі вже є — та сама, яку повертає «Повернути попередню "
+#~ "панель». Нова копія її замінить."
+
+#~ msgid ""
+#~ "A saved copy of the panel already exists — the new copy will replace it."
+#~ msgstr "Збережена копія панелі вже є — нова її замінить."
+
+#~ msgid "Replace the saved panel copy?"
+#~ msgstr "Замінити збережену копію панелі?"
+
+#~ msgid ""
+#~ "Restore the panel from the last saved copy?\n"
+#~ "\n"
+#~ "Your current panel settings will be replaced with the saved ones."
+#~ msgstr ""
+#~ "Повернути панель з останньої збереженої копії?\n"
+#~ "\n"
+#~ "Поточні налаштування панелі буде замінено збереженими."
+
+#~ msgid ""
+#~ "Settings files that get copied: plasma-org.kde.plasma.desktop-appletsrc, "
+#~ "plasmashellrc, kglobalshortcutsrc"
+#~ msgstr ""
+#~ "Копіюються файли налаштувань: plasma-org.kde.plasma.desktop-appletsrc, "
+#~ "plasmashellrc, kglobalshortcutsrc"
+
+#~ msgid "Saving a copy of the KDE Plasma panel…"
+#~ msgstr "Зберігаємо копію панелі KDE Plasma..."
+
+#~ msgid "The KDE panel copy wasn't saved: %1"
+#~ msgstr "Копію панелі KDE не збережено: %1"
+
+#~ msgid "📁 Choose File…"
+#~ msgstr "📁 Свій файл…"
+
+#~ msgid "Choose your own video (webm/mp4) from disk"
+#~ msgstr "Вибрати своє відео (webm/mp4) з диска"
+
+#~ msgid "Install the screensaver first."
+#~ msgstr "Спершу встановіть заставку."
+
+#~ msgid "Could not open the browser."
+#~ msgstr "Не вдалося відкрити браузер."
+
+#~ msgid "Show:"
+#~ msgstr "Показувати:"
+
+#~ msgid "👁️ Preview"
+#~ msgstr "👁️ Переглянути"
+
+#~ msgid "Opens the screensaver in your web browser."
+#~ msgstr "Відкриває заставку в браузері."
+
+#~ msgid ""
 #~ "To try Deepin, log out and choose “Treeland User” on the login screen."
 #~ msgstr ""
 #~ "Щоб спробувати Deepin, вийдіть із сеансу й виберіть «Treeland User» на "
@@ -28105,3 +29445,43 @@ msgstr "Розмір рамки вікна:"
 #~ "Годинник, погода і датчики системи на стільниці — їх малює програма "
 #~ "Conky. У сеансі Wayland цієї стільниці це звичайні вікна; на самій "
 #~ "стільниці віджети тримаються в сеансі X11."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Use the Packaged Version"
+msgstr "Узяти версію з пакета"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Install the Plugin Package"
+msgstr "Установити пакет додатка"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "The installed %1 package (version %2) does not work with the waywallen engine %3, so live wallpapers are not shown."
+msgstr "Встановлений пакет %1 (версія %2) не працює з рушієм waywallen %3, тому живі шпалери не показуються."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Update the %1 package."
+msgstr "Оновіть пакет %1."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "A copy of the Plasma wallpaper plugin for waywallen in your home folder (from the KDE Store or installed by hand) hides the %1 package. Rexon left the copy as is. If live wallpapers do not appear, use the packaged version — the copy is kept as a backup."
+msgstr "Копія додатка шпалер Plasma для waywallen у вашій домашній теці (з KDE Store або встановлена вручну) затуляє пакет %1. Rexon залишив копію як є. Якщо живі шпалери не з'являються, візьміть версію з пакета — копія збережеться в резерві."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Rexon is installing the %1 package for live wallpapers. It is built from source, which can take several minutes."
+msgstr "Rexon встановлює пакет %1 для живих шпалер. Він збирається з вихідного коду, це може тривати кілька хвилин."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Stage: %1"
+msgstr "Етап: %1"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Live wallpapers need the %1 package. Install it, and the wallpapers will appear."
+msgstr "Для живих шпалер потрібен пакет %1. Встановіть його — і шпалери з'являться."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Live wallpapers need the %1 package, and Rexon could not install it: %2"
+msgstr "Для живих шпалер потрібен пакет %1, а встановити його Rexon не зміг: %2"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "on this system Rexon cannot install it by itself — install it with the system's package manager"
+msgstr "у цій системі Rexon не може встановити його сам — встановіть його системним менеджером пакетів"

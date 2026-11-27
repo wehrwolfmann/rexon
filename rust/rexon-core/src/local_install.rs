@@ -1946,7 +1946,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "запускается дочерним процессом installs_into_substituted_home"]
+    #[ignore = "run as a child process by installs_into_substituted_home"]
     fn e2e_child() {
         let base = PathBuf::from(std::env::var_os(E2E_BASE_ENV).expect("только дочерний прогон"));
         let home = PathBuf::from(std::env::var("HOME").unwrap());

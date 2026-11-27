@@ -36,7 +36,7 @@ fn window_texts_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn header_found_text_matches_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(
@@ -54,7 +54,7 @@ fn header_found_text_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn segments_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(
@@ -126,7 +126,7 @@ fn meta_with_event(appid: i64, event: &str, source: &str) -> qs::MetaMap {
 
 /// `_sv_badge_text`: an event beats a game, a game beats the origin.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn badge_text_priority_matches_python() {
     let _lang = i18n_pin::ru();
     let it = movie("/a.webm", "A", "Days Gone", ss::ORIGIN_SHOP, 1259420);
@@ -141,7 +141,7 @@ fn badge_text_priority_matches_python() {
 
 /// `_sv_source_text`: the «Video splash from X» line and its fallback variants.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn source_text_matches_python() {
     let _lang = i18n_pin::ru();
     let empty = qs::MetaMap::new();
@@ -168,7 +168,7 @@ fn source_text_matches_python() {
 /// `_sv_group_keys` + `_sv_rebuild_groups`: order of appearance, «All» first,
 /// «★ Favorites» last, the row hides when there is no choice.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn group_chips_match_python() {
     let _lang = i18n_pin::ru();
     let items = vec![
@@ -230,7 +230,7 @@ fn search_covers_all_python_fields() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn count_text_matches_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qs::sv_count_text(0, 0, false), qs::sv_empty_text());
@@ -239,7 +239,7 @@ fn count_text_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn hero_matches_python() {
     let _lang = i18n_pin::ru();
     let cur = movie("/a.webm", "A", "Игра", ss::ORIGIN_SHOP, 1);
@@ -272,7 +272,7 @@ fn hero_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn state_chip_matches_python() {
     let _lang = i18n_pin::ru();
     let cur = movie("/a.webm", "Days Gone", "", ss::ORIGIN_SHOP, 1);
@@ -423,7 +423,7 @@ fn bg_kind_filter_and_counters() {
 
 /// The section label takes the kind filter into account the same way as search.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn bg_section_text_counts_the_kind_filter() {
     let _lang = i18n_pin::ru();
     assert_eq!(qs::bg_section_text_filtered("", 205, 205, false), "Найдено фонов: 205");
@@ -434,7 +434,7 @@ fn bg_section_text_counts_the_kind_filter() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn bg_card_matches_python() {
     let _lang = i18n_pin::ru();
     let equipped = bg("1", "Ночь", "Portal 2", true, true);
@@ -457,7 +457,7 @@ fn bg_card_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn bg_status_texts_match_python() {
     let _lang = i18n_pin::ru();
     assert_eq!(qs::bg_status_text(0, 0, ""), "Найдено фонов: 0");
@@ -503,7 +503,7 @@ fn bg_status_texts_match_python() {
 /// The original's `error[:160]` — by CHARACTERS, not bytes: otherwise a Russian error
 /// would be cut in the middle of a letter.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn bg_error_text_clips_by_chars() {
     let _lang = i18n_pin::ru();
     let long = "я".repeat(300);
@@ -514,7 +514,7 @@ fn bg_error_text_clips_by_chars() {
 
 /// Pagination — the same engine as the product's other grids.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn pager_agrees_with_grid_engine() {
     let _lang = i18n_pin::ru();
     for cols in 2..=8u32 {
@@ -555,7 +555,7 @@ fn page_after_resize_keeps_first_item() {
 // ── Inventory ───────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn inventory_urls_match_python() {
     // Russian interface — Steam's Russian answer, as in the original.
     {
@@ -604,7 +604,7 @@ fn inventory_paging_follows_more_items() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn item_labels_match_python() {
     let _lang = i18n_pin::ru();
     let desc = json!({
@@ -1053,7 +1053,7 @@ fn other_texts() -> Vec<(&'static str, String)> {
 /// assembled phrase of the «Steam» tab and the neighbouring modules is word for
 /// word the same as stood in the code before the move (the snapshot was taken from HEAD on 28.09).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let _lang = i18n_pin::ru();
     let before = ru_before();
@@ -1259,7 +1259,7 @@ fn owned_backgrounds_retry_once_and_name_the_gap() {
 /// The «why there are no animated ones» line: silent when there is no gap, and always
 /// says what to do when there is one.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn animated_gap_text_says_what_to_do() {
     use qs::AnimatedGap;
     let _lang = i18n_pin::ru();

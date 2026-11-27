@@ -1,0 +1,94 @@
+{
+  "format_version": 5,
+  "id": "windows-xp",
+  "version": "1.0.0",
+  "name": {
+    "en": "Windows XP style",
+    "ru": "В стиле Windows XP",
+    "de": "Im Stil von Windows XP",
+    "zh_CN": "Windows XP 风格",
+    "fr": "Style Windows XP",
+    "es": "Estilo Windows XP",
+    "uk": "У стилі Windows XP"
+  },
+  "description": {
+    "en": "A Windows XP style look made of community themes: blue Luna windows and panel (the B00merang Windows XP theme), Windows XP icons by B00merang Artwork, ModernXP cursors, and one bottom panel with a Start menu, a Show Desktop button, the window list, the notification area and the clock. The themes are downloaded from their authors' pages on your computer, and the menu button icon comes from the downloaded icon set. Rexon itself contains no Windows logos or wallpapers and installs no Microsoft fonts. Rexon is not made by Microsoft and is not affiliated with it.",
+    "ru": "Вид в стиле Windows XP из тем сообщества: синие окна и панель Luna (тема B00merang Windows XP), значки Windows XP от B00merang Artwork, курсоры ModernXP и одна нижняя панель с меню «Пуск», кнопкой «Показать рабочий стол», списком окон, областью уведомлений и часами. Темы скачиваются со страниц их авторов на вашем компьютере, значок кнопки меню берётся из скачанного набора значков. Сам Rexon логотипов и обоев Windows не содержит и шрифты Microsoft не ставит. Rexon сделан не Microsoft и с ней не связан.",
+    "de": "Ein Look im Stil von Windows XP aus Themen der Community: blaue Luna-Fenster und -Leiste (das Thema B00merang Windows XP), Windows-XP-Symbole von B00merang Artwork, ModernXP-Mauszeiger und eine untere Leiste mit Startmenü, einer Schaltfläche „Desktop anzeigen“, der Fensterliste, dem Benachrichtigungsbereich und der Uhr. Die Themen werden auf Ihrem Rechner von den Seiten ihrer Autoren heruntergeladen, das Symbol der Menüschaltfläche stammt aus dem heruntergeladenen Symbolsatz. Rexon selbst enthält keine Windows-Logos oder -Hintergrundbilder und installiert keine Microsoft-Schriften. Rexon stammt nicht von Microsoft und steht in keiner Verbindung zu Microsoft.",
+    "zh_CN": "由社区主题组成的 Windows XP 风格外观：蓝色 Luna 窗口和面板（B00merang Windows XP 主题）、B00merang Artwork 的 Windows XP 图标、ModernXP 光标，以及一个底部面板，包含“开始”菜单、“显示桌面”按钮、窗口列表、通知区域和时钟。这些主题会在你的电脑上从作者的页面下载，菜单按钮的图标来自下载的图标集。Rexon 本身不包含 Windows 标志或壁纸，也不安装 Microsoft 字体。Rexon 并非 Microsoft 出品，与其没有任何关联。",
+    "fr": "Une apparence dans le style de Windows XP faite de thèmes de la communauté : fenêtres et panneau bleus Luna (le thème B00merang Windows XP), icônes Windows XP de B00merang Artwork, curseurs ModernXP et un seul panneau en bas avec un menu Démarrer, un bouton « Afficher le bureau », la liste des fenêtres, la zone de notification et l'horloge. Les thèmes sont téléchargés sur votre ordinateur depuis les pages de leurs auteurs, et l'icône du bouton de menu vient du jeu d'icônes téléchargé. Rexon lui-même ne contient aucun logo ni fond d'écran Windows et n'installe aucune police Microsoft. Rexon n'est pas fait par Microsoft et n'y est pas affilié.",
+    "es": "Un aspecto al estilo de Windows XP hecho con temas de la comunidad: ventanas y panel azules Luna (el tema B00merang Windows XP), iconos de Windows XP de B00merang Artwork, cursores ModernXP y un único panel inferior con menú Inicio, un botón «Mostrar escritorio», la lista de ventanas, el área de notificación y el reloj. Los temas se descargan en tu ordenador desde las páginas de sus autores, y el icono del botón del menú procede del conjunto de iconos descargado. Rexon no contiene logotipos ni fondos de pantalla de Windows y no instala tipos de letra de Microsoft. Rexon no está hecho por Microsoft ni está afiliado a ella.",
+    "uk": "Вигляд у стилі Windows XP із тем спільноти: сині вікна й панель Luna (тема B00merang Windows XP), піктограми Windows XP від B00merang Artwork, курсори ModernXP і одна нижня панель із меню «Пуск», кнопкою «Показати стільницю», списком вікон, областю сповіщень і годинником. Теми завантажуються зі сторінок їхніх авторів на вашому комп'ютері, піктограма кнопки меню береться із завантаженого набору піктограм. Сам Rexon не містить логотипів і шпалер Windows і не встановлює шрифти Microsoft. Rexon зроблено не Microsoft, і він із нею не пов'язаний."
+  },
+  "authors": [{"name": "Wehrwolfmann"}],
+  "license": "Apache-2.0",
+  "tags": ["distro-look", "light", "classic"],
+  "sources": [
+    {
+      "what": "Windows XP themes by B00merang: the Luna GTK, Metacity and xfwm4 parts",
+      "id": "xp-theme",
+      "url": "https://github.com/B00merang-Project/Windows-XP.git",
+      "rev": "7637830906823af40a3cd7e7079be753d8b7d679",
+      "author": "B00merang Project",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "what": "Windows XP icons by B00merang Artwork",
+      "id": "Windows-XP",
+      "url": "https://github.com/B00merang-Artwork/Windows-XP.git",
+      "rev": "24e95ad2b12c55dd11883ee7066525527d944039",
+      "author": "B00merang Artwork",
+      "license": "GPL-2.0-only"
+    },
+    {
+      "what": "ModernXP cursors (release “final”)",
+      "id": "modernxp",
+      "url": "https://github.com/na0miluv/modernXP-cursor-theme/releases/download/final/ModernXP.tar.gz",
+      "sha256": "5b439d1b838f19b667d565f9bc7c5e435118a7ef60cb2975f4695ce216b6be03",
+      "author": "na0miluv",
+      "license": "GPL-3.0-only"
+    }
+  ],
+  "items": [
+    {
+      "kind": "gtk-theme",
+      "native": {"gtk": "sources/xp-theme/Windows XP Luna"}
+    },
+    {
+      "kind": "window-decoration",
+      "native": {
+        "metacity-1": "sources/xp-theme/Windows XP Luna",
+        "xfwm4": "sources/xp-theme/Windows XP Luna",
+        "gtk-ssd": "sources/xp-theme/Windows XP Luna"
+      },
+      "required": false
+    },
+    {
+      "kind": "icons",
+      "native": {"freedesktop": "sources/Windows-XP"},
+      "required": false
+    },
+    {
+      "kind": "cursors",
+      "native": {"freedesktop": "sources/modernxp/ModernXP"},
+      "required": false
+    },
+    {
+      "kind": "panel-layout",
+      "model": "native/desktop-model.json",
+      "required": false
+    },
+    {
+      "kind": "behaviour",
+      "model": "native/desktop-model.json",
+      "required": false
+    }
+  ],
+  "requires": {
+    "packages": [
+      {"role": "mate-menu", "for": ["panel-layout"], "consumers": ["mate-panel"], "required": false,
+       "arch": ["mate-menu"], "fedora": ["mate-menu"], "debian": ["mate-menu"],
+       "fallback": ["aur"], "aur": ["mate-menu"]}
+    ]
+  }
+}

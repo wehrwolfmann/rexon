@@ -1,25 +1,26 @@
-Тема: «О программе» — версия вендорного интерфейса, а не приложения
+Subject: «About» — the version of the vendored interface, not of the application
 
-Починка переноса, не доработка.
+A porting fix, not a feature.
 
-`Qt.application.version` у апстрима — версия ЕГО приложения, то есть
-интерфейса waywallen. Страницу у нас показывает чужое приложение со своей
-версией (и `Qt.application.version` там пуст, отчего строка читалась как
-«Версия»). Берём версию вендорного интерфейса — тег `ui/UPSTREAM_TAG`,
-который Rexon выставляет на `W.App.uiVersion` (`rust/rexon-gui/src/we_app.rs`,
-разбор тега — `rexon_core::qml_modules::ui_version`); общее свойство
-приложения не подменяем.
+Upstream's `Qt.application.version` is the version of ITS application, i.e.
+of the waywallen interface. Here the page is shown by another application
+with its own version (and `Qt.application.version` is empty there, so the
+line read as «Версия»). We take the version of the vendored interface — the
+tag `ui/UPSTREAM_TAG`, which Rexon exposes as `W.App.uiVersion`
+(`rust/rexon-gui/src/we_app.rs`, the tag is parsed by
+`rexon_core::qml_modules::ui_version`); the application-wide property is not
+replaced.
 
-v0.5.0: апстрим добавил вторую строку «Daemon version %1» — видна, когда
-версия демона отличается от `Qt.application.version`. Прежний вид патча
-(строка 1 = версия демона) показал бы версию дважды, поэтому обе ссылки на
-`Qt.application.version` заменены одним свойством: строка 1 — интерфейс,
-строка 2 — демон при расхождении (у Rexon реальный случай: системный демон
-старее или новее вшитого QML).
+v0.5.0: upstream added a second line «Daemon version %1» — visible when the
+daemon version differs from `Qt.application.version`. The previous form of
+the patch (line 1 = daemon version) would have shown the version twice, so
+both references to `Qt.application.version` are replaced with one property:
+line 1 — the interface, line 2 — the daemon when they differ (a real case
+for Rexon: the system daemon is older or newer than the embedded QML).
 
-Логотип: с 19.10.2026 Rexon кладёт его в свои ресурсы по адресу апстрима
-(`rust/rexon-gui/waywallen_assets.qrc`), правка разметки для него не нужна.
-Имя файла патча оставлено прежним.
+Logo: since 19.10.2026 Rexon puts it into its own resources at the upstream
+address (`rust/rexon-gui/waywallen_assets.qrc`), no markup edit is needed for
+it. The patch file name is kept as before.
 ---
 diff --git a/ui/qml/page/AboutPage.qml b/ui/qml/page/AboutPage.qml
 index 2a01c6f..adbc7be 100644
@@ -30,14 +31,14 @@ index 2a01c6f..adbc7be 100644
          MD.Text {
              Layout.alignment: Qt.AlignHCenter
 -            text: qsTr("Version %1").arg(Qt.application.version)
-+            // ПРАВКА REXON (починка при переносе, не доработка): у апстрима
-+            // здесь `Qt.application.version` — версия ПРИЛОЖЕНИЯ, то есть его
-+            // интерфейса. Внутри Rexon страницу показывает чужое приложение
-+            // со своей версией (`Qt.application.version` у нас пуст), поэтому
-+            // берём версию ВЕНДОРНОГО интерфейса — тег из `ui/UPSTREAM_TAG`,
-+            // который Rexon выставляет на `W.App.uiVersion`. Смысл тот же,
-+            // что у апстрима: строка 1 — интерфейс, строка 2 — демон, если
-+            // его версия другая.
++            // REXON EDIT (a porting fix, not a feature): upstream has
++            // `Qt.application.version` here — the APPLICATION version, i.e. of its
++            // interface. Inside Rexon the page is shown by another application
++            // with its own version (`Qt.application.version` is empty for us), so
++            // we take the version of the VENDORED interface — the tag from `ui/UPSTREAM_TAG`,
++            // which Rexon exposes as `W.App.uiVersion`. The meaning is the same
++            // as upstream: line 1 — the interface, line 2 — the daemon, if
++            // its version differs.
 +            text: qsTr("Version %1").arg(W.App.uiVersion)
              typescale: MD.Token.typescale.body_medium
              color: MD.Token.color.on_surface_variant

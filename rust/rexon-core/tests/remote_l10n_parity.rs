@@ -865,7 +865,7 @@ fn lrelease() -> String {
 /// nothing to fake the catalog builder with — that is the whole question.
 /// Skipped with a reason under `cargo test-core-isolated`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий lrelease")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real lrelease")]
 fn committed_qm_is_compiled_from_the_vendored_catalog() {
     // The catalog shipped in the build must be compiled from THE SAME vendored
     // `.ts` that lies in the tree: otherwise a vendor update silently leaves the

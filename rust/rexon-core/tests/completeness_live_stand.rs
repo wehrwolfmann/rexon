@@ -126,8 +126,8 @@ impl dx::DeOpsIo for SpyIo {
     ) -> Option<LogTail> {
         self.inner.tail_log(path, kind, emit)
     }
-    fn plasma_backup(&self, reason: &str) -> Result<(bool, String), String> {
-        self.inner.plasma_backup(reason)
+    fn panel_snapshots(&self, reason: &str) -> Vec<(String, Result<(), String>)> {
+        self.inner.panel_snapshots(reason)
     }
     fn app_defaults_switch(&self, de_id: &str) -> (bool, Vec<String>) {
         self.inner.app_defaults_switch(de_id)
@@ -180,7 +180,7 @@ fn read_log(path: &Path) -> Vec<String> {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn live_completeness_on_fake_pkexec_and_pacman() {
     // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();

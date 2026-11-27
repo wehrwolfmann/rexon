@@ -48,9 +48,10 @@ applied look gets a **↩️ Put Back as It Was** button.
 - **⚔️ Compare Desktops** — a table of all desktops side by side;
 - **🔧 Check My Desktop** — the same as "Check / Repair", but for the desktop
   you are using right now;
-- **🛟 Save Panel** and **↩️ Restore Panel** — a copy of your panel settings,
-  in case experimenting with themes breaks the panel. These buttons exist
-  only on KDE Plasma, MATE and XFCE.
+- **🛟 Save Panel** and **↩️ Restore Panel** — a copy of the panel, applets
+  and keyboard shortcuts of the desktop you are using, in case experimenting
+  with themes breaks it. "Restore Panel" brings back the newest copy; all the
+  copies are in **Settings → 🛡️ Panel Protection**.
 
 ![The card of an installed desktop with Switch, Check / Repair and Remove](../images/desktops-installed.png)
 
@@ -157,9 +158,9 @@ can be expanded. The "Quick pairs" buttons put common matchups side by side
 - **"Desktop Not Detected".** Rexon didn't recognise the desktop you are
   using. Select it in the list on the left and click **🔧 Check / Repair** on
   its card.
-- **The KDE Plasma panel is gone after switching.** Before switching away
-  from Plasma, Rexon saves its panel; you can bring it back in **Settings →
-  🛡️ KDE Plasma Panel Protection**. If the new desktop took over your default
+- **A panel broke after installing or switching.** Before installing and
+  switching, Rexon saves the panels of all installed desktops; you can bring
+  the one you need back in **Settings → 🛡️ Panel Protection**. If the new desktop took over your default
   browser or player, look at **Settings → 🔒 Default App Protection**.
 - **You need to roll back the whole system.** Rexon itself doesn't take
   system snapshots. If you have snapper with snap-pac set up (common on

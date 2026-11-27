@@ -116,7 +116,7 @@ fn run_duration_by_meaning_of_command() {
     // Building from source.
     assert_eq!(
         utils::run_duration(&a(&[
-            "yay", "-S", "--needed", "--noconfirm", "mate-tweak", "brisk-menu"
+            "yay", "-S", "--needed", "--noconfirm", "mate-tweak", "mate-menu"
         ])),
         Build
     );
@@ -328,7 +328,7 @@ fn config_home_never_returns_empty() {
 // real breakage. The technique is explained in `rexon-core/Cargo.toml`.
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: разрешает настоящие бинари в PATH эталона")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: resolves real binaries in the golden PATH")]
 fn which_matches_shutil_which() {
     let g = fx();
     let path = golden_path(&g);
@@ -342,7 +342,7 @@ fn which_matches_shutil_which() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: разрешает настоящие бинари, в т.ч. /bin/sh")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: resolves real binaries, including /bin/sh")]
 fn which_honours_path_env_quirks() {
     let g = fx();
     for case in g["which_path_env"].as_array().unwrap() {
@@ -387,7 +387,7 @@ fn tool_tables_match_original() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: ищет настоящие бинари в PATH эталона")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: looks up real binaries in the golden PATH")]
 fn resolve_tool_matches_original() {
     let g = fx();
     let path = golden_path(&g);
@@ -401,7 +401,7 @@ fn resolve_tool_matches_original() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает argv вокруг настоящего бинаря")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds argv around the real binary")]
 fn tool_argv_matches_original() {
     let g = fx();
     let path = golden_path(&g);
@@ -458,7 +458,7 @@ fn tool_argv_matches_original() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: подставляет настоящий путь бинаря")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: substitutes the real binary path")]
 fn resolved_argv_matches_original() {
     let g = fx();
     let path = golden_path(&g);
@@ -530,7 +530,7 @@ fn lookup_tool_finds_binary_outside_path_by_glob() {
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn tool_package_names_match_original() {
     // The reference is the original's Russian hints, checked via po/ru.po.
     let _lang = i18n_pin::ru();
@@ -584,7 +584,7 @@ fn english_package_hints_have_no_russian() {
 
 /// Choosing the sound player: by WHAT is installed and WHAT it can do.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn sound_player_selection() {
     // The reference is the original's Russian hints, checked via po/ru.po.
     let _lang = i18n_pin::ru();
@@ -641,7 +641,7 @@ fn sound_player_selection() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn missing_tool_message_matches_original() {
     // The reference is the original's Russian hints, checked via po/ru.po.
     let _lang = i18n_pin::ru();
@@ -782,7 +782,7 @@ fn notify_argv_matches_original() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: выбирает настоящий dbus-инструмент")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: picks the real dbus tool")]
 fn dbus_tool_preference_matches_original() {
     // The reference is the original's Russian text, checked via po/ru.po.
     let _lang = i18n_pin::ru();
@@ -906,7 +906,7 @@ fn run_plan_always_closes_stdin() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: подставляет настоящий путь бинаря")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: substitutes the real binary path")]
 fn run_plan_substitutes_tool_synonyms() {
     // Binary name substitution also applies to argv plans built by the core: the
     // plan names the canonical `kwriteconfig6`, while on Kubuntu 24.04 only
@@ -937,7 +937,7 @@ fn decode_text_matches_python_text_mode() {
 /// Parsed output: the child sees the C locale and does NOT see `LANGUAGE`,
 /// which the Rexon window sets to its language (`cli::qt_ui_language_env`).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий /bin/sh")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real /bin/sh")]
 fn parsed_output_has_no_ui_language() {
     let mut cmd = std::process::Command::new("/bin/sh");
     cmd.args(["-c", "printf '%s|%s|%s' \"${LANGUAGE-нет}\" \"$LC_ALL\" \"$LANG\""])
@@ -949,7 +949,7 @@ fn parsed_output_has_no_ui_language() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящие /bin/sh и /bin/echo")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real /bin/sh and /bin/echo")]
 fn run_reports_every_outcome_apart() {
     // The reference is the original's Russian texts: the language is pinned
     // (without the lock the check went red or green depending on neighbouring threads).
@@ -987,7 +987,7 @@ fn run_reports_every_outcome_apart() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий /bin/sh")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real /bin/sh")]
 fn run_delivers_muted_locale_to_the_child() {
     // The yardstick is not «we put the variable into the plan» but «the child saw it».
     let mut s = spec(&["/bin/sh", "-c", "echo $LC_ALL/$LANG"]);
@@ -1005,7 +1005,7 @@ fn run_delivers_muted_locale_to_the_child() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий /bin/sh")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real /bin/sh")]
 fn run_writes_output_to_file_for_live_progress() {
     // This is how a long install goes: output into a file, the live progress is
     // read from it separately. stderr is merged there too — otherwise half of the
@@ -1039,7 +1039,7 @@ fn run_writes_output_to_file_for_live_progress() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий /bin/sh")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: runs the real /bin/sh")]
 fn run_merges_stderr_into_stdout_when_asked() {
     let mut s = spec(&["/bin/sh", "-c", "echo раз; echo два >&2"]);
     s.output = utils::RunOutput::Capture;

@@ -623,8 +623,20 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "lightdm-gtk-greeter",
             ]),
         ],
+        // ⛔ No `brisk-menu`: abandoned upstream, removed on 24.11.2026
+        // (Wehrwolfmann) — the MATE Menu takes its place (`mate_panel::BRISK_MENU_IID`).
+        // `mate-menu` itself is not here: it is built in its own transaction
+        // (`system_plan::MATE_EXTRA_PACKAGES`), so that its failure does not take
+        // down the rest of this list.
+        // ⏸ No `mate-layouts` (AUR, FreaxMATE/mate-layouts 0.1.1) for now
+        // (Wehrwolfmann, 25.11.2026): its GSettings schema is broken — a `<key>`
+        // straight inside `<schemalist>` without a `<schema>` — so
+        // glib-compile-schemas complains on every package transaction and the
+        // package's only setting does not work. Fix proposed upstream (PR #6);
+        // bring the package back once a fixed release is in the AUR. Guarded by
+        // `system_parity::de_package_sets_do_not_pull_foreign_desktops`.
         aur: &[
-            "mate-tweak", "brisk-menu", "mate-indicator-applet",
+            "mate-tweak", "mate-indicator-applet",
             "ayatana-indicator-application", "ayatana-indicator-session",
             "ayatana-indicator-datetime", "ayatana-indicator-sound",
             "ayatana-indicator-notifications",
@@ -2592,11 +2604,31 @@ pub fn session_aur_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -
     }
 }
 
-/// What of the Wayland add-on is removed together with the desktop.
+/// Session bundles that earlier releases installed for a desktop which no longer
+/// has a Wayland choice: they are still removed together with the desktop. A
+/// bundle holds the desktop's packages as a dependency, so left behind it would
+/// make `pacman -Rns` refuse the whole removal (and keep a dead entry on the
+/// login screen). MATE on Wayfire (`mate-wayland-session`, AUR) was installable
+/// until 16.11.2026; the removal plan skips it where it is not installed.
+pub const LEGACY_SESSION_REMOVAL: &[(&str, PkgFamily, &[&str])] =
+    &[("mate", PkgFamily::Arch, &["mate-wayland-session"])];
+
+/// What of the Wayland add-on is removed together with the desktop (and the
+/// bundles of [`LEGACY_SESSION_REMOVAL`]).
 pub fn session_removal_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
-    session_variants(de_id, family)
+    let mut out: Vec<String> = session_variants(de_id, family)
         .map(|v| v.remove_with_desktop.iter().map(|p| p.to_string()).collect())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    for (id, fam, pkgs) in LEGACY_SESSION_REMOVAL {
+        if *id == de_id && *fam == family {
+            for p in *pkgs {
+                if !out.iter().any(|o| o == p) {
+                    out.push(p.to_string());
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Whether the desktop's Wayland session can already be entered: the session

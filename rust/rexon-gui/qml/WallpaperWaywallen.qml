@@ -10,6 +10,9 @@
 // from the same `org.waywallen.kde` package that Rexon ships for Plasma).
 // It connects to the daemon socket by itself, registers a display and
 // shows frames; based on it the daemon decides what to draw and where.
+// Since 25.11.2026 the element comes first from the `waywallen-display`
+// distribution package (the `Waywallen.Display` module, no Plasma needed),
+// through a wrapper the host writes; the plasmoid is the fallback.
 //
 // The windows are put into the background by the same X11 executor as for
 // video and web (`WallpaperPlacement`, rule #12): the "desktop" type and
@@ -17,10 +20,11 @@
 // relative to the desktop icons window after showing and by a
 // reconciliation every 2 s.
 //
-// The output module lies in a directory whose name differs from its URI,
-// so it is loaded through the package wrapper (`PluginDisplay.qml`) by a
-// path on disk rather than by an import: the path is found by the host
-// (`waywallen_kde_plugin::find_runtime_so`).
+// The bundled output module lies in a directory whose name differs from its
+// URI, so it is loaded through the package wrapper (`PluginDisplay.qml`) by a
+// path on disk rather than by an import; the packaged module is imported by
+// name from the host's own wrapper. The path is chosen by the host
+// (`waywallen_kde_plugin::pick_display_item`).
 pragma ComponentBehavior: Bound
 
 import QtQml
@@ -32,8 +36,8 @@ QtObject {
     id: root
 
     // ── Initial properties from the host ──────────────────────────────
-    /// Wrapper of the output element (`…/Plugin/PluginDisplay.qml`) — the file
-    /// address.
+    /// Wrapper of the output element (`…/Plugin/PluginDisplay.qml`, or the host's
+    /// wrapper of the packaged module) — the file address.
     property url displayItemUrl
     /// Output socket of the daemon (`--socket` from the daemon). Empty means
     /// the element finds it by itself (the daemon's bus property,

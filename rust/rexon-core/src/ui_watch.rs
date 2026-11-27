@@ -1,29 +1,31 @@
-//! Сторож главного потока окна и журнал действий человека.
+//! Watchdog of the window's main thread and the journal of the person's actions.
 //!
-//! ЗАЧЕМ. Живой случай 15.11.2026: окно Rexon зависло, Cinnamon показал
-//! «приложение не отвечает — подождать/закрыть», владелец нажал «Закрыть»,
-//! и процесс был убит (SIGKILL). В `rexon.log` об этом не нашлось НИЧЕГО:
-//! последняя запись — за две минуты до, ни что делал человек, ни где стоял
-//! главный поток. SIGKILL не перехватить, поэтому улика обязана лечь в
-//! журнал ЗАРАНЕЕ — пока процесс ещё жив, но уже не отвечает:
+//! WHY. A live case of 15.11.2026: the Rexon window hung, Cinnamon showed
+//! «the application is not responding — wait/close», the owner pressed «Close»,
+//! and the process was killed (SIGKILL). `rexon.log` held NOTHING about it:
+//! the last entry was two minutes before, neither what the person was doing nor
+//! where the main thread stood. SIGKILL cannot be caught, so the evidence must
+//! land in the journal IN ADVANCE — while the process is still alive but no
+//! longer responding:
 //!
-//!   * журнал действий: каждое нажатие кнопки, переключатель, выбор в
-//!     списке, пункт меню и смена раздела — одна строка INFO; действие,
-//!     которое держало главный поток дольше [`SLOW_ACTION`], — вторая
-//!     строка с длительностью;
-//!   * сторож: отдельный поток смотрит на пульс цикла событий (таймер Qt
-//!     на главном потоке бьёт каждые [`HEARTBEAT_MS`] мс). Пульса нет
-//!     дольше [`STALL_AFTER`] — WARN «окно не отвечает» с текущим
-//!     действием и стеком главного потока; дольше [`SEVERE_AFTER`] — одна
-//!     строка ERROR; пульс вернулся — INFO «окно снова отвечает, висело N с».
-//!     На одно зависание — не больше трёх строк.
+//!   * the action journal: every button press, toggle, choice in a list,
+//!     menu item and section change is one INFO line; an action that held
+//!     the main thread longer than [`SLOW_ACTION`] gets a second line with
+//!     the duration;
+//!   * the watchdog: a separate thread watches the event loop's heartbeat (a
+//!     Qt timer on the main thread beats every [`HEARTBEAT_MS`] ms). No
+//!     heartbeat for longer than [`STALL_AFTER`] — WARN «window not responding»
+//!     with the current action and the main thread's stack; longer than
+//!     [`SEVERE_AFTER`] — one ERROR line; the heartbeat is back — INFO
+//!     «window responds again, hung for N s». At most three lines per hang.
 //!
-//! Строки журнала пишутся сразу в файл (`applog` пишет без буфера, вызовом
-//! `write`): данные уже в ядре системы и переживают SIGKILL процесса.
+//! Journal lines go straight to the file (`applog` writes without a buffer,
+//! with a `write` call): the data is already in the kernel and survives a
+//! SIGKILL of the process.
 //!
-//! Qt здесь нет: таймер пульса и обход предков кнопки живут в `rexon-gui`
-//! (`action_journal.rs`), а решения, тексты и сторож — здесь, под тестами
-//! без Qt.
+//! There is no Qt here: the heartbeat timer and walking the button's ancestors
+//! live in `rexon-gui` (`action_journal.rs`), while the decisions, texts and
+//! the watchdog are here, under tests without Qt.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -31,24 +33,24 @@ use std::time::{Duration, Instant};
 
 use crate::applog::{self, Level};
 
-/// Область строк журнала.
+/// Target of the journal lines.
 pub const AREA: &str = "ui";
 
-/// Как часто главный поток бьёт пульс.
+/// How often the main thread beats the heartbeat.
 pub const HEARTBEAT_MS: u64 = 250;
-/// Как часто сторож смотрит на пульс.
+/// How often the watchdog looks at the heartbeat.
 pub const POLL: Duration = Duration::from_millis(250);
-/// Пульса нет дольше — окно «не отвечает» (WARN).
+/// No heartbeat for longer than this — the window is «not responding» (WARN).
 pub const STALL_AFTER: Duration = Duration::from_secs(2);
-/// Пульса нет дольше — одна строка ERROR.
+/// No heartbeat for longer than this — one ERROR line.
 pub const SEVERE_AFTER: Duration = Duration::from_secs(10);
-/// Действие держало главный поток дольше — строка с длительностью.
+/// An action held the main thread longer than this — a line with the duration.
 pub const SLOW_ACTION: Duration = Duration::from_millis(500);
-/// Самая длинная подпись в строке журнала, знаков.
+/// The longest label in a journal line, in characters.
 const LABEL_MAX: usize = 80;
 
 // ============================================================================
-// Журнал действий
+// Action journal
 // ============================================================================
 
 #[derive(Clone)]
@@ -60,13 +62,13 @@ struct Action {
 
 #[derive(Default)]
 struct Activity {
-    /// Открытый раздел окна (идентификатор `qt_main::SECTIONS`).
+    /// The open window section (an identifier from `qt_main::SECTIONS`).
     section: String,
-    /// Действие, обработчик которого ещё не вернул управление циклу событий.
+    /// An action whose handler has not yet returned control to the event loop.
     current: Option<Action>,
-    /// Последнее начатое действие — даже если уже закончилось.
+    /// The last started action — even if it has already finished.
     last: Option<Action>,
-    /// Последнее записанное значение каждого поля ввода (место + подсказка).
+    /// The last recorded value of each input field (place + placeholder).
     entered: std::collections::HashMap<String, String>,
 }
 
@@ -78,9 +80,9 @@ fn with_activity<R>(f: impl FnOnce(&mut Activity) -> R) -> R {
     f(guard.get_or_insert_with(Activity::default))
 }
 
-/// Подпись в строку журнала: одна строка, без лишних пробелов, не длиннее
-/// [`LABEL_MAX`] знаков. Пустая — «(без подписи)»: кнопка-значок тоже
-/// действие, и пустые кавычки читались бы как ошибка журнала.
+/// A label for a journal line: one line, no extra spaces, no longer than
+/// [`LABEL_MAX`] characters. An empty one becomes «(без подписи)»: an icon
+/// button is an action too, and empty quotes would read as a journal error.
 pub fn clean_label(label: &str) -> String {
     let one: String = label.split_whitespace().collect::<Vec<_>>().join(" ");
     if one.is_empty() {
@@ -94,16 +96,16 @@ pub fn clean_label(label: &str) -> String {
     }
 }
 
-/// Место кнопки в окне по цепочке её предков.
+/// A button's place in the window, from the chain of its ancestors.
 ///
-/// `chain` — имена классов предков от ближнего к дальнему через `/`, как
-/// их отдаёт Qt (`ScreenEffectsSection_QMLTYPE_42/QQuickColumnLayout/…`).
-/// Берутся только компоненты, объявленные НАШИМИ файлами QML (у них
-/// приписка `_QMLTYPE_N` либо `_QML_N`), кроме общих контролов `Rexon*` и
-/// корня окна; остаются два ближних, от внешнего к внутреннему. Впереди —
-/// открытый раздел окна.
+/// `chain` is the class names of the ancestors from nearest to farthest,
+/// separated by `/`, as Qt gives them (`ScreenEffectsSection_QMLTYPE_42/QQuickColumnLayout/…`).
+/// Only components declared by OUR QML files are taken (they carry the
+/// suffix `_QMLTYPE_N` or `_QML_N`), except the shared `Rexon*` controls and
+/// the window root; the two nearest remain, from outer to inner. In front is
+/// the open window section.
 ///
-/// Пример: раздел `appearance`, цепочка
+/// Example: section `appearance`, chain
 /// `RexonButton_QMLTYPE_3/QQuickRowLayout/ScreenEffectsSection_QMLTYPE_9/AppearancePage_QMLTYPE_2/MainWindow_QMLTYPE_0`
 /// → `appearance ▸ AppearancePage ▸ ScreenEffectsSection`.
 pub fn area_from_chain(section: &str, chain: &str) -> String {
@@ -134,21 +136,21 @@ pub fn area_from_chain(section: &str, chain: &str) -> String {
     }
 }
 
-/// Что сделал человек — тело строки журнала.
+/// What the person did — the body of the journal line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Deed<'a> {
-    /// Нажал кнопку с подписью.
+    /// Pressed a button with a label.
     Click { label: &'a str },
-    /// Переключил флажок с подписью.
+    /// Toggled a checkbox with a label.
     Toggle { label: &'a str, on: bool },
-    /// Выбрал значение в выпадающем списке.
+    /// Picked a value in a drop-down list.
     Choose { value: &'a str },
-    /// Закончил ввод в поле с подсказкой `field`: `value` — введённое
-    /// (поле пароля сюда не попадает вовсе, см. [`note_entered`]).
+    /// Finished typing in the field with placeholder `field`: `value` is what was
+    /// typed (a password field never gets here at all, see [`note_entered`]).
     Entered { field: &'a str, value: &'a str },
 }
 
-/// Строка журнала о действии: `действие: <место> → «<подпись>»…`.
+/// A journal line about an action: `действие: <place> → «<label>»…`.
 pub fn deed_line(area: &str, deed: &Deed) -> String {
     match deed {
         Deed::Click { label } => format!("действие: {area} → «{}»", clean_label(label)),
@@ -168,18 +170,18 @@ pub fn deed_line(area: &str, deed: &Deed) -> String {
     }
 }
 
-/// Строка о долгом действии: `действие заняло 1234 мс: <что>`.
+/// A line about a long action: `действие заняло 1234 мс: <what>`.
 pub fn slow_line(what: &str, took: Duration) -> String {
     format!("действие заняло {} мс: {what}", took.as_millis())
 }
 
-/// Строка о смене раздела окна.
+/// A line about a change of the window section.
 pub fn section_line(section: &str) -> String {
     format!("раздел: {}", clean_label(section))
 }
 
-/// Открыт раздел `section` — строка журнала и место для следующих строк.
-/// Повтор того же раздела не пишется.
+/// Section `section` is open — a journal line and the place for the next
+/// lines. A repeat of the same section is not written.
 pub fn note_section(section: &str) {
     let changed = with_activity(|a| {
         if a.section == section {
@@ -193,14 +195,14 @@ pub fn note_section(section: &str) {
     }
 }
 
-/// Открытый раздел окна (пусто — ещё не открывался).
+/// The open window section (empty — none opened yet).
 pub fn current_section() -> String {
     with_activity(|a| a.section.clone())
 }
 
-/// Человек сделал `deed` в месте `area`: строка журнала, и действие
-/// становится «текущим», пока его обработчик не вернёт управление
-/// ([`finish_deed`]). Ответ — номер для [`finish_deed`].
+/// The person did `deed` in place `area`: a journal line, and the action
+/// becomes «current» until its handler returns control
+/// ([`finish_deed`]). The answer is the number for [`finish_deed`].
 pub fn begin_deed(area: &str, deed: &Deed) -> u64 {
     let what = deed_line(area, deed);
     applog::write(Level::Info, AREA, &what);
@@ -213,8 +215,8 @@ pub fn begin_deed(area: &str, deed: &Deed) -> u64 {
     id
 }
 
-/// Обработчик действия `id` вернул управление циклу событий. Держал он
-/// главный поток дольше [`SLOW_ACTION`] — строка с длительностью.
+/// The handler of action `id` returned control to the event loop. If it held
+/// the main thread longer than [`SLOW_ACTION`] — a line with the duration.
 pub fn finish_deed(id: u64) {
     let done = with_activity(|a| match &a.current {
         Some(c) if c.id == id => a.current.take(),
@@ -229,7 +231,7 @@ pub fn finish_deed(id: u64) {
     }
 }
 
-/// Что сейчас делает окно — для строки сторожа.
+/// What the window is doing right now — for the watchdog's line.
 pub fn activity_report() -> String {
     with_activity(|a| {
         let now = Instant::now();
@@ -251,30 +253,30 @@ pub fn activity_report() -> String {
 }
 
 // ============================================================================
-// Ввод с мыши и клавиатуры: что за действие
+// Mouse and keyboard input: which action it is
 // ============================================================================
 //
-// Нажатия ловит ОДИН фильтр событий приложения (`rexon-gui`,
-// `action_journal.rs` + шим `rexon_install_input_journal`): кнопки,
-// флажки, пункты меню и выпадающих списков, карточки магазинов с
-// `TapHandler`/`MouseArea` — всё, что взяло нажатие мыши (или Пробел/Enter
-// на кнопке в фокусе). Шим ничего не решает: он отдаёт цепочку «кто взял
-// нажатие → его предки» строками, а что из этого действие и как его
-// назвать — решается здесь.
+// Presses are caught by ONE application event filter (`rexon-gui`,
+// `action_journal.rs` + the shim `rexon_install_input_journal`): buttons,
+// checkboxes, menu and drop-down items, store cards with
+// `TapHandler`/`MouseArea` — everything that took a mouse press (or
+// Space/Enter on a focused button). The shim decides nothing: it hands over
+// the chain «who took the press → its ancestors» as lines, and what of this
+// is an action and how to name it is decided here.
 
-/// Одно звено цепочки от фильтра ввода.
+/// One link of the chain from the input filter.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InputItem {
-    /// Имя класса Qt (`RexonButton_QMLTYPE_3`, `QQuickTapHandler`).
+    /// The Qt class name (`RexonButton_QMLTYPE_3`, `QQuickTapHandler`).
     pub class: String,
-    /// Признаки (буквы), см. [`parse_input_chain`].
+    /// Flags (letters), see [`parse_input_chain`].
     pub flags: String,
     /// `objectName`.
     pub name: String,
-    /// Своя подпись (`text`, у списка — `displayText`, у окна — `title`).
-    /// У полей ввода шим её НЕ берёт: там может быть пароль.
+    /// Its own label (`text`, for a list — `displayText`, for a window — `title`).
+    /// For input fields the shim does NOT take it: it may be a password.
     pub text: String,
-    /// Первая надпись (`Text`) внутри — для карточек и кнопок-значков.
+    /// The first caption (`Text`) inside — for cards and icon buttons.
     pub inner: String,
 }
 
@@ -284,14 +286,14 @@ impl InputItem {
     }
 }
 
-/// Разбор описания от шима: звено на строку, от взявшего нажатие к дальним
-/// предкам; поля через табуляцию — класс, признаки, `objectName`, подпись,
-/// надпись внутри. Признаки: `b` — кнопка (`AbstractButton`, в том числе
-/// пункт меню и строка списка), `k` — переключаемая, `K` — сейчас включена,
-/// `r` — радиокнопка, `x` — выпадающий список, `p` — всплывающее окно,
-/// `i` — поле ввода, `h` — обработчик указателя (`TapHandler`), `m` —
-/// `MouseArea`, `f` — прокручиваемая область, `s` — ползунок/полоса
-/// прокрутки, `t` — вкладка `TabButton`.
+/// Parses the description from the shim: one link per line, from the one that
+/// took the press to the far ancestors; fields separated by tabs — class,
+/// flags, `objectName`, label, caption inside. Flags: `b` — button
+/// (`AbstractButton`, including a menu item and a list row), `k` — checkable,
+/// `K` — currently checked, `r` — radio button, `x` — drop-down list, `p` —
+/// popup, `i` — input field, `h` — pointer handler (`TapHandler`), `m` —
+/// `MouseArea`, `f` — scrollable area, `s` — slider/scroll bar, `t` — a
+/// `TabButton` tab.
 pub fn parse_input_chain(desc: &str) -> Vec<InputItem> {
     desc.lines()
         .filter(|l| !l.is_empty())
@@ -303,7 +305,7 @@ pub fn parse_input_chain(desc: &str) -> Vec<InputItem> {
         .collect()
 }
 
-/// Действие по нажатию — с владеющими строками (строка журнала — через [`Deed`]).
+/// The action of a press — with owned strings (the journal line goes through [`Deed`]).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputDeed {
     Click(String),
@@ -311,11 +313,11 @@ pub enum InputDeed {
     Choose(String),
 }
 
-/// Что сделал человек этим нажатием; `None` — не действие (прокрутка,
-/// щелчок в поле ввода, открытие выпадающего списка — выбор в нём будет
-/// отдельной строкой, вкладка верхней полосы — её пишет строка «раздел»).
-/// `via_key` — Пробел/Enter на элементе в фокусе: действие только у кнопок.
-/// Ответ — место (см. [`area_from_chain`]) и действие.
+/// What the person did with this press; `None` — not an action (scrolling, a
+/// click in an input field, opening a drop-down list — the choice in it will
+/// be a separate line, a tab of the top bar — the «section» line writes it).
+/// `via_key` — Space/Enter on the focused element: an action only for buttons.
+/// The answer is the place (see [`area_from_chain`]) and the action.
 pub fn deed_from_input(section: &str, items: &[InputItem], via_key: bool) -> Option<(String, InputDeed)> {
     let first = items.first()?;
     if first.has('i') || first.has('f') || first.has('s') || first.has('x') {
@@ -330,7 +332,7 @@ pub fn deed_from_input(section: &str, items: &[InputItem], via_key: bool) -> Opt
     let chain: Vec<&str> = items.iter().map(|i| i.class.as_str()).collect();
     let chain = chain.join("/");
     if first.has('t') && area_from_chain("", &chain) == "окно" {
-        // Вкладка полосы разделов: смену раздела пишет `note_section`.
+        // A tab of the section bar: the section change is written by `note_section`.
         return None;
     }
     let area = area_from_chain(section, &chain);
@@ -340,8 +342,8 @@ pub fn deed_from_input(section: &str, items: &[InputItem], via_key: bool) -> Opt
         .find(|t| !t.trim().is_empty())
         .unwrap_or("")
         .to_string();
-    // Строка всплывающего списка `ComboBox`: выше неё — окно-всплывашка,
-    // ещё выше — сам список.
+    // A row of a `ComboBox` popup list: above it is the popup window, higher
+    // still is the list itself.
     if first.has('b') {
         if let Some(popup) = items.iter().skip(1).position(|i| i.has('p')) {
             if items.iter().skip(2 + popup).any(|i| i.has('x')) {
@@ -356,8 +358,8 @@ pub fn deed_from_input(section: &str, items: &[InputItem], via_key: bool) -> Opt
     Some((area, InputDeed::Click(label)))
 }
 
-/// Нажатие от фильтра ввода: строка журнала и «текущее действие», если это
-/// действие. → номер для [`finish_deed`], 0 — не действие.
+/// A press from the input filter: a journal line and the «current action» if
+/// it is an action. → the number for [`finish_deed`], 0 — not an action.
 pub fn begin_input(desc: &str, via_key: bool) -> u64 {
     let items = parse_input_chain(desc);
     let Some((area, deed)) = deed_from_input(&current_section(), &items, via_key) else {
@@ -371,21 +373,22 @@ pub fn begin_input(desc: &str, via_key: bool) -> u64 {
 }
 
 // ============================================================================
-// Поля ввода
+// Input fields
 // ============================================================================
 //
-// Поле ввода — общий контрол `RexonTextField`: каждое нажатие клавиши
-// журналу не нужно (шум), а последнее введённое — нужно (поиск зависнет —
-// видно, что искали). Поэтому набор только отмечается как «последнее
-// действие» без строки, а строка пишется, когда ввод закончен (Enter или
-// уход фокуса) и значение отличается от прежде записанного.
+// An input field is the shared control `RexonTextField`: the journal does
+// not need every key press (noise), but it does need the last thing typed
+// (if a search hangs, you can see what was searched). So typing is only
+// marked as the «last action» without a line, and a line is written when the
+// input is finished (Enter or focus leaving) and the value differs from the
+// one recorded before.
 //
-// ⛔ Поле пароля (`echoMode` не `Normal`) не пишется НИКАК — ни строки, ни
-// отметки с текстом: QML его текст сюда и не передаёт, а ядро на всякий
-// случай ещё и не смотрит на него.
+// ⛔ A password field (`echoMode` not `Normal`) is NEVER written — neither a
+// line nor a mark with the text: QML does not even pass its text here, and
+// the core, just in case, does not look at it either.
 
-/// Человек набирает текст в поле `field` (подсказка поля) места `area`:
-/// отметка для сторожа, без строки журнала.
+/// The person is typing in field `field` (the field's placeholder) of place
+/// `area`: a mark for the watchdog, without a journal line.
 pub fn note_typing(area: &str, field: &str, value: &str, secret: bool) {
     let what = if secret {
         format!("ввод в поле «{}» ({area}), текст скрыт", clean_label(field))
@@ -396,9 +399,9 @@ pub fn note_typing(area: &str, field: &str, value: &str, secret: bool) {
     with_activity(|a| a.last = Some(Action { id, what, started: Instant::now() }));
 }
 
-/// Ввод в поле закончен. Строка журнала — если значение отличается от
-/// записанного прежде для этого поля (и не пустое при первом разе). Пароль
-/// не пишется. → номер для [`finish_deed`], 0 — строки не было.
+/// Input in the field is finished. A journal line — if the value differs from
+/// the one recorded before for this field (and is not empty the first time).
+/// A password is not written. → the number for [`finish_deed`], 0 — no line.
 pub fn note_entered(area: &str, field: &str, value: &str, secret: bool) -> u64 {
     if secret {
         return 0;
@@ -423,10 +426,10 @@ pub fn note_entered(area: &str, field: &str, value: &str, secret: bool) -> u64 {
 }
 
 // ============================================================================
-// Сторож: решение
+// Watchdog: the decision
 // ============================================================================
 
-/// Пороги сторожа.
+/// The watchdog's thresholds.
 #[derive(Debug, Clone, Copy)]
 pub struct WatchConfig {
     pub stall_after: Duration,
@@ -440,28 +443,28 @@ impl Default for WatchConfig {
     }
 }
 
-/// Что сторож увидел на очередном взгляде.
+/// What the watchdog saw on its latest look.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WatchEvent {
-    /// Пульса нет `silent` — окно не отвечает.
+    /// No heartbeat for `silent` — the window is not responding.
     Stalled { silent: Duration },
-    /// Пульса нет дольше тяжёлого порога.
+    /// No heartbeat for longer than the severe threshold.
     Severe { silent: Duration },
-    /// Пульс вернулся; окно висело `hung`.
+    /// The heartbeat is back; the window hung for `hung`.
     Recovered { hung: Duration },
 }
 
-/// Состояние сторожа между взглядами.
+/// The watchdog's state between looks.
 #[derive(Debug, Default, Clone)]
 pub struct WatchState {
-    /// Отметка последнего пульса, при которой окно повисло.
+    /// The mark of the last heartbeat at which the window hung.
     stalled_at: Option<u64>,
     severe_said: bool,
 }
 
-/// Один взгляд сторожа. `now_ms` и `beat_ms` — миллисекунды от общей
-/// точки отсчёта; `beat_ms == 0` — пульса ещё не было (цикл событий не
-/// запущен), и судить не о чем.
+/// One look of the watchdog. `now_ms` and `beat_ms` are milliseconds from a
+/// common origin; `beat_ms == 0` — there has been no heartbeat yet (the event
+/// loop has not started), and there is nothing to judge.
 pub fn watch_step(state: &mut WatchState, now_ms: u64, beat_ms: u64, cfg: &WatchConfig) -> Option<WatchEvent> {
     if beat_ms == 0 {
         return None;
@@ -477,8 +480,8 @@ pub fn watch_step(state: &mut WatchState, now_ms: u64, beat_ms: u64, cfg: &Watch
             None
         }
         Some(at) if beat_ms != at => {
-            // Новый пульс: зависание кончилось. Висело — от прежнего пульса
-            // до нового (сторож смотрит раз в `poll`, его опоздание не в счёт).
+            // A new heartbeat: the hang is over. It hung from the previous heartbeat to
+            // the new one (the watchdog looks once per `poll`, its lateness does not count).
             state.stalled_at = None;
             state.severe_said = false;
             Some(WatchEvent::Recovered { hung: Duration::from_millis(beat_ms.saturating_sub(at)) })
@@ -493,7 +496,7 @@ pub fn watch_step(state: &mut WatchState, now_ms: u64, beat_ms: u64, cfg: &Watch
     }
 }
 
-/// Строка WARN о зависании.
+/// The WARN line about a hang.
 pub fn stall_line(silent: Duration, activity: &str, stack: Option<&str>) -> String {
     let mut s = format!("окно не отвечает {:.1} с; {activity}", silent.as_secs_f64());
     match stack {
@@ -506,7 +509,7 @@ pub fn stall_line(silent: Duration, activity: &str, stack: Option<&str>) -> Stri
     s
 }
 
-/// Строка ERROR о долгом зависании.
+/// The ERROR line about a long hang.
 pub fn severe_line(silent: Duration, activity: &str) -> String {
     format!(
         "окно не отвечает уже {:.0} с (дольше {} с); {activity}",
@@ -515,23 +518,23 @@ pub fn severe_line(silent: Duration, activity: &str) -> String {
     )
 }
 
-/// Строка INFO о возвращении.
+/// The INFO line about recovery.
 pub fn recovered_line(hung: Duration) -> String {
     format!("окно снова отвечает, висело {:.1} с", hung.as_secs_f64())
 }
 
 // ============================================================================
-// Сторож: поток
+// Watchdog: the thread
 // ============================================================================
 
-/// Куда сторож пишет строки (в продукте — `applog::write`).
+/// Where the watchdog writes its lines (in the product — `applog::write`).
 pub type Sink = Arc<dyn Fn(Level, &str) + Send + Sync>;
-/// Снять стек наблюдаемого потока (в продукте — [`stack::capture`]).
+/// Take the stack of the watched thread (in the product — [`stack::capture`]).
 pub type StackFn = Arc<dyn Fn() -> Option<String> + Send + Sync>;
-/// Что сейчас делается (в продукте — [`activity_report`]).
+/// What is being done right now (in the product — [`activity_report`]).
 pub type ActivityFn = Arc<dyn Fn() -> String + Send + Sync>;
 
-/// Пульс одного потока и сторож над ним.
+/// The heartbeat of one thread and the watchdog over it.
 pub struct Watchdog {
     origin: Instant,
     beat: AtomicU64,
@@ -544,21 +547,21 @@ impl Watchdog {
     }
 
     fn now_ms(&self) -> u64 {
-        // +1: ноль занят под «пульса ещё не было».
+        // +1: zero is reserved for «no heartbeat yet».
         self.origin.elapsed().as_millis() as u64 + 1
     }
 
-    /// Удар пульса — с наблюдаемого потока.
+    /// A heartbeat — from the watched thread.
     pub fn beat(&self) {
         self.beat.store(self.now_ms(), Ordering::Relaxed);
     }
 
-    /// Остановить поток сторожа (стенды; в продукте он живёт до выхода).
+    /// Stop the watchdog thread (test stands; in the product it lives until exit).
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
     }
 
-    /// Завести поток сторожа.
+    /// Start the watchdog thread.
     pub fn spawn(
         self: &Arc<Self>,
         cfg: WatchConfig,
@@ -592,15 +595,15 @@ impl Watchdog {
 
 static MAIN: OnceLock<Arc<Watchdog>> = OnceLock::new();
 
-/// Удар пульса главного потока (таймер Qt в `rexon-gui`).
+/// A heartbeat of the main thread (the Qt timer in `rexon-gui`).
 pub extern "C" fn main_heartbeat() {
     if let Some(w) = MAIN.get() {
         w.beat();
     }
 }
 
-/// Завести сторож главного потока. Звать С ГЛАВНОГО потока (его стек и
-/// снимается), до цикла событий; повторный вызов ничего не делает.
+/// Start the main thread's watchdog. Call FROM THE MAIN thread (its stack is
+/// what gets taken), before the event loop; a repeated call does nothing.
 pub fn install_main_watchdog() {
     if MAIN.get().is_some() {
         return;
@@ -618,25 +621,26 @@ pub fn install_main_watchdog() {
 }
 
 // ============================================================================
-// Стек главного потока
+// Stack of the main thread
 // ============================================================================
 
-/// Стек наблюдаемого потока: сторож шлёт ему сигнал, обработчик (на самом
-/// потоке) собирает адреса возврата `backtrace()` glibc в общий буфер, а
-/// имена по адресам ищет уже сторож (`dladdr`) — в обработчике сигнала
-/// допустим только безопасный минимум.
+/// The stack of the watched thread: the watchdog sends it a signal, the
+/// handler (on that thread) collects the return addresses of glibc's
+/// `backtrace()` into a shared buffer, and the names for the addresses are
+/// looked up by the watchdog itself (`dladdr`) — only a safe minimum is
+/// allowed inside a signal handler.
 ///
-/// Имена есть у функций библиотек (Qt, glibc) — по ним и видно, где стоит
-/// поток («QProcess::waitForFinished», «QQmlComponent::create»). Свои
-/// функции Rexon в динамической таблице не значатся: для них — имя файла и
-/// смещение, его разворачивает `addr2line -e <бинарь> <смещение>`.
+/// Library functions (Qt, glibc) have names — they show where the thread
+/// stands («QProcess::waitForFinished», «QQmlComponent::create»). Rexon's own
+/// functions are not in the dynamic table: for them — the file name and the
+/// offset, which `addr2line -e <binary> <offset>` expands.
 pub mod stack {
     use std::os::raw::{c_int, c_void};
     use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
     const MAX_FRAMES: usize = 48;
-    /// Сколько кадров показывать в журнале.
+    /// How many frames to show in the journal.
     const SHOW_FRAMES: usize = 28;
 
     extern "C" {
@@ -650,14 +654,14 @@ pub mod stack {
     static REQUEST: AtomicU32 = AtomicU32::new(0);
     static DONE: AtomicU32 = AtomicU32::new(0);
 
-    /// Сигнал снятия стека — из пользовательских реального времени: у
-    /// Qt и glibc своих на них нет, а SIGPROF/SIGUSR* бывают заняты.
+    /// The stack-capture signal is one of the user real-time signals: Qt and
+    /// glibc have none of their own on them, while SIGPROF/SIGUSR* may be taken.
     fn stack_signal() -> c_int {
         libc::SIGRTMIN() + 6
     }
 
     extern "C" fn on_stack_signal(_sig: c_int) {
-        // errno прерванного кода не портим.
+        // Do not clobber the errno of the interrupted code.
         let saved = unsafe { *libc::__errno_location() };
         let mut buf = [std::ptr::null_mut::<c_void>(); MAX_FRAMES];
         let n = unsafe { backtrace(buf.as_mut_ptr(), MAX_FRAMES as c_int) }.max(0) as usize;
@@ -669,17 +673,17 @@ pub mod stack {
         unsafe { *libc::__errno_location() = saved };
     }
 
-    /// Наблюдать текущий поток. `false` — обработчик не встал.
+    /// Watch the current thread. `false` — the handler was not installed.
     pub fn watch_current_thread() -> bool {
-        // Первый вызов `backtrace` подгружает libgcc_s (`dlopen`) — это
-        // недопустимо в обработчике сигнала, поэтому прогрев здесь.
+        // The first `backtrace` call loads libgcc_s (`dlopen`) — that is not
+        // allowed in a signal handler, so the warm-up happens here.
         let mut warm = [std::ptr::null_mut::<c_void>(); 4];
         unsafe { backtrace(warm.as_mut_ptr(), warm.len() as c_int) };
         unsafe {
             let mut act: libc::sigaction = std::mem::zeroed();
             act.sa_sigaction = on_stack_signal as extern "C" fn(c_int) as usize;
-            // SA_RESTART: прерванный вызов (read, waitpid) продолжится сам.
-            // БЕЗ SA_ONSTACK: запасной стек сигналов у Rust мал для разбора.
+            // SA_RESTART: an interrupted call (read, waitpid) resumes by itself.
+            // WITHOUT SA_ONSTACK: Rust's alternate signal stack is too small for the walk.
             act.sa_flags = libc::SA_RESTART;
             libc::sigemptyset(&mut act.sa_mask);
             if libc::sigaction(stack_signal(), &act, std::ptr::null_mut()) != 0 {
@@ -691,13 +695,13 @@ pub mod stack {
         true
     }
 
-    /// Снять стек наблюдаемого потока; `None` — поток не принял сигнал за
-    /// `timeout` (например, стоит в непрерываемом ожидании диска).
+    /// Take the stack of the watched thread; `None` — the thread did not accept
+    /// the signal within `timeout` (for example, it is in an uninterruptible disk wait).
     pub fn capture(timeout: Duration) -> Option<String> {
         capture_frames(timeout).map(|f| describe(&f))
     }
 
-    /// Сырые адреса кадров.
+    /// Raw frame addresses.
     pub fn capture_frames(timeout: Duration) -> Option<Vec<usize>> {
         if !READY.load(Ordering::SeqCst) {
             return None;
@@ -721,8 +725,8 @@ pub mod stack {
     type Demangle =
         unsafe extern "C" fn(*const libc::c_char, *mut libc::c_char, *mut usize, *mut c_int) -> *mut libc::c_char;
 
-    /// `__cxa_demangle` из libstdc++, если он есть в процессе (в окне Qt —
-    /// есть всегда; в тестах ядра — может не быть, тогда имя как есть).
+    /// `__cxa_demangle` from libstdc++, if it is in the process (in the Qt window
+    /// it always is; in core tests it may not be, then the name stays as is).
     fn demangle(name: &str) -> String {
         static SYM: &[u8] = b"__cxa_demangle\0";
         let f = unsafe { libc::dlsym(libc::RTLD_DEFAULT, SYM.as_ptr().cast()) };
@@ -765,10 +769,10 @@ pub mod stack {
         (format!("{file}+0x{off:x}"), None)
     }
 
-    /// Кадры текстом, по одному на строку, без кадров самого обработчика.
+    /// Frames as text, one per line, without the frames of the handler itself.
     pub fn describe(frames: &[usize]) -> String {
         let texts: Vec<(String, Option<String>)> = frames.iter().map(|a| frame_text(*a)).collect();
-        // Кадры до трамплина сигнала (`__restore_rt`) — это обработчик.
+        // Frames before the signal trampoline (`__restore_rt`) are the handler.
         let start = texts
             .iter()
             .position(|(_, raw)| raw.as_deref() == Some("__restore_rt"))
@@ -792,7 +796,7 @@ pub mod stack {
 mod tests {
     use super::*;
 
-    /// Стенды, которые читают общее «текущее действие», идут по одному.
+    /// Stands that read the shared «current action» run one at a time.
     static SHARED_ACTIVITY: Mutex<()> = Mutex::new(());
 
     #[test]
@@ -809,10 +813,10 @@ mod tests {
     fn место_по_цепочке_предков() {
         let chain = "RexonButton_QMLTYPE_3/QQuickRowLayout/ScreenEffectsSection_QMLTYPE_9/QQuickColumnLayout/AppearancePage_QMLTYPE_2/QQuickLoader/MainWindow_QMLTYPE_0";
         assert_eq!(area_from_chain("appearance", chain), "appearance ▸ AppearancePage ▸ ScreenEffectsSection");
-        // Только два ближних компонента.
+        // Only the two nearest components.
         let deep = "RexonButton_QMLTYPE_1/ConkySets_QMLTYPE_7/ConkySettings_QMLTYPE_5/AppearancePage_QMLTYPE_2";
         assert_eq!(area_from_chain("appearance", deep), "appearance ▸ ConkySettings ▸ ConkySets");
-        // Встроенный компонент (`_QML_N`) и повтор имени.
+        // An inline component (`_QML_N`) and a repeated name.
         assert_eq!(area_from_chain("", "Card_QML_12/Card_QML_12/QQuickItem"), "Card");
         assert_eq!(area_from_chain("", "QQuickItem/QQuickPopupItem"), "окно");
         assert_eq!(area_from_chain("steam", ""), "steam");
@@ -861,7 +865,7 @@ mod tests {
         finish_deed(id);
         let after = activity_report();
         assert!(after.contains("текущего действия нет; последнее — «действие: тест ▸ Стенд → «Висеть»»"), "{after}");
-        // Чужой номер текущее действие не закрывает.
+        // Someone else's number does not close the current action.
         let id2 = begin_deed("тест", &Deed::Click { label: "Ещё" });
         finish_deed(id2 + 1000);
         assert!(activity_report().starts_with("выполняется"));
@@ -874,7 +878,7 @@ mod tests {
 
     #[test]
     fn нажатие_кнопки_флажка_и_строки_списка() {
-        // Кнопка общего контрола: подпись своя.
+        // A button of the shared control: its own label.
         let b = chain(&[
             "RexonButton_QMLTYPE_3\tb\t\tПрименить\tПрименить",
             "QQuickRowLayout\t\t\t\t",
@@ -886,7 +890,7 @@ mod tests {
             deed_from_input("appearance", &b, false),
             Some(("appearance ▸ AppearancePage ▸ ScreenEffectsSection".into(), InputDeed::Click("Применить".into())))
         );
-        // Флажок: шим видит состояние ДО щелчка — пишется новое.
+        // A checkbox: the shim sees the state BEFORE the click — the new one is written.
         let c = chain(&["RexonCheckBox_QMLTYPE_4\tbkK\t\tВключить\t", "SettingsPage_QMLTYPE_1\t\t\t\t"]);
         assert_eq!(
             deed_from_input("settings", &c, false),
@@ -894,7 +898,7 @@ mod tests {
         );
         let r = chain(&["QQuickRadioButton\tbkKr\t\tТёмная\t", "SettingsPage_QMLTYPE_1\t\t\t\t"]);
         assert_eq!(deed_from_input("settings", &r, false).unwrap().1, InputDeed::Toggle("Тёмная".into(), true));
-        // Строка выпадающего списка: строка → всплывашка → список.
+        // A drop-down list row: row → popup → list.
         let d = chain(&[
             "QQuickItemDelegate\tb\t\tСепия\tСепия",
             "QQuickListView\tf\t\t\t",
@@ -907,7 +911,7 @@ mod tests {
             deed_from_input("appearance", &d, false),
             Some(("appearance ▸ ScreenEffectsSection".into(), InputDeed::Choose("Сепия".into())))
         );
-        // Пункт меню окна — всплывашка без списка: обычное нажатие.
+        // A window menu item — a popup without a list: an ordinary press.
         let m = chain(&[
             "QQuickMenuItem\tb\t\tПерезапустить\t",
             "QQuickPopupItem\tp\t\t\t",
@@ -919,7 +923,7 @@ mod tests {
 
     #[test]
     fn карточка_магазина_и_что_не_действие() {
-        // TapHandler карточки: подпись — первая надпись карточки.
+        // A card's TapHandler: the label is the card's first caption.
         let t = chain(&[
             "QQuickTapHandler\th\t\t\t",
             "QQuickRectangle\t\t\t\tGruvbox Plasma",
@@ -929,10 +933,10 @@ mod tests {
             deed_from_input("appearance", &t, false),
             Some(("appearance ▸ AppearancePage".into(), InputDeed::Click("Gruvbox Plasma".into())))
         );
-        // Кнопка-значок без надписей — по objectName, а нет и его — без подписи.
+        // An icon button without captions — by objectName, and without that — no label.
         let i = chain(&["QQuickButton\tb\tcloseButton\t\t"]);
         assert_eq!(deed_from_input("", &i, false).unwrap().1, InputDeed::Click("closeButton".into()));
-        // Не действия.
+        // Not actions.
         for first in [
             "RexonTextField_QMLTYPE_1\ti\t\t\t",
             "QQuickListView\tf\t\t\t",
@@ -942,13 +946,13 @@ mod tests {
         ] {
             assert_eq!(deed_from_input("x", &chain(&[first]), false), None, "{first}");
         }
-        // Вкладка полосы разделов пишется строкой «раздел», а вкладка
-        // внутри страницы — действие.
+        // A tab of the section bar is written as a «section» line, while a tab
+        // inside a page is an action.
         let top = chain(&["QQuickTabButton\tbt\t\tОформление\t", "QQuickTabBar\t\t\t\t", "MainWindow_QMLTYPE_0\t\t\t\t"]);
         assert_eq!(deed_from_input("steam", &top, false), None);
         let inner = chain(&["QQuickTabButton\tbt\t\tСцены\t", "QQuickTabBar\t\t\t\t", "WePage_QMLTYPE_3\t\t\t\t"]);
         assert_eq!(deed_from_input("we", &inner, false).unwrap().1, InputDeed::Click("Сцены".into()));
-        // Клавиша — только на кнопке.
+        // A key — only on a button.
         let ma = chain(&["QQuickMouseArea\tm\t\t\tКарточка"]);
         assert!(deed_from_input("", &ma, false).is_some());
         assert_eq!(deed_from_input("", &ma, true), None);
@@ -958,18 +962,18 @@ mod tests {
     fn поле_ввода_одна_строка_и_никаких_паролей() {
         let _serial = SHARED_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner());
         let area = "стенд-поле ▸ ExtensionsPage";
-        // Пусто при первом разе (фокус ушёл, ничего не вводили) — молчим.
+        // Empty the first time (focus left, nothing typed) — stay silent.
         assert_eq!(note_entered(area, "Поиск", "", false), 0);
         let id = note_entered(area, "Поиск", "dash  to dock", false);
         assert!(id > 0);
         finish_deed(id);
-        // Повтор того же (Enter, потом уход фокуса) — молчим.
+        // A repeat of the same (Enter, then focus leaving) — stay silent.
         assert_eq!(note_entered(area, "Поиск", "dash to dock", false), 0);
-        // Очистили — строка.
+        // Cleared — a line.
         let id = note_entered(area, "Поиск", "", false);
         assert!(id > 0);
         finish_deed(id);
-        // Пароль — никогда.
+        // A password — never.
         assert_eq!(note_entered(area, "Пароль", "secret", true), 0);
         note_typing(area, "Пароль", "secret", true);
         let rep = activity_report();
@@ -987,17 +991,17 @@ mod tests {
             poll: Duration::from_millis(250),
         };
         let mut st = WatchState::default();
-        // Пульса ещё не было — молчим, сколько бы ни прошло.
+        // No heartbeat yet — stay silent, however much time passes.
         assert_eq!(watch_step(&mut st, 60_000, 0, &cfg), None);
-        // Пульс бьётся — молчим.
+        // The heartbeat is beating — stay silent.
         assert_eq!(watch_step(&mut st, 1_250, 1_000, &cfg), None);
-        // 2 с ровно — ещё не зависание.
+        // Exactly 2 s is not a hang yet.
         assert_eq!(watch_step(&mut st, 3_000, 1_000, &cfg), None);
         assert_eq!(
             watch_step(&mut st, 3_250, 1_000, &cfg),
             Some(WatchEvent::Stalled { silent: Duration::from_millis(2_250) })
         );
-        // Дальше без повторов до тяжёлого порога.
+        // Further on, no repeats until the severe threshold.
         for t in (3_500..=11_000).step_by(250) {
             assert_eq!(watch_step(&mut st, t, 1_000, &cfg), None, "t={t}");
         }
@@ -1006,7 +1010,7 @@ mod tests {
             Some(WatchEvent::Severe { silent: Duration::from_millis(10_250) })
         );
         assert_eq!(watch_step(&mut st, 30_000, 1_000, &cfg), None);
-        // Пульс вернулся: висело от прежнего пульса до нового.
+        // The heartbeat is back: it hung from the previous heartbeat to the new one.
         assert_eq!(
             watch_step(&mut st, 30_300, 30_100, &cfg),
             Some(WatchEvent::Recovered { hung: Duration::from_millis(29_100) })
@@ -1024,8 +1028,8 @@ mod tests {
         assert_eq!(recovered_line(Duration::from_millis(3_460)), "окно снова отвечает, висело 3.5 с");
     }
 
-    /// Живой прогон: поток с пульсом искусственно «виснет» во сне — сторож
-    /// пишет WARN со стеком, одну строку ERROR и INFO по возвращении.
+    /// A live run: a thread with a heartbeat artificially «hangs» in sleep — the
+    /// watchdog writes a WARN with the stack, one ERROR line and an INFO on recovery.
     #[test]
     fn сторож_ловит_зависший_поток_и_снимает_его_стек() {
         let lines: Arc<Mutex<Vec<(Level, String)>>> = Arc::new(Mutex::new(Vec::new()));
@@ -1037,7 +1041,7 @@ mod tests {
             poll: Duration::from_millis(50),
         };
         let dog = Watchdog::new();
-        // Наблюдаемый поток — этот, как главный поток окна в продукте.
+        // The watched thread is this one, like the window's main thread in the product.
         assert!(stack::watch_current_thread());
         let handle = dog
             .spawn(
@@ -1051,7 +1055,7 @@ mod tests {
             dog.beat();
             std::thread::sleep(Duration::from_millis(50));
         }
-        // Зависание: поток не бьёт пульс 2 с.
+        // A hang: the thread does not beat the heartbeat for 2 s.
         std::thread::sleep(Duration::from_millis(2_000));
         for _ in 0..8 {
             dog.beat();
@@ -1068,7 +1072,7 @@ mod tests {
         let warn = &warns[0].1;
         assert!(warn.starts_with("окно не отвечает 0."), "{warn}");
         assert!(warn.contains("«Висеть»"), "{warn}");
-        // Поток стоял во сне — в стеке есть кадры glibc.
+        // The thread stood in sleep — the stack has glibc frames.
         assert!(warn.contains("стек главного потока:\n#0 "), "{warn}");
         assert!(warn.contains("libc.so"), "{warn}");
         assert!(errors[0].1.starts_with("окно не отвечает уже "), "{}", errors[0].1);

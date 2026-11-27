@@ -819,6 +819,9 @@ pub struct LiveSplashIo {
     /// Rotation draw seed (xorshift): our own, so as not to pull in a crate for
     /// a single `random.choice`.
     seed: u64,
+    /// Environment overrides ([`LiveSplashIo::with_env`]): checks on a
+    /// temporary HOME must not read the real `XDG_*` folders of the machine.
+    env_overrides: HashMap<String, String>,
 }
 
 impl LiveSplashIo {
@@ -834,7 +837,15 @@ impl LiveSplashIo {
             overlays: HashMap::new(),
             next: 1,
             seed: (nanos ^ ((std::process::id() as u64) << 32)) | 1,
+            env_overrides: HashMap::new(),
         }
+    }
+
+    /// The executor with `name` read as `value` instead of the process
+    /// environment (an empty value = not set).
+    pub fn with_env(mut self, name: &str, value: &str) -> LiveSplashIo {
+        self.env_overrides.insert(name.to_string(), value.to_string());
+        self
     }
 
     fn handle(&mut self) -> i64 {
@@ -864,6 +875,9 @@ impl LiveSplashIo {
 
 impl core_ss::SplashIo for LiveSplashIo {
     fn env(&mut self, name: &str) -> String {
+        if let Some(v) = self.env_overrides.get(name) {
+            return v.clone();
+        }
         std::env::var(name).unwrap_or_default()
     }
 
@@ -1264,4 +1278,102 @@ impl core_ss::SplashIo for LiveSplashIo {
     fn log(&mut self, level: &str, message: &str) {
         log_line(level, message);
     }
+
+    fn run_streaming(
+        &mut self,
+        argv: &[String],
+        on_line: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Option<i64> {
+        run_streaming(argv, on_line, cancelled, core_ss::MOVIE_TRANSCODE_TIMEOUT_SEC)
+    }
+
+    fn install_program(&mut self, binary: &str) -> Result<(), String> {
+        // The package name comes from the shared table of tools by family;
+        // installing — the shared repository path (pkexec + helper, no AUR).
+        let (family, installable) = crate::conky_safety::live_family();
+        if !installable {
+            return Err(crate::i18n::tr("Rexon can't install programs on this system by itself."));
+        }
+        let pkg = core_utils::tool_package_name(binary, &family);
+        // A name with a space is the «(from the AUR)» label: the AUR is not
+        // built without a question.
+        if pkg.is_empty() || pkg.contains(' ') {
+            // TRANSLATORS: %1 is a program name (ffmpeg) that Rexon can't install from the official repositories.
+            return Err(crate::i18n::trf("Install the package with %1 by hand: it isn't in this system's repositories.", &[&binary]));
+        }
+        crate::conky_safety::install_packages_live(&[pkg])
+    }
+}
+
+/// A long command with line-by-line stdout and cancellation (the clip
+/// conversion). stderr is collected separately and goes to the log on a
+/// failure. Cancelled or the ceiling `timeout` passed — the process is killed
+/// (only OUR child, by its handle) and `None` is returned.
+pub fn run_streaming(
+    argv: &[String],
+    on_line: &mut dyn FnMut(&str),
+    cancelled: &dyn Fn() -> bool,
+    timeout: f64,
+) -> Option<i64> {
+    use std::io::BufRead;
+    let (bin, rest) = argv.split_first()?;
+    let mut child = Command::new(bin)
+        .args(rest)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let out = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        if let Some(out) = out {
+            for line in std::io::BufReader::new(out).lines() {
+                let Ok(line) = line else { break };
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    let mut errp = child.stderr.take();
+    let err_reader = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        if let Some(p) = errp.as_mut() {
+            let _ = p.read_to_end(&mut b);
+        }
+        b
+    });
+    let deadline = Instant::now() + Duration::from_secs_f64(timeout.max(0.0));
+    let status = loop {
+        while let Ok(line) = rx.try_recv() {
+            on_line(&line);
+        }
+        if cancelled() || Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) => {
+                let _ = rx.recv_timeout(Duration::from_millis(100)).map(|l| on_line(&l));
+            }
+            Err(_) => break None,
+        }
+    };
+    let _ = reader.join();
+    while let Ok(line) = rx.try_recv() {
+        on_line(&line);
+    }
+    let stderr = err_reader.join().unwrap_or_default();
+    let st = status?;
+    let rc = st.code().map(i64::from).unwrap_or(-1);
+    if rc != 0 && !stderr.is_empty() {
+        let tail = String::from_utf8_lossy(&stderr);
+        let tail: String = tail.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
+        log_line("warning", &format!("{bin} exited with {rc}: {tail}"));
+    }
+    Some(rc)
 }

@@ -78,7 +78,8 @@ fn dl_error() -> String {
     // next dl* call in this thread; we copy it at once.
     let raw = unsafe { dlerror() };
     if raw.is_null() {
-        "причина не названа".to_string()
+        // TRANSLATORS: stands in for the system loader's error text when it gives none.
+        tr("no reason given")
     } else {
         unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned()
     }
@@ -91,18 +92,22 @@ fn resolve_initialize() -> Result<extern "C" fn(), String> {
     // deliberately not closed: the process needs the library until exit.
     let handle = unsafe { dlopen(WEB_ENGINE_QUICK_LIB.as_ptr(), RTLD_NOW | RTLD_GLOBAL) };
     if handle.is_null() {
-        return Err(format!(
-            "QtWebEngine не загрузился ({}): веб-обоям нужна {lib} из пакета qt6-webengine",
-            dl_error()
+        return Err(fill_plain(
+            // TRANSLATORS: printed to the terminal. %1 — the loader's error,
+            // %2 — the library file name.
+            &tr("QtWebEngine failed to load (%1): web wallpapers need %2 from the qt6-webengine package"),
+            &[&dl_error(), &lib],
         ));
     }
     // SAFETY: the handle was obtained above, the symbol name is a
     // NUL-terminated string.
     let symbol = unsafe { dlsym(handle, INITIALIZE_SYMBOL.as_ptr()) };
     if symbol.is_null() {
-        return Err(format!(
-            "в {lib} нет QtWebEngineQuick::initialize ({})",
-            dl_error()
+        return Err(fill_plain(
+            // TRANSLATORS: printed to the terminal. %1 — the library file name,
+            // %2 — the loader's error.
+            &tr("%1 has no QtWebEngineQuick::initialize (%2)"),
+            &[&lib, &dl_error()],
         ));
     }
     // SAFETY: the symbol is `void QtWebEngineQuick::initialize()`, a free
@@ -130,6 +135,8 @@ pub struct Cli {
     pub target: String,
     pub windowed: bool,
     pub verbose: bool,
+    /// Full-screen preview on top of everything; any key or click closes it.
+    pub preview: bool,
     /// Self-test: after how many milliseconds the window reports and closes.
     pub selftest_ms: i64,
 }
@@ -148,37 +155,46 @@ pub fn parse_args(argv: &[String]) -> Result<Cli, String> {
     for arg in argv {
         match arg.as_str() {
             "-w" | "--windowed" => cli.windowed = true,
+            // A full-screen look at a page (the Steam screensavers in the «Steam»
+            // tab): not a wallpaper, so it takes no host lock, like --windowed.
+            "--preview" => {
+                cli.windowed = true;
+                cli.preview = true;
+            }
             "-v" | "--verbose" => cli.verbose = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             "--audio" | "--no-audio" | "--volume" => {
                 // The sound of web wallpapers is driven by the page itself; silently
                 // swallowing the option would pretend it turned something on.
-                return Err(format!("ключ {arg} есть только у режима video"));
+                // TRANSLATORS: a command line error; %1 — the option, "video" is a mode name.
+                return Err(fill_plain(&tr("the %1 option is only available in video mode"), &[arg]));
             }
             "--selftest" => cli.selftest_ms = DEFAULT_SELFTEST_MS,
             other if other.starts_with("--selftest=") => {
                 cli.selftest_ms = other["--selftest=".len()..]
                     .parse()
-                    .map_err(|_| "после --selftest= нужны миллисекунды".to_string())?;
+                    .map_err(|_| tr("--selftest= needs a number of milliseconds"))?;
             }
             other if other.starts_with('-') && other.len() > 1 => {
-                return Err(format!("неизвестный ключ: {other}"));
+                return Err(fill_plain(&tr("unknown option: %1"), &[&other]));
             }
             other => {
                 if !cli.target.is_empty() {
-                    return Err(format!("лишний адрес: {other}"));
+                    // TRANSLATORS: a command line error: a second address after the first one.
+                    return Err(fill_plain(&tr("extra address: %1"), &[&other]));
                 }
                 cli.target = other.to_string();
             }
         }
     }
     if cli.target.is_empty() {
-        return Err("не указана ссылка, HTML-файл или каталог обоев".to_string());
+        return Err(tr("no link, HTML file or wallpaper directory given"));
     }
     Ok(cli)
 }
 
 use crate::wallpaper_host::USAGE;
+use rexon_core::i18n::{fill_plain, tr};
 
 #[cfg(test)]
 mod tests {
@@ -202,7 +218,7 @@ mod tests {
     fn адрес_обязателен_и_единственный() {
         assert!(parse_args(&[]).is_err());
         assert!(parse_args(&["/a.html".into(), "/b.html".into()]).is_err());
-        assert!(parse_args(&["--нетакого".into(), "/a.html".into()]).is_err());
+        assert!(parse_args(&["--nosuchoption".into(), "/a.html".into()]).is_err());
     }
 
     #[test]
@@ -227,7 +243,14 @@ mod tests {
                 .selftest_ms,
             900
         );
-        assert!(parse_args(&["/a.html".into(), "--selftest=скоро".into()]).is_err());
+        assert!(parse_args(&["/a.html".into(), "--selftest=soon".into()]).is_err());
+    }
+
+    #[test]
+    fn preview_is_a_window_not_a_wallpaper() {
+        let cli = parse_args(&["--preview".into(), "/a.html".into()]).unwrap();
+        assert!(cli.preview && cli.windowed);
+        assert!(!parse_args(&["/a.html".into()]).unwrap().preview);
     }
 
     #[test]

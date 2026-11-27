@@ -179,7 +179,7 @@ fn discovery_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn extension_fields_match_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -240,7 +240,7 @@ fn extension_fields_match_python() {
 // ── permanent tabs ──────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn constants_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -274,7 +274,7 @@ fn drop_check_is_case_insensitive() {
 // ── statistics, headers, filters ────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn stats_line_matches_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -286,7 +286,7 @@ fn stats_line_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn filters_match_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -323,7 +323,7 @@ fn filter_resets_when_its_button_is_gone() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn my_header_matches_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -342,7 +342,7 @@ fn my_header_matches_python() {
 // ── card ────────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn cards_match_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -409,7 +409,7 @@ fn toggle_only_for_scripted_types() {
 // ── «list» mode ─────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn list_groups_and_rows_match_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -491,7 +491,7 @@ fn list_group_order_follows_label_table() {
 // ── detailed view ───────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn details_match_python() {
     // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
@@ -551,7 +551,7 @@ fn details_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn detail_body_falls_back_like_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -595,7 +595,7 @@ fn detail_tags_are_capped_like_python() {
 // ── the «Create your own» help ──────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn create_dialog_matches_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -642,7 +642,7 @@ fn create_dialog_matches_python() {
 // ── status line ─────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn status_texts_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -695,7 +695,7 @@ fn status_texts_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn long_error_is_clipped_by_characters() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     // ⚠️ 200 CHARACTERS, not bytes: the original's slice `msg[:200]` is
@@ -733,7 +733,7 @@ fn search_matches_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn filter_by_type_matches_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -752,7 +752,7 @@ fn filter_by_type_matches_python() {
 // ── empty states ────────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn empty_states_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -771,7 +771,7 @@ fn empty_states_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn empty_catalog_has_only_all_filter() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -783,7 +783,7 @@ fn empty_catalog_has_only_all_filter() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn empty_catalog_stats_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -797,7 +797,7 @@ fn empty_catalog_stats_match_python() {
 // ── the «Install» block ─────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn install_sources_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -822,7 +822,7 @@ fn install_sources_match_python() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn page_chrome_matches_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
@@ -878,7 +878,7 @@ fn page_chrome_matches_python() {
 // ── confirmations ───────────────────────────────────────────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn confirmations_match_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     assert_eq!(qe::confirm_title(), "Удалить?");
@@ -1094,7 +1094,7 @@ fn english_phrases_read_naturally() {
 
 /// In Russian, labels without a Python golden are as they were (taken from HEAD on 29.09).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let _lang = i18n_pin::ru();
     assert_eq!(qe::view_grid_tooltip(), "Сетка");

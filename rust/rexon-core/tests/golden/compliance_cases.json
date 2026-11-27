@@ -986,19 +986,6 @@
           "argv": [
             "pacman",
             "-Q",
-            "brisk-menu"
-          ],
-          "timeout": null,
-          "result": {
-            "ok": true,
-            "stdout": ""
-          }
-        },
-        {
-          "op": "run",
-          "argv": [
-            "pacman",
-            "-Q",
             "mate-indicator-applet"
           ],
           "timeout": null,
@@ -1116,6 +1103,16 @@
           "op": "exists",
           "path": "/usr/share/locale/ru/LC_MESSAGES/mate-utils.mo",
           "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "dconf",
+            "dump",
+            "/org/mate/panel/"
+          ],
+          "timeout": null,
+          "result": null
         }
       ],
       "log": [
@@ -1373,19 +1370,6 @@
           "argv": [
             "pacman",
             "-Q",
-            "brisk-menu"
-          ],
-          "timeout": null,
-          "result": {
-            "ok": true,
-            "stdout": ""
-          }
-        },
-        {
-          "op": "run",
-          "argv": [
-            "pacman",
-            "-Q",
             "mate-indicator-applet"
           ],
           "timeout": null,
@@ -1523,6 +1507,16 @@
           "op": "exists",
           "path": "/usr/share/locale/ru/LC_MESSAGES/mate-utils.mo",
           "result": true
+        },
+        {
+          "op": "run",
+          "argv": [
+            "dconf",
+            "dump",
+            "/org/mate/panel/"
+          ],
+          "timeout": null,
+          "result": null
         }
       ],
       "log": [
@@ -1769,19 +1763,6 @@
           "argv": [
             "pacman",
             "-Q",
-            "brisk-menu"
-          ],
-          "timeout": null,
-          "result": {
-            "ok": false,
-            "stdout": ""
-          }
-        },
-        {
-          "op": "run",
-          "argv": [
-            "pacman",
-            "-Q",
             "mate-indicator-applet"
           ],
           "timeout": null,
@@ -1905,7 +1886,6 @@
             "--sudoflags",
             "",
             "mate-tweak",
-            "brisk-menu",
             "mate-indicator-applet",
             "vala-panel-appmenu-mate",
             "vala-panel-appmenu-registrar",
@@ -1934,6 +1914,16 @@
             "ok": false,
             "stdout": ""
           }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "dconf",
+            "dump",
+            "/org/mate/panel/"
+          ],
+          "timeout": null,
+          "result": null
         }
       ],
       "log": [
@@ -1953,7 +1943,7 @@
         "    ⚠️ Шрифты Ubuntu не установлены",
         "    ✅ Шрифты Ubuntu установлены",
         "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
-        "    ⚠️ Не установлены (10): mate-tweak, brisk-menu, mate-indicator-applet, vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
+        "    ⚠️ Не установлены (9): mate-tweak, mate-indicator-applet, vala-panel-appmenu-mate, vala-panel-appmenu-registrar, ayatana-indicator-application...",
         "    📥 Установка через yay...",
         "    ⚠️ Не удалось установить (попробуйте вручную)",
         "  🖱️ Проверка курсора Yaru...",
@@ -2232,19 +2222,6 @@
           "argv": [
             "pacman",
             "-Q",
-            "brisk-menu"
-          ],
-          "timeout": null,
-          "result": {
-            "ok": true,
-            "stdout": ""
-          }
-        },
-        {
-          "op": "run",
-          "argv": [
-            "pacman",
-            "-Q",
             "mate-indicator-applet"
           ],
           "timeout": null,
@@ -2357,6 +2334,16 @@
             "ok": true,
             "stdout": "'Yaru'"
           }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "dconf",
+            "dump",
+            "/org/mate/panel/"
+          ],
+          "timeout": null,
+          "result": null
         }
       ],
       "log": [
@@ -2678,19 +2665,6 @@
           "argv": [
             "pacman",
             "-Q",
-            "brisk-menu"
-          ],
-          "timeout": null,
-          "result": {
-            "ok": true,
-            "stdout": ""
-          }
-        },
-        {
-          "op": "run",
-          "argv": [
-            "pacman",
-            "-Q",
             "mate-indicator-applet"
           ],
           "timeout": null,
@@ -2803,6 +2777,16 @@
             "ok": true,
             "stdout": "'Yaru'"
           }
+        },
+        {
+          "op": "run",
+          "argv": [
+            "dconf",
+            "dump",
+            "/org/mate/panel/"
+          ],
+          "timeout": null,
+          "result": null
         }
       ],
       "log": [

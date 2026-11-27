@@ -419,6 +419,7 @@ fn kde_apply_parity() {
             xdg_config_home: "",
             platform_theme: "",
             icon_theme: String::new(),
+            qt_desktop_installed: false,
         },
     );
     let got_kv: Value = kv
@@ -633,6 +634,7 @@ fn kv_plan(de: &str, platform_theme: &str) -> Plan {
             xdg_config_home: "",
             platform_theme,
             icon_theme: String::new(),
+            qt_desktop_installed: false,
         },
     )
 }
@@ -744,6 +746,7 @@ fn kvantum_respects_xdg_config_home() {
             xdg_config_home: "/home/t/cfg",
             platform_theme: "",
             icon_theme: String::new(),
+            qt_desktop_installed: false,
         },
     );
     assert!(p.steps.iter().any(|s| matches!(
@@ -784,7 +787,7 @@ fn qt_style_helper_package_is_per_family() {
 fn ws_plan(de: &str, platform_theme: &str) -> Plan {
     TH::apply_qt_style_plan(
         "Fusion",
-        &TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme, icon_theme: String::new() },
+        &TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme, icon_theme: String::new(), qt_desktop_installed: false },
     )
 }
 
@@ -805,6 +808,7 @@ fn widget_style_table_by_desktop() {
                 ApplyStep::WriteIfOk { path, content, .. } => {
                     format!("write:{path}|{}", content.trim_end())
                 }
+                ApplyStep::RemoveIfOk { path } => format!("remove:{path}"),
                 other => panic!("неожиданный шаг {other:?}"),
             })
             .collect()
@@ -830,6 +834,7 @@ fn widget_style_table_by_desktop() {
                 "forceok",
                 "ini:/home/t/.config/qt6ct/qt6ct.conf|[Appearance]|style=Fusion",
                 "write:/home/t/.config/environment.d/rexon-qt-style.conf|QT_QPA_PLATFORMTHEME=qt6ct",
+                "remove:/home/t/.config/rexon/session-env/rexon-qt-style.conf",
             ],
             "{de} с qt6ct"
         );
@@ -838,6 +843,7 @@ fn widget_style_table_by_desktop() {
             [
                 "forceok",
                 "write:/home/t/.config/environment.d/rexon-qt-style.conf|QT_STYLE_OVERRIDE=Fusion",
+                "remove:/home/t/.config/rexon/session-env/rexon-qt-style.conf",
             ],
             "{de} без qt6ct"
         );
@@ -855,7 +861,7 @@ fn widget_style_and_kvantum_share_one_switch() {
             let kv = kv_plan(de, tool);
             let ws = TH::apply_qt_style_plan(
                 "kvantum",
-                &TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme: tool, icon_theme: String::new() },
+                &TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme: tool, icon_theme: String::new(), qt_desktop_installed: false },
             );
             let norm = |s: &ApplyStep| match s {
                 ApplyStep::Primary(c) => ApplyStep::IfOk(c.clone()),
@@ -976,6 +982,7 @@ fn deepin_keeps_chameleon_no_session_qt_variable() {
         xdg_config_home: "",
         platform_theme: "qt6ct",
         icon_theme: "Papirus".into(),
+        qt_desktop_installed: false,
     };
     for plan in [TH::apply_kvantum_plan("KvArc", &env), TH::apply_qt_style_plan("Fusion", &env)] {
         assert!(plan.steps.is_empty(), "{:?}", plan.steps);
@@ -1549,6 +1556,7 @@ fn qt6ct_keeps_icon_theme() {
         xdg_config_home: "",
         platform_theme: "qt6ct",
         icon_theme: "Papirus".into(),
+        qt_desktop_installed: false,
     };
     let plan = TH::apply_qt_style_plan("Fusion", &env);
     assert!(plan.steps.contains(&ApplyStep::IniSetGuarded {
@@ -1570,7 +1578,7 @@ fn qt6ct_keeps_icon_theme() {
     );
     // On KDE and LXQt qt6ct is irrelevant — no step.
     for de in ["kde", "lxqt"] {
-        let env = TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme: "qt6ct", icon_theme: "Papirus".into() };
+        let env = TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme: "qt6ct", icon_theme: "Papirus".into(), qt_desktop_installed: false };
         assert!(!TH::apply_qt_style_plan("Fusion", &env).steps.iter().any(|s| matches!(s, ApplyStep::IniSetGuarded { .. })), "{de}");
     }
     // The source of the current icons is the same keys the icons plan writes.
@@ -1579,6 +1587,47 @@ fn qt6ct_keeps_icon_theme() {
         TH::IconThemeSource::Cmd(c) => assert_eq!(c.argv[..3], ["xfconf-query", "-c", "xsettings"]),
         other => panic!("{other:?}"),
     }
+}
+
+/// «Kvantum in GNOME» must not reach Plasma: while a desktop with its own Qt
+/// integration is installed, the variables do not go into the shared
+/// `environment.d` (Plasma imports it), but into Rexon's desktop-bound
+/// directory, and the shared file is removed. Without such a desktop — as before.
+#[test]
+fn qt_style_variables_do_not_leak_into_plasma() {
+    for (tool, var) in [("qt6ct", "QT_QPA_PLATFORMTHEME=qt6ct\n"), ("", "QT_STYLE_OVERRIDE=kvantum\n")] {
+        let env = TH::KvantumEnv {
+            de_id: "gnome",
+            home: "/home/t",
+            xdg_config_home: "",
+            platform_theme: tool,
+            icon_theme: String::new(),
+            qt_desktop_installed: true,
+        };
+        let plan = TH::apply_kvantum_plan("KvArc", &env);
+        let writes: Vec<(&str, &str)> = plan
+            .steps
+            .iter()
+            .filter_map(|s| match s {
+                ApplyStep::WriteIfOk { path, content, .. } => Some((path.as_str(), content.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(writes, [("/home/t/.config/rexon/session-env/rexon-qt-style.conf", var)], "{tool}");
+        assert!(plan.steps.contains(&ApplyStep::RemoveIfOk {
+            path: "/home/t/.config/environment.d/rexon-qt-style.conf".into()
+        }));
+        // Without such a desktop the shared file is right: GNOME and COSMIC read only it.
+        let env = TH::KvantumEnv { qt_desktop_installed: false, ..env };
+        let plan = TH::apply_kvantum_plan("KvArc", &env);
+        assert!(plan.steps.iter().any(|s| matches!(s,
+            ApplyStep::WriteIfOk { path, .. } if path == "/home/t/.config/environment.d/rexon-qt-style.conf")));
+    }
+    // Which desktops count: Plasma, LXQt, Deepin — by their session programs.
+    assert!(TH::own_qt_desktop_installed(&|b| b == "plasmashell"));
+    assert!(TH::own_qt_desktop_installed(&|b| b == "lxqt-session"));
+    assert!(TH::own_qt_desktop_installed(&|b| b == "dde-session"));
+    assert!(!TH::own_qt_desktop_installed(&|b| b == "gnome-shell" || b == "cosmic-session"));
 }
 
 /// Icons in all desktops: without dconf (`gsettings` fails) tiling desktops and LXQt

@@ -101,7 +101,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -265,7 +266,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -585,7 +587,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -751,7 +754,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -3764,7 +3768,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -3928,7 +3933,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -4233,7 +4239,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -4406,7 +4413,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -4713,7 +4721,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -4886,7 +4895,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -5191,7 +5201,8 @@
         "Primary(Cmd { argv: [\"kvantummanager\", \"--set\", \"MyTheme\"], timeout: Some(10) })",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"kvantum\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },
@@ -5355,7 +5366,8 @@
         "ForceOk",
         "IniSetIfOk { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"style\", value: \"MyTheme\" }",
         "IniSetGuarded { path: \"/home/t/.config/qt6ct/qt6ct.conf\", section: \"[Appearance]\", key: \"icon_theme\", value: \"Papirus\", only_if_file: false, keep_existing: true }",
-        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }"
+        "WriteIfOk { dir: \"/home/t/.config/environment.d\", path: \"/home/t/.config/environment.d/rexon-qt-style.conf\", content: \"QT_QPA_PLATFORMTHEME=qt6ct\\n\" }",
+        "RemoveIfOk { path: \"/home/t/.config/rexon/session-env/rexon-qt-style.conf\" }"
       ]
     }
   },

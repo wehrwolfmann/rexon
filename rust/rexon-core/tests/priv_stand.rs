@@ -300,7 +300,7 @@ fn revoked_by(b: &Bench, c: &mut Client, spawned: &AtomicU32, reason: &str, act:
     // The first logind poll is the starting point for locking: let it pass.
     std::thread::sleep(Duration::from_millis(250));
     act();
-    b.wait_for(&format!("право погашено: {reason}"));
+    b.wait_for(&format!("privilege revoked: {reason}"));
     b.wait_for("exit 0");
     wait_no_session(c);
     let runs_before = b.lines("run ").len();
@@ -338,7 +338,7 @@ fn idle_under_limit_keeps_session() {
     std::thread::sleep(Duration::from_millis(300));
     request(&mut c, &install("yt-dlp")).unwrap();
     assert_eq!(spawned.load(Ordering::SeqCst), 1);
-    assert!(!b.journal().contains("право погашено"), "{}", b.journal());
+    assert!(!b.journal().contains("privilege revoked"), "{}", b.journal());
 }
 
 /// Machine sleep (a jump in `BOOTTIME − MONOTONIC`) revokes the privilege.
@@ -368,7 +368,7 @@ fn revoke_during_operation_finishes_it() {
     let _pending = c.submit(&install("yt-dlp"), Vec::new()).unwrap();
     b.wait_for("held pacman -S");
     b.set_session(uid(), true, true);
-    b.wait_for("право погашено: screen-locked");
+    b.wait_for("privilege revoked: screen-locked");
     std::thread::sleep(Duration::from_millis(200));
     assert!(b.exits().is_empty(), "вышел посреди операции:\n{}", b.journal());
     std::fs::remove_file(b.dir.join("hold")).unwrap();
@@ -449,7 +449,7 @@ fn foreign_logind_session_rejected() {
     let (mut c, _) = client(&b, Setup::default());
     assert!(request(&mut c, &install("yt-dlp")).is_err());
     b.wait_for("exit 5");
-    assert!(b.journal().contains("рукопожатие отвергнуто: session_mismatch"), "{}", b.journal());
+    assert!(b.journal().contains("handshake rejected: session_mismatch"), "{}", b.journal());
     assert!(b.lines("run ").is_empty());
 }
 
@@ -468,7 +468,7 @@ fn stranger_cannot_reach_channel() {
     }
     assert_eq!(spawned.load(Ordering::SeqCst), 1);
     b.wait_for("exit 4");
-    assert!(b.journal().contains("чужой собеседник на сокете"), "{}", b.journal());
+    assert!(b.journal().contains("foreign peer on the socket"), "{}", b.journal());
     assert!(b.lines("run ").is_empty());
 
     // An ordinary session: the window's child sees not a single socket of the window.

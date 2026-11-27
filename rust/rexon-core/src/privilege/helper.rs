@@ -196,8 +196,8 @@ pub struct LiveRootIo;
 
 impl LiveRootIo {
     fn command(&self, argv: &[String]) -> Result<Command, String> {
-        let first = argv.first().ok_or_else(|| "пустая команда".to_string())?;
-        let prog = self.which(first).ok_or_else(|| format!("нет программы {first}"))?;
+        let first = argv.first().ok_or_else(|| "empty command".to_string())?;
+        let prog = self.which(first).ok_or_else(|| format!("no program {first}"))?;
         let mut cmd = Command::new(prog);
         cmd.args(&argv[1..]).env_clear().envs(child_env()).current_dir("/");
         Ok(cmd)
@@ -385,7 +385,7 @@ fn copy_tree_live(src: &std::path::Path, dst: &std::path::Path) -> Result<(), St
             }
             std::fs::copy(&from, &to).map_err(|e| err(&from, e))?;
         } else {
-            return Err(format!("{}: не файл и не каталог", from.display()));
+            return Err(format!("{}: neither a file nor a directory", from.display()));
         }
     }
     Ok(())
@@ -1113,15 +1113,15 @@ impl Ctx<'_> {
     }
 
     fn run(&self, argv: &[String], extra: &RunExtra) -> Result<Option<i32>, String> {
-        self.io.log(&format!("запуск: {}", argv.join(" ")));
+        self.io.log(&format!("launch: {}", argv.join(" ")));
         let rc = self.io.run(argv, extra, &mut |l| (self.progress)(l));
-        self.io.log(&format!("итог: {rc:?}"));
+        self.io.log(&format!("result: {rc:?}"));
         rc
     }
 
     /// Execute and collect the output into a string (for the error text), without progress.
     fn run_quiet(&self, argv: &[String], extra: &RunExtra) -> (Option<i32>, String) {
-        self.io.log(&format!("запуск: {}", argv.join(" ")));
+        self.io.log(&format!("launch: {}", argv.join(" ")));
         let mut text = String::new();
         let rc = self.io.run(argv, extra, &mut |l| {
             if !text.is_empty() {
@@ -1129,7 +1129,7 @@ impl Ctx<'_> {
             }
             text.push_str(l);
         });
-        self.io.log(&format!("итог: {rc:?}"));
+        self.io.log(&format!("result: {rc:?}"));
         (rc.ok().flatten(), text)
     }
 }
@@ -1316,11 +1316,11 @@ fn de_install_set(
     }
     let verdict = |when: &str| {
         de_set_verdict(ctx.io, family, de_id, packages, deps_only, replace).map_err(|r| {
-            ctx.io.log(&format!("набор {de_id} отвергнут {when}: {r:?}"));
+            ctx.io.log(&format!("set {de_id} rejected {when}: {r:?}"));
             Outcome::Refused(format!("refused.{}", r.code()))
         })
     };
-    if let Err(o) = verdict("до установки") {
+    if let Err(o) = verdict("before the install") {
         return o;
     }
     let Ok(mut install) = plan::install_cmd_replacing(family, packages, replace) else {
@@ -1343,7 +1343,7 @@ fn de_install_set(
         // The database was refreshed, so the probe is different. `--ask=4` answers
         // "yes" to ANY conflict, so the core rule runs once more on the new database.
         // Only the package database has been touched so far.
-        if let Err(o) = verdict("после обновления базы") {
+        if let Err(o) = verdict("after the database refresh") {
             return o;
         }
     }
@@ -1396,7 +1396,7 @@ fn sysext_list_remove(ctx: &Ctx<'_>, de: &str) {
     let Some(text) = ctx.io.read_text(sx::DESKTOPS_LIST) else { return };
     let kept: String = text.lines().filter(|l| *l != de).map(|l| format!("{l}\n")).collect();
     if let Err(e) = put_file(ctx.io, sx::DESKTOPS_LIST, &kept, 0o644) {
-        ctx.io.log(&format!("список столов: {e}"));
+        ctx.io.log(&format!("desktop list: {e}"));
     }
 }
 
@@ -1449,7 +1449,7 @@ fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
     };
     (ctx.progress)("@progress 1");
     if let Err(e) = sysext_layout(ctx) {
-        ctx.io.log(&format!("раскладка: {e}"));
+        ctx.io.log(&format!("layout: {e}"));
         return ctx.fail("sx_layout_failed", &[]);
     }
     let _ = ctx.run_quiet(&strings(&["systemctl", "daemon-reload"]), &quiet);
@@ -1468,7 +1468,7 @@ fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
                 }
                 text.push_str(&format!("{de}\n"));
                 if let Err(e) = put_file(ctx.io, sx::DESKTOPS_LIST, &text, 0o644) {
-                    ctx.io.log(&format!("список столов: {e}"));
+                    ctx.io.log(&format!("desktop list: {e}"));
                     return ctx.fail("sx_layout_failed", &[]);
                 }
             }
@@ -1504,7 +1504,7 @@ fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
 /// Its own working directory (0700, root); removed together with the copy on exit.
 fn work_dir(ctx: &Ctx<'_>) -> Result<WorkDir, Outcome> {
     WorkDir::create(&ctx.io.work_base()).map_err(|e| {
-        ctx.io.log(&format!("рабочий каталог: {e}"));
+        ctx.io.log(&format!("working directory: {e}"));
         Outcome::Internal("work_dir".into())
     })
 }
@@ -1575,7 +1575,7 @@ fn install_built(
     match (&expected, &got) {
         (Some(e), Some(g)) if e == g && validate::check_package_name(PkgFamily::Arch, g).is_ok() => {}
         _ => {
-            io.log(&format!("install-built: .PKGINFO {got:?}, ожидалось {expected:?}"));
+            io.log(&format!("install-built: .PKGINFO {got:?}, expected {expected:?}"));
             return Outcome::Refused("refused.pkginfo".into());
         }
     }
@@ -1634,7 +1634,7 @@ fn aur_deps(ctx: &Ctx<'_>, names: &[String]) -> Outcome {
     }
     let sync = sync_names(ctx.io);
     if let Some(n) = names.iter().find(|n| !sync.contains(n.as_str())) {
-        ctx.io.log(&format!("aur-deps: {n} нет в sync-базе"));
+        ctx.io.log(&format!("aur-deps: {n} is not in the sync database"));
         return Deny::from(Refusal::NotInTable(n.clone())).into_outcome();
     }
     if let Err(o) = ctx.touch() {
@@ -1683,12 +1683,12 @@ fn aur_install_built(
         let got = (info.code == Some(0)).then(|| pkginfo_name(&info.stdout)).flatten();
         let ok = matches!((&expected, &got), (Some(e), Some(g)) if e == g && allowed.contains(g));
         if !ok {
-            io.log(&format!("aur-install-built: .PKGINFO {got:?}, файл {expected:?}, окно просило {allowed:?}"));
+            io.log(&format!("aur-install-built: .PKGINFO {got:?}, file {expected:?}, the window asked for {allowed:?}"));
             return Outcome::Refused("refused.pkginfo".into());
         }
         let name = got.unwrap_or_default();
         if sync.contains(&name) {
-            io.log(&format!("aur-install-built: {name} — пакет официального репозитория"));
+            io.log(&format!("aur-install-built: {name} is an official repository package"));
             return Deny::from(Refusal::Conflict(name)).into_outcome();
         }
         copies.push(copy);
@@ -1763,20 +1763,20 @@ fn orphan_remove(ctx: &Ctx<'_>, names: &[String], current_de: &str) -> Outcome {
     };
     let sync = sync_names(io);
     if sync.is_empty() {
-        return not_orphan(&names.join(" "), "sync-база не прочиталась");
+        return not_orphan(&names.join(" "), "the sync database could not be read");
     }
     let mut qg = strings(&["pacman", "-Qg"]);
     qg.extend(crate::update_guard::groups_needed(crate::update_guard::PACKAGE_SETS).iter().map(|g| g.to_string()));
     let groups = crate::update_guard::parse_groups(&io.capture(&qg).stdout);
     for n in names {
         if !crate::update_guard::orphan_candidate(n, &groups) {
-            return not_orphan(n, "не член набора сторожа");
+            return not_orphan(n, "not a member of the guard set");
         }
         if io.capture(&strings(&["pacman", "-Q", "--", n])).code != Some(0) {
-            return not_orphan(n, "не установлен");
+            return not_orphan(n, "not installed");
         }
         if sync.contains(n.as_str()) {
-            return not_orphan(n, "есть в репозиториях");
+            return not_orphan(n, "present in the repositories");
         }
     }
     let mut preview = strings(&["pacman", "-Rnsp", "--print-format", "%n", "--"]);
@@ -1784,17 +1784,17 @@ fn orphan_remove(ctx: &Ctx<'_>, names: &[String], current_de: &str) -> Outcome {
     let p = io.capture(&preview);
     let going: Vec<String> = p.stdout.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect();
     if p.code != Some(0) || going.is_empty() {
-        io.log(&format!("orphan-remove: проба не прошла ({:?})", p.code));
+        io.log(&format!("orphan-remove: the probe failed ({:?})", p.code));
         return Outcome::Refused("refused.orphan-needed".into());
     }
     if let Err(r) = validate::check_remove_packages(PkgFamily::Arch, &going, current_de) {
-        io.log(&format!("orphan-remove: снялось бы лишнее: {going:?}"));
+        io.log(&format!("orphan-remove: more would be removed: {going:?}"));
         return Deny::from(r).into_outcome();
     }
     // The login screen itself opens a session that needs the package being removed.
     let defaults = crate::update_guard::login_default_sessions(&|p| io.read_text(p), &|d| io.list_dir(d));
     if let Some(s) = crate::update_guard::orphan_login_default(&going, &defaults) {
-        io.log(&format!("orphan-remove: экран входа открывает сеанс {:?} ({defaults:?})", s.session_name));
+        io.log(&format!("orphan-remove: the login screen opens session {:?} ({defaults:?})", s.session_name));
         return Outcome::Refused(format!("{ORPHAN_LOGIN_DEFAULT}{}", s.package));
     }
     if let Err(o) = ctx.touch() {
@@ -1872,7 +1872,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
             Err(r) => return Deny::from(r).into_outcome(),
         };
         if !dirs.iter().any(|d| d == dir) {
-            io.log(&format!("cache-rollback: {path} — не каталог кэша ({dirs:?})"));
+            io.log(&format!("cache-rollback: {path} is not a cache directory ({dirs:?})"));
             return Deny::from(Refusal::Path(path.clone())).into_outcome();
         }
         let fd = match io.open_root_file(dir, base) {
@@ -1895,7 +1895,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         let sig_path = format!("{dir}/{sig}");
         if io.exists(&sig_path) || io.is_symlink(&sig_path) {
             let bad_sig = |why: String| {
-                io.log(&format!("cache-rollback: подпись {sig_path} — {why}"));
+                io.log(&format!("cache-rollback: signature {sig_path}: {why}"));
                 Outcome::Refused(ROLLBACK_SIGNATURE.into())
             };
             let fd = match io.open_root_file(dir, &sig) {
@@ -1907,17 +1907,17 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
                 Err(e) => return bad_sig(e.to_string()),
             };
             if io.which("pacman-key").is_none() {
-                return bad_sig("нечем проверить (нет pacman-key)".into());
+                return bad_sig("nothing to verify with (no pacman-key)".into());
             }
             let v = io.capture(&strings(&["pacman-key", "--verify", &sig_copy, &copy]));
             if v.code != Some(0) {
-                return bad_sig(format!("не сошлась ({:?})", v.code));
+                return bad_sig(format!("did not match ({:?})", v.code));
             }
         }
         let info = io.capture(&strings(&["bsdtar", "-xOf", &copy, ".PKGINFO"]));
         let field = |k: &str| (info.code == Some(0)).then(|| pkginfo_field(&info.stdout, k)).flatten();
         let (Some(name), Some(version)) = (field("pkgname"), field("pkgver")) else {
-            io.log(&format!("cache-rollback: {path} — .PKGINFO без имени или версии"));
+            io.log(&format!("cache-rollback: {path}: .PKGINFO without a name or version"));
             return Outcome::Refused("refused.pkginfo".into());
         };
         if validate::check_package_name(PkgFamily::Arch, &name).is_err() || got.iter().any(|(n, _, _)| *n == name) {
@@ -1935,7 +1935,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     // pending update: a finding with a rollback then can only be "already diverged".
     let q = io.capture(&strings(&["pacman", "-Q"]));
     if q.code != Some(0) {
-        return not_rollback(&names.join(" "), "pacman -Q не прочитался");
+        return not_rollback(&names.join(" "), "pacman -Q could not be read");
     }
     let installed = ug::parse_installed(&q.stdout);
     let mut qg = strings(&["pacman", "-Qg"]);
@@ -1954,22 +1954,22 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         let r: BTreeSet<&str> = f.rollback.iter().map(|(n, _)| n.as_str()).collect();
         !r.is_empty() && r == want
     }) else {
-        return not_rollback(&names.join(" "), &format!("не ровно откат одной находки ({findings:?})"));
+        return not_rollback(&names.join(" "), &format!("not exactly the rollback of one finding ({findings:?})"));
     };
     for (name, version, _) in &got {
         let Some((_, target)) = finding.rollback.iter().find(|(n, _)| n == name) else {
-            return not_rollback(name, "не в откате находки");
+            return not_rollback(name, "not in the rollback of the finding");
         };
         if !target.accepts(version) {
-            return not_rollback(name, &format!("версия {version} не под цель {target:?}"));
+            return not_rollback(name, &format!("version {version} does not match the target {target:?}"));
         }
         let Some((_, have)) = installed.iter().find(|(n, _)| n == name) else {
-            return not_rollback(name, "не установлен");
+            return not_rollback(name, "not installed");
         };
         let c = io.capture(&strings(&["vercmp", version, have]));
         let older = c.code == Some(0) && c.stdout.trim().parse::<i32>().is_ok_and(|v| v < 0);
         if !older {
-            return not_rollback(name, &format!("{version} не меньше установленной {have}"));
+            return not_rollback(name, &format!("{version} is not lower than the installed {have}"));
         }
     }
 
@@ -1989,7 +1989,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         lines.iter().filter(|w| w.len() == 2).map(|w| (w[0].to_string(), w[1].to_string())).collect();
     let expected: BTreeSet<(String, String)> = got.iter().map(|(n, v, _)| (n.clone(), v.clone())).collect();
     if p.code != Some(0) || !well_formed || printed != expected {
-        io.log(&format!("cache-rollback: проба {:?}: {printed:?}, ждали {expected:?}", p.code));
+        io.log(&format!("cache-rollback: probe {:?}: {printed:?}, expected {expected:?}", p.code));
         return Outcome::Refused(ROLLBACK_EXTRA.into());
     }
     if let Err(o) = ctx.touch() {
@@ -2010,7 +2010,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         .map(|(n, _, _)| n.as_str())
         .collect();
     if !missed.is_empty() {
-        io.log(&format!("cache-rollback: после pacman -U версии не те: {missed:?}"));
+        io.log(&format!("cache-rollback: wrong versions after pacman -U: {missed:?}"));
         return Outcome::Done { ok: false, code: Some(1), key: None };
     }
     Outcome::ok(None)
@@ -2202,7 +2202,7 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
         let got = io.capture(&crate::qt_settings::fc_query_families_argv(&copy));
         let families = crate::qt_settings::parse_fc_query_families(&got.stdout);
         if got.code != Some(0) || families.is_empty() {
-            io.log(&format!("шрифт: fc-query не узнал {name}"));
+            io.log(&format!("font: fc-query did not recognize {name}"));
             return Deny::from(Refusal::NotAFont(name.clone())).into_outcome();
         }
         let dest = format!("{root}/{name}");
@@ -2214,7 +2214,7 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
         {
             use std::os::unix::fs::PermissionsExt;
             if let Err(e) = std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o644)) {
-                io.log(&format!("шрифт: права копии {name}: {e}"));
+                io.log(&format!("font: permissions of the copy {name}: {e}"));
                 return Outcome::Internal("font_mode".into());
             }
         }
@@ -2226,7 +2226,7 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
     let fail = |e: String, done: &[String]| {
         (ctx.progress)(&e);
         for d in done.iter().rev() {
-            io.log(&format!("шрифт: откат {d}"));
+            io.log(&format!("font: rollback {d}"));
             let _ = io.remove_file(d);
         }
         Outcome::Done { ok: false, code: Some(1), key: None }
@@ -2238,7 +2238,7 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
     }
     let mut done: Vec<String> = Vec::new();
     for (copy, dest) in &copies {
-        io.log(&format!("шрифт: кладу {dest}"));
+        io.log(&format!("font: placing {dest}"));
         if let Err(e) = io.copy_file(copy, dest) {
             return fail(e, &done);
         }
@@ -2261,7 +2261,7 @@ fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         };
         let honest = io.canonicalize(f).as_deref() == Some(format!("{real_root}/{rest}").as_str());
         if io.is_symlink(f) || !io.is_file(f) || !honest {
-            io.log(&format!("шрифт: {f} — не обычный файл каталога шрифтов"));
+            io.log(&format!("font: {f} is not a regular file of the fonts directory"));
             return Deny::from(Refusal::FontFile(f.clone())).into_outcome();
         }
     }
@@ -2271,7 +2271,7 @@ fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     let mut failed = false;
     let mut parents: BTreeSet<String> = BTreeSet::new();
     for f in files {
-        io.log(&format!("шрифт: удаляю {f}"));
+        io.log(&format!("font: removing {f}"));
         if let Err(e) = io.remove_file(f) {
             (ctx.progress)(&e);
             failed = true;
@@ -2304,13 +2304,13 @@ fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
 /// Restore the files as they were before the edit (`None` means there was no file).
 fn restore_files(io: &dyn RootIo, before: Vec<(String, Option<String>, u32)>, tag: &str) {
     for (path, old, mode) in before.into_iter().rev() {
-        io.log(&format!("{tag}: откат {path}"));
+        io.log(&format!("{tag}: rollback {path}"));
         let back = match old {
             Some(t) => io.write_file(&path, &t, mode),
             None => io.remove_file(&path),
         };
         if let Err(e) = back {
-            io.log(&format!("{tag}: откат {path} не удался: {e}"));
+            io.log(&format!("{tag}: rollback of {path} failed: {e}"));
         }
     }
 }
@@ -2387,7 +2387,7 @@ fn sddm_background(ctx: &Ctx<'_>, theme: &str, fd: Option<BorrowedFd<'_>>) -> Ou
     if let Err(o) = ctx.touch() {
         return o;
     }
-    io.log(&format!("sddm-bg: кладу {dest}"));
+    io.log(&format!("sddm-bg: placing {dest}"));
     if let Err(e) = io.copy_file(&path_str(&copy), &dest) {
         return fail(e);
     }
@@ -2531,7 +2531,7 @@ fn sddm_look(ctx: &Ctx<'_>, look: Option<&plan::SddmLook>, files: &[OwnedFd], na
     let as_sddm = |cmd: Vec<String>, stdin: Option<String>| -> bool {
         let (rc, text) = ctx.run_quiet(&as_user_argv(uid, gid, &cmd), &RunExtra { stdin, env: Vec::new() });
         if rc != Some(0) {
-            io.log(&format!("sddm-look: от имени sddm не вышло ({rc:?}): {text}"));
+            io.log(&format!("sddm-look: failed as the sddm user ({rc:?}): {text}"));
             (ctx.progress)(&text);
         }
         rc == Some(0)
@@ -2627,7 +2627,7 @@ fn write_edits(ctx: &Ctx<'_>, edits: &[plan::SessionEdit], tag: &str) -> Result<
     for e in edits {
         let old = io.read_text(&e.path);
         let mode = io.mode_of(&e.path).unwrap_or(0o644);
-        io.log(&format!("{tag}: пишу {}", e.path));
+        io.log(&format!("{tag}: writing {}", e.path));
         let parent = e.path.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let r = if old.is_none() && !parent.is_empty() && !io.is_dir(parent) {
             io.create_dir_all(parent, 0o755)
@@ -2638,13 +2638,13 @@ fn write_edits(ctx: &Ctx<'_>, edits: &[plan::SessionEdit], tag: &str) -> Result<
         if let Err(err) = r {
             (ctx.progress)(&err);
             for (path, old, mode) in done.into_iter().rev() {
-                io.log(&format!("{tag}: откат {path}"));
+                io.log(&format!("{tag}: rollback {path}"));
                 let back = match old {
                     Some(t) => io.write_file(path, &t, mode),
                     None => io.remove_file(path),
                 };
                 if let Err(e) = back {
-                    io.log(&format!("{tag}: откат {path} не удался: {e}"));
+                    io.log(&format!("{tag}: rollback of {path} failed: {e}"));
                 }
             }
             return Err(Outcome::Done { ok: false, code: Some(1), key: None });
@@ -2684,7 +2684,7 @@ fn theme_apply(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
             plan::SessionSwitch::Edits(e) => e,
         };
         if let Some(e) = edits.iter().find(|e| io.is_symlink(&e.path)) {
-            io.log(&format!("sddm-theme: {} — ссылка, ничего не меняю", e.path));
+            io.log(&format!("sddm-theme: {} is a link, changing nothing", e.path));
             return ctx.fail("theme_set_elsewhere", &[theme]);
         }
         if let Err(o) = ctx.touch() {
@@ -2840,7 +2840,7 @@ const XGREETERS: &str = "/usr/share/xgreeters";
 const POLICY_RC: &str = "/usr/sbin/policy-rc.d";
 /// Names of text login programs: only for recognizing a greetd config,
 /// nothing is started.
-const TEXT_LOGINS: &[&str] = &["agreety", "login", "sh", "bash", "dash", "zsh", "fish"]; // сторож: имена, не запуск
+const TEXT_LOGINS: &[&str] = &["agreety", "login", "sh", "bash", "dash", "zsh", "fish"]; // guard: names, not a launch
 
 fn basename(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
@@ -2930,14 +2930,14 @@ fn login_session_wayland(ctx: &Ctx<'_>, s: &plan::SessionSuccessor) -> Outcome {
     let edits = match plan::plan_wayland_default(s, &|p| io.read_text(p), &|d| io.list_dir(d)) {
         plan::SessionSwitch::Nothing => return Outcome::ok(None),
         plan::SessionSwitch::Elsewhere => {
-            io.log(&format!("login-session: {} задан в файле пакета — не меняю", s.x11));
+            io.log(&format!("login-session: {} is set in a package file, not changing it", s.x11));
             return Outcome::Refused(format!("{}{}", plan::SESSION_SET_ELSEWHERE, s.x11));
         }
         plan::SessionSwitch::Edits(e) => e,
     };
     // We write none of them if a link is in place of a file (and do not start at all).
     if let Some(e) = edits.iter().find(|e| io.is_symlink(&e.path)) {
-        io.log(&format!("login-session: {} — ссылка, ничего не меняю", e.path));
+        io.log(&format!("login-session: {} is a link, changing nothing", e.path));
         return Outcome::Refused(format!("{}{}", plan::SESSION_SET_ELSEWHERE, s.x11));
     }
     if let Err(o) = ctx.touch() {
@@ -3013,7 +3013,7 @@ fn apply_autologin(
     let io = ctx.io;
     // We do not write if a link is in place of a file (as for the default session).
     if let Some(e) = t.edits.iter().find(|e| io.is_symlink(&e.path)) {
-        io.log(&format!("autologin: {} — ссылка, не пишу", e.path));
+        io.log(&format!("autologin: {} is a link, not writing", e.path));
         return Err(ctx.say_text("dm_autologin_write_failed", &[]));
     }
     *saved.borrow_mut() =
@@ -3083,7 +3083,7 @@ fn move_greeter_sound_masks(ctx: &Ctx<'_>, old: &str, new: &str) {
         return;
     }
     let Some((uid, gid, new_home)) = greeter_account(io, new_user) else {
-        io.log(&format!("greeter-sound: у {new_user} нет дома — маски не ставлю"));
+        io.log(&format!("greeter-sound: {new_user} has no home, not setting masks"));
         return;
     };
     let new_dir = al::greeter_user_unit_dir(&new_home);
@@ -3276,7 +3276,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
     let group_done: std::cell::RefCell<Option<(String, String, bool)>> = Default::default();
     let rollback = || {
         for (path, text, mode) in autologin_saved.borrow().iter().rev() {
-            io.log(&format!("autologin: откат {path}"));
+            io.log(&format!("autologin: rollback {path}"));
             let _ = match text {
                 Some(t) => io.write_file(path, t, *mode),
                 None => io.remove_file(path),
@@ -3537,7 +3537,7 @@ pub fn run_session(
     match peer_cred(sock.as_fd()) {
         Some((uid, pid)) if validate::check_peer(uid, pid, cfg.pkexec_uid, cfg.parent_pid).is_ok() => {}
         other => {
-            io.log(&format!("чужой собеседник на сокете: {other:?}"));
+            io.log(&format!("foreign peer on the socket: {other:?}"));
             return SessionReport { end: SessionEnd::PeerRejected, ops_executed: 0 };
         }
     }
@@ -3591,7 +3591,7 @@ pub fn run_session(
     // already got EOF; the thread exits by itself as soon as it wakes up (for the
     // live helper, together with the process).
     drop(reader);
-    io.log(&format!("выход: {:?}, операций исполнено {}", report.end, report.ops_executed));
+    io.log(&format!("session end: {:?}, operations executed {}", report.end, report.ops_executed));
     report
 }
 
@@ -3618,7 +3618,7 @@ fn session_loop(
         if let Some(reason) = revoker.revoked() {
             if !announced {
                 announced = true;
-                io.log(&format!("право погашено: {}", reason.code()));
+                io.log(&format!("privilege revoked: {}", reason.code()));
                 if reason != Reason::WindowClosed {
                     out.error(None, ErrorCode::Revoked, &format!("revoked.{}", reason.code()));
                 }
@@ -3646,12 +3646,12 @@ fn session_loop(
                 }
             }
             Input::Msg(Ok(None)) => {
-                io.log("окно закрыло сокет");
+                io.log("the window closed the socket");
                 revoker.on_event(Event::WindowClosed, clock.now());
             }
             Input::Msg(Err(e)) => {
                 // A frame error = end of the session, without a reply (proto.rs).
-                io.log(&format!("ошибка кадра: {e}"));
+                io.log(&format!("frame error: {e}"));
                 revoker.on_event(Event::WindowClosed, clock.now());
             }
             Input::Msg(Ok(Some((msg, fds)))) => {
@@ -3663,12 +3663,12 @@ fn session_loop(
                     };
                     match handshake(io.as_ref(), cfg, &hello) {
                         Ok(f) => {
-                            io.log(&format!("сеанс открыт: uid {}, сеанс {}, {:?}", cfg.pkexec_uid, cfg.session_id, f));
+                            io.log(&format!("session opened: uid {}, session {}, {:?}", cfg.pkexec_uid, cfg.session_id, f));
                             facts = Some(f);
                             out.send(&HelperMsg::Welcome { build_id: cfg.build_id.clone() });
                         }
                         Err((code, key, why)) => {
-                            io.log(&format!("рукопожатие отвергнуто: {key}"));
+                            io.log(&format!("handshake rejected: {key}"));
                             out.error(None, code, key);
                             return end(why, 0);
                         }
@@ -3680,7 +3680,7 @@ fn session_loop(
                     ClientMsg::Cancel { id } => match &current {
                         Some(r) if r.id == id => {
                             let taken = request_cancel(&r.state);
-                            io.log(&format!("отмена {id}: {}", if taken { "принята" } else { "поздно, доводим" }));
+                            io.log(&format!("cancel {id}: {}", if taken { "accepted" } else { "too late, finishing" }));
                         }
                         // A cancel that crossed paths with the end of the operation is not an error.
                         _ if last_finished == Some(id) => {}
@@ -3704,14 +3704,14 @@ fn session_loop(
                         let plan_ = match checked {
                             Ok(p) => p,
                             Err(deny) => {
-                                io.log(&format!("запрос {id} отвергнут: {} ({op:?})", deny.key));
+                                io.log(&format!("request {id} rejected: {} ({op:?})", deny.key));
                                 out.error(Some(id), deny.code, &deny.key);
                                 revoker.op_finished(clock.now());
                                 last_finished = Some(id);
                                 continue;
                             }
                         };
-                        io.log(&format!("запрос {id} принят: {plan_:?}"));
+                        io.log(&format!("request {id} accepted: {plan_:?}"));
                         let state = Arc::new(Mutex::new(OpState::default()));
                         let handle = spawn_worker(id, plan_, fds, io, out, tx, &state, cfg.lang.clone(), &rebuilt);
                         current = Some(Running { id, state, handle });
@@ -3758,7 +3758,7 @@ fn spawn_worker(
         };
         let ctx = Ctx { io: io.as_ref(), progress: &progress, state: &state, lang: lang.as_deref(), rebuilt: &rebuilt };
         let outcome = execute(&plan_, &ctx, files);
-        io.log(&format!("запрос {id}: {outcome:?}"));
+        io.log(&format!("request {id}: {outcome:?}"));
         // First tell the loop "the operation ended", then send the result to the
         // window. The other way round there was a race: the window got the result,
         // immediately sent the next request, while the loop did not know about the
@@ -3883,14 +3883,14 @@ pub fn main_live() -> i32 {
     }
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let Some(args) = parse_args(&raw_args) else {
-        journal("неверные аргументы");
+        journal("invalid arguments");
         return EXIT_USAGE;
     };
     let pkexec_uid = std::env::var("PKEXEC_UID").ok().and_then(|s| validate::parse_pkexec_uid(&s));
     // SAFETY: see above.
     let euid = unsafe { libc::geteuid() };
     let Some(pkexec_uid) = pkexec_uid.filter(|_| euid == 0) else {
-        journal("запущен не через pkexec");
+        journal("not started through pkexec");
         return EXIT_NOT_PKEXEC;
     };
     sanitize_process_env();
@@ -3900,12 +3900,12 @@ pub fn main_live() -> i32 {
         libc::chdir(c"/".as_ptr());
     }
     let Some(sock) = take_socket_from_stdio() else {
-        journal("на fd 0 нет сокета окна");
+        journal("no window socket on fd 0");
         return EXIT_CHANNEL;
     };
     let io: Arc<dyn RootIo> = Arc::new(LiveRootIo);
     let Some(session) = args.session.or_else(|| session_of_user(io.as_ref(), pkexec_uid)) else {
-        io.log("сеанс окна не найден у logind");
+        io.log("the window session was not found in logind");
         return EXIT_HANDSHAKE;
     };
     let Some(watch) = LogindWatch::new(RootLoginctl(Arc::clone(&io)), BootMinusMonotonic, &session) else {
@@ -3920,7 +3920,7 @@ pub fn main_live() -> i32 {
         poll_interval: revoke::POLL_INTERVAL,
         idle_limit: revoke::IDLE_LIMIT,
     };
-    io.log(&format!("запуск: uid {pkexec_uid}, родитель {parent}, сборка {}", cfg.build_id));
+    io.log(&format!("start: uid {pkexec_uid}, parent {parent}, build {}", cfg.build_id));
     let report = run_session(sock, io, cfg, Box::new(watch), Arc::new(MonotonicClock));
     match report.end {
         SessionEnd::Revoked(_) => EXIT_OK,
@@ -4073,7 +4073,7 @@ mod tests {
             if argv.first().map(String::as_str) == Some("bsdtar") {
                 // The root copy already lies in the working directory: check that it is
                 // the copy that gets checked, not the user's path.
-                assert!(std::path::Path::new(&argv[2]).is_file(), "bsdtar не по копии: {argv:?}");
+                assert!(std::path::Path::new(&argv[2]).is_file(), "bsdtar not on the copy: {argv:?}");
                 let s = self.st();
                 let own = s.pkginfos.get(basename(&argv[2])).cloned();
                 return Captured { code: Some(0), stdout: own.unwrap_or_else(|| s.pkginfo.clone()) };
@@ -4132,7 +4132,7 @@ mod tests {
         }
         fn write_file(&self, path: &str, content: &str, _mode: u32) -> Result<(), String> {
             if self.st().fail_writes.contains(path) {
-                return Err(format!("{path}: нет места"));
+                return Err(format!("{path}: no space left"));
             }
             self.mutate(format!("write {path}"));
             self.st().files.insert(path.into(), content.into());
@@ -4148,14 +4148,14 @@ mod tests {
             let text = self
                 .read_text(src)
                 .or_else(|| std::fs::read(src).ok().map(|b| String::from_utf8_lossy(&b).into_owned()))
-                .ok_or("нет файла")?;
+                .ok_or("no file")?;
             self.st().files.insert(dst.into(), text);
             Ok(())
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), String> {
             self.mutate(format!("rename {from} {to}"));
             let mut s = self.st();
-            let text = s.files.remove(from).ok_or("нет файла")?;
+            let text = s.files.remove(from).ok_or("no file")?;
             s.files.insert(to.into(), text);
             Ok(())
         }
@@ -4175,7 +4175,7 @@ mod tests {
             Ok(())
         }
         fn copy_tree(&self, src: &str, dst: &str) -> Result<(), String> {
-            assert!(std::path::Path::new(src).is_dir(), "copy_tree не из своего каталога");
+            assert!(std::path::Path::new(src).is_dir(), "copy_tree not from its own directory");
             self.mutate(format!("copy_tree {dst}"));
             Ok(())
         }
@@ -4199,7 +4199,7 @@ mod tests {
                 return Err(UnpackError::NotRootOwned(path));
             }
             let bytes = self.st().root_files.get(&path).cloned();
-            let bytes = bytes.ok_or_else(|| UnpackError::Malformed(format!("нет {path}")))?;
+            let bytes = bytes.ok_or_else(|| UnpackError::Malformed(format!("no {path}")))?;
             Ok(user_file(&format!("root-{}-{name}", N.fetch_add(1, Ordering::SeqCst)), &bytes))
         }
     }
@@ -4237,7 +4237,7 @@ mod tests {
 
     /// Wait for a signal from a channel no longer than [`WAIT`].
     fn wait<T>(rx: &Receiver<T>, what: &str) -> T {
-        rx.recv_timeout(WAIT).unwrap_or_else(|_| panic!("не дождались: {what}"))
+        rx.recv_timeout(WAIT).unwrap_or_else(|_| panic!("timed out waiting for: {what}"))
     }
 
     struct Bench {
@@ -4289,7 +4289,7 @@ mod tests {
             proto::send_msg(self.client.as_fd(), &msg).unwrap();
         }
         fn recv(&self) -> Option<HelperMsg> {
-            proto::recv_msg(self.client.as_fd()).expect("ответ помощника")
+            proto::recv_msg(self.client.as_fd()).expect("helper reply")
         }
         /// The next non-Progress message.
         fn recv_final(&self) -> Option<HelperMsg> {
@@ -4306,7 +4306,7 @@ mod tests {
         }
         fn finish(self) -> SessionReport {
             drop(self.client);
-            wait(&self.done, "выход помощника")
+            wait(&self.done, "helper exit")
         }
     }
 
@@ -4341,7 +4341,7 @@ mod tests {
             b.recv(),
             Some(HelperMsg::Error { id: None, code: ErrorCode::BuildMismatch, message_key: "build_mismatch".into() })
         );
-        assert_eq!(b.recv(), None, "после отказа помощник закрывает сокет");
+        assert_eq!(b.recv(), None, "after a refusal the helper closes the socket");
         assert_eq!(b.finish().end, SessionEnd::HandshakeFailed(ErrorCode::BuildMismatch));
     }
 
@@ -4381,7 +4381,7 @@ mod tests {
         let io = FakeIo::arch();
         let b = bench_with(io.clone(), unsafe { libc::getuid() } + 1);
         // The helper closes the socket without reading a single frame.
-        assert_eq!(b.recv(), None, "чужому — ни Welcome, ни ответа");
+        assert_eq!(b.recv(), None, "a stranger gets neither Welcome nor a reply");
         assert_eq!(b.finish().end, SessionEnd::PeerRejected);
         assert!(io.touched_nothing());
     }
@@ -4445,7 +4445,7 @@ mod tests {
         assert_eq!(b.recv(), refused(12, "fds_mismatch"));
         let r = b.finish();
         assert_eq!(r.ops_executed, 0);
-        assert!(io.touched_nothing(), "после отказа система не тронута: {:?}", io.st().runs);
+        assert!(io.touched_nothing(), "after a refusal the system is untouched: {:?}", io.st().runs);
     }
 
     #[test]
@@ -4550,7 +4550,7 @@ mod tests {
         let b = bench(io.clone());
         b.hello();
         b.send(install(1, &["sddm"]));
-        wait(&started_rx, "начало pacman");
+        wait(&started_rx, "pacman start");
         b.send(install(2, &["lightdm"]));
         assert_eq!(b.recv(), Some(HelperMsg::Busy { id: 2 }));
         go_tx.send(()).unwrap();
@@ -4620,7 +4620,7 @@ mod tests {
         let b = bench(io.clone());
         b.hello();
         b.send(install(1, &["sddm"]));
-        wait(&started_rx, "начало pacman");
+        wait(&started_rx, "pacman start");
         b.send(ClientMsg::Cancel { id: 1 });
         b.send(install(2, &["sddm"]));
         assert_eq!(b.recv(), Some(HelperMsg::Busy { id: 2 }));
@@ -4639,16 +4639,16 @@ mod tests {
         let b = bench(io.clone());
         b.hello();
         b.send(install(1, &["sddm"]));
-        wait(&started_rx, "начало pacman");
+        wait(&started_rx, "pacman start");
         let Bench { client, done, .. } = b;
         drop(client);
         // The window is gone; the helper is still waiting for pacman to finish and does not exit.
         assert!(
             done.recv_timeout(Duration::from_millis(100)).is_err(),
-            "помощник вышел посреди операции"
+            "the helper exited in the middle of the operation"
         );
         go_tx.send(()).unwrap();
-        let r = wait(&done, "выход после операции");
+        let r = wait(&done, "exit after the operation");
         assert_eq!(r.end, SessionEnd::Revoked(Reason::WindowClosed));
         assert_eq!(r.ops_executed, 1);
         assert_eq!(io.runs_finished.load(Ordering::SeqCst), 1);
@@ -4664,7 +4664,7 @@ mod tests {
             b.recv(),
             Some(HelperMsg::Error { id: None, code: ErrorCode::Revoked, message_key: "revoked.idle".into() })
         );
-        assert_eq!(b.recv(), None, "после отзыва помощник выходит");
+        assert_eq!(b.recv(), None, "after revocation the helper exits");
         assert_eq!(b.finish().end, SessionEnd::Revoked(Reason::Idle));
     }
 
@@ -4677,7 +4677,7 @@ mod tests {
         let b = bench(io.clone());
         b.hello();
         b.send(install(1, &["sddm"]));
-        wait(&started_rx, "начало pacman");
+        wait(&started_rx, "pacman start");
         b.watch.0.lock().unwrap().push_back(Event::ScreenLocked);
         assert_eq!(
             b.recv(),
@@ -4698,14 +4698,14 @@ mod tests {
         rev.op_started(Duration::ZERO).unwrap();
         rev.on_event(Event::Slept, Duration::ZERO);
         assert_eq!(rev.op_started(Duration::ZERO), Err(Reason::Slept));
-        assert!(!rev.may_exit(), "идущая операция держит помощника");
+        assert!(!rev.may_exit(), "a running operation keeps the helper");
     }
 
     // ── Progress ─────────────────────────────────────────────────────────
 
     #[test]
     fn progress_режется_по_4кб() {
-        let long = "ж".repeat(5000); // 10,000 bytes
+        let long = "ж".repeat(5000); // 10,000 bytes; i18n-exempt: two-byte letters for the UTF-8 cut
         let parts = cut_progress(&long);
         assert!(parts.iter().all(|p| p.len() <= PROGRESS_MAX));
         assert_eq!(parts.concat(), long);
@@ -4713,7 +4713,7 @@ mod tests {
         let mut cutter = LineCutter::default();
         let mut got = Vec::new();
         let mut data = "a\r\nb\n".as_bytes().to_vec();
-        data.extend("я".repeat(3000).as_bytes());
+        data.extend("я".repeat(3000).as_bytes()); // i18n-exempt: two-byte letters for the UTF-8 cut
         data.push(b'\n');
         for chunk in data.chunks(7) {
             cutter.feed(chunk, &mut |l| got.push(l.to_string()));
@@ -4721,7 +4721,7 @@ mod tests {
         cutter.finish(&mut |l| got.push(l.to_string()));
         assert_eq!(&got[..2], &["a".to_string(), "b".to_string()]);
         assert!(got[2..].iter().all(|l| l.len() <= PROGRESS_MAX && !l.contains('\u{fffd}')));
-        assert_eq!(got[2..].concat(), "я".repeat(3000));
+        assert_eq!(got[2..].concat(), "я".repeat(3000)); // i18n-exempt: two-byte letters for the UTF-8 cut
     }
 
     #[test]
@@ -4785,6 +4785,34 @@ mod tests {
         ] {
             assert_eq!(parse_args(&strings(bad)), None, "{bad:?}");
         }
+    }
+
+    /// pkexec clears the environment, so the language reaches the helper only as
+    /// `--lang`: the client builds the argument, the helper parses it and speaks
+    /// that language from the embedded catalogs. English (the source), no
+    /// argument or a valid code without a catalog give English.
+    #[test]
+    fn helper_speaks_the_language_of_its_argument() {
+        let io = FakeIo::arch();
+        let rebuilt = Mutex::new(Vec::new());
+        let state = Mutex::new(OpState::default());
+        let say = |argv: &[String]| {
+            let args = parse_args(argv).expect("the helper accepts its arguments");
+            let ctx = Ctx { io: io.as_ref(), progress: &|_: &str| {}, state: &state, lang: args.lang.as_deref(), rebuilt: &rebuilt };
+            ctx.say_text("prev_dm_back", &["sddm"])
+        };
+        let english = "To bring back sddm from a text console (Ctrl+Alt+F3), sign in and run:";
+        let from_client = |lang: &str| crate::privilege::client::lang_arg(lang).into_iter().collect::<Vec<_>>();
+        if crate::system_l10n::languages().contains(&"ru") {
+            assert_eq!(from_client("ru"), strings(&["--lang=ru"]));
+            // i18n-exempt: the Russian catalog text the helper must print
+            assert_eq!(say(&from_client("ru")), "Чтобы вернуть sddm из текстовой консоли (Ctrl+Alt+F3), войдите и выполните:");
+        }
+        assert!(from_client("en").is_empty(), "English needs no argument");
+        assert_eq!(say(&from_client("en")), english);
+        assert_eq!(say(&[]), english);
+        // A valid code the catalog does not know: English, not an error.
+        assert_eq!(say(&strings(&["--lang=xx"])), english);
     }
 
     // ── switch-dm ────────────────────────────────────────────────────────
@@ -4898,7 +4926,7 @@ mod tests {
         assert_eq!(s.files["/etc/sddm.conf"], "[Autologin]\nSession=plasma.desktop\n");
         let own = &s.files["/etc/sddm.conf.d/zz-rexon-autologin.conf"];
         assert!(own.contains("User=alice") && own.contains("Relogin=true"), "{own}");
-        assert_eq!(s.files["/etc/plasmalogin.conf"], "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n", "прежний не тронут");
+        assert_eq!(s.files["/etc/plasmalogin.conf"], "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n", "the previous one is untouched");
         assert!(lines.iter().any(|l| l == "automatic sign-in for alice moved to sddm"), "{lines:?}");
         // Written BEFORE enabling: the rollback restores it.
         let write = s.mutations.iter().position(|m| m == "write /etc/sddm.conf").unwrap();
@@ -4912,8 +4940,8 @@ mod tests {
         let (out, _) = run_switch(&io);
         assert_eq!(out, Outcome::fail("dm_switch_failed"));
         let s = io.st();
-        assert_eq!(s.files["/etc/sddm.conf"], "[Autologin]\nSession=plasmax11\n", "чужая строка вернулась");
-        assert!(!s.files.contains_key("/etc/sddm.conf.d/zz-rexon-autologin.conf"), "свой файл снят");
+        assert_eq!(s.files["/etc/sddm.conf"], "[Autologin]\nSession=plasmax11\n", "the foreign line is back");
+        assert!(!s.files.contains_key("/etc/sddm.conf.d/zz-rexon-autologin.conf"), "our own file is removed");
         assert!(s.runs.contains(&strings(&["systemctl", "enable", "--force", "plasmalogin.service"])));
     }
 
@@ -5016,7 +5044,7 @@ mod tests {
         assert!(s.runs.contains(&strings(&["systemctl", "enable", "--force", "ddm.service"])), "{:?}", s.runs);
         let own = &s.files["/etc/ddm.conf.d/zz-rexon-autologin.conf"];
         assert!(own.contains("User=alice") && own.contains("Session=plasma.desktop"), "{own}");
-        assert!(!own.contains("Relogin"), "у DDM нет Relogin: {own}");
+        assert!(!own.contains("Relogin"), "DDM has no Relogin: {own}");
         assert!(lines.iter().any(|l| l == "automatic sign-in for alice moved to ddm"), "{lines:?}");
         let dir = "/var/lib/ddm/.config/systemd/user";
         let as_dde = |cmd: &[&str]| {
@@ -5133,12 +5161,12 @@ mod tests {
         assert_eq!(out, Outcome::ok(None));
         let runs = io.st().runs.clone();
         assert_eq!(runs[0][..5], strings(&["pacman", "-U", "--noconfirm", "--ask=4", "--"]));
-        assert!(!runs[0][5].starts_with("/home/"), "pacman получил путь пользователя: {:?}", runs[0]);
+        assert!(!runs[0][5].starts_with("/home/"), "pacman got a user path: {:?}", runs[0]);
         assert!(runs[0][5].ends_with("deepin-session-treeland-1.2-3-x86_64.pkg.tar.zst"));
         // ninja was not installed by this build-deps, cmake is not marked as a
         // dependency (pacman -Qqd is empty): nothing is removed.
         assert_eq!(runs.len(), 1);
-        assert!(rebuilt.lock().unwrap().is_empty(), "запись build-deps израсходована");
+        assert!(rebuilt.lock().unwrap().is_empty(), "the build-deps record is used up");
     }
 
     #[test]
@@ -5198,7 +5226,7 @@ mod tests {
         assert!(check_op(&deps(&["cmake"]), &f, 0).is_ok());
         assert_eq!(check_op(&deps(&["-oX"]), &f, 0).unwrap_err().key, "refused.operand");
         assert_eq!(check_op(&deps(&["extra/cmake"]), &f, 0).unwrap_err().key, "refused.package-name");
-        assert!(check_op(&deps(&["cmake>=3"]), &f, 0).is_err(), "версия в имени");
+        assert!(check_op(&deps(&["cmake>=3"]), &f, 0).is_err(), "version in the name");
         let drop = PrivOp::AurDropMake { names: strings(&["linux"]) };
         assert_eq!(check_op(&drop, &f, 0).unwrap_err().key, "refused.vital");
         let debian = Facts { family: PkgFamily::Debian, ..facts() };
@@ -5238,7 +5266,7 @@ mod tests {
         let runs = io.st().runs.clone();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0][..4], strings(&["pacman", "-U", "--noconfirm", "--ask=4"]));
-        assert!(!runs[0][5].starts_with("/home/"), "pacman получил путь пользователя: {:?}", runs[0]);
+        assert!(!runs[0][5].starts_with("/home/"), "pacman got a user path: {:?}", runs[0]);
 
         // .PKGINFO with a foreign name: refusal.
         let io = FakeIo::arch();
@@ -5369,7 +5397,7 @@ mod tests {
         assert_eq!(check_op(&op("plasmax11"), &steam, 0).unwrap_err().key, "refused.read-only-system");
 
         let sddm = "[Autologin]\nRelogin=false\nSession=plasmax11.desktop\nUser=test\n\n[Theme]\nCurrent=breeze\n";
-        let state = "[Last]\n# последний\nSession=/usr/share/xsessions/plasmax11.desktop\nUser=test\n";
+        let state = "[Last]\n# last\nSession=/usr/share/xsessions/plasmax11.desktop\nUser=test\n";
         let plm = "[Autologin]\r\nSession = plasmax11\r\n\r\n[Greeter]\r\nPreselectedSession=plasmax11.desktop\r\nShowClock=true\r\n";
         let wayland = "/usr/share/wayland-sessions/plasma.desktop";
         let machine = || {
@@ -5391,7 +5419,7 @@ mod tests {
             st.files["/etc/sddm.conf.d/kde_settings.conf"],
             "[Autologin]\nRelogin=false\nSession=plasma.desktop\nUser=test\n\n[Theme]\nCurrent=breeze\n"
         );
-        assert_eq!(st.files["/var/lib/sddm/state.conf"], "[Last]\n# последний\nSession=/usr/share/wayland-sessions/plasma.desktop\nUser=test\n");
+        assert_eq!(st.files["/var/lib/sddm/state.conf"], "[Last]\n# last\nSession=/usr/share/wayland-sessions/plasma.desktop\nUser=test\n");
         assert_eq!(
             st.files["/etc/plasmalogin.conf"],
             "[Autologin]\r\nSession = plasma\r\n\r\n[Greeter]\r\nPreselectedSession=plasma.desktop\r\nShowClock=true\r\n"
@@ -5987,7 +6015,7 @@ mod tests {
             let got = io.capture(&cmd.argv);
             got.code.map(|rc| (rc, got.stdout, String::new()))
         };
-        plan::install_preview(PkgFamily::Arch, &strings(base), &run).expect("проба")
+        plan::install_preview(PkgFamily::Arch, &strings(base), &run).expect("probe")
     }
 
     fn answers(io: &FakeIo, list: &[(&str, &str)]) {
@@ -6294,7 +6322,7 @@ mod tests {
             format!("Command::new(\"/bin/{}\")", "sh"),
         ];
         // A line with this mark is data (names), not a launch.
-        let allow = ["сторож:", " имена, не запуск"].concat();
+        let allow = ["guard:", " names, not a launch"].concat();
         let eval_word = ["ev", "al"].concat();
         let mut hits = Vec::new();
         let mut files = 0;
@@ -6318,8 +6346,8 @@ mod tests {
                 }
             }
         }
-        assert!(files >= 5, "каталог privilege не найден");
-        assert!(hits.is_empty(), "оболочка в privilege/:\n{}", hits.join("\n"));
+        assert!(files >= 5, "the privilege directory was not found");
+        assert!(hits.is_empty(), "a shell in privilege/:\n{}", hits.join("\n"));
     }
 
     #[test]
@@ -6363,7 +6391,9 @@ mod tests {
     fn шрифты_для_всех_проверка_операции() {
         let f = facts();
         assert_eq!(
+            // i18n-exempt: non-ASCII font file names must be accepted
             check_op(&font_op(&["a.ttf", "Мой шрифт.otf"]), &f, 2),
+            // i18n-exempt: non-ASCII font file names must be accepted
             Ok(Plan::FontInstall { names: strings(&["a.ttf", "Мой шрифт.otf"]) })
         );
         assert_eq!(check_op(&font_op(&["a.ttf"]), &f, 0).unwrap_err().key, "fds_mismatch");
@@ -6388,12 +6418,13 @@ mod tests {
     #[test]
     fn шрифт_для_всех_ложится_копией_и_кэш_пересобирается() {
         let io = font_io();
-        let plan_ = Plan::FontInstall { names: strings(&["Мой шрифт.ttf"]) };
+        let plan_ = Plan::FontInstall { names: strings(&["Мой шрифт.ttf"]) }; // i18n-exempt: non-ASCII font file name
         let out = run_plan(&io, &plan_, vec![user_file("font-ok", b"font-bytes")], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::ok(None));
         let s = io.st();
-        assert_eq!(s.files[&format!("{FONTS}/Мой шрифт.ttf")], "font-bytes");
+        assert_eq!(s.files[&format!("{FONTS}/Мой шрифт.ttf")], "font-bytes"); // i18n-exempt: non-ASCII font file name
         assert!(s.mutations.iter().any(|m| m == &format!("mkdir {FONTS}")), "{:?}", s.mutations);
+        // i18n-exempt: non-ASCII font file name
         assert!(s.mutations.iter().all(|m| m.starts_with("mkdir ") || m.ends_with(&format!(" {FONTS}/Мой шрифт.ttf"))), "{:?}", s.mutations);
         assert_eq!(s.runs, vec![strings(&["fc-cache", "-f", FONTS])]);
     }
@@ -6424,14 +6455,14 @@ mod tests {
     #[test]
     fn чужой_шрифт_с_тем_же_именем_не_перезаписывается() {
         let io = font_io();
-        io.st().files.insert(format!("{FONTS}/b.ttf"), "чужой".into());
+        io.st().files.insert(format!("{FONTS}/b.ttf"), "foreign".into());
         // The second file is taken: the first is not placed either (the check comes before touching).
         let plan_ = Plan::FontInstall { names: strings(&["a.ttf", "b.ttf"]) };
         let fds = vec![user_file("font-a", b"a"), user_file("font-b", b"b")];
         let out = run_plan(&io, &plan_, fds, &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.font-exists".into()));
         assert!(io.touched_nothing());
-        assert_eq!(io.st().files[&format!("{FONTS}/b.ttf")], "чужой");
+        assert_eq!(io.st().files[&format!("{FONTS}/b.ttf")], "foreign");
         // A link in place of the destination: also a refusal (we do not write through it).
         let io = font_io();
         io.st().links.insert(format!("{FONTS}/c.ttf"), "/etc/shadow".into());
@@ -6454,8 +6485,8 @@ mod tests {
         assert_eq!(run_plan(&io, &plan_, Vec::new(), &Mutex::new(Vec::new())), Outcome::ok(None));
         let s = io.st();
         assert!(!s.files.contains_key(&format!("{FONTS}/a.ttf")) && !s.files.contains_key(&format!("{FONTS}/sub/b.otf")));
-        assert!(!s.dirs.contains(&format!("{FONTS}/sub")), "опустевший подкаталог снят");
-        assert!(s.dirs.contains(FONTS), "сам каталог остаётся");
+        assert!(!s.dirs.contains(&format!("{FONTS}/sub")), "the emptied subdirectory is removed");
+        assert!(s.dirs.contains(FONTS), "the directory itself stays");
         assert_eq!(s.runs, vec![strings(&["fc-cache", "-f", FONTS])]);
     }
 
@@ -6467,7 +6498,7 @@ mod tests {
             let mut s = io.st();
             s.dirs.insert(FONTS.into());
             s.files.insert(format!("{FONTS}/ok.ttf"), "ok".into());
-            s.files.insert("/usr/share/fonts/noto/N.ttf".into(), "пакет".into());
+            s.files.insert("/usr/share/fonts/noto/N.ttf".into(), "package".into());
             s.links.insert(format!("{FONTS}/link.ttf"), "/usr/share/fonts/noto/N.ttf".into());
             s.dirs.insert("/usr/share/fonts/noto".into());
             s.links.insert(format!("{FONTS}/pkg"), "/usr/share/fonts/noto".into());
@@ -6481,7 +6512,7 @@ mod tests {
             );
             assert!(io.touched_nothing(), "{evil}");
         }
-        assert_eq!(io.st().files["/usr/share/fonts/noto/N.ttf"], "пакет");
+        assert_eq!(io.st().files["/usr/share/fonts/noto/N.ttf"], "package");
     }
 
     // ── SDDM login screen: theme background and look carry-over ──────────
@@ -6548,12 +6579,12 @@ mod tests {
     fn фон_экрана_входа_ложится_в_тему() {
         let io = sddm_io();
         let plan_ = Plan::SddmBackground { theme: "breeze".into(), image: true };
-        io.st().files.insert(format!("{BREEZE}/rexon-background.jpg"), "прежний наш".into());
+        io.st().files.insert(format!("{BREEZE}/rexon-background.jpg"), "our previous one".into());
         let out = run_plan(&io, &plan_, vec![user_file("bg-png", PNG)], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::ok(None));
         let s = io.st();
         assert!(s.files.contains_key(&format!("{BREEZE}/rexon-background.png")));
-        assert!(!s.files.contains_key(&format!("{BREEZE}/rexon-background.jpg")), "прежний свой снят");
+        assert!(!s.files.contains_key(&format!("{BREEZE}/rexon-background.jpg")), "our previous one is removed");
         assert_eq!(s.files[&format!("{BREEZE}/theme.conf.user")], "[General]\nbackground=rexon-background.png\ntype=image\n");
         assert!(s.runs.is_empty());
     }
@@ -6582,14 +6613,14 @@ mod tests {
             let mut s = io.st();
             s.files.insert(format!("{BREEZE}/theme.conf.user"), "[General]\nshowClock=false\nbackground=rexon-background.png\ntype=image\n".into());
             s.files.insert(format!("{BREEZE}/rexon-background.png"), "x".into());
-            s.files.insert(format!("{BREEZE}/kcm-picked.jpg"), "чужой".into());
+            s.files.insert(format!("{BREEZE}/kcm-picked.jpg"), "foreign".into());
         }
         let plan_ = Plan::SddmBackground { theme: "breeze".into(), image: false };
         assert_eq!(run_plan(&io, &plan_, Vec::new(), &Mutex::new(Vec::new())), Outcome::ok(None));
         let s = io.st();
         assert_eq!(s.files[&format!("{BREEZE}/theme.conf.user")], "[General]\nshowClock=false\n");
         assert!(!s.files.contains_key(&format!("{BREEZE}/rexon-background.png")));
-        assert!(s.files.contains_key(&format!("{BREEZE}/kcm-picked.jpg")), "чужой файл не трогается");
+        assert!(s.files.contains_key(&format!("{BREEZE}/kcm-picked.jpg")), "a foreign file is left alone");
     }
 
     #[test]
@@ -6605,7 +6636,7 @@ mod tests {
         let kde = &s.files["/etc/sddm.conf.d/kde_settings.conf"];
         assert!(kde.contains("CursorTheme=Bibata") && kde.contains("ServerArguments=-nolisten tcp -dpi 120"), "{kde}");
         let sudo = strings(&["setpriv", "--reuid=955", "--regid=955", "--clear-groups", "--"]);
-        assert!(s.runs.iter().all(|r| r[..5] == sudo[..]), "всё в доме sddm — от его имени: {:?}", s.runs);
+        assert!(s.runs.iter().all(|r| r[..5] == sudo[..]), "everything in the sddm home runs as that user: {:?}", s.runs);
         assert_eq!(s.runs[0][5..], strings(&["rm", "-rf", "--", "/var/lib/sddm/.cache"]));
         assert_eq!(s.runs[2][5..], strings(&["sh", "-c", "umask 022 && cat > \"$1\"", "rexon-sddm-look", "/var/lib/sddm/.config/kdeglobals"]));
         assert_eq!(s.stdins[2].as_deref(), Some("[Colors:Window]\nBackgroundNormal=1,2,3\n"));

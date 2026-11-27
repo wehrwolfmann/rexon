@@ -109,7 +109,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
             }
             std::fs::copy(&from, &to).map_err(|e| err(&from, e))?;
         } else {
-            return Err(format!("{}: не файл и не каталог", from.display()));
+            return Err(format!("{}: neither a file nor a directory", from.display()));
         }
     }
     Ok(())
@@ -126,7 +126,7 @@ impl RootIo for StandIo {
             }
         }
         self.0.note(&format!("run {line}"));
-        out(&format!("стенд: {line}"));
+        out(&format!("stand: {line}"));
         let code = std::fs::read_to_string(self.0.dir.join("run_code"))
             .ok()
             .and_then(|s| s.trim().parse().ok())
@@ -325,20 +325,20 @@ fn session(stand: &Arc<Stand>) -> i32 {
     }
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let Some(args) = helper::parse_args(&raw) else {
-        stand.note("log неверные аргументы");
+        stand.note("log invalid arguments");
         return helper::EXIT_USAGE;
     };
     let Some(pkexec_uid) = std::env::var("PKEXEC_UID").ok().and_then(|s| validate::parse_pkexec_uid(&s)) else {
-        stand.note("log запущен не через шим pkexec");
+        stand.note("log not started through the pkexec shim");
         return helper::EXIT_NOT_PKEXEC;
     };
     let Some(sock) = take_socket_from_stdio() else {
-        stand.note("log на fd 0 нет сокета окна");
+        stand.note("log no window socket on fd 0");
         return helper::EXIT_CHANNEL;
     };
     let io: Arc<dyn RootIo> = Arc::new(StandIo(Arc::clone(stand)));
     let Some(session_id) = args.session.or_else(|| helper::session_of_user(io.as_ref(), pkexec_uid)) else {
-        io.log("сеанс окна не найден у logind");
+        io.log("the window session was not found in logind");
         return helper::EXIT_HANDSHAKE;
     };
     let Some(watch) = LogindWatch::new(
@@ -373,13 +373,13 @@ fn main() {
         return;
     }
     let Some(dir) = std::env::var_os(DIR_ENV).map(PathBuf::from) else {
-        eprintln!("rexon-priv-stand: нет {DIR_ENV} — это бинарь стенда, не помощник");
+        eprintln!("rexon-priv-stand: no {DIR_ENV}; this is the stand binary, not the helper");
         std::process::exit(helper::EXIT_USAGE);
     };
     let journal = match std::fs::OpenOptions::new().create(true).append(true).open(dir.join("journal")) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("rexon-priv-stand: журнал стенда: {e}");
+            eprintln!("rexon-priv-stand: stand journal: {e}");
             std::process::exit(helper::EXIT_USAGE);
         }
     };

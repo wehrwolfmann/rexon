@@ -43,6 +43,10 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
         properties.insert(QString::from(&prop.name), qml_value_to_variant(&prop.value));
     }
     env.common_properties(&mut properties, cli.selftest_ms)?;
+    properties.insert(
+        QString::from("previewMode"),
+        qml_value_to_variant(&rexon_core::wallpaper::QmlValue::Bool(cli.preview)),
+    );
 
     // JS injected into the page: Wallpaper Engine stubs and pause/volume
     // wrappers of the shared wallpaper audio model (before the page's first

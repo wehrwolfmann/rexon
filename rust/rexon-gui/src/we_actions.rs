@@ -116,8 +116,9 @@ pub mod qobject {
         // alive (`we_window::text_connecting_slow`); empty means there is nothing
         // to explain.
         #[qproperty(QString, engine_start_note, cxx_name = "engineStartNote")]
-        #[qproperty(QString, kde_plugin_install_label, cxx_name = "kdePluginInstallLabel",
-                    READ = kde_plugin_install_label, CONSTANT)]
+        // The banner button label: it follows the notice (`PluginNotice::button_label`
+        // — Rexon's version, the packaged version, the plugin package).
+        #[qproperty(QString, kde_plugin_install_label, cxx_name = "kdePluginInstallLabel")]
         type WeActions = super::WeActionsRust;
     }
 
@@ -171,8 +172,6 @@ pub mod qobject {
         #[cxx_name = "installKdePlugin"]
         fn install_kde_plugin(self: Pin<&mut WeActions>);
 
-        fn kde_plugin_install_label(self: &WeActions) -> QString;
-
         /// Mouse presses outside `area` (the wallpaper tab) reach the window even
         /// with a window open on top — otherwise the Rexon sections above the tab
         /// stopped being clickable (the `rexon_pass_outside_presses` shim).
@@ -213,6 +212,7 @@ pub struct WeActionsRust {
     kde_plugin_notice: QString,
     kde_plugin_can_install: bool,
     kde_plugin_installing: bool,
+    kde_plugin_install_label: QString,
     engine_starting: bool,
     engine_start_note: QString,
 }
@@ -279,10 +279,6 @@ impl qobject::WeActions {
         we_socket::install_kde_plugin_with_consent();
     }
 
-    fn kde_plugin_install_label(&self) -> QString {
-        QString::from(&rexon_core::waywallen_kde_plugin::install_rexon_version_label())
-    }
-
     /// Relay the state of the KDE wallpaper plugin to the page.
     fn on_kde_plugin_state(mut self: Pin<&mut Self>, state: we_socket::KdePluginState) {
         let text = match (&state.failure, &state.notice) {
@@ -290,9 +286,10 @@ impl qobject::WeActions {
             (None, Some(notice)) => notice.text(),
             (None, None) => String::new(),
         };
-        let can_install = !state.installing
-            && state.notice.as_ref().is_some_and(|n| n.offers_install());
+        let label = state.notice.as_ref().and_then(|n| n.button_label());
+        let can_install = !state.installing && label.is_some();
         self.as_mut().set_kde_plugin_notice(QString::from(&text));
+        self.as_mut().set_kde_plugin_install_label(QString::from(&label.unwrap_or_default()));
         self.as_mut().set_kde_plugin_can_install(can_install);
         self.as_mut().set_kde_plugin_installing(state.installing);
     }

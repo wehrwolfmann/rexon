@@ -11,8 +11,13 @@
 //
 // Side actions live outside: the page host puts into `root.actions` an
 // object with the methods
-//   scan()            -> {movies, current, favorites, enabled, rotate, sound}
-//   pickFile()        -> string (picker window for your own video)
+//   scan()            -> {movies, current, favorites, enabled, rotate, sound,
+//                         migrate} (`migrate` — an old selection that is a
+//                         path to someone else's file and must be copied)
+//   pickFile()        -> string (picker window for your own video; the
+//                         model then copies it — `page.importMovie`)
+//   deleteQuestion(path) -> string (confirmation text)
+//   deleteMovie(path) -> {ok, message} (only the person's own clips)
 //   select(path)      -> bool   (save the choice to the splash config)
 //   setFavorite(path) -> favourites list after toggling
 //   setSound(on)      -> bool
@@ -25,7 +30,7 @@
 //     (rexon/qt_steam/qml_window.py) on top of rexon/session_splash.py and
 //     Steam token retrieval (archived, git tag python-final);
 //   * the Rust window (`qml/MainWindow.qml`) puts in `SteamActions` from
-//     rust/rexon-gui/src/steam_actions.rs — the same eight names, the same
+//     rust/rexon-gui/src/steam_actions.rs — the same names, the same
 //     answers, and the core inside: `session_splash` + `splash_exec` +
 //     `steam_token`.
 //
@@ -313,17 +318,58 @@ Item {
             return;
         page.setMovies(snapshot.movies, snapshot.current, snapshot.favorites);
         page.setSplashState(snapshot.enabled, snapshot.rotate, snapshot.sound);
+        // An old selection is a path to someone else's file: keep a copy of it
+        // (in the background, the model re-reads the showcase when done).
+        root.pendingMigrate = snapshot.migrate || "";
+        root.migrateLater();
     }
 
+    /// The old selection waiting to be copied ("" — nothing).
+    property string pendingMigrate: ""
+
+    function migrateLater() {
+        if (root.pendingMigrate === "" || page.importBusy)
+            return;
+        // `false` — the tasks are not up yet; `start()` will ask again.
+        if (page.migrateMovie(root.pendingMigrate))
+            root.pendingMigrate = "";
+    }
+
+    // The own clip is NOT chosen by its path any more: the model copies it
+    // (converting it for Steam if needed) in the background and chooses the
+    // copy; the window does not freeze while ffmpeg works.
     function pickOwnFile() {
-        if (!root.actions)
+        if (!root.actions || page.importBusy)
             return;
         const path = root.actions.pickFile();
         if (!path)
             return;
-        root.actions.select(path);
+        page.importMovie(path);
+    }
+
+    /// The clip whose deletion is being confirmed.
+    property string pendingDelete: ""
+
+    function askDelete(path) {
+        if (!root.actions || !path)
+            return;
+        root.pendingDelete = path;
+        deleteText.text = root.actions.deleteQuestion(path);
+        deletePopup.open();
+    }
+
+    function confirmDelete() {
+        const path = root.pendingDelete;
+        root.pendingDelete = "";
+        deletePopup.close();
+        if (!root.actions || !path)
+            return;
+        const answer = root.actions.deleteMovie(path);
+        if (answer)
+            page.setStatus(answer.message);
         root.reload();
     }
+
 
     function toggleStar(path) {
         if (!root.actions || !path)
@@ -354,11 +400,16 @@ Item {
     }
 
     Component.onCompleted: {
+        // A clip was added or moved in the background — re-read the showcase.
+        page.moviesOnDiskChanged.connect(root.reload);
         root.reload();
         // The page does not carry the owned backgrounds token: it is obtained by
         // the model's background task (going to the network is not a job for the
         // interface thread).
         page.start("");
+        // Keeping a copy of an old selection is a background task too: only now
+        // are the tasks up.
+        root.migrateLater();
         root.focusFirstControl();
         root.syncPreview();
         root.takeSubpage();
@@ -918,11 +969,36 @@ Item {
                                     onTextEdited: page.setSvSearch(text)
                                 }
                                 RexonButton {
+                                    objectName: "svAddMovie"
                                     pal: root.pal
                                     text: page.svPickText
+                                    enabled: !page.importBusy
                                     ToolTip.text: page.svPickTooltip
                                     ToolTip.visible: hovered
                                     onClicked: root.pickOwnFile()
+                                }
+                            }
+
+                            // ── Progress of adding an own clip ────────────────────
+                            // Checking, copying, converting: the window stays alive, the
+                            // conversion can be stopped.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                visible: page.importBusy
+
+                                RexonText {
+                                    objectName: "svImportText"
+                                    Layout.fillWidth: true
+                                    text: page.importText
+                                    color: root.colTextSecondary
+                                    wrapMode: Text.WordWrap
+                                }
+                                RexonButton {
+                                    objectName: "svImportCancel"
+                                    pal: root.pal
+                                    text: page.svImportCancelText
+                                    onClicked: page.cancelImport()
                                 }
                             }
 
@@ -972,137 +1048,46 @@ Item {
                                 cellHeight: page.svThumbHeight + 78
                                 model: page
 
-                                delegate: Item {
+                                // The card itself is shared with the «🌙 Screensaver» sub-tab
+                                // (`SteamMediaCard.qml`).
+                                delegate: SteamMediaCard {
                                     id: card
                                     required property string path
-                                    required property string title
-                                    required property string badge
-                                    required property string badgeBackground
-                                    required property string badgeColor
-                                    required property string poster
-                                    required property string starGlyph
-                                    required property string starColor
-                                    required property bool selected
+                                    required badgeBackground
+                                    required badgeColor
+                                    required starGlyph
+                                    required starColor
+                                    required title
+                                    required badge
+                                    required poster
+                                    required selected
+                                    required property bool deletable
+                                    required property bool steamChosen
 
                                     width: showcase.cellWidth
                                     height: showcase.cellHeight
+                                    pal: root.pal
+                                    sty: root.st
+                                    thumbWidth: page.svThumbWidth
+                                    thumbHeight: page.svThumbHeight
+                                    titleElideWidth: root.st.svTitleElideWidth
+                                    placeholder: page.svThumbPlaceholder
+                                    badgeTooltip: page.sourceTextFor(card.path)
+                                    starTooltip: page.svCardStarTooltip
+                                    choiceGlyph: card.steamChosen ? page.svSteamChoiceGlyph : ""
+                                    choiceTooltip: page.svSteamChoiceTooltip
+                                    deleteGlyph: card.deletable ? page.svDeleteGlyph : ""
+                                    deleteTooltip: page.svDeleteTooltip
 
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: root.st.card.gap / 2
-                                        radius: root.st.card.radius
-                                        color: card.selected ? root.st.card.selectedBackground
-                                                             : root.st.card.background
-                                        border.width: 1
-                                        border.color: card.selected
-                                                      ? (hover.hovered ? root.st.card.selectedHover
-                                                                       : root.st.card.selectedBorder)
-                                                      : (hover.hovered ? root.st.card.hover
-                                                                       : root.st.card.border)
-
-                                        HoverHandler {
-                                            id: hover
-                                            onHoveredChanged: root.hoverLater(hover.hovered ? card.path : "")
-                                        }
-                                        TapHandler {
-                                            onTapped: {
-                                                if (root.actions)
-                                                    root.actions.select(card.path);
-                                                page.selectMovie(card.path);
-                                            }
-                                        }
-
-                                        ColumnLayout {
-                                            anchors.fill: parent
-                                            anchors.margins: root.st.card.margin
-                                            spacing: root.st.card.spacing
-
-                                            Rectangle {
-                                                Layout.alignment: Qt.AlignHCenter
-                                                implicitWidth: page.svThumbWidth
-                                                implicitHeight: page.svThumbHeight
-                                                radius: root.st.thumb.radius
-                                                color: root.st.thumb.svBackground
-                                                // The clip frame is FITTED whole, not cropped: in the original the
-                                                // thumbnail is read by `load_thumbnail` without `expand`, and a square
-                                                // poster sits in the middle with margins on the sides.
-                                                Image {
-                                                    anchors.fill: parent
-                                                    source: card.poster
-                                                    fillMode: Image.PreserveAspectFit
-                                                    asynchronous: true
-                                                    visible: source !== ""
-                                                }
-                                                RexonText {
-                                                    anchors.centerIn: parent
-                                                    visible: card.poster === ""
-                                                    text: page.svThumbPlaceholder
-                                                    font.pixelSize: 22
-                                                }
-                                                // A click on the card is taken by choosing the clip, so the view is opened
-                                                // with the magnifier.
-                                                RexonZoomArea {
-                                                    anchors.fill: parent
-                                                    pal: root.pal
-                                                    badgeOnly: true
-                                                    radius: root.st.thumb.radius
-                                                    onActivated: root.openMovieViewer(card.path)
-                                                }
-                                            }
-
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                spacing: 4
-                                                RexonText {
-                                                    // The elision width is set by the core (in the original — by the font
-                                                    // metrics, not by the rest of the line): otherwise a long name would push
-                                                    // the star apart.
-                                                    Layout.fillWidth: true
-                                                    Layout.maximumWidth: root.st.svTitleElideWidth
-                                                    text: card.title
-                                                    color: root.colText
-                                                    elide: Text.ElideRight
-                                                    ToolTip.text: card.title
-                                                    ToolTip.visible: nameHover.hovered
-                                                    HoverHandler { id: nameHover }
-                                                }
-                                                RexonText {
-                                                    text: card.starGlyph
-                                                    color: card.starColor
-                                                    font.pixelSize: 15
-                                                    ToolTip.text: page.svCardStarTooltip
-                                                    ToolTip.visible: starHover.hovered
-                                                    HoverHandler { id: starHover }
-                                                    TapHandler {
-                                                        onTapped: root.toggleStar(card.path)
-                                                    }
-                                                }
-                                            }
-
-                                            Rectangle {
-                                                Layout.fillWidth: false
-                                                visible: card.badge !== ""
-                                                implicitWidth: Math.min(page.svThumbWidth,
-                                                                        badgeText.implicitWidth + 14)
-                                                implicitHeight: badgeText.implicitHeight + 2
-                                                radius: 7
-                                                color: card.badgeBackground
-                                                RexonText {
-                                                    id: badgeText
-                                                    anchors.centerIn: parent
-                                                    width: parent.width - 14
-                                                    text: card.badge
-                                                    color: card.badgeColor
-                                                    font.pixelSize: 11
-                                                    elide: Text.ElideRight
-                                                    ToolTip.text: page.sourceTextFor(card.path)
-                                                    ToolTip.visible: badgeHover.hovered
-                                                    HoverHandler { id: badgeHover }
-                                                }
-                                            }
-                                            Item { Layout.fillHeight: true }
-                                        }
+                                    onHoverMoved: hovered => root.hoverLater(hovered ? card.path : "")
+                                    onChosen: {
+                                        if (root.actions)
+                                            root.actions.select(card.path);
+                                        page.selectMovie(card.path);
                                     }
+                                    onZoomed: root.openMovieViewer(card.path)
+                                    onStarToggled: root.toggleStar(card.path)
+                                    onDeleteRequested: root.askDelete(card.path)
                                 }
                             }
                             Item { Layout.fillHeight: true }
@@ -1461,6 +1446,7 @@ Item {
                         sty: root.st
                         warnColor: page.goldColor
                         onMessage: text => statusToast.show(text)
+                        onZoomRequested: (items, index) => viewer.show(items, index)
                     }
                 }
             }
@@ -1481,6 +1467,69 @@ Item {
         onWanted: key => page.requestBgFull(key)
         onOpened: root.syncPreview()
         onClosed: root.syncPreview()
+    }
+
+    // ── Deleting an own clip: one question ────────────────────────────────
+    //
+    // One window, not a chain of questions (Big Picture rule). «Keep» has the
+    // focus: Enter by mistake deletes nothing (rule #13).
+    Popup {
+        id: deletePopup
+        objectName: "svDeletePopup"
+        parent: root
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        width: Math.min(root.width - 40, 520)
+        padding: 18
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: root.pendingDelete = ""
+        onOpened: deleteKeep.forceActiveFocus()
+
+        background: Rectangle {
+            color: root.colBg
+            border.color: root.colBorder
+            border.width: 1
+            radius: 8
+        }
+
+        ColumnLayout {
+            width: deletePopup.availableWidth
+            spacing: 12
+
+            RexonText {
+                Layout.fillWidth: true
+                text: page.svDeleteTitle
+                color: root.colText
+                font.bold: true
+                font.pointSize: 14
+                wrapMode: Text.WordWrap
+            }
+            RexonText {
+                id: deleteText
+                objectName: "svDeleteText"
+                Layout.fillWidth: true
+                color: root.colText
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 10
+                RexonButton {
+                    id: deleteKeep
+                    pal: root.pal
+                    text: page.svDeleteKeepText
+                    onClicked: deletePopup.close()
+                }
+                RexonDangerButton {
+                    objectName: "svDeleteConfirm"
+                    pal: root.pal
+                    text: page.svDeleteConfirmText
+                    onClicked: root.confirmDelete()
+                }
+            }
+        }
     }
 
     // ── Status line ───────────────────────────────────────────────────────

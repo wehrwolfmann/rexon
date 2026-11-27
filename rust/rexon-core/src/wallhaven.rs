@@ -38,6 +38,7 @@ use serde_json::{json, Value};
 use crate::i18n::{n_, tr, trc, trf};
 use crate::models::ThemeItem;
 use crate::net::NetError;
+use crate::wallpaper_screens::{orientation_warning, WallpaperOrientation};
 
 /// Site address.
 pub const HOME_URL: &str = "https://wallhaven.cc";
@@ -148,8 +149,9 @@ fn quote_plus(s: &str) -> String {
 /// Address of a listing page. `api_page` — from one, as on the server.
 ///
 /// `categories=111` — all three site categories (general, anime, people);
-/// `purity=100` — SFW only, always.
-pub fn search_url(query: &str, sort: &str, api_page: i64) -> String {
+/// `purity=100` — SFW only, always. `orientation` — the "Orientation" filter
+/// of the section ([`api_ratios`]); `None` — any.
+pub fn search_url(query: &str, sort: &str, orientation: Option<WallpaperOrientation>, api_page: i64) -> String {
     let (sorting, range) = api_sorting(sort);
     let mut url = format!(
         "{API_BASE}/search?categories=111&purity=100&sorting={sorting}&order=desc&page={}",
@@ -159,12 +161,27 @@ pub fn search_url(query: &str, sort: &str, api_page: i64) -> String {
         url.push_str("&topRange=");
         url.push_str(r);
     }
+    if let Some(o) = orientation {
+        url.push_str("&ratios=");
+        url.push_str(api_ratios(o));
+    }
     let q = query.trim();
     if !q.is_empty() {
         url.push_str("&q=");
         url.push_str(&quote_plus(q));
     }
     url
+}
+
+/// The `ratios` value for an orientation: the site groups all aspect ratios
+/// into `landscape` (wider than tall) and `portrait` (taller than wide) — the
+/// same groups as its own "Ratio" picker. The server filters by them itself,
+/// so pages stay full under the filter.
+pub fn api_ratios(orientation: WallpaperOrientation) -> &'static str {
+    match orientation {
+        WallpaperOrientation::Landscape => "landscape",
+        WallpaperOrientation::Portrait => "portrait",
+    }
 }
 
 /// Whether it looks like a Wallhaven picture id (`94x38z`): Latin letters and digits.
@@ -368,6 +385,21 @@ fn iso(created: &str) -> String {
     created.trim().replacen(' ', "T", 1)
 }
 
+/// Orientation of a picture by its size (`dimension_x` × `dimension_y`).
+pub fn orientation(w: &Wallpaper) -> Option<WallpaperOrientation> {
+    WallpaperOrientation::of(u32::try_from(w.dimension_x).unwrap_or(0), u32::try_from(w.dimension_y).unwrap_or(0))
+}
+
+/// Tile title: the size, and "Vertical" for vertical pictures — the shared
+/// tile rule of [`WallpaperOrientation::shown_on_tile`], as for Razer Axon.
+fn tile_name(w: &Wallpaper) -> String {
+    let size = format!("{} × {}", w.dimension_x, w.dimension_y);
+    match orientation(w).filter(|o| o.shown_on_tile()) {
+        Some(o) => format!("{size} · {}", o.label()),
+        None => size,
+    }
+}
+
 /// Picture card — an ordinary item of the wallpaper section: the installer sees
 /// a single file of category 299 and puts it into `~/.local/share/wallpapers`.
 pub fn theme_item(w: &Wallpaper) -> ThemeItem {
@@ -390,7 +422,7 @@ pub fn theme_item(w: &Wallpaper) -> ThemeItem {
     };
     ThemeItem {
         id: item_id(&w.id),
-        name: format!("{} × {}", w.dimension_x, w.dimension_y),
+        name: tile_name(w),
         description: description(w),
         author,
         license: tr("Belongs to its author — see the page on wallhaven.cc"),
@@ -420,6 +452,12 @@ fn description(w: &Wallpaper) -> String {
         lines.push(trf("Original source: %1", &[&source]));
     }
     lines.push(trf("Page on Wallhaven: %1", &[&page_url(&w.id)]));
+    // A vertical picture (taller than wide): what happens on a regular
+    // monitor — the warning shared by all wallpaper sources. Pictures are
+    // set by the desktop, hence the "up to the desktop" variant.
+    if let Some(warning) = orientation(w).and_then(|o| orientation_warning(o, false)) {
+        lines.push(warning);
+    }
     lines.join("\n")
 }
 
@@ -665,6 +703,7 @@ fn live_get(token: &crate::net::CancelToken) -> impl FnMut(&str) -> Result<Vec<u
 pub fn live_page(
     query: &str,
     sort: &str,
+    orientation: Option<WallpaperOrientation>,
     page: i64,
     size: i64,
     force: bool,
@@ -672,7 +711,9 @@ pub fn live_page(
 ) -> Result<Page, FetchError> {
     let mut get = live_get(token);
     assemble_page(page, size, |n| {
-        let url = search_url(query, sort, n);
+        // The orientation is part of the address, so the session memory keeps
+        // filtered and unfiltered pages apart by itself.
+        let url = search_url(query, sort, orientation, n);
         let body = fetch_with(live_gate(), &url, force, &now_ms, &mut get)?;
         parse_search(&body).map_err(FetchError::Parse)
     })
@@ -695,16 +736,29 @@ mod tests {
 
     #[test]
     fn search_url_is_sfw_and_keyless() {
-        let u = search_url("", "new", 1);
+        let u = search_url("", "new", None, 1);
         assert_eq!(u, "https://wallhaven.cc/api/v1/search?categories=111&purity=100&sorting=date_added&order=desc&page=1");
-        assert!(!u.contains("apikey"));
-        let u = search_url(" sky & clouds ", "high", 3);
+        assert!(!u.contains("apikey") && !u.contains("ratios"));
+        let u = search_url(" sky & clouds ", "high", None, 3);
         assert!(u.contains("sorting=toplist") && u.contains("topRange=1M") && u.contains("page=3"));
         assert!(u.ends_with("&q=sky+%26+clouds"), "{u}");
-        assert!(search_url("x", "down", 0).contains("sorting=views&order=desc&page=1"));
+        assert!(search_url("x", "down", None, 0).contains("sorting=views&order=desc&page=1"));
         // Wallhaven has no «Alphabetical» — «New».
         assert_eq!(effective_sort("alpha"), "new");
-        assert!(search_url("", "alpha", 1).contains("sorting=date_added"));
+        assert!(search_url("", "alpha", None, 1).contains("sorting=date_added"));
+    }
+
+    /// The "Orientation" filter goes to the server as `ratios=` (checked
+    /// against the live API on 24.11.2026: `portrait` returns only pictures
+    /// taller than wide, `landscape` only wider ones); the search word stays
+    /// last.
+    #[test]
+    fn orientation_filter_goes_into_the_request() {
+        let tall = search_url("sky", "new", Some(WallpaperOrientation::Portrait), 2);
+        assert!(tall.contains("&ratios=portrait&q=sky") && tall.contains("page=2"), "{tall}");
+        let wide = search_url("", "high", Some(WallpaperOrientation::Landscape), 1);
+        assert!(wide.ends_with("&topRange=1M&ratios=landscape"), "{wide}");
+        assert_ne!(tall, search_url("sky", "new", None, 2), "filtered pages are cached apart");
     }
 
     #[test]
@@ -757,6 +811,30 @@ mod tests {
         let p = parse_search(br#"{"data":[],"meta":{"current_page":"2","last_page":"5","per_page":"24","total":"100"}}"#).unwrap();
         assert_eq!((p.current_page, p.last_page, p.total), (2, 5, 100));
         assert!(parse_detail(br#"{"data":{"id":"abc","purity":"nsfw","path":"https://w.wallhaven.cc/full/ab/wallhaven-abc.jpg"}}"#).is_err());
+    }
+
+    #[test]
+    fn vertical_picture_is_warned_in_description() {
+        let mut w = Wallpaper { id: "abc123".into(), dimension_x: 1080, dimension_y: 1920, ..Wallpaper::default() };
+        let tall = description(&w);
+        w.dimension_x = 1920;
+        w.dimension_y = 1080;
+        let wide = description(&w);
+        assert_eq!(tall.lines().count(), wide.lines().count() + 1, "{tall}");
+        assert!(tall.lines().last().unwrap().starts_with("⚠️"), "{tall}");
+    }
+
+    #[test]
+    fn vertical_picture_is_labelled_on_tile() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let mut w = Wallpaper { id: "abc123".into(), dimension_x: 1080, dimension_y: 1920, ..Wallpaper::default() };
+        assert_eq!(orientation(&w), Some(WallpaperOrientation::Portrait));
+        assert_eq!(theme_item(&w).name, "1080 × 1920 · Vertical");
+        w.dimension_x = 1920;
+        w.dimension_y = 1080;
+        assert_eq!(theme_item(&w).name, "1920 × 1080", "horizontal ones — unchanged");
+        w.dimension_x = 0;
+        assert_eq!(orientation(&w), None);
     }
 
     #[test]

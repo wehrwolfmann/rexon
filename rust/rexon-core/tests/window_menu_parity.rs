@@ -252,7 +252,7 @@ const NOTICE_NOT_IN_ABOUT: &[(&str, &str)] = &[
     ("gemmology ", "часть fxtranslate, благодарность — fxtranslate"),
     ("xsimd ", "часть fxtranslate, благодарность — fxtranslate"),
     ("Noto Sans ", "подмножество шрифта для заставки, не программа"),
-    ("Снимки рабочих столов", "картинки карусели, не программа"),
+    ("Desktop screenshots", "картинки карусели, не программа"),
 ];
 
 /// The credits table and NOTICE do not diverge: every table entry has a NOTICE
@@ -458,7 +458,7 @@ fn uninstall_dialog_texts_match_the_product() {
     // backups» — while the settings were wiped) must not come back.
     for old in ["Удалить (сохранить бэкапы)", "Сохранить резервные копии DE?"] {
         assert!(
-            !wm::uninstall_keep_label().contains(old) && !wm::uninstall_informative(&[], &[]).contains(old),
+            !wm::uninstall_keep_label().contains(old) && !wm::uninstall_informative(&[], &[], &[]).contains(old),
             "ядро снова говорит «{old}», а «сохранить» теперь оставляет и настройки"
         );
     }
@@ -466,7 +466,7 @@ fn uninstall_dialog_texts_match_the_product() {
     assert_eq!(wm::uninstall_cancel_label(), "Отмена");
     assert_eq!(wm::uninstall_done_title(), "Удаление завершено");
     assert_eq!(wm::uninstall_failed_title(), "Ошибка удаления");
-    let informative = wm::uninstall_informative(&["/tmp/rexon".to_string()], &[]);
+    let informative = wm::uninstall_informative(&["/tmp/rexon".to_string()], &[], &[]);
     assert!(informative.contains(&wm::uninstall_keep_hint()), "{informative}");
     // The path block is a wrapping <pre> (`ui_base::dialog_pre`): in a bare one a
     // long path went past the right edge of the window (snapshot of 30.09.2026).
@@ -557,7 +557,7 @@ fn uninstall_reuses_the_core_installer_engine() {
 // English — as a separate check.
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let _lang = i18n_pin::ru();
     let labels: Vec<String> = wm::menu_items().into_iter().map(|i| i.label).collect();
@@ -644,8 +644,12 @@ fn russian_catalog_keeps_old_texts() {
         "Временные файлы Rexon — удаляются при любом выборе\n  • /c\n\
          Настройки Rexon — только при «Удалить всё»\n  • /s"
     );
-    let informative = wm::uninstall_informative(&[], &[(Cache, "/c".into())]);
+    let informative = wm::uninstall_informative(&[], &[(Cache, "/c".into())], &[]);
     assert!(informative.contains("<p>Где это лежит:</p>"), "{informative}");
+    // Protective files stay with either choice — said in plain Russian.
+    let kept = wm::uninstall_informative(&[], &[], &["/h/.config/xdg-desktop-portal/labwc-portals.conf".to_string()]);
+    assert!(kept.contains("При любом выборе останутся несколько небольших поправок Rexon"), "{kept}");
+    assert!(kept.contains("labwc-portals.conf"), "{kept}");
     let files: Vec<String> = (0..20).map(|i| format!("/f{i}")).collect();
     assert!(wm::uninstall_files_text(&files).ends_with("  • … ещё 5"));
     let one: Vec<String> = (0..16).map(|i| format!("/f{i}")).collect();
@@ -677,6 +681,7 @@ fn english_texts() -> Vec<String> {
         wm::uninstall_informative(
             &(0..20).map(|i| format!("/f{i}")).collect::<Vec<_>>(),
             &[(Cache, "/c".into()), (Settings, "/s".into()), (Backups, "/b".into()), (Content, "/w".into())],
+            &[],
         ),
         wm::uninstall_keep_label(),
         wm::uninstall_delete_label(),

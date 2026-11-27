@@ -51,6 +51,11 @@ QtObject {
     /// What to show: a file:// to a local HTML file or an http(s) link.
     property url targetUrl
     property bool isWindowed: false
+    /// Full-screen look at a page (`--preview`, the Steam screensavers of the
+    /// «Steam» tab): on top of everything, any key or click closes it. Not a
+    /// wallpaper: no heartbeat for the wallpaper watchdog and no desktop
+    /// restacking on the first frame.
+    property bool previewMode: false
     /// Frame size for offscreen mode: there is no window on screen, so there is
     /// nowhere to take the screen size from.
     property int renderWidth: 1920
@@ -132,7 +137,7 @@ QtObject {
     // (`rexon-core::renderer_watch`).
     property Timer heartbeat: Timer {
         interval: root.placer.heartbeatIntervalMs()
-        running: true
+        running: !root.previewMode
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -223,7 +228,16 @@ QtObject {
 
             Component.onCompleted: {
                 if (root.placement === "layer") {
-                    if (root.isWindowed) {
+                    if (root.previewMode) {
+                        // Preview: the overlay layer over the whole screen with the keyboard,
+                        // so a key press reaches us. Without layer-shell — an ordinary
+                        // full-screen window (below).
+                        root.layerShell.layer = 3;                  // LayerOverlay
+                        root.layerShell.anchors = 15;               // all four edges
+                        root.layerShell.exclusionZone = -1;
+                        root.layerShell.keyboardInteractivity = 1;  // Exclusive
+                        surface.layerApplied = root.layerShell.apply(surface);
+                    } else if (root.isWindowed) {
                         // Debug window: on top of the others, without anchors and without
                         // reserving space — otherwise it would not be visible behind the
                         // wallpaper.
@@ -260,8 +274,12 @@ QtObject {
                 // window on Mutter would appear on top of the desktop. The scene is drawn
                 // by QQuickRenderControl, to which the shim hands the content of this
                 // window.
-                if (root.placement !== "offscreen")
+                if (root.previewMode && !surface.layerApplied)
+                    surface.showFullScreen();
+                else if (root.placement !== "offscreen")
                     surface.visible = true;
+                if (root.previewMode)
+                    closeKeys.forceActiveFocus();
 
                 if (root.placement === "offscreen") {
                     // Frames go to the shell extension (GNOME/Cinnamon on Wayland — there is
@@ -288,7 +306,7 @@ QtObject {
             property bool firstFrameReported: false
             Connections {
                 target: surface
-                enabled: root.placement !== "offscreen" && !surface.firstFrameReported
+                enabled: root.placement !== "offscreen" && !root.previewMode && !surface.firstFrameReported
                          && (surface.loadStatus === WebEngineView.LoadSucceededStatus
                              || surface.loadStatus === WebEngineView.LoadFailedStatus)
                 function onFrameSwapped() {
@@ -385,6 +403,28 @@ QtObject {
             Shortcut {
                 sequences: ["Escape", "Q"]
                 onActivated: Qt.quit()
+            }
+
+            // Preview: like a real screensaver it goes away on any key or click. The
+            // area lies over the page, so the page never takes the focus away from it.
+            MouseArea {
+                anchors.fill: parent
+                enabled: root.previewMode
+                visible: root.previewMode
+                acceptedButtons: Qt.AllButtons
+                cursorShape: Qt.BlankCursor
+                onPressed: Qt.quit()
+                onWheel: Qt.quit()
+            }
+            Item {
+                id: closeKeys
+                focus: root.previewMode
+                Keys.onPressed: (event) => {
+                    if (root.previewMode) {
+                        event.accepted = true;
+                        Qt.quit();
+                    }
+                }
             }
 
             // The debug window is closed with the cross — and that must mean "quit".

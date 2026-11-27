@@ -737,7 +737,7 @@ pub fn install_script(p: &SystemScriptParams) -> String {
     let step = |id: &str| format!("\nrexon_step {id}");
 
     line("#!/bin/bash".into());
-    line("# Установка Rexon в систему. Скрипт собран ядром Rexon.".into());
+    line("# Installing Rexon into the system. The script is built by the Rexon core.".into());
     line("set -eE".into());
     line("umask 022".into());
     // No terminal: a command that asked for input would wait forever.
@@ -748,7 +748,7 @@ pub fn install_script(p: &SystemScriptParams) -> String {
 
     line(step("deps"));
     line(if p.dep_lines.is_empty() {
-        "# Нужные программы уже установлены".into()
+        "# Required programs are already installed".into()
     } else {
         p.dep_lines.clone()
     });
@@ -1933,6 +1933,10 @@ pub struct UninstallListing {
     /// The person's data by category; which of it is removed is decided by the
     /// choice ([`inst::UserDataKind::removed_when_keeping`]).
     pub user_data: Vec<(inst::UserDataKind, String)>,
+    /// Rexon's protective files in the config folder — kept with EITHER choice
+    /// ([`crate::appdefaults::protective_files`]); named in the window so the
+    /// person knows they stay and why.
+    pub kept_fixes: Vec<String>,
 }
 
 impl UninstallListing {
@@ -1978,7 +1982,19 @@ pub fn uninstall_files<IO: SystemIo + ?Sized>(io: &IO, req: &UninstallRequest) -
                 || !is_redirected(io, p)
         })
         .collect();
-    UninstallListing { program, user_data }
+    UninstallListing { program, user_data, kept_fixes: kept_protective_files(io) }
+}
+
+/// [`crate::appdefaults::protective_files`] on this machine (empty if the home
+/// folder isn't absolute).
+fn kept_protective_files<IO: SystemIo + ?Sized>(io: &IO) -> Vec<String> {
+    let home = io.env("HOME");
+    if !home.starts_with('/') {
+        return Vec::new();
+    }
+    let xdg = io.env("XDG_CONFIG_HOME");
+    let cfg = crate::utils::config_home(Some(xdg.as_str()).filter(|x| x.starts_with('/')), home.trim_end_matches('/'));
+    crate::appdefaults::protective_files(&cfg, &|p| io.read_text(p))
 }
 
 /// How the uninstall ended.
@@ -2255,6 +2271,37 @@ fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
         io.remove_file(&slot);
         if io.which("busctl") {
             io.run(&crate::appdefaults::busctl_reload_cmd(), Some(10), true);
+        }
+    }
+    // Per-desktop default applications (`defaults::protect_de_mimeapps`): without
+    // Rexon nobody follows the person's choices into them any more, and a
+    // `<desktop>-mimeapps.list` is read BEFORE the person's own `mimeapps.list`.
+    // Only OUR lists go (the marker); the person's stay.
+    for name in io.list_dir(&config).unwrap_or_default() {
+        if !name.ends_with("-mimeapps.list") {
+            continue;
+        }
+        let path = format!("{config}/{name}");
+        if io.read_text(&path).is_some_and(|t| crate::defaults::is_rexon_mimeapps(&t)) {
+            io.remove_file(&path);
+            crate::log_info!("install", "uninstall: removed our {path}");
+        }
+    }
+    // Screen saver launchers hidden in foreign desktops (`screensaver_guard`):
+    // only OUR copies (the marker line) go; the person's own stay. The system
+    // launchers show again as their packages ship them.
+    let launchers = crate::screensaver_guard::GuardPaths::from_env(
+        &home,
+        &io.env("XDG_DATA_HOME"),
+        &io.env("XDG_CONFIG_HOME"),
+        &io.env("XDG_DATA_DIRS"),
+    )
+    .user_dir;
+    for l in crate::screensaver_guard::LAUNCHERS {
+        let copy = launchers.join(l.file);
+        let copy = copy.to_string_lossy();
+        if io.read_text(&copy).is_some_and(|t| crate::screensaver_guard::is_ours(&t)) {
+            io.remove_file(&copy);
         }
     }
     // Light and dark on a schedule: the timer, the service and autostart would
@@ -2574,6 +2621,8 @@ mod tests {
         links: HashMap<String, String>,
         /// Programs that "exist" (`which`).
         tools: HashSet<String>,
+        /// File texts for `read_text` (and names for `list_dir`).
+        texts: HashMap<String, String>,
     }
 
     fn out(code: i32, stdout: &str, stderr: &str) -> RunOut {
@@ -2651,6 +2700,7 @@ mod tests {
                 fail_copy_tree: false,
                 links: HashMap::new(),
                 tools: HashSet::new(),
+                texts: HashMap::new(),
             }
         }
 
@@ -2705,11 +2755,19 @@ mod tests {
         fn realpath(&self, path: &str) -> Option<String> {
             Some(self.links.get(path).cloned().unwrap_or_else(|| path.to_string()))
         }
-        fn read_text(&self, _path: &str) -> Option<String> {
-            None
+        fn read_text(&self, path: &str) -> Option<String> {
+            self.texts.get(path).cloned()
         }
-        fn list_dir(&self, _dir: &str) -> Option<Vec<String>> {
-            None
+        fn list_dir(&self, dir: &str) -> Option<Vec<String>> {
+            let prefix = format!("{dir}/");
+            let names: Vec<String> = self
+                .texts
+                .keys()
+                .filter_map(|p| p.strip_prefix(&prefix))
+                .filter(|rest| !rest.contains('/'))
+                .map(str::to_string)
+                .collect();
+            (!names.is_empty()).then_some(names)
         }
         fn which(&self, name: &str) -> bool {
             self.tools.contains(name)
@@ -4273,6 +4331,51 @@ mod tests {
         assert_eq!(sink.cancellable.lock().unwrap().last(), Some(&false));
     }
 
+    /// Rexon's protective files (confined autostart copies, the labwc portals
+    /// file) stay with EITHER choice: the window names them, and neither the
+    /// root script nor the home cleanup touches them. The person's own files of
+    /// the same names are not named; our per-desktop mimeapps list is not a
+    /// kept fix — it goes with Rexon, as before.
+    #[test]
+    fn protective_files_are_named_and_never_removed() {
+        const CFG: &str = "/scratch/home/.config";
+        let kept = [
+            format!("{CFG}/autostart/org.fcitx.Fcitx5.desktop"),
+            format!("{CFG}/xdg-desktop-portal/labwc-portals.conf"),
+        ];
+        let our_list = format!("{CFG}/x-cinnamon-mimeapps.list");
+        let fill = |mut io: FakeIo| {
+            let texts = [
+                (kept[0].clone(), format!("[Desktop Entry]\nExec=fcitx5\nOnlyShowIn=Deepin;DDE;\n{}\n", crate::appdefaults::CONFINED_AUTOSTART_MARK)),
+                (kept[1].clone(), format!("{}\n[preferred]\ndefault=wlr;*\n", crate::appdefaults::PORTALS_MARK)),
+                (our_list.clone(), format!("{}\n[Default Applications]\n", crate::defaults::MIMEAPPS_MARK)),
+                // The person's own: no mark — not ours to name.
+                (format!("{CFG}/autostart/fcitx5-helper.desktop"), "[Desktop Entry]\nExec=x\n".to_string()),
+                (format!("{CFG}/xdg-desktop-portal/portals.conf"), "[preferred]\ndefault=gtk\n".to_string()),
+            ];
+            io.texts.extend(texts);
+            io
+        };
+        for keep in [false, true] {
+            let io = fill(with_system(FakeIo::new(removed_ok)));
+            let req = UninstallRequest::detect(&io, None, keep, RU);
+            let listing = uninstall_files(&io, &req);
+            assert_eq!(listing.kept_fixes, kept.to_vec());
+            let gone = listing.removed(keep);
+            for k in &kept {
+                assert!(gone.iter().all(|p| !k.starts_with(p.as_str())), "{k} is in the removal list: {gone:?}");
+            }
+            let (r, _) = un(&io, &req);
+            assert!(r.ok(), "{r:?}");
+            let script = uninstall_script(&io);
+            for k in &kept {
+                assert!(removed(&io).iter().all(|p| !k.starts_with(p.as_str())), "{k} was removed: {:?}", removed(&io));
+                assert!(!script.contains(k.as_str()) && !script.contains(CFG), "the script touches {k}:\n{script}");
+            }
+            assert!(removed(&io).contains(&our_list), "{:?}", removed(&io));
+        }
+    }
+
     /// Wehrwolfmann's decision of 15.09.2026: «keep» means settings AND backups.
     /// The old test asserted the opposite (settings are wiped, backups stay) —
     /// exactly the behaviour that was revoked.
@@ -4558,6 +4661,21 @@ mod tests {
         assert!(sc(&["systemctl", "--user", "disable", crate::session_watch::UNIT_NAME]), "{runs:?}");
         assert!(sc(&["systemctl", "--user", "daemon-reload"]), "{runs:?}");
         assert!(runs.iter().any(|r| r == &crate::session_guard::reconfigure_kwin_argv()), "KWin перечитал настройки: {runs:?}");
+    }
+
+    #[test]
+    fn uninstall_removes_our_screensaver_launcher_copies_only() {
+        use crate::screensaver_guard as sg;
+        let io = ScratchIo::new();
+        assert!(user_install(&io).0.ok());
+        let ours = "home/.local/share/applications/xscreensaver-settings.desktop";
+        let mine = "home/.local/share/applications/xscreensaver.desktop";
+        io.put(ours, &format!("[Desktop Entry]\n{}\nExec=xscreensaver-settings\n", sg::MARKER_LINE), 0o644);
+        io.put(mine, "[Desktop Entry]\nExec=xscreensaver\n", 0o644);
+        let (r, _) = un(&io, &user_request(true));
+        assert!(r.ok(), "{}", r.message);
+        assert!(!io.exists(&format!("{}/{ours}", io.base)), "our copy is removed");
+        assert!(io.exists(&format!("{}/{mine}", io.base)), "the person's own copy stays");
     }
 
     #[test]

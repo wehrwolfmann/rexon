@@ -18,7 +18,13 @@
 //!
 //! * wallpapers come in two sections: downloaded ones (heading "Recently
 //!   added") and "Available to sync" — those in the account's cloud library
-//!   that are not downloaded (`WallPaperStatus` = `Uninstalled`);
+//!   that are not downloaded (`WallPaperStatus` = `Uninstalled`). Under the
+//!   heading of the second section there is our note on why they are not on
+//!   disk and who downloads them ([`available_section_note`]), plus an "Open
+//!   Razer Axon" button when there is something to launch it with
+//!   ([`crate::axon_library::launch_plan`]) — Wehrwolfmann's decision of
+//!   15.11.2026: without the note the section read as "the tile dropped to
+//!   the bottom for some reason";
 //! * sorting is "by name" (the title, case-insensitive) or "by date added",
 //!   which is also the default. A record has no separate date field
 //!   (`FinishedTime` of downloaded ones is 0): "by date" Axon leaves the list
@@ -30,7 +36,11 @@
 //!   "AI wallpapers" and the "Type" group (dynamic / static / interactive), a
 //!   "Clear" button and the number of enabled filters on the filter button.
 //!   Axon's library has no "Resolution" group — only the store catalog has
-//!   one, and resolution is not part of the library selection;
+//!   one, and resolution is not part of the library selection. Our addition
+//!   (Wehrwolfmann's decision of 15.11.2026) is the "Orientation" group
+//!   (horizontal / vertical) by the record's resolution: some Axon
+//!   wallpapers are vertical `2160x3840` videos with horizontal covers, and
+//!   without a label they cannot be told apart;
 //! * empty: with a search or filter active — "No wallpapers found." and a
 //!   "Clear filter" link, otherwise "No items".
 //!
@@ -48,6 +58,7 @@
 
 use crate::axon_library::{self as ax, display_title, find_roots, AxonEnv, AxonLibrary, AxonWallpaper};
 use crate::i18n::{tr, trc, trf};
+use crate::wallpaper_screens::{orientation_group_label, orientation_warning, WallpaperOrientation};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -277,6 +288,9 @@ pub struct Filters {
     pub flags: Vec<FilterFlag>,
     /// Checked "Type" items: wallpapers of any of them match.
     pub kinds: Vec<EffectKind>,
+    /// Checked "Orientation" items (our group): wallpapers of any of them
+    /// match.
+    pub orientations: Vec<WallpaperOrientation>,
 }
 
 impl Filters {
@@ -302,10 +316,21 @@ impl Filters {
         }
     }
 
+    pub fn has_orientation(&self, o: WallpaperOrientation) -> bool {
+        self.orientations.contains(&o)
+    }
+
+    pub fn set_orientation(&mut self, o: WallpaperOrientation, on: bool) {
+        self.orientations.retain(|x| *x != o);
+        if on {
+            self.orientations.push(o);
+        }
+    }
+
     /// The number on the filter button: each checkbox and each "Type" item counts
-    /// as one, as Axon counts.
+    /// as one, as Axon counts; "Orientation" items count the same way.
     pub fn active_count(&self) -> usize {
-        self.flags.len() + self.kinds.len()
+        self.flags.len() + self.kinds.len() + self.orientations.len()
     }
 
     /// Whether anything is enabled (then the "Clear" button is available).
@@ -324,7 +349,11 @@ impl Filters {
             return false;
         }
         // Fix 3: without `EffectType` a wallpaper does not match a type filter.
-        self.kinds.is_empty() || EffectKind::from_axon(&w.effect).is_some_and(|k| self.kinds.contains(&k))
+        let kind_ok =
+            self.kinds.is_empty() || EffectKind::from_axon(&w.effect).is_some_and(|k| self.kinds.contains(&k));
+        // Without a resolution the orientation is unknown — such wallpapers
+        // do not match an orientation filter (like untyped ones a type filter).
+        kind_ok && (self.orientations.is_empty() || ax::orientation(w).is_some_and(|o| self.orientations.contains(&o)))
     }
 }
 
@@ -469,6 +498,29 @@ pub fn downloaded_section_title() -> String {
 /// The heading of the section of cloud wallpapers not downloaded yet.
 pub fn available_section_title() -> String {
     trc("Razer Axon", "AVAILABLE FOR SYNC")
+}
+
+/// The note under the "Available to sync" heading (ours, Axon has none):
+/// what these wallpapers are and why Rexon does not download them itself.
+pub fn available_section_note() -> String {
+    tr("Available in your Razer account, but not downloaded to this computer. \
+        Only Razer Axon can download them.")
+}
+
+/// The button under the note: launch Razer Axon.
+pub fn launch_text() -> String {
+    tr("Open Razer Axon")
+}
+
+/// Result of the "Open Razer Axon" button: started.
+pub fn launch_started_text() -> String {
+    tr("Razer Axon is starting…")
+}
+
+/// Result of the "Open Razer Axon" button: failed to start.
+pub fn launch_failed_text(why: &str) -> String {
+    // TRANSLATORS: %1 is the reason from the system, e.g. "No such file or directory".
+    trf("Couldn't start Razer Axon: %1", &[&why])
 }
 
 /// Empty, nothing filtered.
@@ -663,14 +715,16 @@ pub fn screen_key(screen: Screen) -> &'static str {
 }
 
 /// The model's answer to a query: the screen (`note` — no library, `grid`,
-/// `notfound`, `noitems`), its label, the grid sections with tiles and the
-/// filter button with the number of enabled filters.
+/// `notfound`, `noitems`), its label, the grid sections with tiles (the
+/// section of not downloaded ones carries a `note`) and the filter button
+/// with the number of enabled filters.
 pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
     let filter = json!({
         "text": filter_button_text(q.filters.active_count()),
         "count": q.filters.active_count(),
         "flags": q.filters.flags.iter().map(|f| f.key()).collect::<Vec<_>>(),
         "kinds": q.filters.kinds.iter().map(|k| k.key()).collect::<Vec<_>>(),
+        "orientations": q.filters.orientations.iter().map(|o| o.key()).collect::<Vec<_>>(),
     });
     let base = json!({"sort": q.sort.key(), "mode": q.mode.key(), "text": q.text});
     if let Some(note) = library_note(lib) {
@@ -681,10 +735,14 @@ pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
     let tiles = |idx: &[usize]| idx.iter().map(|&i| tile(&lib.wallpapers[i])).collect::<Vec<_>>();
     let mut sections = Vec::new();
     if !v.downloaded.is_empty() {
-        sections.push(json!({"title": downloaded_section_title(), "items": tiles(&v.downloaded)}));
+        sections.push(json!({"title": downloaded_section_title(), "note": "", "items": tiles(&v.downloaded)}));
     }
     if !v.available.is_empty() {
-        sections.push(json!({"title": available_section_title(), "items": tiles(&v.available)}));
+        sections.push(json!({
+            "title": available_section_title(),
+            "note": available_section_note(),
+            "items": tiles(&v.available),
+        }));
     }
     let note = match scr {
         Screen::Grid => String::new(),
@@ -694,8 +752,9 @@ pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
     json!({"screen": screen_key(scr), "note": note, "sections": sections, "filter": filter, "query": base})
 }
 
-/// Wallpaper details: cover, title, author, the tile line and "label — value"
-/// lines (type and tags with Axon's labels, resolution).
+/// Wallpaper details: cover, title, author, the tile line, "label — value"
+/// lines (type and tags with Axon's labels, orientation, resolution) and,
+/// for vertical ones, what happens on a regular monitor (`warning`).
 pub fn details_json(w: &AxonWallpaper) -> Value {
     let mut rows: Vec<Value> = Vec::new();
     let mut row = |label: String, value: String| {
@@ -705,7 +764,13 @@ pub fn details_json(w: &AxonWallpaper) -> Value {
     };
     row(type_label(), EffectKind::from_axon(&w.effect).map(EffectKind::label).unwrap_or_default());
     row(SearchMode::Tags.label(), ax::tag_list(&w.tags).join(", "));
+    let orientation = ax::orientation(w);
+    row(orientation_group_label(), orientation.map(WallpaperOrientation::label).unwrap_or_default());
     row(tr("Resolution"), w.resolution.map(|(x, y)| format!("{x} × {y}")).unwrap_or_default());
+    // Videos are shown by the Rexon video host, which fills the screen and
+    // crops; pictures and web are set by the desktop or waywallen — it varies.
+    let crops = w.kind == ax::AxonKind::Video;
+    let warning = orientation.and_then(|o| orientation_warning(o, crops)).unwrap_or_default();
     let author = w.author.trim();
     json!({
         "id": w.id,
@@ -715,6 +780,7 @@ pub fn details_json(w: &AxonWallpaper) -> Value {
         "cover": cover_url(w),
         "description": w.description.trim(),
         "rows": rows,
+        "warning": warning,
         "folder": folder_of(w),
         "downloaded": w.downloaded,
     })
@@ -869,8 +935,11 @@ mod tests {
         let v = view_json(&lib, &q);
         assert_eq!(v["screen"], "grid");
         assert_eq!(v["sections"][0]["title"], "RECENTLY ADDED");
+        assert_eq!(v["sections"][0]["note"], "", "nothing to explain for downloaded ones");
         assert_eq!(v["sections"][0]["items"].as_array().unwrap().len(), 3);
         assert_eq!(v["sections"][1]["title"], "AVAILABLE FOR SYNC");
+        assert_eq!(v["sections"][1]["note"], available_section_note().as_str());
+        assert!(available_section_note().contains("Only Razer Axon"));
         assert_eq!(v["sections"][1]["items"][0]["id"], "3");
         assert_eq!(v["filter"]["text"], "FILTER");
         q.filters.set(FilterFlag::Favorites, true);
@@ -900,7 +969,9 @@ mod tests {
         assert_eq!(d["title"], "skyline");
         assert_eq!(d["rows"][0]["value"], "Dynamic");
         assert_eq!(d["rows"][1]["value"], "City, Night");
-        assert_eq!(d["rows"][2]["value"], "3840 × 2160");
+        assert_eq!(d["rows"][2]["value"], "Horizontal");
+        assert_eq!(d["rows"][3]["value"], "3840 × 2160");
+        assert_eq!(d["warning"], "", "nothing to warn about for horizontal ones");
         assert!(has_section("wallpapers") && !has_section("icons"));
     }
 
@@ -921,6 +992,44 @@ mod tests {
             [search_placeholder(), search_in_label(), sort_tooltip(), type_label(), no_items_text(), not_found_text(), clear_filter_text()],
             ["Search wallpapers", "Search in", "Sort", "Type", "No items", "No wallpapers found.", "Clear filter"]
         );
+    }
+
+    /// Axon records "2160x3840" (Skyline GTR, VHS Mirage, Binary Twilight)
+    /// are vertical videos: tile label, filter and warning.
+    #[test]
+    fn vertical_wallpapers_are_labelled_filtered_and_warned() {
+        english();
+        let mut tall = w("5", "Skyline GTR");
+        tall.resolution = ax::parse_resolution("2160x3840");
+        assert_eq!(ax::orientation(&tall), Some(WallpaperOrientation::Portrait));
+        assert_eq!(ax::tile_line(&tall), "🎞️ Video · Vertical · 2160×3840");
+        let wide = w("6", "Aurora");
+        assert_eq!(ax::tile_line(&wide), "🎞️ Video · 3840×2160", "horizontal ones — unchanged");
+        let mut unknown = w("7", "No resolution");
+        unknown.resolution = None;
+        assert_eq!(ax::orientation(&unknown), None);
+
+        let lib = vec![wide.clone(), tall.clone(), unknown];
+        let run = |f: &Filters| ids(&lib, &query(&lib, &Query { filters: f.clone(), ..Query::default() }).downloaded);
+        let mut f = Filters::default();
+        f.set_orientation(WallpaperOrientation::Portrait, true);
+        assert_eq!((run(&f), f.active_count()), (vec!["5".to_string()], 1));
+        f.set_orientation(WallpaperOrientation::Landscape, true);
+        assert_eq!(run(&f), ["6", "5"], "both orientations; no resolution — no match");
+        f.set_orientation(WallpaperOrientation::Portrait, false);
+        assert_eq!(run(&f), ["6"]);
+        f.clear();
+        assert!(f.orientations.is_empty() && !f.any());
+
+        let d = details_json(&tall);
+        let rows = d["rows"].as_array().unwrap();
+        assert!(rows.iter().any(|r| r["label"] == "Orientation" && r["value"] == "Vertical"), "{rows:?}");
+        let warn = d["warning"].as_str().unwrap();
+        assert!(warn.contains("only the middle part"), "the video host crops videos: {warn}");
+        let mut pic = tall.clone();
+        pic.kind = AxonKind::Image;
+        assert!(details_json(&pic)["warning"].as_str().unwrap().contains("bars"), "the desktop fits pictures");
+        assert_eq!(details_json(&wide)["warning"], "");
     }
 
     /// A temporary check directory, removed on exit.

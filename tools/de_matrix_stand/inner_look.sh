@@ -1,8 +1,8 @@
 #!/bin/bash
-# Вызывается из run_de.sh (INNER=inner_look.sh BIN=…/examples/look_stand)
-# внутри своей шины: «Анимация» и «Кнопки заголовка окна» — действие стенда
-# → чтение родным читателем окружения → повтор (ждём «без изменений») →
-# возврат к прежнему значению. Отдельно не запускать.
+# Called from run_de.sh (INNER=inner_look.sh BIN=…/examples/look_stand)
+# inside its own bus: «Анимация» and «Кнопки заголовка окна» — the stand's action
+# → reading with the desktop's native reader → a repeat (we expect «no changes») →
+# going back to the previous value. Do not run on its own.
 C=$XDG_CONFIG_HOME
 st() { echo; echo "### $*"; timeout -k 2 60 "$BIN" "$@" 2>&1 | sed 's/^/    /'; }
 gs() { printf '  gsettings %-42s %-28s = %s\n' "$1" "$2" "$(timeout 5 gsettings get "$1" "$2" 2>&1)"; }
@@ -12,7 +12,7 @@ ini() { local v; v=$(awk -v s="[$2]" -v k="$3" '$0==s{f=1;next} /^\[/{f=0} f&&in
 fl() { printf '  file %s:\n' "${1#$H/}"; if [ -f "$1" ]; then sed 's/^/      | /' "$1"; else echo "      <нет файла>"; fi; }
 snap() { (cd $H && find . -path ./run -prune -o -path ./.cache -prune -o -type f -print0 | sort -z | xargs -0 md5sum 2>/dev/null; timeout 5 dconf dump / 2>/dev/null | md5sum; timeout 5 xfconf-query -c xfwm4 -l -v 2>/dev/null | md5sum; timeout 5 xfconf-query -c xsettings -l -v 2>/dev/null | md5sum) | md5sum | cut -c1-12; }
 
-# Конфиг композитора — как у человека после первого запуска.
+# The compositor config — as a person has it after the first start.
 case $DE in
   hyprland) mkdir -p $C/hypr && cp /usr/share/hypr/hyprland.lua $C/hypr/hyprland.lua ;;
   niri) mkdir -p $C/niri && cp /usr/share/doc/niri/default-config.kdl $C/niri/config.kdl ;;
@@ -58,7 +58,7 @@ echo "### ДО"; native; S0=$(snap); echo "  снимок=$S0"
 st anim-state
 st buttons-state
 
-# Изменения — как нажатия.
+# Changes — like presses.
 case $DE in
   kde) st anim-speed 0.5; st anim-row openClose=glide; st anim-row minimize=magiclamp; st anim-row login=false; st border Large ;;
   cinnamon) st anim-speed 2; st anim-row minimize=fade; st anim-row resize=false ;;
@@ -69,7 +69,7 @@ esac
 st buttons left:close,minimize,maximize,menu
 echo; echo "### ПОСЛЕ"; native; S1=$(snap); echo "  снимок=$S1"
 
-# Повтор тех же значений — без изменений.
+# A repeat of the same values — no changes.
 case $DE in
   kde) st anim-speed 0.5; st anim-row openClose=glide; st border Large ;;
   cinnamon) st anim-speed 2; st anim-row minimize=fade ;;
@@ -80,7 +80,7 @@ esac
 st buttons left:close,minimize,maximize,menu
 S2=$(snap); echo "  ПОВТОР: снимок=$S2 $( [ "$S1" = "$S2" ] && echo 'совпал с ПОСЛЕ — без изменений' || echo 'ИЗМЕНИЛСЯ')"
 
-# Откат к прежнему: «По умолчанию» в обоих разделах (чистый профиль = умолчания).
+# Rollback to the previous: «По умолчанию» in both sections (a clean profile = defaults).
 st anim-defaults
 st anim-enabled true
 st buttons-defaults

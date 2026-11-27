@@ -1,29 +1,29 @@
 #!/bin/bash
-# Стенд «настройка × окружение» (проверка 02.10.2026).
+# The «setting × desktop» stand (check of 02.10.2026).
 #
 #   run_de.sh <kde|gnome|cinnamon|mate|xfce|budgie|pantheon|deepin|lxqt|cosmic|hyprland|sway|niri>
 #
-# Применяет все настройки вкладок «Настройки» и «Оформление» тем же путём,
-# что кнопки (пример `de_matrix_stand` в rexon-core), в ПРИВАТНОМ HOME под
-# подставленным XDG_CURRENT_DESKTOP, и читает результат родными читателями
-# окружения (gsettings, kreadconfig6, xfconf-query, qtxdg-mat,
-# xdg-terminal-exec, файлы lxqt/cosmic/hypr/sway/niri) — см. inner.sh.
-# Итог — $WORK/out-<de>.txt.
+# Applies all settings of the «Настройки» and «Оформление» tabs the same way
+# as the buttons do (the `de_matrix_stand` example in rexon-core), in a PRIVATE HOME under
+# a substituted XDG_CURRENT_DESKTOP, and reads the result with the desktop's native
+# readers (gsettings, kreadconfig6, xfconf-query, qtxdg-mat,
+# xdg-terminal-exec, the lxqt/cosmic/hypr/sway/niri files) — see inner.sh.
+# The result is $WORK/out-<de>.txt.
 #
-# Безопасность (всё обязательно):
-# * HOME, XDG_CONFIG_HOME, XDG_RUNTIME_DIR — свои; WAYLAND_DISPLAY, SWAYSOCK,
-#   HYPRLAND_INSTANCE_SIGNATURE, NIRI_SOCKET не передаются (env -i) — ни одна
-#   команда не дотянется до живого сеанса;
-# * своя шина, и на ней поднимаются ТОЛЬКО dconf и xfconfd (белый список
-#   service-файлов). ⛔ Не открывать шину на все системные сервисы: kded6
-#   активируется по шине, тянет автозапуск Plasma, и упавший без экрана
-#   plasmashell через KCrash доходит до DrKonqi живого стола (02.10 так и было);
-# * тихий обработчик краха (LD_PRELOAD) + ulimit -c 0. ⚠️ Он НЕ защищает
-#   программы с file capabilities (sway: LD_PRELOAD игнорируется) и программы
-#   с KCrash — поэтому `sway -C`, kded6, plasmashell стенд не запускает.
+# Safety (all of it mandatory):
+# * HOME, XDG_CONFIG_HOME, XDG_RUNTIME_DIR are its own; WAYLAND_DISPLAY, SWAYSOCK,
+#   HYPRLAND_INSTANCE_SIGNATURE, NIRI_SOCKET are not passed (env -i) — not a single
+#   command reaches the live session;
+# * its own bus, and ONLY dconf and xfconfd are started on it (an allowlist of
+#   service files). ⛔ Do not open the bus to all system services: kded6
+#   is activated over the bus, pulls in Plasma autostart, and a plasmashell that crashed
+#   without a screen reaches the live desktop's DrKonqi through KCrash (that is what happened on 02.10);
+# * a quiet crash handler (LD_PRELOAD) + ulimit -c 0. ⚠️ It does NOT protect
+#   programs with file capabilities (sway: LD_PRELOAD is ignored) and programs
+#   with KCrash — so the stand does not start `sway -C`, kded6, plasmashell.
 set -u
-# Какой сценарий гнать внутри шины: inner.sh (все разделы) или inner_look.sh
-# («Анимация» и «Кнопки заголовка окна», пример look_stand).
+# Which scenario to run inside the bus: inner.sh (all sections) or inner_look.sh
+# («Анимация» and «Кнопки заголовка окна», the look_stand example).
 INNER=${INNER:-inner.sh}
 DE=$1
 S=$(cd "$(dirname "$0")" && pwd)
@@ -60,17 +60,17 @@ case $DE in
   mate) XCD=MATE; DS=mate ;;
   xfce) XCD=XFCE; DS=xfce ;;
   budgie) XCD=Budgie:GNOME; DS=budgie-desktop ;;
-  # Схем elementary на машине нет: берём их из исходников (закреплённые
-  # коммиты) вместе с переопределениями `:Pantheon` из default-settings и
-  # собираем каталог схем стенда — см. pantheon_schemas ниже.
+  # There are no elementary schemas on the machine: we take them from the sources (pinned
+  # commits) together with the `:Pantheon` overrides from default-settings and
+  # build the stand's schema directory — see pantheon_schemas below.
   pantheon) XCD=Pantheon; DS=pantheon; EXTRA="GSETTINGS_SCHEMA_DIR=$WORK/schemas-pantheon" ;;
-  # Deepin: схемы deepin-desktop-schemas (закреплённый пакет Arch) — для
-  # терминала; служба оформления и DConfig — подставная модель dde_shim.sh
-  # первой в PATH (живых служб DDE стенд не запускает) — см. deepin_stand ниже.
+  # Deepin: the deepin-desktop-schemas schemas (a pinned Arch package) — for the
+  # terminal; the appearance service and DConfig — the stand-in model dde_shim.sh
+  # first in PATH (the stand does not start live DDE services) — see deepin_stand below.
   deepin) XCD=DDE; DS=deepin
           EXTRA="GSETTINGS_SCHEMA_DIR=$WORK/schemas-deepin PATH=$WORK/deepin-shims:/usr/bin:/bin" ;;
   lxqt) XCD=LXQt; DS=lxqt ;;
-  # start-cosmic сам ставит этот DCONF_PROFILE — повторяем его.
+  # start-cosmic sets this DCONF_PROFILE itself — we repeat it.
   cosmic) XCD=COSMIC; DS=cosmic; EXTRA="DCONF_PROFILE=/usr/share/dconf/profile/cosmic" ;;
   hyprland) XCD=Hyprland; DS=hyprland ;;
   sway) XCD=sway; DS=sway ;;
@@ -78,10 +78,10 @@ case $DE in
   *) echo "незнакомое окружение $DE"; exit 2 ;;
 esac
 
-# Pantheon: каталог схем = системные схемы + схемы elementary + переопределения
-# `:Pantheon` (без них gsettings не знает io.elementary.* и не видит родных
-# значений по умолчанию Pantheon). Ничего не ставится в систему: каталог —
-# в $WORK, подключается через GSETTINGS_SCHEMA_DIR только этому запуску.
+# Pantheon: the schema directory = system schemas + elementary schemas + the
+# `:Pantheon` overrides (without them gsettings does not know io.elementary.* and does not see the native
+# Pantheon defaults). Nothing is installed into the system: the directory is
+# in $WORK, connected through GSETTINGS_SCHEMA_DIR only for this run.
 pantheon_schemas() {
   local src=$WORK/pantheon-src dst=$WORK/schemas-pantheon raw=https://raw.githubusercontent.com/elementary
   mkdir -p "$src"
@@ -103,9 +103,9 @@ pantheon_schemas() {
 }
 [ "$DE" = pantheon ] && pantheon_schemas
 
-# Deepin: каталог схем = системные + схемы deepin-desktop-schemas из пакета
-# Arch (скачивается в $WORK, в систему ничего не ставится) и подставные
-# `busctl`/`dde-dconfig` (dde_shim.sh) в своём каталоге PATH стенда.
+# Deepin: the schema directory = system ones + the deepin-desktop-schemas schemas from the
+# Arch package (downloaded into $WORK, nothing is installed into the system) and the stand-in
+# `busctl`/`dde-dconfig` (dde_shim.sh) in their own PATH directory of the stand.
 deepin_stand() {
   local src=$WORK/deepin-src dst=$WORK/schemas-deepin shims=$WORK/deepin-shims
   local pkg=deepin-desktop-schemas-6.0.13-1-any.pkg.tar.zst
@@ -123,7 +123,7 @@ deepin_stand() {
 }
 [ "$DE" = deepin ] && deepin_stand
 
-# XFCE: монитор в xfce4-desktop, как у живого профиля (иначе обоям некуда).
+# XFCE: a monitor in xfce4-desktop, as in a live profile (otherwise the wallpaper has nowhere to go).
 if [ "$DE" = xfce ]; then
   mkdir -p "$H/.config/xfce4/xfconf/xfce-perchannel-xml"
   cat > "$H/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml" <<'EOF'

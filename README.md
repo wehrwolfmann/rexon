@@ -103,7 +103,8 @@ Wallpaper Engine, Steam and Settings — in English, Russian, German, Chinese, F
 **Settings**
 
 - Interface language and skin, tray icon, a wallpaper library.
-- Saved copies of the KDE Plasma panel, the default-app protection switch and
+- Saved copies of the panels, applets and keyboard shortcuts of every desktop
+  (taken automatically before installing or switching), the default-app protection switch and
   import of Windows themes.
 
 **System safety**
@@ -326,8 +327,8 @@ the install and uninstall scripts of `.rxn` extension packages of the
   systemd `OnFailure=` drop-in (`rexon-login-rescue`) that shows a plain-text
   explanation on the console instead of a black screen.
 - **Appearance:** what Rexon changes can be undone with "Put Back as It Was", and the
-  KDE panel layout can be saved and restored in Desktops → Tools ("Save Panel" /
-  "Restore Panel"). KDE has an emergency "Recover desktop appearance" menu entry that
+  panel layout, applets and keyboard shortcuts of any desktop can be saved and restored in
+  Desktops → Tools ("Save Panel" / "Restore Panel") and Settings → Panel Protection. KDE has an emergency "Recover desktop appearance" menu entry that
   works even if the Rexon window doesn't start.
 - **"Like a distribution" looks** remember what they changed and can be reverted.
 - **Login screen and boot splash** themes can be reset to the distribution default.

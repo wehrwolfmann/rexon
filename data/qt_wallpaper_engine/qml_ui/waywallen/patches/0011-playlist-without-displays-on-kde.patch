@@ -1,24 +1,24 @@
-Тема: запуск плейлиста на KDE работает и до первого дисплея
+Subject: starting a playlist on KDE works even before the first display
 
-Починка дефекта, не доработка. Тот же круг, что у «Применить» (патч 0010):
-на KDE дисплей у демона появляется, только когда Plasma-плагин waywallen
-назначен обоями стола, а назначает его Rexon при запуске плейлиста.
-Вендорный список плейлистов выбирает цели по одной: без дисплея кнопка
-запуска серая, пока человек сам не выберет «Все» (ВМ Arch + Plasma 6.8.2,
-30.10.2026).
+A defect fix, not a feature. The same circle as with «Apply» (patch 0010):
+on KDE the daemon gets a display only once the waywallen Plasma plugin is
+assigned as the desktop wallpaper, and Rexon assigns it when a playlist
+starts. The vendor playlist list chooses targets one by one: without a
+display the start button is grey until the person picks «All» by hand
+(VM Arch + Plasma 6.8.2, 30.10.2026).
 
-С v0.6.0 нейтральная часть правки — у апстрима (waywallen#370: запуск на
-«Все» без дисплеев и «пустой набор дисплеев — не играет»). Осталось только
-наше:
+Since v0.6.0 the neutral part of the edit is upstream (waywallen#370:
+starting on «All» without displays and «an empty display set does not
+play»). Only our part remains:
 
-* `hasPlayTarget`: при нуле целей запуск доступен и без выбора «Все», если
-  `W.App.playWithoutDisplays` (решение — ядро,
-  `waywallen_kde_plugin::play_without_displays`, тот же `apply_gate`, что
-  у транспорта). Кадр `playlist_activate` придерживает транспорт Rexon,
-  пока plasmashell не зарегистрирует дисплей.
-* `togglePlayback`: без дисплеев цель — «все рабочие столы», как
-  вендорное «все» (`selectAll()`: пустые цели + подключение новых
-  дисплеев). При реальных дисплеях поведение апстрима не меняется.
+* `hasPlayTarget`: with zero targets starting is available even without
+  choosing «All», if `W.App.playWithoutDisplays` (the decision is the core's,
+  `waywallen_kde_plugin::play_without_displays`, the same `apply_gate` as the
+  transport's). The Rexon transport holds the `playlist_activate` frame until
+  plasmashell registers a display.
+* `togglePlayback`: without displays the target is «all desktops», like the
+  vendor «all» (`selectAll()`: empty targets + attaching new displays). With
+  real displays upstream behaviour does not change.
 ---
 diff --git a/ui/qml/page/wallpaper/PlaylistListSheetState.qml b/ui/qml/page/wallpaper/PlaylistListSheetState.qml
 index 56ceb37..f564344 100644
@@ -29,12 +29,12 @@ index 56ceb37..f564344 100644
      readonly property bool createQuerying: playlistCreateMutation.querying
      readonly property var playlists: playlistListQuery.playlists || []
 -    readonly property bool hasPlayTarget: targetState.allTargets || targetState.hasSelection
-+    // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
-+    // появляется, только когда плагин обоев уже назначен, а назначает его
-+    // Rexon при запуске плейлиста — без этой ветки запуск на свежей системе
-+    // был недоступен, пока человек сам не выберет «Все». Пока дисплеев нет,
-+    // цель — «все рабочие столы»; кадр придерживает транспорт Rexon до
-+    // регистрации дисплея. Правка живёт в
++    // REXON EDIT (a defect fix, not a feature): on KDE a display
++    // appears only once the wallpaper plugin is assigned, and Rexon
++    // assigns it when a playlist starts — without this branch, starting on a fresh
++    // system was unavailable until the person picked «All» by hand. While there are
++    // no displays, the target is «all desktops»; the Rexon transport holds the frame
++    // until a display registers. The edit lives in
 +    // patches/0011-playlist-without-displays-on-kde.patch.
 +    readonly property bool playWithoutDisplays: !targetState.hasTargets && W.App.playWithoutDisplays
 +    readonly property bool hasPlayTarget: targetState.allTargets || targetState.hasSelection || playWithoutDisplays
@@ -46,8 +46,8 @@ index 56ceb37..f564344 100644
              return;
          }
 +        if (root.playWithoutDisplays && !targetState.allTargets) {
-+            // ПРАВКА REXON: «все рабочие столы» — как вендорное «все»
-+            // (пустые цели и подключение новых дисплеев).
++            // REXON EDIT: «all desktops» — like the vendor «all»
++            // (empty targets and attaching new displays).
 +            targetState.selectAll();
 +        }
          playlistPlaybackMutation.activate(playlist.id, targetState.wireTargets, targetState.allTargets);

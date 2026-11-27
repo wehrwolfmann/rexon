@@ -30,6 +30,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::i18n::{n_, tr};
+
 // ============================================================================
 // Paths
 // ============================================================================
@@ -78,7 +80,8 @@ pub struct DeReactions {
 }
 
 impl DeReactions {
-    /// A JSON object with the same key order as the Python dictionary.
+    /// A JSON object with the same key order as the Python dictionary; the
+    /// lines are translated into the interface language here.
     pub fn to_value(&self) -> Value {
         let mut obj = Map::new();
         for (key, list) in [
@@ -90,7 +93,7 @@ impl DeReactions {
         ] {
             obj.insert(
                 key.to_string(),
-                Value::Array(list.iter().map(|s| Value::from(*s)).collect()),
+                Value::Array(list.iter().map(|s| Value::from(tr(s))).collect()),
             );
         }
         Value::Object(obj)
@@ -103,31 +106,34 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "kde",
         DeReactions {
             greetings: &[
-                "О, KDE! Тут так красиво, что я забыл зачем пришёл.",
-                "KDE? Значит, вы любите всё настраивать. Мы поладим!",
-                "Привет! Какой красивый рабочий стол у вас.",
-                "KDE! Тут уютно. Прямо как дома.",
+                // TRANSLATORS: the lines of the BonziBuddy mascot (a purple gorilla,
+                // he speaks of himself as "he") about the desktop the person is in.
+                // Keep the playful tone and the jokes, not the exact words.
+                n_("Oh, KDE! It's so pretty here that I forgot why I came."),
+                n_("KDE? So you love tweaking everything. We'll get along!"),
+                n_("Hi! What a beautiful desktop you have."),
+                n_("KDE! It's cozy here. Just like home."),
             ],
             jokes: &[
-                "Тут столько настроек, что даже я запутался!",
-                "Красивые окна, красивые кнопки... А я? Я тоже красивый?",
-                "Говорят, тут можно настроить вообще всё. Даже меня?",
-                "Я тут походил по настройкам... через три часа вернулся.",
+                n_("So many settings here that even I got lost!"),
+                n_("Pretty windows, pretty buttons... And me? Am I pretty too?"),
+                n_("They say you can tweak absolutely everything here. Even me?"),
+                n_("I wandered around the settings for a bit... came back three hours later."),
             ],
             on_switch_to: &[
-                "Ого, новый рабочий стол! Тут красиво!",
-                "Переехали! Мне тут нравится, много кнопок и панелей.",
-                "О, всё по-новому! Дайте осмотреться...",
+                n_("Whoa, a new desktop! It's pretty here!"),
+                n_("We moved! I like it here, lots of buttons and panels."),
+                n_("Oh, everything's new! Let me look around..."),
             ],
             on_switch_from: &[
-                "Уходим? Я только привык к этим красивым окнам...",
-                "Ладно, переезжаем. Надеюсь, там тоже будет красиво!",
+                n_("Leaving? I just got used to these pretty windows..."),
+                n_("Fine, we're moving. I hope it's pretty there too!"),
             ],
             idle_comments: &[
-                "Знаете, мне тут нравится. Уютненько.",
-                "А эти виджеты на рабочем столе — прикольная штука!",
-                "Панель снизу, как в Windows. Почти как дома!",
-                "Тут даже обои можно анимированные поставить. Круто!",
+                n_("You know, I like it here. Nice and cozy."),
+                n_("And these desktop widgets are a neat thing!"),
+                n_("The panel at the bottom, like in Windows. Almost like home!"),
+                n_("You can even set animated wallpapers here. Cool!"),
             ],
         },
     ),
@@ -135,30 +141,30 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "gnome",
         DeReactions {
             greetings: &[
-                "О, тут всё так... просто и чисто!",
-                "Привет! Минималистичный рабочий стол, мне нравится.",
-                "Тут просторно! Никаких лишних кнопок.",
-                "Привет! А где тут панель задач? А, понял, тут по-другому...",
+                n_("Oh, everything here is so... simple and clean!"),
+                n_("Hi! A minimalist desktop, I like it."),
+                n_("So roomy here! No extra buttons at all."),
+                n_("Hi! Where's the taskbar here? Ah, got it, things work differently here..."),
             ],
             jokes: &[
-                "Тут всё так просто, что даже настройки простые!",
-                "Минимализм — это когда меньше кнопок, больше красоты.",
-                "Я тут самый яркий элемент на рабочем столе!",
-                "Всё серое и стильное. А я фиолетовый. Выделяюсь!",
+                n_("Everything here is so simple that even the settings are simple!"),
+                n_("Minimalism is fewer buttons and more beauty."),
+                n_("I'm the brightest thing on this desktop!"),
+                n_("Everything's gray and stylish. And I'm purple. I stand out!"),
             ],
             on_switch_to: &[
-                "Новый рабочий стол! Тут так чисто и аккуратно.",
-                "Переехали! Просторно тут. Есть где погулять.",
-                "О, новый дом! Непривычно, но красиво.",
+                n_("A new desktop! So clean and tidy here."),
+                n_("We moved! It's roomy here. Plenty of space to stroll around."),
+                n_("Oh, a new home! Unfamiliar, but pretty."),
             ],
             on_switch_from: &[
-                "Уходим? Я только привык к этой простоте!",
-                "Ладно, поехали дальше. Интересно, что там будет.",
+                n_("Leaving? I just got used to this simplicity!"),
+                n_("Fine, let's move on. I wonder what's over there."),
             ],
             idle_comments: &[
-                "Знаете, иногда простота — это хорошо. Ничего лишнего.",
-                "Тут так тихо и спокойно... Не то что на прошлом столе!",
-                "А мне нравится, что тут нет миллиона кнопок.",
+                n_("You know, sometimes simple is good. Nothing extra."),
+                n_("It's so quiet and calm here... Not like on the last desktop!"),
+                n_("And I like that there isn't a million buttons here."),
             ],
         },
     ),
@@ -166,30 +172,30 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "mate",
         DeReactions {
             greetings: &[
-                "О! Классический рабочий стол! Ностальгия!",
-                "Привет! Тут прямо как в старые добрые времена.",
-                "Две панели! Сверху и снизу! Как раньше было!",
-                "Тут так знакомо... Как будто вернулся в 2005.",
+                n_("Oh! A classic desktop! Nostalgia!"),
+                n_("Hi! It's just like the good old days here."),
+                n_("Two panels! Top and bottom! Just like it used to be!"),
+                n_("So familiar here... Like I'm back in 2005."),
             ],
             jokes: &[
-                "Ретро-стиль! Я тоже ретро, так что мы пара!",
-                "Классика никогда не выходит из моды. Как и я!",
-                "Две панели — значит в два раза больше места для меня!",
-                "Этот рабочий стол напоминает мне молодость...",
+                n_("Retro style! I'm retro too, so we're a match!"),
+                n_("Classics never go out of style. Just like me!"),
+                n_("Two panels mean twice as much room for me!"),
+                n_("This desktop reminds me of my youth..."),
             ],
             on_switch_to: &[
-                "О, классический стол! Как в старые добрые!",
-                "Переехали! Тут уютно, как дома у бабушки.",
-                "Наконец-то нормальные панели! Сверху и снизу!",
+                n_("Oh, a classic desktop! Like the good old days!"),
+                n_("We moved! It's cozy here, like at grandma's."),
+                n_("Finally, proper panels! Top and bottom!"),
             ],
             on_switch_from: &[
-                "Уходим из классики? Ну ладно, но я буду скучать.",
-                "Прощай, уютный стол! Было хорошо.",
+                n_("Leaving the classics? Oh well, but I'll miss it."),
+                n_("Farewell, cozy desktop! It was nice."),
             ],
             idle_comments: &[
-                "Мне тут прямо как дома. Всё на своих местах.",
-                "Классический вид — самый понятный. Без сюрпризов!",
-                "Тут всё работает. Просто работает. И хорошо!",
+                n_("I feel right at home here. Everything's in its place."),
+                n_("The classic look is the easiest to understand. No surprises!"),
+                n_("Everything here works. Just works. And that's good!"),
             ],
         },
     ),
@@ -197,26 +203,26 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "xfce",
         DeReactions {
             greetings: &[
-                "Xfce! Быстрый и лёгкий! Мне нравится!",
-                "Привет! Тут всё так шустро работает!",
-                "О, тут мышка на иконке! Симпатичная.",
-                "Лёгкий рабочий стол. Компьютер даже не напрягается!",
+                n_("Xfce! Fast and light! I like it!"),
+                n_("Hi! Everything runs so snappy here!"),
+                n_("Oh, there's a mouse on the icon! Cute."),
+                n_("A light desktop. The computer isn't even breaking a sweat!"),
             ],
             jokes: &[
-                "Тут так быстро всё открывается, что я еле успеваю!",
-                "Этот рабочий стол работает даже на слабых компьютерах. Респект!",
-                "Лёгкий, быстрый, простой. Три качества, которых мне не хватает.",
-                "Тут так мало ресурсов потребляется, что мне стыдно за себя.",
+                n_("Everything opens so fast here that I can barely keep up!"),
+                n_("This desktop runs even on weak computers. Respect!"),
+                n_("Light, fast, simple. Three qualities I'm missing."),
+                n_("It uses so few resources that I'm ashamed of myself."),
             ],
             on_switch_to: &[
-                "Новый стол! Тут так быстро всё! Вжух!",
-                "Переехали! Компьютер прямо ожил!",
+                n_("A new desktop! Everything's so fast here! Whoosh!"),
+                n_("We moved! The computer just came back to life!"),
             ],
-            on_switch_from: &["Уходим? Надеюсь, там тоже будет быстро..."],
+            on_switch_from: &[n_("Leaving? I hope it's fast there too...")],
             idle_comments: &[
-                "Быстро, просто, надёжно. Что ещё нужно?",
-                "Тут всё открывается мгновенно. Красота!",
-                "Простой и удобный стол. Без лишнего.",
+                n_("Fast, simple, reliable. What else do you need?"),
+                n_("Everything opens instantly here. Lovely!"),
+                n_("A simple, handy desktop. Nothing extra."),
             ],
         },
     ),
@@ -224,25 +230,25 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "cinnamon",
         DeReactions {
             greetings: &[
-                "Привет! Тут очень знакомо... Похоже на Windows!",
-                "О, удобный рабочий стол! Меню «Пуск» — то есть «Меню»!",
-                "Cinnamon! Тут всё понятно с первого взгляда.",
-                "Привет! Красивый и удобный стол. Мне нравится!",
+                n_("Hi! This looks very familiar... Kind of like Windows!"),
+                n_("Oh, a handy desktop! The Start menu — I mean, the \"Menu\"!"),
+                n_("Cinnamon! Everything here makes sense at first glance."),
+                n_("Hi! A pretty and handy desktop. I like it!"),
             ],
             jokes: &[
-                "Тут как в Windows, только лучше. И бесплатно!",
-                "Панель задач снизу, меню слева... Как дома!",
-                "Самый дружелюбный рабочий стол для новичков. И для горилл!",
-                "Тут даже бабушка разберётся. Проверено!",
+                n_("It's like Windows, only better. And free!"),
+                n_("Taskbar at the bottom, menu on the left... Just like home!"),
+                n_("The friendliest desktop for beginners. And for gorillas!"),
+                n_("Even grandma could figure it out here. Tested!"),
             ],
             on_switch_to: &[
-                "О, новый стол! Тут уютненько, всё знакомо.",
-                "Переехали! Тут прямо как в Windows, только лучше.",
+                n_("Oh, a new desktop! Cozy here, everything's familiar."),
+                n_("We moved! It's just like Windows here, only better."),
             ],
-            on_switch_from: &["Уходим? Но тут было так удобно!"],
+            on_switch_from: &[n_("Leaving? But it was so handy here!")],
             idle_comments: &[
-                "Знаете, это самый удобный стол для тех, кто с Windows.",
-                "Всё на своих местах. Панель, меню, часы. Красота!",
+                n_("You know, this is the handiest desktop for people coming from Windows."),
+                n_("Everything's in its place. Panel, menu, clock. Lovely!"),
             ],
         },
     ),
@@ -250,18 +256,18 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "pantheon",
         DeReactions {
             greetings: &[
-                "Привет! Pantheon — тихо, чисто, ничего лишнего.",
-                "О, elementary! Тут даже я стараюсь вести себя прилично.",
+                n_("Hi! Pantheon — quiet, clean, nothing extra."),
+                n_("Oh, elementary! Even I try to behave myself here."),
             ],
             jokes: &[
-                "Пантеон — это же храм! Можно, я буду тут божеством?",
-                "Док внизу, панель сверху. Почти как у яблочных, только без яблок.",
+                n_("A pantheon is a temple! Can I be a god here?"),
+                n_("Dock at the bottom, panel at the top. Almost like the apple folks, only without the apples."),
             ],
-            on_switch_to: &["Новый стол! Какой спокойный!"],
-            on_switch_from: &["Уходим из храма? Было уютно..."],
+            on_switch_to: &[n_("A new desktop! So peaceful!")],
+            on_switch_from: &[n_("Leaving the temple? It was cozy...")],
             idle_comments: &[
-                "Здесь так тихо, что слышно, как думает процессор.",
-                "Минимализм. Мне даже нечего уронить.",
+                n_("It's so quiet here you can hear the processor thinking."),
+                n_("Minimalism. There's nothing for me to even knock over."),
             ],
         },
     ),
@@ -269,18 +275,18 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "deepin",
         DeReactions {
             greetings: &[
-                "Привет! Deepin — круглые углы и стекло, красота!",
-                "О, Deepin! Тут даже окна прозрачные, как мои намерения.",
+                n_("Hi! Deepin — round corners and glass, lovely!"),
+                n_("Oh, Deepin! Even the windows are transparent here, like my intentions."),
             ],
             jokes: &[
-                "Углы такие круглые, что я боюсь укатиться.",
-                "Размытие за окнами — это не я плохо вижу, это так задумано.",
+                n_("The corners are so round I'm afraid I'll roll away."),
+                n_("The blur behind the windows isn't my bad eyesight, it's meant to be that way."),
             ],
-            on_switch_to: &["Новый стол! Какой гладкий!"],
-            on_switch_from: &["Уходим из Deepin? Стекло было красивое..."],
+            on_switch_to: &[n_("A new desktop! So smooth!")],
+            on_switch_from: &[n_("Leaving Deepin? The glass was pretty...")],
             idle_comments: &[
-                "Если долго смотреть в прозрачную панель, кажется, что она смотрит в ответ.",
-                "Тут всё такое мягкое, что даже ошибки кажутся вежливыми.",
+                n_("If you stare into the transparent panel long enough, it seems to stare back."),
+                n_("Everything here is so soft that even errors seem polite."),
             ],
         },
     ),
@@ -288,20 +294,20 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "budgie",
         DeReactions {
             greetings: &[
-                "Привет! Красивый и современный стол!",
-                "Budgie! Простой, стильный, без лишнего.",
-                "О, тут красиво! Мне нравится этот дизайн.",
+                n_("Hi! A pretty, modern desktop!"),
+                n_("Budgie! Simple, stylish, nothing extra."),
+                n_("Oh, it's pretty here! I like this design."),
             ],
             jokes: &[
-                "Budgie — это попугайчик! Привет, коллега-животное!",
-                "Стильный стол! Тут и мне стыдно в пижаме ходить.",
-                "Простой и красивый. Как я. Ну, красивый точно.",
+                n_("A budgie is a parakeet! Hello, fellow animal!"),
+                n_("A stylish desktop! Even I'm embarrassed to walk around in pajamas here."),
+                n_("Simple and pretty. Like me. Well, pretty for sure."),
             ],
-            on_switch_to: &["Новый стол! Стильненько тут!"],
-            on_switch_from: &["Уходим? Было красиво..."],
+            on_switch_to: &[n_("A new desktop! So stylish here!")],
+            on_switch_from: &[n_("Leaving? It was pretty...")],
             idle_comments: &[
-                "Тут приятно находиться. Всё аккуратно.",
-                "Современный дизайн. Мне нравится!",
+                n_("It's nice to be here. Everything's neat."),
+                n_("Modern design. I like it!"),
             ],
         },
     ),
@@ -309,36 +315,36 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "cosmic",
         DeReactions {
             greetings: &[
-                "COSMIC! Это что-то новенькое! Интересно!",
-                "О, новый рабочий стол! Выглядит футуристично!",
-                "Привет! Тут всё такое... космическое!",
+                n_("COSMIC! This is something new! Interesting!"),
+                n_("Oh, a new desktop! Looks futuristic!"),
+                n_("Hi! Everything here is so... cosmic!"),
             ],
             jokes: &[
-                "Космический рабочий стол! А я — космическая горилла!",
-                "Это ещё в разработке, но уже красивее многих готовых!",
-                "Будущее наступило! И оно выглядит неплохо.",
+                n_("A cosmic desktop! And I'm a cosmic gorilla!"),
+                n_("It's still in development, but already prettier than many finished ones!"),
+                n_("The future is here! And it looks pretty good."),
             ],
-            on_switch_to: &["Переехали в будущее! Круто!", "COSMIC! Мы первопроходцы!"],
-            on_switch_from: &["Уходим из будущего? Ну ладно, вернёмся в настоящее."],
-            idle_comments: &["Тут ещё не всё готово, но потенциал огромный!"],
+            on_switch_to: &[n_("We moved into the future! Cool!"), n_("COSMIC! We're pioneers!")],
+            on_switch_from: &[n_("Leaving the future? Oh well, back to the present.")],
+            idle_comments: &[n_("Not everything's ready here yet, but the potential is huge!")],
         },
     ),
     (
         "hyprland",
         DeReactions {
             greetings: &[
-                "Ого, тут окна сами встают на место! Магия!",
-                "Привет! Красивый стол с анимациями!",
-                "Тут всё автоматически раскладывается. Удобно!",
+                n_("Whoa, the windows snap into place by themselves here! Magic!"),
+                n_("Hi! A pretty desktop with animations!"),
+                n_("Everything arranges itself automatically here. Handy!"),
             ],
             jokes: &[
-                "Окна сами раскладываются! Мне бы так в жизни...",
-                "Столько анимаций! Тут красивее, чем в кино!",
-                "Тут всё на клавиатуре. Мышка отдыхает. А я нет!",
+                n_("The windows arrange themselves! I wish life worked like that..."),
+                n_("So many animations! It's prettier than the movies here!"),
+                n_("Everything's on the keyboard here. The mouse gets a rest. I don't!"),
             ],
-            on_switch_to: &["Новый стол! Тут окна сами встают на место!"],
-            on_switch_from: &["Уходим? Но тут такие красивые анимации были!"],
-            idle_comments: &["Тут всё так плавно двигается. Залипательно!"],
+            on_switch_to: &[n_("A new desktop! The windows snap into place by themselves here!")],
+            on_switch_from: &[n_("Leaving? But the animations here were so pretty!")],
+            idle_comments: &[n_("Everything moves so smoothly here. Mesmerizing!")],
         },
     ),
     // Warning — rule #12: the list of DEs here must match `_DE_DATABASE`
@@ -350,90 +356,90 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
         "lxqt",
         DeReactions {
             greetings: &[
-                "О, LXQt! Скромно и быстро — уважаю.",
-                "Привет! Тут всё лёгкое, даже я себя пушинкой чувствую.",
-                "LXQt? Значит, цените, когда ничего не тормозит.",
+                n_("Oh, LXQt! Modest and fast — respect."),
+                n_("Hi! Everything's light here, even I feel light as a feather."),
+                n_("LXQt? So you appreciate it when nothing lags."),
             ],
             jokes: &[
-                "Тут так легко, что я чуть не улетел!",
-                "Никаких лишних анимаций. Зато я подвигаюсь за всех!",
-                "Старый компьютер, а летает. Мне бы так!",
+                n_("It's so light here that I almost floated away!"),
+                n_("No unnecessary animations. So I'll do the moving for everyone!"),
+                n_("An old computer, and it flies. I wish I could do that!"),
             ],
-            on_switch_to: &["Новый стол! И какой быстрый!"],
-            on_switch_from: &["Уходим? Тут было так шустро..."],
-            idle_comments: &["Тихо, быстро, ничего не мешает. Красота!"],
+            on_switch_to: &[n_("A new desktop! And such a fast one!")],
+            on_switch_from: &[n_("Leaving? It was so snappy here...")],
+            idle_comments: &[n_("Quiet, fast, nothing in the way. Lovely!")],
         },
     ),
     (
         "niri",
         DeReactions {
             greetings: &[
-                "Ого, окна выстроились в ленту! Никогда такого не видел.",
-                "Привет! Тут стол уезжает в сторону — я слежу за ним глазами.",
-                "niri? Значит, вы любите порядок по горизонтали.",
+                n_("Whoa, the windows lined up in a strip! Never seen anything like it."),
+                n_("Hi! The desktop slides off to the side here — I'm following it with my eyes."),
+                n_("niri? So you love horizontal order."),
             ],
             jokes: &[
-                "Окна в ряд, как вагоны. Я тогда буду паровозом!",
-                "Тут стол едет влево-вправо. У меня уже голова кружится!",
-                "Прокрутил стол и потерял окно. Оно вернётся, да?",
+                n_("Windows in a row, like train cars. Then I'll be the locomotive!"),
+                n_("The desktop rides left and right here. I'm already getting dizzy!"),
+                n_("I scrolled the desktop and lost a window. It'll come back, right?"),
             ],
-            on_switch_to: &["Новый стол! Тут всё выстраивается в ленту!"],
-            on_switch_from: &["Уходим? А я только научился прокручивать!"],
-            idle_comments: &["Смотрю, как окна уезжают за край. Завораживает."],
+            on_switch_to: &[n_("A new desktop! Everything lines up in a strip here!")],
+            on_switch_from: &[n_("Leaving? I just learned how to scroll!")],
+            idle_comments: &[n_("Watching the windows slide off the edge. Mesmerizing.")],
         },
     ),
     (
         "sway",
         DeReactions {
             greetings: &[
-                "О, sway! Тут окна делят экран без ссор.",
-                "Привет! Мышку можно спрятать, тут всё с клавиатуры.",
-                "sway? Значит, вы знаете, что делаете. Уважаю!",
+                n_("Oh, sway! The windows share the screen here without fighting."),
+                n_("Hi! You can hide the mouse, everything's done from the keyboard here."),
+                n_("sway? So you know what you're doing. Respect!"),
             ],
             jokes: &[
-                "Тут всё горячими клавишами. Я запомнил три, остальные забыл.",
-                "Окна поделили экран по-честному. Мне тоже кусочек!",
-                "Я нажал что-то не то и окно уехало. Верните его, пожалуйста.",
+                n_("Everything here is hotkeys. I remembered three and forgot the rest."),
+                n_("The windows split the screen fairly. Save a piece for me too!"),
+                n_("I pressed the wrong thing and a window ran off. Please bring it back."),
             ],
-            on_switch_to: &["Новый стол! Тут окна сами делят место!"],
-            on_switch_from: &["Уходим? Я только выучил половину клавиш..."],
-            idle_comments: &["Ни одного лишнего пикселя. Аккуратно тут у вас."],
+            on_switch_to: &[n_("A new desktop! The windows share the space by themselves here!")],
+            on_switch_from: &[n_("Leaving? I only learned half the keys...")],
+            idle_comments: &[n_("Not a single wasted pixel. You keep it tidy here.")],
         },
     ),
     (
         "river",
         DeReactions {
             greetings: &[
-                "О, River! Окна текут, как река, — и каждое на своём месте.",
-                "Привет! Тут окна раскладывают по меткам, а не по столам.",
-                "River? Тихо, быстро, всё с клавиатуры. Уважаю!",
+                n_("Oh, River! The windows flow like a river — and each one in its place."),
+                n_("Hi! Windows are sorted by tags here, not by desktops."),
+                n_("River? Quiet, fast, all from the keyboard. Respect!"),
             ],
             jokes: &[
-                "Окно с меткой три, окно с меткой пять... А я с какой меткой?",
-                "Река течёт, окна плывут. Я, кажется, тоже поплыл.",
-                "Super и цифра — и окно уже тут. Мне бы так с бананами!",
+                n_("A window with tag three, a window with tag five... And what tag am I?"),
+                n_("The river flows, the windows float. I think I'm drifting off too."),
+                n_("Super and a number — and the window's already here. I wish bananas worked like that!"),
             ],
-            on_switch_to: &["Новый стол! Тут окна сами встают по течению!"],
-            on_switch_from: &["Уходим? А я только разобрался с метками..."],
-            idle_comments: &["Смотрю, как окна делят экран. Спокойно, как у реки."],
+            on_switch_to: &[n_("A new desktop! The windows go with the flow by themselves here!")],
+            on_switch_from: &[n_("Leaving? I had just figured out the tags...")],
+            idle_comments: &[n_("Watching the windows share the screen. Calm, like a river.")],
         },
     ),
     (
         "wayfire",
         DeReactions {
             greetings: &[
-                "Ого, Wayfire! Сейчас стол как закрутится кубом!",
-                "Привет! Окна тут качаются, как желе. Красота!",
-                "Wayfire? Значит, вы любите эффекты. Я тоже!",
+                n_("Whoa, Wayfire! Any second now the desktop will spin into a cube!"),
+                n_("Hi! The windows wobble like jelly here. Lovely!"),
+                n_("Wayfire? So you love effects. Me too!"),
             ],
             jokes: &[
-                "Потряс окно — оно качается. Потряс себя — я тоже качаюсь!",
-                "Стол-куб! А можно я внутри посижу?",
-                "Столько эффектов, что я забыл, зачем пришёл.",
+                n_("I shook a window — it wobbles. I shook myself — I wobble too!"),
+                n_("A cube desktop! Can I sit inside?"),
+                n_("So many effects that I forgot why I came."),
             ],
-            on_switch_to: &["Новый стол! Тут окна шевелятся, как живые!"],
-            on_switch_from: &["Уходим? А куб я так и не докрутил..."],
-            idle_comments: &["Окна плавают, огоньки горят. Уютно тут."],
+            on_switch_to: &[n_("A new desktop! The windows wiggle here like they're alive!")],
+            on_switch_from: &[n_("Leaving? I never finished spinning the cube...")],
+            idle_comments: &[n_("The windows float, the lights glow. Cozy here.")],
         },
     ),
 ];
@@ -449,52 +455,54 @@ pub static EVENT_REACTIONS: &[(&str, &[&str])] = &[
     (
         "de_installed",
         &[
-            "Ого, новый рабочий стол установлен! Хочу посмотреть!",
-            "Новый стол? Интересно, как там будет!",
-            "Установили новый стол! Можем переключиться и глянуть.",
+            // TRANSLATORS: the BonziBuddy mascot (a purple gorilla) reacts to an
+            // event in Rexon. Keep the playful tone, not the exact words.
+            n_("Whoa, a new desktop got installed! I want to see it!"),
+            n_("A new desktop? I wonder what it's like there!"),
+            n_("A new desktop is installed! We can switch over and take a look."),
         ],
     ),
     (
         "de_removed",
         &[
-            "Удалили рабочий стол? Прощай, старый друг...",
-            "Одним столом меньше. Ну и ладно!",
+            n_("Removed a desktop? Farewell, old friend..."),
+            n_("One desktop fewer. Oh well!"),
         ],
     ),
     (
         "theme_changed",
         &[
-            "О, новая тема! Красиво!",
-            "Сменили оформление? Мне нравится!",
-            "Новые цвета! Надеюсь, я в них вписываюсь.",
+            n_("Oh, a new theme! Pretty!"),
+            n_("Changed the look? I like it!"),
+            n_("New colors! I hope I fit in."),
         ],
     ),
     (
         "extension_installed",
         &[
-            "Новое расширение! Что оно делает?",
-            "Установили что-то новое? Круто!",
+            n_("A new extension! What does it do?"),
+            n_("Installed something new? Cool!"),
         ],
     ),
     (
         "backup_created",
         &[
-            "Бэкап создан! Отлично, подстраховались.",
-            "Хороший человек — тот, кто делает бэкапы. Как вы!",
+            n_("Backup created! Great, we're covered."),
+            n_("A good person is one who makes backups. Like you!"),
         ],
     ),
     (
         "video_wallpaper_started",
         &[
-            "Ооо, живые обои! Красиво двигается!",
-            "Живые обои? А мне тоже можно подвигаться?",
+            n_("Ooh, live wallpaper! It moves so nicely!"),
+            n_("Live wallpaper? Can I move around too?"),
         ],
     ),
     (
         "video_wallpaper_stopped",
         &[
-            "Обои встали. Опять на стол смотреть скучно.",
-            "Всё, картинка больше не двигается. Ну и ладно.",
+            n_("The wallpaper stopped. Back to staring at a boring desktop."),
+            n_("That's it, the picture doesn't move anymore. Oh well."),
         ],
     ),
 ];
@@ -530,14 +538,14 @@ pub fn all_de_reactions_value() -> Value {
     Value::Object(obj)
 }
 
-/// Reaction templates for an event — port of `get_event_reactions` (an empty
-/// slice if the type is unknown).
-pub fn event_reactions(event_type: &str) -> &'static [&'static str] {
+/// Reaction templates for an event, translated into the interface language —
+/// port of `get_event_reactions` (empty if the type is unknown).
+pub fn event_reactions(event_type: &str) -> Vec<String> {
     EVENT_REACTIONS
         .iter()
         .find(|(k, _)| *k == event_type)
-        .map(|(_, v)| *v)
-        .unwrap_or(&[])
+        .map(|(_, v)| v.iter().map(|s| tr(s)).collect())
+        .unwrap_or_default()
 }
 
 // ============================================================================
@@ -564,8 +572,8 @@ fn to_json_indent2(value: &Value) -> String {
     let mut ser = serde_json::Serializer::pretty(&mut buf);
     value
         .serialize(&mut ser)
-        .expect("serde_json::Value всегда сериализуется");
-    String::from_utf8(buf).expect("serde_json пишет валидный UTF-8")
+        .expect("a serde_json::Value always serializes");
+    String::from_utf8(buf).expect("serde_json writes valid UTF-8")
 }
 
 // ============================================================================
@@ -612,7 +620,7 @@ pub fn merge_update(
     if !entry.is_object() {
         *entry = Value::Object(Map::new());
     }
-    let obj = entry.as_object_mut().expect("секция только что стала объектом");
+    let obj = entry.as_object_mut().expect("the section has just become an object");
     for (k, v) in updates {
         obj.insert(k, v);
     }

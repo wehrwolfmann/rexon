@@ -1,9 +1,9 @@
 #!/bin/bash
-# Вызывается из run_de.sh (INNER=inner_sections.sh) внутри своей шины:
-# кнопки разделов окружений «Оформления» (решение 04.10.2026) — «Применить»
-# у тем, «Включить»/«Выключить» у дополнений, «Запустить»/«Остановить» у
-# Conky. Действие стенда → чтение родным читателем окружения → правда
-# `section-state`. Отдельно не запускать.
+# Called from run_de.sh (INNER=inner_sections.sh) inside its own bus:
+# the buttons of the desktop sections of «Оформление» (decision of 04.10.2026) — «Применить»
+# for themes, «Включить»/«Выключить» for add-ons, «Запустить»/«Остановить» for
+# Conky. The stand's action → reading with the desktop's native reader → the truth of
+# `section-state`. Do not run on its own.
 C=$XDG_CONFIG_HOME
 S=$H/.local/share
 export PATH="$(dirname "$H")/fakebin:$PATH"   # подставной conky (fake_conky.c)
@@ -77,7 +77,7 @@ case $DE in
     kr kwinrc Plugins rexeffectEnabled ;;
 esac
 
-# Conky — в любом окружении (отдельная программа).
+# Conky — in any desktop (a separate program).
 mkdir -p "$C/conky/rexw"; echo 'conky.text = [[x]]' > "$C/conky/rexw/conky.conf"
 st section-state conky
 st section conky rexw

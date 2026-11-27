@@ -1827,7 +1827,7 @@ mod tests {
     /// `background = true` does not run away; after the test bench — neither Xvfb nor conky.
     /// Run: `cargo test -p rexon-core --lib conky_preview -- --ignored`.
     #[test]
-    #[ignore = "стенд: нужны Xvfb и conky"]
+    #[ignore = "stand: needs Xvfb and conky"]
     fn stand_shoots_widgets_on_an_invisible_screen() {
         if !have_stand() {
             return;
@@ -1889,7 +1889,7 @@ mod tests {
     /// fresh, not retaken. The cache is the real `~/.cache/rexon`, the check's files
     /// are removed at the end.
     #[test]
-    #[ignore = "стенд: нужны Xvfb и conky; пишет в ~/.cache/rexon/conky-previews"]
+    #[ignore = "stand: needs Xvfb and conky; writes to ~/.cache/rexon/conky-previews"]
     fn stand_queue_shoots_and_notifies() {
         if !have_stand() {
             return;
@@ -1931,7 +1931,7 @@ mod tests {
     /// for example ~/.config/conky/Jhalak/Jhalak.conf) on their wallpaper
     /// (`REXON_STAND_WALL`): to check Cyrillic and weekdays by eye.
     #[test]
-    #[ignore = "стенд: нужны Xvfb, conky и REXON_STAND_WIDGET"]
+    #[ignore = "stand: needs Xvfb, conky and REXON_STAND_WIDGET"]
     fn stand_shoots_a_real_widget() {
         if !have_stand() {
             return;

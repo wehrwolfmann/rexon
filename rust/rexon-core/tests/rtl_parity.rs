@@ -293,6 +293,7 @@ const BARE_TEXT_EXCEPTIONS: &[(&str, &str)] = &[
     // `WINDOW_EXCEPTIONS`).
     ("LayerShellProbe.qml", "проба слоя обоев"),
     ("LiveModelsProbe.qml", "проба живых моделей"),
+    ("OverlayProbe.qml", "проба слоя заставки"),
 ];
 
 /// Line numbers where an object of type `Text` or `Label` is declared (and not

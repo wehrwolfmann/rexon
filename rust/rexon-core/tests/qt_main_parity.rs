@@ -223,7 +223,7 @@ const TRAY_RU_BEFORE: &[(&str, &str)] = &[
 ];
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let _lang = i18n_pin::ru();
     for (key, before) in TRAY_RU_BEFORE {

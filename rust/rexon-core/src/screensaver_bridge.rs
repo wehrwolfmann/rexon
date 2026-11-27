@@ -207,7 +207,7 @@ const NO_BUS_TARGET: &[(&str, &str)] = &[
     // budgie-daemon (src/daemon/screenlock.vala); it listens only to Wayland.
     // budgie-session holds org.gnome.SessionManager, but the «idle» flag there
     // changes only Presence, and swayidle does not look at it.
-    ("budgie", "swayidle (только Wayland idle-inhibit)"),
+    ("budgie", "swayidle (Wayland idle-inhibit only)"),
 ];
 
 /// Decision by environment. `de` — the answer of [`crate::system::detect_current_de`].
@@ -316,12 +316,12 @@ pub struct WaylandFacts {
 /// Whether the screen can be held here with a Wayland inhibition; `Err` — why not.
 pub fn wayland_idle_check(facts: Option<&WaylandFacts>) -> Result<(), String> {
     let Some(f) = facts else {
-        return Err("сеанс не Wayland или композитор не ответил".into());
+        return Err("not a Wayland session or the compositor did not answer".into());
     };
     if !WAYLAND_IDLE_COMPOSITORS.iter().any(|(comm, _)| *comm == f.compositor) {
         let name = if f.compositor.is_empty() { "?" } else { f.compositor.as_str() };
         return Err(format!(
-            "композитор «{name}» не проверен: учитывает ли он запрет на невидимой поверхности, неизвестно"
+            "compositor \"{name}\" not verified: unknown whether it honours an inhibitor on an invisible surface"
         ));
     }
     let missing: Vec<&str> = WAYLAND_GLOBALS_NEEDED
@@ -330,7 +330,7 @@ pub fn wayland_idle_check(facts: Option<&WaylandFacts>) -> Result<(), String> {
         .filter(|g| !f.globals.iter().any(|have| have == g))
         .collect();
     if !missing.is_empty() {
-        return Err(format!("у композитора {} нет {}", f.compositor, missing.join(", ")));
+        return Err(format!("compositor {} lacks {}", f.compositor, missing.join(", ")));
     }
     Ok(())
 }
@@ -401,7 +401,7 @@ pub fn decide(
         if let Some(v) = mate_screensaver_version.and_then(parse_version) {
             if v >= MATE_SCREENSAVER_FDO_SINCE {
                 return Decision::Skip(format!(
-                    "mate-screensaver {}.{}.{} даёт {SERVICE} сам",
+                    "mate-screensaver {}.{}.{} provides {SERVICE} itself",
                     v.0, v.1, v.2
                 ));
             }
@@ -410,13 +410,13 @@ pub fn decide(
     let policy = desktop_policy(de);
     if let DesktopPolicy::OwnProvider(who) = policy {
         return Decision::Skip(format!(
-            "окружение {} даёт {SERVICE} само ({who})",
+            "desktop {} provides {SERVICE} itself ({who})",
             de.unwrap_or("?")
         ));
     }
     match has_owner(SERVICE) {
-        None => return Decision::Skip("шины сеанса нет".into()),
-        Some(true) => return Decision::Skip(format!("у {SERVICE} уже есть хозяин")),
+        None => return Decision::Skip("no session bus".into()),
+        Some(true) => return Decision::Skip(format!("{SERVICE} already has an owner")),
         Some(false) => {}
     }
     let bus_upstream = match policy {
@@ -439,11 +439,11 @@ pub fn decide(
         Ok(()) => Decision::Start(Plan { upstream: WAYLAND_IDLE, companion: None }),
         Err(why) => Decision::Skip(match policy {
             DesktopPolicy::NoBusTarget(who) => format!(
-                "в окружении {} экран гасит {who}, а запрет Wayland поставить нельзя: {why}",
+                "in desktop {} the screen is blanked by {who}, and a Wayland inhibitor cannot be set: {why}",
                 de.unwrap_or("?")
             ),
             _ => format!(
-                "{SERVICE} свободно, но пробрасывать некуда (нет {}), а запрет Wayland поставить нельзя: {why}",
+                "{SERVICE} is free, but there is nowhere to forward to (no {}), and a Wayland inhibitor cannot be set: {why}",
                 UPSTREAMS.iter().map(|u| u.service).collect::<Vec<_>>().join(", ")
             ),
         }),
@@ -667,7 +667,7 @@ impl Book {
             out.push(Action::ReplyError {
                 token,
                 name: ERROR_UNKNOWN_METHOD,
-                text: format!("нет интерфейса {iface}"),
+                text: format!("no interface {iface}"),
             });
             return out;
         }
@@ -680,7 +680,7 @@ impl Book {
                 out.push(Action::ReplyError {
                     token,
                     name: ERROR_UNKNOWN_METHOD,
-                    text: format!("нет метода {member}"),
+                    text: format!("no method {member}"),
                 });
                 return out;
             }
@@ -689,7 +689,7 @@ impl Book {
             out.push(Action::ReplyError {
                 token,
                 name: ERROR_INVALID_ARGS,
-                text: format!("{member}: ожидалась сигнатура «{expected}», получена «{signature}»"),
+                text: format!("{member}: expected signature \"{expected}\", got \"{signature}\""),
             });
             return out;
         }
@@ -720,7 +720,7 @@ impl Book {
                 &mut out,
             ),
             "Lock" => self.ask_companion(token, "Lock", "", vec![], CompanionReply::EmptyOrError, &mut out),
-            _ => unreachable!("метод проверен выше"),
+            _ => unreachable!("method checked above"),
         }
         out
     }
@@ -766,7 +766,7 @@ impl Book {
             out.push(self.call(Purpose::Inhibit(cookie), target, "Inhibit", signature, values));
         }
         out.push(Action::Note(format!(
-            "удержание {cookie}: «{app_id}» ({why}) от {sender}"
+            "inhibition {cookie}: \"{app_id}\" ({why}) from {sender}"
         )));
     }
 
@@ -775,7 +775,7 @@ impl Book {
         // Plasma, we reply empty — the client has nothing to do with it.
         out.push(Action::Reply { token, signature: "", values: vec![] });
         let Some(entry) = self.entries.remove(&cookie) else {
-            out.push(Action::Note(format!("снятие {cookie}: такой куки нет")));
+            out.push(Action::Note(format!("release {cookie}: no such cookie")));
             return;
         };
         self.release(entry.held, out);
@@ -783,7 +783,7 @@ impl Book {
         if !self.sender_has_entries(&entry.sender) {
             out.push(Action::Unwatch(entry.sender.clone()));
         }
-        out.push(Action::Note(format!("удержание {cookie} («{}») снято клиентом", entry.app)));
+        out.push(Action::Note(format!("inhibition {cookie} (\"{}\") released by the client", entry.app)));
     }
 
     fn ask_companion(
@@ -813,11 +813,11 @@ impl Book {
                 match (self.entries.get_mut(&cookie), up) {
                     (Some(e), Some(up)) => {
                         e.held = Held::Upstream(up);
-                        out.push(Action::Note(format!("удержание {cookie} передано сеансу (куки {up})")));
+                        out.push(Action::Note(format!("inhibition {cookie} forwarded to the session (cookie {up})")));
                     }
                     (Some(e), None) => {
                         e.held = Held::Failed;
-                        out.push(Action::Note(format!("сеанс не принял удержание {cookie}: {value}")));
+                        out.push(Action::Note(format!("the session refused inhibition {cookie}: {value}")));
                     }
                     // The client released the inhibition (or vanished) while the session
                     // was replying — release it at the session too, otherwise it will hang.
@@ -827,7 +827,7 @@ impl Book {
             }
             Purpose::Release => {
                 if !ok {
-                    out.push(Action::Note(format!("сеанс не снял удержание: {value}")));
+                    out.push(Action::Note(format!("the session did not release the inhibition: {value}")));
                 }
             }
             Purpose::Companion { token, reply } => {
@@ -847,7 +847,7 @@ impl Book {
         let all = std::mem::take(&mut self.entries);
         for (cookie, e) in all {
             self.release(e.held, &mut out);
-            out.push(Action::Note(format!("удержание {cookie} («{}») снято: мост сошёл", e.app)));
+            out.push(Action::Note(format!("inhibition {cookie} (\"{}\") released: the bridge stepped down", e.app)));
         }
         self.sync_idle_hold(&mut out);
         out
@@ -869,7 +869,7 @@ impl Book {
             if let Some(e) = self.entries.remove(cookie) {
                 self.release(e.held, &mut out);
                 out.push(Action::Note(format!(
-                    "удержание {cookie} («{}») снято: {name} ушёл с шины",
+                    "inhibition {cookie} (\"{}\") released: {name} left the bus",
                     e.app
                 )));
             }
@@ -905,7 +905,7 @@ fn companion_reply(token: u64, reply: CompanionReply, value: Option<&str>) -> Ac
             None => Action::ReplyError {
                 token,
                 name: ERROR_NOT_SUPPORTED,
-                text: "хранитель экрана окружения не ответил".into(),
+                text: "the desktop's screensaver did not answer".into(),
             },
         },
     }
@@ -997,7 +997,7 @@ mod tests {
             assert!(matches!(d, Decision::Skip(_)), "{v}: {d:?}");
         }
         assert_eq!(parse_version("mate-screensaver 1.28"), Some((1, 28, 0)));
-        assert_eq!(parse_version("ошибка"), None);
+        assert_eq!(parse_version("error"), None);
     }
 
     /// A cookie of the previous Rexon process (the client held it across the restart) does not
@@ -1009,7 +1009,7 @@ mod tests {
         let a = b.on_message(1, ":1.9", INTERFACE, "Inhibit", "ss", &[s("mpv"), s("video")]);
         b.on_call_done(calls(&a)[0].0, true, "50");
         let a = b.on_message(2, ":1.7", INTERFACE, "UnInhibit", "u", &[s("1")]);
-        assert!(calls(&a).is_empty(), "снято чужое удержание: {a:?}");
+        assert!(calls(&a).is_empty(), "someone else's inhibition released: {a:?}");
         assert_eq!(b.active(), 1);
         // The live bridge starts neither from one nor from zero.
         assert!(live_first_cookie() > 1);
@@ -1048,7 +1048,7 @@ mod tests {
         b.on_message(2, ":1.5", INTERFACE, "Inhibit", "ss", &[s("b"), s("r")]);
         let a = b.release_all();
         let c = calls(&a);
-        assert_eq!(c.len(), 1, "снимается только выданное сеансом");
+        assert_eq!(c.len(), 1, "only what the session issued is released");
         assert_eq!(c[0].2, vec![s("41")]);
         assert_eq!(b.active(), 0);
     }
@@ -1096,7 +1096,7 @@ mod tests {
         let a = b.on_message(1, ":1.5", INTERFACE, "Inhibit", "ss", &[s("vlc"), s("x")]);
         let ctx = calls(&a)[0].0;
         let a = b.on_message(2, ":1.5", INTERFACE, "UnInhibit", "u", &[s("1")]);
-        assert!(calls(&a).is_empty(), "снимать у сеанса пока нечего");
+        assert!(calls(&a).is_empty(), "nothing to release at the session yet");
         // The session replied after the release — its cookie must be returned.
         let a = b.on_call_done(ctx, true, "99");
         let c = calls(&a);
@@ -1137,7 +1137,7 @@ mod tests {
     fn rejected_by_session_is_kept_but_not_released() {
         let mut b = Book::new(plan(None));
         let a = b.on_message(1, ":1.3", INTERFACE, "Inhibit", "ss", &[s("a"), s("r")]);
-        b.on_call_done(calls(&a)[0].0, false, "org.gnome.SessionManager.GeneralError нет");
+        b.on_call_done(calls(&a)[0].0, false, "org.gnome.SessionManager.GeneralError no");
         let a = b.on_message(2, ":1.3", INTERFACE, "UnInhibit", "u", &[s("1")]);
         assert!(calls(&a).is_empty());
     }
@@ -1241,7 +1241,7 @@ mod tests {
     #[test]
     fn bus_upstream_wins_over_wayland() {
         let owners = ["org.freedesktop.PowerManagement"];
-        let d = decide(Some("xfce"), None, |n| Some(owners.contains(&n)), || panic!("спросили Wayland"));
+        let d = decide(Some("xfce"), None, |n| Some(owners.contains(&n)), || panic!("Wayland was asked"));
         assert!(matches!(d, Decision::Start(Plan { upstream: POWER_MANAGEMENT, .. })), "{d:?}");
     }
 
@@ -1273,7 +1273,7 @@ mod tests {
         assert_eq!(holds(&a), [true]);
         assert!(calls(&a).is_empty(), "{a:?}");
         let a = b.on_message(2, ":1.21", INTERFACE, "Inhibit", "ss", &[s("steam"), s("game")]);
-        assert!(holds(&a).is_empty(), "второе удержание держит тот же запрет");
+        assert!(holds(&a).is_empty(), "the second inhibition keeps the same inhibitor");
         let a = b.on_message(3, ":1.20", INTERFACE, "UnInhibit", "u", &[s("1")]);
         assert!(holds(&a).is_empty() && calls(&a).is_empty(), "{a:?}");
         // The last holder left the bus — release.
@@ -1295,14 +1295,14 @@ mod tests {
         let a = b.release_all();
         assert_eq!(holds(&a), [false]);
         assert!(calls(&a).is_empty());
-        assert!(holds(&b.release_all()).is_empty(), "дважды не отпускаем");
+        assert!(holds(&b.release_all()).is_empty(), "not released twice");
     }
 
     #[test]
     fn introspect_call_gets_node() {
         let mut b = Book::new(plan(None));
         let a = b.on_message(1, ":1.1", INTROSPECTABLE, "Introspect", "", &[]);
-        let v = reply_values(&a, 1).expect("ответ");
+        let v = reply_values(&a, 1).expect("reply");
         assert!(v[0].contains("<node>") && v[0].contains("name=\"org.freedesktop.ScreenSaver\""));
     }
 
@@ -1312,7 +1312,7 @@ mod tests {
             assert!(INTROSPECTION_XML.contains(&format!("<method name=\"{m}\">")), "{m}");
         }
         for m in ["Throttle", "GetSessionIdleTime", "ActiveChanged"] {
-            assert!(!INTROSPECTION_XML.contains(m), "{m} объявлен, но не исполняется");
+            assert!(!INTROSPECTION_XML.contains(m), "{m} declared but not implemented");
         }
     }
 }

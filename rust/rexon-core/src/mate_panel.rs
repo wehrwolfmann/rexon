@@ -112,10 +112,28 @@ const OBJECT_KEYS: &[&str] = &[
 /// the clock lives inside the indicators).
 const CLOCK_IID: &str = "ClockAppletFactory::ClockApplet";
 
+/// The MATE Menu applet (package `mate-menu`, the Ubuntu MATE menu).
+pub const MATE_MENU_IID: &str = "MateMenuAppletFactory::MateMenuApplet";
+
+/// The "show desktop" button of mate-panel itself.
+const SHOW_DESKTOP_IID: &str = "WnckletFactory::ShowDesktopApplet";
+
+/// The caption next to the MATE Menu icon on the panel: `gsettings set
+/// org.mate.mate-menu applet-text <text>` (a word, not a logo).
+pub fn mate_menu_label_argv(text: &str) -> Vec<String> {
+    argv(&["gsettings", "set", "org.mate.mate-menu", "applet-text", text])
+}
+
+/// The Brisk menu. Rexon no longer installs it (Wehrwolfmann's decision of
+/// 24.11.2026: the project is abandoned, Solus dropped it): in a layout and on
+/// the live panel it is always replaced with the MATE Menu, or with MATE's
+/// built-in menu button when `mate-menu` is not on the system — never with
+/// nothing ([`prepare`], [`brisk_migration`]).
+pub const BRISK_MENU_IID: &str = "BriskMenuFactory::BriskMenu";
+
 /// Third-party menus: if they are missing, MATE's built-in menu button
 /// (`object-type=menu`), which always exists, takes their place.
 const MENU_IIDS: &[&str] = &[
-    "BriskMenuFactory::BriskMenu",
     "MintMenuAppletFactory::MintMenuApplet",
     "MateMenuAppletFactory::MateMenuApplet",
 ];
@@ -129,7 +147,7 @@ const INDICATOR_IIDS: &[&str] = &[
 /// Human-readable applet names — for the "will be instead" and "will not be
 /// there" notes. An unknown applet is called by its own name from `applet-iid`.
 const APPLET_LABELS: &[(&str, &str)] = &[
-    ("BriskMenuFactory::BriskMenu", n_("Brisk menu")),
+    (BRISK_MENU_IID, n_("Brisk menu")),
     ("MintMenuAppletFactory::MintMenuApplet", n_("Mint menu")),
     ("MateMenuAppletFactory::MateMenuApplet", n_("MATE Menu applet")),
     ("IndicatorAppletCompleteFactory::IndicatorAppletComplete", n_("indicators")),
@@ -272,17 +290,11 @@ pub struct PanelPart {
 /// (mdapi), openSUSE Factory (api.opensuse.org: the name of the built rpm).
 /// Program launchers (Firefox, Evolution) are not layout parts, they are not
 /// here. The layout does not start the Plank dock (Rexon does not enable it) —
-/// it is not here either.
+/// it is not here either. The Brisk menu is not here on purpose: it is never
+/// installed, the MATE Menu takes its place ([`BRISK_MENU_IID`]).
 pub const PANEL_PARTS: &[PanelPart] = {
     use PartSource::{Aur, Missing, Repo};
     &[
-        PanelPart {
-            iid: "BriskMenuFactory::BriskMenu",
-            arch: Aur { package: "brisk-menu", orphan: false },
-            debian: Repo("mate-applet-brisk-menu"),
-            fedora: Missing,
-            suse: Repo("brisk-menu"),
-        },
         PanelPart {
             iid: "MintMenuAppletFactory::MintMenuApplet",
             arch: Aur { package: "mintmenu", orphan: false },
@@ -404,7 +416,12 @@ pub fn missing_parts(text: &str, installed: &BTreeSet<String>) -> Vec<String> {
         if !g.is_object() || g.get("object-type") != Some("applet") {
             continue;
         }
-        let iid = g.get("applet-iid").unwrap_or("").to_string();
+        let mut iid = g.get("applet-iid").unwrap_or("").to_string();
+        // The Brisk menu is not installed any more: what the layout needs in its
+        // place is the MATE Menu (and without it the built-in menu button).
+        if iid == BRISK_MENU_IID {
+            iid = MATE_MENU_IID.to_string();
+        }
         if !iid.is_empty() && !installed.contains(&iid) && !out.contains(&iid) {
             out.push(iid);
         }
@@ -573,10 +590,38 @@ pub fn apply_with_parts(
 ) -> String {
     if !offer.is_empty() {
         if let Err(why) = install(offer) {
+            // A menu has a stand-in that always exists — the built-in menu button.
+            // A menu that did not install (the AUR mate-menu has been failing) does
+            // not cost the person the layout: it is applied with the button, and
+            // it is said why. Closing the password dialog is still "changed my
+            // mind" — nothing is applied then.
+            if why != crate::appearance_installer::password_not_confirmed() && only_menus_missing(io, ctx, id, offer) {
+                let note = trf(
+                    // TRANSLATORS: %1 is the reason the install failed.
+                    "The MATE Menu couldn't be installed (%1) — the standard MATE menu button is used instead.",
+                    &[&why],
+                );
+                return format!("{}\n{note}", apply(io, ctx, id));
+            }
             return parts_refusal(id, offer, &why);
         }
     }
     apply(io, ctx, id)
+}
+
+/// Whether everything of `offer` that layout `id` still lacks after the install
+/// is a menu (it has the built-in button as a stand-in, see [`prepare`]). Parts
+/// that were not in the offer (nowhere to get them) are replaced or left out as
+/// described under the layout anyway.
+fn only_menus_missing(io: &dyn LookIo, ctx: &PanelCtx, id: &str, offer: &PartsOffer) -> bool {
+    let Some(text) = list_layouts(io, ctx).into_iter().find(|(name, _)| name == id).and_then(|(_, p)| io.read(&p)) else {
+        return false;
+    };
+    let installed = installed_applets(io, &ctx.applet_dirs);
+    missing_parts(&text, &installed)
+        .iter()
+        .filter(|iid| offer.labels.contains(&applet_label(iid)))
+        .all(|iid| MENU_IIDS.contains(&iid.as_str()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -755,16 +800,19 @@ pub fn installed_applets(io: &dyn LookIo, dirs: &[String]) -> BTreeSet<String> {
             let Some(text) = io.read(&format!("{}/{name}", dir.trim_end_matches('/'))) else {
                 continue;
             };
-            let groups = parse_keyfile(&text);
-            let Some(factory) = groups.iter().find(|g| g.name == "Applet Factory").and_then(|g| g.get("Id")) else {
-                continue;
-            };
-            for group in groups.iter().filter(|g| g.name != "Applet Factory") {
-                out.insert(format!("{factory}::{}", group.name));
-            }
+            out.extend(applets_in_description(&text));
         }
     }
     out
+}
+
+/// The applets (`Factory::Applet`) one `*.mate-panel-applet` file describes.
+pub fn applets_in_description(text: &str) -> Vec<String> {
+    let groups = parse_keyfile(text);
+    let Some(factory) = groups.iter().find(|g| g.name == "Applet Factory").and_then(|g| g.get("Id")) else {
+        return Vec::new();
+    };
+    groups.iter().filter(|g| g.name != "Applet Factory").map(|g| format!("{factory}::{}", g.name)).collect()
 }
 
 /// Human-readable applet name.
@@ -833,7 +881,12 @@ pub fn prepare(text: &str, installed: &BTreeSet<String>, file_exists: &dyn Fn(&s
             match group.get("object-type").unwrap_or("") {
                 "applet" => {
                     let iid = group.get("applet-iid").unwrap_or("").to_string();
-                    if !installed.contains(&iid) {
+                    if iid == BRISK_MENU_IID {
+                        // Even when Brisk itself is still on the system: Rexon does
+                        // not put it on a panel any more.
+                        changed = true;
+                        notes.push(replace_brisk(&mut group, installed.contains(MATE_MENU_IID)));
+                    } else if !installed.contains(&iid) {
                         changed = true;
                         if MENU_IIDS.contains(&iid.as_str()) {
                             group.set("object-type", "menu");
@@ -874,6 +927,20 @@ pub fn prepare(text: &str, installed: &BTreeSet<String>, file_exists: &dyn Fn(&s
     }
     let panels = out.iter().filter(|g| g.is_toplevel()).count();
     Prepared { text: write_keyfile(&out), changed, panels, notes }
+}
+
+/// Turn the Brisk menu object `group` into the MATE Menu applet (`mate_menu` —
+/// the applet is on the system) or into the built-in menu button; the note for
+/// the person.
+fn replace_brisk(group: &mut Group, mate_menu: bool) -> String {
+    if mate_menu {
+        group.set("applet-iid", MATE_MENU_IID);
+        tr("The Brisk menu is no longer supported — the MATE Menu will be used instead.")
+    } else {
+        group.set("object-type", "menu");
+        group.remove("applet-iid");
+        tr("The Brisk menu is no longer supported — the standard MATE menu button will be used instead.")
+    }
 }
 
 fn capitalize(s: &str) -> String {
@@ -1126,10 +1193,17 @@ pub fn save_snapshot(io: &dyn LookIo, ctx: &PanelCtx) -> (bool, String) {
 /// one saved with "Save panel"). After a restore, the next apply takes the
 /// original snapshot again.
 pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
+    restore_from(io, ctx, &ctx.backup_path())
+}
+
+/// Restore the panel from dump file `backup`: the layout section's original
+/// copy ([`PanelCtx::backup_path`]) or its `.last` neighbour. Only restoring
+/// the original places the "returned" mark.
+pub fn restore_from(io: &dyn LookIo, ctx: &PanelCtx, backup: &str) -> String {
     if !is_available(io, ctx) {
         return tr("⚠️ The MATE panel is not available in this session.");
     }
-    let backup = ctx.backup_path();
+    let backup = backup.to_string();
     if io.read(&backup).is_none() {
         return tr("⚠️ There is no saved panel to restore.");
     }
@@ -1149,7 +1223,7 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     // panel (measured on the stand). We wait until the panel has managed (the
     // object branch became empty); if there is no panel, there is no one to
     // wait for, and after 3 s we move on.
-    let (ok, out) = io.run(&argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", "@as []"]));
+    let (ok, out) = io.run(&empty_objects_argv());
     if !ok {
         return trf("⚠️ Could not restore the previous panel: %1", &[&out]);
     }
@@ -1164,21 +1238,11 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     // snapshot (it stores only differences from the defaults) would remain
     // from the layout. `default-layout` too: a snapshot with its default value
     // does not carry it.
-    let steps = [
-        argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
-        argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
-        argv(&["dconf", "reset", "/org/mate/panel/general/default-layout"]),
-        argv(&["sh", "-c", "dconf load /org/mate/panel/ < \"$1\"", "sh", &backup]),
-    ];
-    for step in &steps {
+    for step in &load_steps(&backup) {
         let (ok, out) = io.run(step);
         if !ok {
             // Restore the panel as it was before the click.
-            for back in [
-                argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
-                argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
-                argv(&["sh", "-c", "dconf load /org/mate/panel/ < \"$1\"", "sh", &undo]),
-            ] {
+            for back in rollback_steps(&undo) {
                 io.run(&back);
             }
             return trf("⚠️ Could not restore the previous panel: %1", &[&out]);
@@ -1186,8 +1250,143 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     }
     // The original came back: the next apply takes it again. If the mark was
     // not written, the original simply stays the same (that is the safe side).
-    io.write(&crate::backup::panel_original_returned_mark(&backup), crate::backup::PANEL_ORIGINAL_RETURNED);
+    if backup == ctx.backup_path() {
+        io.write(&crate::backup::panel_original_returned_mark(&backup), crate::backup::PANEL_ORIGINAL_RETURNED);
+    }
     tr("✅ MATE panel restored to how it was before.")
+}
+
+/// The first step of a restore on a live panel: an empty object list, so the
+/// running panel drops all applets (see [`restore_from`] for why).
+pub fn empty_objects_argv() -> Vec<String> {
+    argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", "@as []"])
+}
+
+/// Panels and objects wiped clean, then dump `file` loaded: one list for both
+/// the layout section and the panel protection copies.
+pub fn load_steps(file: &str) -> Vec<Vec<String>> {
+    vec![
+        argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
+        argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
+        argv(&["dconf", "reset", "/org/mate/panel/general/default-layout"]),
+        argv(&["sh", "-c", "dconf load /org/mate/panel/ < \"$1\"", "sh", file]),
+    ]
+}
+
+/// Put the panel back from insurance dump `undo` after a failed load.
+pub fn rollback_steps(undo: &str) -> Vec<Vec<String>> {
+    vec![
+        argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
+        argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
+        argv(&["sh", "-c", "dconf load /org/mate/panel/ < \"$1\"", "sh", undo]),
+    ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Brisk menu on the live panel → MATE Menu
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Earlier releases put the Brisk menu on the panel (the "Like Windows" layout,
+// the AUR set of the MATE install). Rexon does not install Brisk any more, so a
+// panel that still has it is moved to the MATE Menu (or to the built-in menu
+// button) by "Check my desktop" — the panel never stays without a menu.
+//
+// How: the replacement object is written under a NEW id first, then the id
+// takes the old one's place in `object-id-list`, then the old object's branch
+// is erased. The running mate-panel follows `object-id-list` by itself: it
+// unloads the ids that left the list and loads the new ones from their keys —
+// so the menu is swapped without a restart and without resetting the rest of
+// the panel. (Changing `applet-iid` of a loaded object in place is not picked
+// up by the panel: the applet is chosen when the object is loaded.)
+
+/// What [`brisk_migration`] does on the panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BriskMigration {
+    /// Ids of the Brisk objects that are replaced.
+    pub replaced: Vec<String>,
+    /// The commands, in order (`dconf write` / `dconf reset`).
+    pub commands: Vec<Vec<String>>,
+}
+
+/// Parse a GVariant string array as `dconf` prints it (`['a', 'b']`, `@as []`).
+fn gvariant_strings(value: &str) -> Vec<String> {
+    let v = value.trim().trim_start_matches("@as").trim();
+    let inner = v.strip_prefix('[').and_then(|v| v.strip_suffix(']')).unwrap_or("");
+    inner
+        .split(',')
+        .map(|item| item.trim().trim_matches(|c| c == '\'' || c == '"').to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+fn gvariant_string_array(items: &[String]) -> String {
+    if items.is_empty() {
+        return "@as []".to_string();
+    }
+    let quoted: Vec<String> = items.iter().map(|i| format!("'{i}'")).collect();
+    format!("[{}]", quoted.join(", "))
+}
+
+/// The plan for moving the panel's Brisk menu objects to the MATE Menu applet
+/// (`mate_menu` — its applet is on the system) or to the built-in menu button.
+/// `dump` — `dconf dump /org/mate/panel/`. `None` — there is no Brisk menu on
+/// the panel.
+pub fn brisk_migration(dump: &str, mate_menu: bool) -> Option<BriskMigration> {
+    let groups = parse_keyfile(dump);
+    let object_id = |g: &Group| g.name.strip_prefix("objects/").filter(|id| !id.is_empty() && !id.contains('/')).map(str::to_string);
+    let brisk: Vec<(String, &Group)> = groups
+        .iter()
+        .filter(|g| g.get("applet-iid").map(|v| v.trim_matches('\'')) == Some(BRISK_MENU_IID))
+        .filter_map(|g| object_id(g).map(|id| (id, g)))
+        .collect();
+    if brisk.is_empty() {
+        return None;
+    }
+    let mut taken: BTreeSet<String> = groups.iter().filter_map(object_id).collect();
+    let mut list = groups
+        .iter()
+        .find(|g| g.name == "general")
+        .and_then(|g| g.get("object-id-list"))
+        .map(gvariant_strings);
+    let mut commands = Vec::new();
+    let mut replaced = Vec::new();
+    for (old, group) in brisk {
+        let mut new = format!("{old}-menu");
+        let mut n = 2;
+        while taken.contains(&new) {
+            new = format!("{old}-menu-{n}");
+            n += 1;
+        }
+        taken.insert(new.clone());
+        let key = |k: &str| format!("/org/mate/panel/objects/{new}/{k}");
+        if mate_menu {
+            commands.push(argv(&["dconf", "write", &key("object-type"), "'applet'"]));
+            commands.push(argv(&["dconf", "write", &key("applet-iid"), &format!("'{MATE_MENU_IID}'")]));
+        } else {
+            commands.push(argv(&["dconf", "write", &key("object-type"), "'menu'"]));
+        }
+        // Where the old menu stood, as it was (the values are copied in GVariant form).
+        for k in ["toplevel-id", "position", "panel-right-stick", "locked"] {
+            if let Some(v) = group.get(k) {
+                commands.push(argv(&["dconf", "write", &key(k), v]));
+            }
+        }
+        if let Some(ids) = list.as_mut() {
+            if let Some(at) = ids.iter().position(|i| *i == old) {
+                ids[at] = new.clone();
+            }
+        }
+        replaced.push(old);
+    }
+    // `object-id-list` missing from the dump is its schema default, which has no
+    // Brisk menu: then the Brisk objects are not on the panel and are only erased.
+    if let Some(ids) = &list {
+        commands.push(argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", &gvariant_string_array(ids)]));
+    }
+    for old in &replaced {
+        commands.push(argv(&["dconf", "reset", "-f", &format!("/org/mate/panel/objects/{old}/")]));
+    }
+    Some(BriskMigration { replaced, commands })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1208,6 +1407,11 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
 pub enum OwnObject {
     /// MATE's built-in main menu button.
     MainMenu,
+    /// The MATE Menu applet (`mate-menu`) — put only when the package is on the
+    /// system, otherwise [`OwnObject::MainMenu`] takes its place.
+    MateMenu,
+    /// The "show desktop" button (part of mate-panel's own Wnck applets).
+    ShowDesktop,
     WindowList,
     Clock,
     NotificationArea,
@@ -1256,6 +1460,14 @@ pub fn own_layout_text(panels: &[OwnPanel]) -> String {
             for (i, o) in list.iter().enumerate() {
                 let (name, mut keys) = match o {
                     OwnObject::MainMenu => ("menu".to_string(), vec![("object-type", "menu".to_string())]),
+                    OwnObject::MateMenu => (
+                        "mate-menu".to_string(),
+                        vec![("object-type", "applet".to_string()), ("applet-iid", MATE_MENU_IID.to_string())],
+                    ),
+                    OwnObject::ShowDesktop => (
+                        "show-desktop".to_string(),
+                        vec![("object-type", "applet".to_string()), ("applet-iid", SHOW_DESKTOP_IID.to_string())],
+                    ),
                     OwnObject::WindowList => (
                         "window-list".to_string(),
                         vec![("object-type", "applet".to_string()), ("applet-iid", "WnckletFactory::WindowListApplet".to_string())],
@@ -1522,7 +1734,7 @@ Name=Window List
 Name=Show Desktop
 ";
 
-    /// Applets of this machine (MATE without brisk-menu, mintmenu and indicators).
+    /// Applets of this machine (MATE without mate-menu, mintmenu and indicators).
     fn plain_mate() -> BTreeSet<String> {
         [
             "WnckletFactory::WindowMenuApplet",
@@ -1601,10 +1813,11 @@ Name=Show Desktop
         assert_eq!(tray.get("panel-right-stick"), Some("true"));
         assert_eq!(object(&groups, "drivemountapplet").unwrap().get("panel-right-stick"), Some("true"));
 
-        // Brisk menu → the built-in menu button.
+        // Brisk menu without mate-menu on the system → the built-in menu button.
         let menu = object(&groups, "briskmenu").expect("меню осталось");
         assert_eq!(menu.get("object-type"), Some("menu"));
         assert_eq!(menu.get("applet-iid"), None);
+        assert!(p.notes[0].contains("Brisk"), "{:?}", p.notes);
 
         // Indicators → the clock, on the right.
         let clock = object(&groups, "indicatorappletcomplete").expect("вместо индикаторов — часы");
@@ -1617,17 +1830,35 @@ Name=Show Desktop
         assert_eq!(p.notes.len(), 2, "{:?}", p.notes);
     }
 
+    /// Everything is on the system, Brisk too — and still the Brisk menu does not
+    /// get onto the panel: the MATE Menu takes its place (Wehrwolfmann, 24.11.2026).
     #[test]
-    fn redmond_with_everything_installed_only_loses_the_gnome_key() {
+    fn redmond_with_everything_installed_gets_mate_menu_instead_of_brisk() {
         let mut all = plain_mate();
-        all.insert("BriskMenuFactory::BriskMenu".into());
+        all.insert(BRISK_MENU_IID.into());
+        all.insert(MATE_MENU_IID.into());
         all.insert("IndicatorAppletCompleteFactory::IndicatorAppletComplete".into());
         let p = prepare(REDMOND, &all, &|_: &str| true);
-        assert!(p.changed, "relative-to-edge всё равно правится");
-        assert!(p.notes.is_empty());
+        assert!(p.changed);
+        assert_eq!(p.notes, [tr("The Brisk menu is no longer supported — the MATE Menu will be used instead.")]);
         let groups = parse_keyfile(&p.text);
-        assert_eq!(object(&groups, "briskmenu").unwrap().get("applet-iid"), Some("BriskMenuFactory::BriskMenu"));
+        let menu = object(&groups, "briskmenu").unwrap();
+        assert_eq!(menu.get("applet-iid"), Some(MATE_MENU_IID));
+        assert_eq!(menu.get("object-type"), Some("applet"));
+        assert!(!p.text.contains("Brisk"), "{}", p.text);
         assert_eq!(groups.len(), 9);
+    }
+
+    /// Brisk is still installed, mate-menu is not: the built-in menu button, not
+    /// Brisk and not an empty place.
+    #[test]
+    fn brisk_without_mate_menu_becomes_the_menu_button() {
+        let mut all = plain_mate();
+        all.insert(BRISK_MENU_IID.into());
+        let p = prepare(REDMOND, &all, &|_: &str| true);
+        let groups = parse_keyfile(&p.text);
+        assert_eq!(object(&groups, "briskmenu").unwrap().get("object-type"), Some("menu"));
+        assert!(!p.text.contains("Brisk"), "{}", p.text);
     }
 
     #[test]
@@ -1752,7 +1983,7 @@ Name=Show Desktop
         assert!(st.layouts[1].current);
         assert_eq!(st.current_title, tr("Classic MATE"));
         assert_eq!(st.layouts[0].title, tr("Like Windows"));
-        assert!(!st.layouts[0].notes.is_empty(), "без Brisk и индикаторов есть что сказать");
+        assert!(!st.layouts[0].notes.is_empty(), "without mate-menu and the indicators the layout must explain what is missing");
         assert!(!st.can_restore);
     }
 
@@ -1839,13 +2070,17 @@ Name=Show Desktop
     #[test]
     fn parts_table_matches_the_repositories() {
         use PartSource::{Aur, Missing, Repo};
-        let brisk = "BriskMenuFactory::BriskMenu";
         let ind = "IndicatorAppletCompleteFactory::IndicatorAppletComplete";
         let mint = "MintMenuAppletFactory::MintMenuApplet";
-        assert_eq!(part_source(brisk, "arch"), Aur { package: "brisk-menu", orphan: false });
-        assert_eq!(part_source(brisk, "debian"), Repo("mate-applet-brisk-menu"));
-        assert_eq!(part_source(brisk, "fedora"), Missing);
-        assert_eq!(part_source(brisk, "suse"), Repo("brisk-menu"));
+        // The Brisk menu is never installed (24.11.2026) — in no family.
+        for f in ["arch", "debian", "fedora", "suse"] {
+            assert_eq!(part_source(BRISK_MENU_IID, f), Missing, "{f}");
+            assert!(!all_part_packages(f).iter().any(|p| p.contains("brisk")), "{f}");
+        }
+        assert_eq!(part_source(MATE_MENU_IID, "arch"), Aur { package: "mate-menu", orphan: false });
+        for f in ["debian", "fedora", "suse"] {
+            assert_eq!(part_source(MATE_MENU_IID, f), Repo("mate-menu"), "{f}");
+        }
         assert_eq!(part_source(ind, "arch"), Aur { package: "mate-indicator-applet", orphan: true });
         assert_eq!(part_source(ind, "debian"), Repo("mate-indicator-applet"));
         assert_eq!(part_source(ind, "suse"), Repo("mate-applet-indicator"));
@@ -1867,12 +2102,15 @@ Name=Show Desktop
         let (m, ctx) = machine();
         let installed = installed_applets(&m, &ctx.applet_dirs);
         let missing = missing_parts(REDMOND, &installed);
-        assert!(missing.contains(&"BriskMenuFactory::BriskMenu".to_string()), "{missing:?}");
+        // The layout's Brisk menu asks for the MATE Menu, not for Brisk.
+        assert!(missing.contains(&MATE_MENU_IID.to_string()), "{missing:?}");
+        assert!(!missing.iter().any(|i| i == BRISK_MENU_IID), "{missing:?}");
         assert!(missing.contains(&"IndicatorAppletCompleteFactory::IndicatorAppletComplete".to_string()));
         assert!(!missing.iter().any(|i| i.starts_with("Wncklet")), "стоящее не просится: {missing:?}");
 
         let arch = parts_offer(&missing, "arch");
-        assert!(arch.aur.contains(&("brisk-menu".to_string(), false)), "{arch:?}");
+        assert!(arch.aur.contains(&("mate-menu".to_string(), false)), "{arch:?}");
+        assert!(!arch.aur.iter().any(|(p, _)| p.contains("brisk")), "{arch:?}");
         assert!(arch.aur.contains(&("mate-indicator-applet".to_string(), true)));
         assert!(arch.repo.contains(&"mate-applets".to_string()), "{arch:?}");
         let (title, text) = parts_question("redmond", &arch).expect("есть что собирать из AUR");
@@ -1885,13 +2123,13 @@ Name=Show Desktop
         assert!(!auto.labels.is_empty() && auto.labels.iter().all(|l| !arch.aur_labels.contains(l)), "{auto:?}");
 
         let debian = parts_offer(&missing, "debian");
-        assert!(debian.aur.is_empty() && debian.repo.contains(&"mate-applet-brisk-menu".to_string()));
+        assert!(debian.aur.is_empty() && debian.repo.contains(&"mate-menu".to_string()), "{debian:?}");
         // Everything is in the repositories — there is no question, the parts install
         // themselves.
         assert!(parts_question("redmond", &debian).is_none());
-        // Fedora: there is no Brisk menu and no indicators — the question is only about
-        // what exists.
-        let fedora = parts_offer(&["BriskMenuFactory::BriskMenu".to_string()], "fedora");
+        // Fedora: there are no indicators and no Mint menu — the question is only
+        // about what exists.
+        let fedora = parts_offer(&["MintMenuAppletFactory::MintMenuApplet".to_string()], "fedora");
         assert!(fedora.is_empty() && parts_question("redmond", &fedora).is_none());
         // An immutable system / an unknown package manager — do not offer.
         assert!(parts_offer(&missing, "").is_empty());
@@ -1903,16 +2141,18 @@ Name=Show Desktop
     #[test]
     fn apply_with_parts_installs_first_all_or_nothing() {
         let (m, ctx) = machine();
-        let offer = parts_offer(&["BriskMenuFactory::BriskMenu".to_string()], "debian");
+        let offer = parts_offer(&[MATE_MENU_IID.to_string()], "debian");
         let mut calls = Vec::new();
         let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |o: &PartsOffer| {
             calls.push(o.repo.clone());
             Ok(())
         });
-        assert_eq!(calls, [vec!["mate-applet-brisk-menu".to_string()]]);
+        assert_eq!(calls, [vec!["mate-menu".to_string()]]);
         assert!(out.starts_with('✅'), "{out}");
         let (files, runs) = (m.files.borrow().clone(), m.runs.borrow().len());
-        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err("no network".into()));
+        // A part without a stand-in (indicators from the repository) did not install.
+        let indicators = parts_offer(&["IndicatorAppletCompleteFactory::IndicatorAppletComplete".to_string()], "debian");
+        let out = apply_with_parts(&m, &ctx, "redmond", &indicators, &mut |_| Err("no network".into()));
         assert!(out.contains("no network") && !out.contains('✅'), "{out}");
         assert_eq!((m.files.borrow().clone(), m.runs.borrow().len()), (files, runs), "раскладка не применялась");
         // The password dialog was closed — advice to repeat, the reason is not repeated.
@@ -1926,6 +2166,32 @@ Name=Show Desktop
             Ok(())
         });
         assert!(!called);
+    }
+
+    /// mate-menu did not install (the AUR package has been failing): the layout is
+    /// still applied — with the built-in menu button — and the reason is said.
+    /// Closing the password dialog still applies nothing.
+    #[test]
+    fn failed_mate_menu_falls_back_to_the_menu_button() {
+        let (m, ctx) = machine();
+        let offer = parts_offer(&[MATE_MENU_IID.to_string()], "arch");
+        assert_eq!(offer.aur, [("mate-menu".to_string(), false)]);
+        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err("gschemas.compiled exists in filesystem".into()));
+        assert!(out.starts_with('✅'), "{out}");
+        let note = trf(
+            "The MATE Menu couldn't be installed (%1) — the standard MATE menu button is used instead.",
+            &[&"gschemas.compiled exists in filesystem"],
+        );
+        assert!(out.ends_with(&note), "{out}");
+        let copy = m.read(&format!("{}/rexon-redmond.layout", ctx.copies_dir())).unwrap();
+        let groups = parse_keyfile(&copy);
+        assert_eq!(object(&groups, "briskmenu").unwrap().get("object-type"), Some("menu"));
+
+        let (m, ctx) = machine();
+        let pw = crate::appearance_installer::password_not_confirmed();
+        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err(pw.clone()));
+        assert!(!out.contains('✅'), "{out}");
+        assert!(!m.runs.borrow().iter().any(|r| r[0] == "mate-panel"));
     }
 
     /// The original panel (the snapshot before the first apply) is not overwritten
@@ -1975,6 +2241,75 @@ Name=Show Desktop
         assert_eq!(path, ctx.backup_path());
         assert_eq!(m.read(&path).as_deref(), Some("[general]\ntoplevel-id-list=['top']\n"));
         assert!(read_state(&m, &ctx).can_restore);
+    }
+
+    // ── Brisk menu on the live panel ──────────────────────────────────────
+
+    const PANEL_WITH_BRISK: &str = "[general]
+object-id-list=['briskmenu', 'window-list', 'clock']
+toplevel-id-list=['bottom']
+
+[objects/briskmenu]
+applet-iid='BriskMenuFactory::BriskMenu'
+locked=true
+object-type='applet'
+position=0
+toplevel-id='bottom'
+
+[objects/briskmenu/prefs]
+label-visible=true
+
+[objects/clock]
+applet-iid='ClockAppletFactory::ClockApplet'
+object-type='applet'
+panel-right-stick=true
+toplevel-id='bottom'
+";
+
+    #[test]
+    fn brisk_on_the_panel_moves_to_mate_menu_in_place() {
+        let m = brisk_migration(PANEL_WITH_BRISK, true).expect("the panel has Brisk");
+        assert_eq!(m.replaced, ["briskmenu"]);
+        let w = |k: &str, v: &str| argv(&["dconf", "write", &format!("/org/mate/panel/objects/briskmenu-menu/{k}"), v]);
+        assert_eq!(
+            m.commands,
+            [
+                w("object-type", "'applet'"),
+                w("applet-iid", "'MateMenuAppletFactory::MateMenuApplet'"),
+                w("toplevel-id", "'bottom'"),
+                w("position", "0"),
+                w("locked", "true"),
+                argv(&[
+                    "dconf",
+                    "write",
+                    "/org/mate/panel/general/object-id-list",
+                    "['briskmenu-menu', 'window-list', 'clock']",
+                ]),
+                argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/briskmenu/"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn brisk_without_mate_menu_becomes_the_builtin_button_on_the_panel() {
+        let m = brisk_migration(PANEL_WITH_BRISK, false).unwrap();
+        assert_eq!(m.commands[0], argv(&["dconf", "write", "/org/mate/panel/objects/briskmenu-menu/object-type", "'menu'"]));
+        assert!(!m.commands.iter().any(|c| c.iter().any(|a| a.contains("applet-iid"))), "{:?}", m.commands);
+    }
+
+    #[test]
+    fn no_brisk_no_changes_and_new_ids_do_not_clash() {
+        assert!(brisk_migration("[general]\nobject-id-list=['clock']\n\n[objects/clock]\napplet-iid='ClockAppletFactory::ClockApplet'\n", true).is_none());
+        assert!(brisk_migration("", true).is_none());
+        // A taken name gets a number; a Brisk object outside the list is only erased
+        // from dconf and does not get into the list.
+        let dump = "[general]\nobject-id-list=['a']\n\n[objects/a]\napplet-iid='BriskMenuFactory::BriskMenu'\n\n[objects/a-menu]\nobject-type='menu'\n\n[objects/b]\napplet-iid='BriskMenuFactory::BriskMenu'\n";
+        let m = brisk_migration(dump, true).unwrap();
+        assert_eq!(m.replaced, ["a", "b"]);
+        assert!(m.commands.contains(&argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", "['a-menu-2']"])), "{:?}", m.commands);
+        assert!(m.commands.contains(&argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/b/"])));
+        assert_eq!(gvariant_strings("@as []"), Vec::<String>::new());
+        assert_eq!(gvariant_string_array(&[]), "@as []");
     }
 
 }

@@ -1502,7 +1502,7 @@ mod tests {
     /// original: a `%2` lost by a translator would give a string without a number,
     /// and that would be noticed only by eye.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/*.po настоящим msgfmt")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/*.po with the real msgfmt")]
     fn every_catalog_compiles_and_keeps_placeholders() {
         let po = repo_root().join("po");
         let linguas = std::fs::read_to_string(po.join("LINGUAS")).expect("po/LINGUAS на месте");
@@ -1537,7 +1537,7 @@ mod tests {
     /// The `po/rexon.pot` template has not fallen behind the sources: a new string
     /// without a template update would not reach a single translator.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: извлекает строки настоящим xgettext")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: extracts strings with the real xgettext")]
     fn template_is_up_to_date() {
         let out = std::process::Command::new("bash")
             .arg(repo_root().join("scripts/i18n-update.sh"))

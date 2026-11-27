@@ -101,7 +101,7 @@ Item {
             return;
         const decision = wizard.start();
         // To the log: it shows why the wizard appeared or not.
-        console.info("мастер установки: " + decision.reason);
+        console.info("install wizard: " + decision.reason);
         if (decision.kind !== "offer") {
             root.finished();
             return;
@@ -164,8 +164,8 @@ Item {
     /// "Install".
     function install() {
         if (!wizard.install(root.mode)) {
-            console.warn("мастер установки: режим «" + root.mode
-                         + "» не принят мостом");
+            console.warn("install wizard: mode \"" + root.mode
+                         + "\" was not accepted by the bridge");
             return;
         }
         welcomeDialog.close();
@@ -174,8 +174,8 @@ Item {
     /// "Skip". The "do not ask again" check box goes into the settings.
     function skip() {
         if (!wizard.decline(dontAsk.checked))
-            console.warn("мастер установки: отказ не сохранён, "
-                         + "мастер предложится снова");
+            console.warn("install wizard: the refusal was not saved, "
+                         + "the wizard will be offered again");
         welcomeDialog.close();
         root.done();
     }
@@ -198,8 +198,8 @@ Item {
         function onShowRequested() { root.begin(); }
 
         function onInstallFinished(ok) {
-            console.info("мастер установки: итог "
-                         + (ok ? "успех" : "неудача"));
+            console.info("install wizard: outcome "
+                         + (ok ? "success" : "failure"));
         }
     }
 

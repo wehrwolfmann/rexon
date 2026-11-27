@@ -10,7 +10,7 @@
 //!
 //! The module is data and pure functions only: no files, no processes, no
 //! network. Install and rollback are built by the next layer on top of the
-//! existing paths (`ext_manager`, `appearance_installer`, `rxn_v4_installer`).
+//! existing paths (`ext_manager`, `appearance_installer`).
 //!
 //! What is here:
 //!   * [`Package`] and nested types — the serde model of the v5 manifest;
@@ -2362,6 +2362,11 @@ pub fn check_contents(pkg: &Package, files: &[ArchiveFile]) -> Vec<ManifestError
         }
     }
     e
+}
+
+/// The element owning the archive path `path` declares the `exec` permission.
+pub fn path_allows_exec(pkg: &Package, path: &str) -> bool {
+    owning_item(pkg, path).map(|i| &pkg.items[i]).is_some_and(|item| item.permissions.contains(&Permission::Exec))
 }
 
 /// Class label for the person.

@@ -727,12 +727,12 @@
         "application/pdf": "okular.desktop"
       },
       "ts": "2026-07-21T03:10:00",
-      "result": "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-07-21T03:10:00\n\n[Default Applications]\napplication/pdf=okular.desktop\ninode/directory=dolphin.desktop\ntext/plain=kate.desktop\n"
+      "result": "# Rexon: per-desktop defaults\n# Updated: 2026-07-21T03:10:00\n\n[Default Applications]\napplication/pdf=okular.desktop\ninode/directory=dolphin.desktop\ntext/plain=kate.desktop\n"
     },
     {
       "entries": {},
       "ts": "2026-07-21T03:10:00",
-      "result": "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-07-21T03:10:00\n\n[Default Applications]\n"
+      "result": "# Rexon: per-desktop defaults\n# Updated: 2026-07-21T03:10:00\n\n[Default Applications]\n"
     }
   ],
   "protect_de_mimeapps": [
@@ -744,8 +744,8 @@
         "hyprland": "empty"
       },
       "written": {
-        "gnome-mimeapps.list": "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-07-21T03:10:00\n\n[Default Applications]\ninode/directory=org.gnome.Nautilus.desktop\ntext/plain=org.gnome.TextEditor.desktop\n",
-        "kde-mimeapps.list": "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-07-21T03:10:00\n\n[Default Applications]\napplication/json=org.kde.kate.desktop\napplication/x-yaml=org.kde.kate.desktop\ninode/directory=org.kde.dolphin.desktop\ntext/html=org.kde.kate.desktop\ntext/markdown=org.kde.kate.desktop\ntext/plain=org.kde.kate.desktop\ntext/xml=org.kde.kate.desktop\n"
+        "gnome-mimeapps.list": "# Rexon: per-desktop defaults\n# Updated: 2026-07-21T03:10:00\n\n[Default Applications]\ninode/directory=org.gnome.Nautilus.desktop\ntext/plain=org.gnome.TextEditor.desktop\n",
+        "kde-mimeapps.list": "# Rexon: per-desktop defaults\n# Updated: 2026-07-21T03:10:00\n\n[Default Applications]\napplication/json=org.kde.kate.desktop\napplication/x-yaml=org.kde.kate.desktop\ninode/directory=org.kde.dolphin.desktop\ntext/markdown=org.kde.kate.desktop\ntext/plain=org.kde.kate.desktop\ntext/xml=org.kde.kate.desktop\n"
       },
       "installed": [
         "kde",
@@ -760,7 +760,7 @@
         "xfce": "updated"
       },
       "written": {
-        "xfce-mimeapps.list": "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-07-21T03:10:00\n\n[Default Applications]\ninode/directory=thunar.desktop\nx/y=custom.desktop\n"
+        "xfce-mimeapps.list": "# Rexon: per-desktop defaults\n# Updated: 2026-07-21T03:10:00\n\n[Default Applications]\ninode/directory=thunar.desktop\nx/y=custom.desktop\n"
       },
       "installed": [
         "xfce"
@@ -817,52 +817,6 @@
       [
         "music_player",
         "audio/mpeg"
-      ]
-    ],
-    "DE_DESKTOP_NAMES": [
-      [
-        "kde",
-        "kde"
-      ],
-      [
-        "gnome",
-        "gnome"
-      ],
-      [
-        "cinnamon-mint",
-        "cinnamon"
-      ],
-      [
-        "cinnamon",
-        "cinnamon"
-      ],
-      [
-        "xfce",
-        "xfce"
-      ],
-      [
-        "mate",
-        "mate"
-      ],
-      [
-        "budgie",
-        "budgie"
-      ],
-      [
-        "pantheon",
-        "pantheon"
-      ],
-      [
-        "deepin",
-        "dde"
-      ],
-      [
-        "cosmic",
-        "cosmic"
-      ],
-      [
-        "hyprland",
-        "hyprland"
       ]
     ],
     "DE_NATIVE_APPS_keys": [
@@ -1037,10 +991,6 @@
         ],
         [
           "application/x-yaml",
-          "org.kde.kate.desktop"
-        ],
-        [
-          "text/html",
           "org.kde.kate.desktop"
         ],
         [
@@ -1327,10 +1277,6 @@
         ],
         [
           "application/json",
-          "org.xfce.mousepad.desktop"
-        ],
-        [
-          "text/html",
           "org.xfce.mousepad.desktop"
         ],
         [

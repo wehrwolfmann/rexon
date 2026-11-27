@@ -119,7 +119,7 @@ fn install_paths() {
 
 /// Labels, icons, KDE commands, gradients.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn labels_icons_commands() {
     // Captions are English `msgid`s; the Russian in `po/ru.po` is word for word the old one.
     {
@@ -150,7 +150,7 @@ fn labels_icons_commands() {
 
 /// Wallpaper formats and supported file extensions.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn wallpaper_and_file_formats() {
     {
         let _lang = i18n_pin::ru();

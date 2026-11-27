@@ -2,7 +2,9 @@
 // Razer Axon library on this computer — like the "Library" section of Axon
 // itself: search by titles or tags, sorting, a filter panel with the
 // number of active filters, the "Recently added" and "Can be synced"
-// sections.
+// sections (under the latter's heading — a note on why these wallpapers
+// are not on disk, and an "Open Razer Axon" button when there is something
+// to launch it with).
 //
 // There is NO search field here: the word is typed into the shared field
 // in the page header, the same as for KDE Store and Wallhaven (`query`
@@ -65,15 +67,19 @@ Item {
         objectName: "axonPlaylistActions"
     }
     /// Core answer to the request (`axon_window::view_json`).
-    property var v: ({ screen: "", note: "", sections: [], filter: { text: "", count: 0, flags: [], kinds: [] },
+    property var v: ({ screen: "", note: "", sections: [],
+                       filter: { text: "", count: 0, flags: [], kinds: [], orientations: [] },
                        query: { sort: "date", mode: "titles", text: "" } })
     /// Details of the opened wallpaper (`axon_window::details_json`).
     property var detail: ({})
     /// Wallpaper the menu is open for.
     property string menuId: ""
+    /// Whether Razer Axon can be launched (the button under "Can be synced").
+    property bool canLaunch: false
 
     function refresh() {
         view.v = JSON.parse(axon.view());
+        view.canLaunch = axon.canLaunch();
     }
 
     function reload() {
@@ -212,6 +218,30 @@ Item {
                             text: section.modelData.title
                             color: view.colTextSecondary
                             font.bold: true
+                        }
+
+                        // Section of not downloaded ones: why they are not on
+                        // disk and who downloads them (Axon has no such note).
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: (section.modelData.note || "") !== ""
+                            spacing: 12
+
+                            RexonText {
+                                objectName: "axonSectionNote"
+                                Layout.fillWidth: true
+                                text: section.modelData.note || ""
+                                color: view.colTextSecondary
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RexonButton {
+                                objectName: "axonLaunch"
+                                visible: view.canLaunch
+                                pal: view.pal
+                                text: view.t.launch || ""
+                                onClicked: view.message(axon.launchAxon())
+                            }
                         }
 
                         Flow {
@@ -457,6 +487,30 @@ Item {
                 }
             }
 
+            // Our group: vertical Axon videos (2160×3840) cannot be told
+            // apart otherwise — their covers are horizontal.
+            RexonText {
+                Layout.topMargin: 6
+                text: view.t.orientationLabel || ""
+                color: view.colTextSecondary
+                font.bold: true
+            }
+
+            Repeater {
+                model: view.t.orientations || []
+                delegate: RexonCheckBox {
+                    required property var modelData
+                    objectName: "axonOrientation_" + modelData.key
+                    pal: view.pal
+                    text: modelData.label
+                    checked: (view.v.filter.orientations || []).indexOf(modelData.key) >= 0
+                    onToggled: {
+                        axon.setFilter(modelData.key, checked);
+                        view.refresh();
+                    }
+                }
+            }
+
             RexonButton {
                 objectName: "axonFilterClear"
                 Layout.topMargin: 6
@@ -636,6 +690,16 @@ Item {
                             wrapMode: Text.WordWrap
                         }
                     }
+                }
+
+                // A vertical wallpaper on a regular monitor: what happens to the frame.
+                RexonText {
+                    objectName: "axonDetailWarning"
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: view.detail.warning || ""
+                    color: view.colText
+                    wrapMode: Text.WordWrap
                 }
 
                 RexonText {

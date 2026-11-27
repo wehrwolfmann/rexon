@@ -143,7 +143,7 @@ impl RunOutcome {
     fn failure_text(&self) -> String {
         match self {
             RunOutcome::Failed(e) => {
-                crate::log_warn!("privilege", "операция не исполнена: {e}");
+                crate::log_warn!("privilege", "operation not executed: {e}");
                 e.human_text()
             }
             _ => String::new(),
@@ -528,7 +528,7 @@ mod tests {
                 seen.fetch_add(1, Ordering::SeqCst);
                 let msg = match &reply {
                     Reply::Done => {
-                        proto::send_msg(sock.as_fd(), &HelperMsg::Progress { id, line: format!("ход {id}") }).unwrap();
+                        proto::send_msg(sock.as_fd(), &HelperMsg::Progress { id, line: format!("progress {id}") }).unwrap();
                         HelperMsg::Done { id, ok: true, code: Some(0), message_key: None }
                     }
                     Reply::Refuse(key) => {
@@ -558,7 +558,7 @@ mod tests {
             let out = r.run(&op, Vec::new(), &mut |l: &str| lines.push(l.to_string()));
             let _ = tx.send((out, lines));
         });
-        rx.recv_timeout(LIMIT).expect("run завис")
+        rx.recv_timeout(LIMIT).expect("run hung")
     }
 
     #[test]
@@ -568,9 +568,9 @@ mod tests {
         for i in 0..4 {
             let (out, lines) = run_limited(&r, install_op());
             assert!(matches!(&out, RunOutcome::Done(o) if o.ok), "{i}: {out:?}");
-            assert_eq!(lines, [format!("ход {}", i + 1)]);
+            assert_eq!(lines, [format!("progress {}", i + 1)]);
         }
-        assert_eq!(spawns.load(Ordering::SeqCst), 1, "один pkexec на все операции");
+        assert_eq!(spawns.load(Ordering::SeqCst), 1, "one pkexec for all operations");
         assert_eq!(seen.load(Ordering::SeqCst), 4);
         assert!(r.has_session());
         r.shutdown();
@@ -617,10 +617,10 @@ mod tests {
                     .collect();
                 let _ = tx.send(r2.run(&op, fds, &mut |_| {}));
             });
-            let out = rx.recv_timeout(LIMIT).expect("run завис");
+            let out = rx.recv_timeout(LIMIT).expect("run hung");
             assert!(matches!(&out, RunOutcome::Done(o) if o.ok), "{label}: {out:?}");
         }
-        assert_eq!(spawns.load(Ordering::SeqCst), 1, "один pkexec на всё");
+        assert_eq!(spawns.load(Ordering::SeqCst), 1, "one pkexec for everything");
         assert_eq!(seen.load(Ordering::SeqCst), 5);
         r.shutdown();
     }
@@ -726,7 +726,7 @@ mod tests {
         assert_eq!(out, RunOutcome::Legacy(LegacyReason::NotSupported(helper::NOT_FOR_HELPER.into())));
         let (out, _) = run_limited(&r, PrivOp::MateGschemaCleanup);
         assert_eq!(out, RunOutcome::Legacy(LegacyReason::NotSupported(helper::NOT_SUPPORTED_YET.into())));
-        assert_eq!(spawns.load(Ordering::SeqCst), 0, "ради заведомого отказа пароль не спрашивается");
+        assert_eq!(spawns.load(Ordering::SeqCst), 0, "no password is asked for a known refusal");
         assert_eq!(seen.load(Ordering::SeqCst), 0);
     }
 
@@ -771,7 +771,7 @@ mod tests {
 
     impl Waiter for Ready {
         fn wait(self: Box<Self>, on_progress: &mut dyn FnMut(&str)) -> Result<Outcome, ClientError> {
-            on_progress("строка");
+            on_progress("line");
             self.0
         }
     }
@@ -801,11 +801,11 @@ mod tests {
         let mut lines = Vec::new();
         let out = r.run(&op, vec![OwnedFd::from(file)], &mut |l: &str| lines.push(l.to_string()));
         assert_eq!(out, RunOutcome::Done(ok));
-        assert_eq!(lines, ["строка"]);
+        assert_eq!(lines, ["line"]);
         assert_eq!(calls.lock().unwrap().as_slice(), [(op, 1)]);
         // A program failure means executed, not a reason for the old path.
-        let ro = out.to_run_out("строка\n".into()).unwrap();
-        assert_eq!((ro.returncode, ro.stdout.as_str()), (Some(3), "строка\n"));
+        let ro = out.to_run_out("line\n".into()).unwrap();
+        assert_eq!((ro.returncode, ro.stdout.as_str()), (Some(3), "line\n"));
         assert_eq!(ro.outcome, crate::utils::RunOutcome::Failed);
     }
 
@@ -857,18 +857,18 @@ mod tests {
         // Wait until the executor enters submission. Waiting for "mutex busy" alone
         // is not enough: it is also busy in `apply_pending` before it, and "close"
         // was then executed before submission — the test failed as a race.
-        entered_rx.recv_timeout(LIMIT).expect("постановка не началась");
+        entered_rx.recv_timeout(LIMIT).expect("submission did not start");
         assert!(r.backend.try_lock().is_err());
         let started = std::time::Instant::now();
         assert!(!r.has_session());
         r.shutdown();
         assert!(!r.has_session());
-        assert!(started.elapsed() < Duration::from_secs(2), "поток окна ждал окна пароля");
-        assert_eq!(shutdowns.load(Ordering::SeqCst), 0, "пока постановка идёт, клиента не трогаем");
+        assert!(started.elapsed() < Duration::from_secs(2), "the window thread waited for the password dialog");
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 0, "while submission is running, the client is left alone");
         tx.send(()).unwrap();
         let out = worker.join().unwrap();
         assert_eq!(out, RunOutcome::Failed(ClientError::Closed));
-        assert_eq!(shutdowns.load(Ordering::SeqCst), 1, "отложенное «закрыть» исполнено");
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 1, "the deferred close was executed");
         assert!(!alive.load(Ordering::SeqCst));
         assert!(!r.has_session());
     }
@@ -892,7 +892,7 @@ mod tests {
         assert_eq!(r.end_session(Reason::WindowToTray), Some(Reason::WindowToTray));
         assert!(!r.has_session());
         assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
-        assert_eq!(r.end_session(Reason::WindowToTray), None, "права уже нет — молчим");
+        assert_eq!(r.end_session(Reason::WindowToTray), None, "no privilege left, so nothing is said");
     }
 
     /// The text of the "minimized to tray" reason reaches the person every time the

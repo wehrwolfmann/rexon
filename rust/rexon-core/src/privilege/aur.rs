@@ -168,20 +168,20 @@ enum PacOp {
 /// build it).
 pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String> {
     let Some((bin, rest)) = argv.split_first() else {
-        return Err("пустая команда".into());
+        return Err("empty command".into());
     };
     if !PACMAN_BINS.contains(&bin.as_str()) {
-        return Err(format!("не pacman: {bin}"));
+        return Err(format!("not pacman: {bin}"));
     }
     let Some(sep) = rest.iter().position(|a| a == "--") else {
-        return Err("нет `--` перед целями".into());
+        return Err("no `--` before the targets".into());
     };
     let (flags, targets) = (&rest[..sep], &rest[sep + 1..]);
     let mut op: Option<PacOp> = None;
     let (mut asdeps, mut asexplicit, mut remove_mods) = (false, false, false);
     let set_op = |o: PacOp, op: &mut Option<PacOp>| -> Result<(), String> {
         if op.is_some_and(|x| x != o) {
-            return Err("две операции pacman".into());
+            return Err("two pacman operations".into());
         }
         *op = Some(o);
         Ok(())
@@ -196,19 +196,19 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
             }
             if f == name {
                 i += 1;
-                return Some(flags.get(i).cloned().ok_or_else(|| format!("{name} без значения")));
+                return Some(flags.get(i).cloned().ok_or_else(|| format!("{name} without a value")));
             }
             None
         };
         if let Some(v) = value("--ask") {
             let v = v?;
             if !(replace && v == "4") {
-                return Err(format!("--ask {v} без согласия на замену"));
+                return Err(format!("--ask {v} without consent to replace"));
             }
         } else if let Some(v) = value("--config") {
             let v = v?;
             if v != PACMAN_CONF {
-                return Err(format!("чужой --config {v}"));
+                return Err(format!("foreign --config {v}"));
             }
         } else if let Some(v) = value("--color") {
             let v = v?;
@@ -227,22 +227,22 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
                 "--asdeps" | "--asdep" => asdeps = true,
                 "--asexplicit" | "--asexp" => asexplicit = true,
                 "-s" | "--recursive" | "-u" | "--unneeded" | "-n" | "--nosave" => remove_mods = true,
-                _ => return Err(format!("флаг вне списка: {f}")),
+                _ => return Err(format!("flag not in the list: {f}")),
             }
         }
         i += 1;
     }
     let Some(op) = op else {
-        return Err("нет операции pacman".into());
+        return Err("no pacman operation".into());
     };
     if remove_mods && op != PacOp::Remove {
-        return Err("-s/-u/-n не у -R".into());
+        return Err("-s/-u/-n without -R".into());
     }
     if targets.is_empty() {
-        return Err("нет целей".into());
+        return Err("no targets".into());
     }
     if targets.iter().any(|t| t.is_empty() || t.starts_with('-') || t.chars().any(char::is_control)) {
-        return Err("цель похожа на флаг".into());
+        return Err("a target looks like a flag".into());
     }
     let names = |strip_repo: bool| -> Result<Vec<String>, String> {
         targets
@@ -255,7 +255,7 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
                 if crate::system_plan::is_safe_pkg_arg(crate::system::PkgFamily::Arch, name) {
                     Ok(name.to_string())
                 } else {
-                    Err(format!("не имя пакета: {t}"))
+                    Err(format!("not a package name: {t}"))
                 }
             })
             .collect()
@@ -269,22 +269,22 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
         }
         PacOp::Upgrade => {
             if asdeps || asexplicit {
-                return Err("-U с причиной установки".into());
+                return Err("-U with an install reason".into());
             }
             if let Some(t) = targets.iter().find(|t| super::validate::check_aur_package(t).is_err()) {
-                return Err(format!("не файл makepkg: {t}"));
+                return Err(format!("not a makepkg file: {t}"));
             }
             Ok(PacmanCall::Upgrade(targets.to_vec()))
         }
         PacOp::Database => {
             if asdeps == asexplicit {
-                return Err("-D без одной причины установки".into());
+                return Err("-D without exactly one install reason".into());
             }
             Ok(PacmanCall::Database { explicit: asexplicit, names: names(false)? })
         }
         PacOp::Remove => {
             if asdeps || asexplicit {
-                return Err("-R с причиной установки".into());
+                return Err("-R with an install reason".into());
             }
             Ok(PacmanCall::Remove(names(false)?))
         }
@@ -546,8 +546,8 @@ fn random_token() -> String {
             got += n as usize;
         } else if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
             // getrandom exists since Linux 3.17; without it — /dev/urandom.
-            let mut f = std::fs::File::open("/dev/urandom").expect("нет источника случайности");
-            f.read_exact(&mut buf).expect("нет источника случайности");
+            let mut f = std::fs::File::open("/dev/urandom").expect("no source of randomness");
+            f.read_exact(&mut buf).expect("no source of randomness");
             got = buf.len();
         }
     }
@@ -572,7 +572,7 @@ fn prepare_dir(dir: &Path) -> std::io::Result<()> {
     if !m.is_dir() || m.uid() != uid || m.permissions().mode() & 0o777 != 0o700 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            format!("{}: не каталог 0700 пользователя", dir.display()),
+            format!("{}: not a 0700 directory of the user", dir.display()),
         ));
     }
     Ok(())
@@ -656,34 +656,34 @@ impl Broker {
     pub fn decide(&self, token: &str, peer_pid: i32, argv: &[String]) -> Decision {
         let refuse = |why: &str| Decision::Refuse(why.to_string());
         if !is_token(token) {
-            return refuse("токен не по форме");
+            return refuse("malformed token");
         }
         let mut ops = self.lock_ops();
         self.sweep(&mut ops);
         if self.lock_used().contains(token) {
-            return refuse("операция этого токена закончилась");
+            return refuse("the operation of this token has ended");
         }
         let Some(op) = ops.get_mut(token) else {
-            return refuse("неизвестный токен");
+            return refuse("unknown token");
         };
         match op.bound {
             Some((p, _)) => {
                 if !is_descendant(peer_pid, p.pid) {
-                    return refuse("запрос не от сборщика этой операции");
+                    return refuse("the request is not from the builder of this operation");
                 }
             }
             None => {
                 // First request: the shim's parent is a builder started by the window with
                 // the mark of THIS operation.
                 let Some((parent, _)) = proc_stat(peer_pid) else {
-                    return refuse("нет процесса шима");
+                    return refuse("no shim process");
                 };
                 let flag = format!("{OP_FLAG}{}.{token}", self.window_pid);
                 if !is_descendant(parent, self.window_pid) || !cmdline(parent).iter().any(|a| *a == flag) {
-                    return refuse("родитель шима — не сборщик этой операции");
+                    return refuse("the shim parent is not the builder of this operation");
                 }
                 let Some(p) = proc_of(parent) else {
-                    return refuse("сборщик уже вышел");
+                    return refuse("the builder has already exited");
                 };
                 op.bound = Some((p, Instant::now()));
             }
@@ -711,13 +711,13 @@ impl Broker {
                 for name in &names {
                     let name = name.clone();
                     if !op.allowed.contains(&name) {
-                        return Decision::Refuse(format!("{name}: окно не просило собирать этот пакет"));
+                        return Decision::Refuse(format!("{name}: the window did not ask to build this package"));
                     }
                 }
                 let packages =
                     (0..files.len()).map(|i| LocalFile { slot: i as u8, label: files[i].clone() }).collect();
                 if files.len() > u8::MAX as usize {
-                    return refuse("слишком много файлов");
+                    return refuse("too many files");
                 }
                 Decision::Run {
                     op: PrivOp::AurInstallBuilt { packages, allowed: op.allowed.clone(), replace: op.replace },
@@ -731,12 +731,12 @@ impl Broker {
                     in_op(&names, &|n| op.deps.contains(n) || op.allowed.iter().any(|a| a == n))
                 };
                 match miss {
-                    Some(n) => Decision::Refuse(format!("{n}: не из этой операции")),
+                    Some(n) => Decision::Refuse(format!("{n}: not from this operation")),
                     None => Decision::NoOp,
                 }
             }
             PacmanCall::Remove(names) => match in_op(&names, &|n| op.deps.contains(n)) {
-                Some(n) => Decision::Refuse(format!("{n}: эта операция его не ставила")),
+                Some(n) => Decision::Refuse(format!("{n}: this operation did not install it")),
                 None => Decision::Run { op: PrivOp::AurDropMake { names }, files: Vec::new() },
             },
         }
@@ -765,7 +765,7 @@ impl Broker {
         let uid = unsafe { libc::getuid() };
         let peer = super::helper::peer_cred(conn.as_fd());
         let Some((_, peer_pid)) = peer.filter(|(u, p)| *u == uid && *p > 1) else {
-            crate::log_warn!("privilege", "шим AUR: чужой собеседник {peer:?}");
+            crate::log_warn!("privilege", "AUR shim: foreign peer {peer:?}");
             return;
         };
         let _ = conn.set_read_timeout(Some(REQUEST_TIMEOUT));
@@ -779,7 +779,7 @@ impl Broker {
         };
         match self.decide(&req.token, peer_pid, &req.argv) {
             Decision::Refuse(why) => {
-                crate::log_warn!("privilege", "шим AUR: отказ ({why}): {}", req.argv.join(" "));
+                crate::log_warn!("privilege", "AUR shim: refused ({why}): {}", req.argv.join(" "));
                 send(&ShimReply::Refused(format!("{} ({why})", refused_text())));
             }
             Decision::NoOp => send(&ShimReply::Exit(0)),
@@ -816,7 +816,7 @@ impl Broker {
                         send(&ShimReply::Refused(format!("{} ({k})", refused_text())));
                     }
                     RunOutcome::Failed(e) => {
-                        crate::log_warn!("privilege", "шим AUR: операция не исполнена: {e}");
+                        crate::log_warn!("privilege", "AUR shim: operation not executed: {e}");
                         send(&ShimReply::Refused(e.human_text()));
                     }
                 }
@@ -872,7 +872,7 @@ fn live_broker() -> Option<&'static Arc<Broker>> {
         match Broker::start(&dir, std::process::id() as i32, exec) {
             Ok(b) => Some(b),
             Err(e) => {
-                crate::log_warn!("privilege", "шим AUR не поднят: {e}");
+                crate::log_warn!("privilege", "AUR shim not started: {e}");
                 None
             }
         }
@@ -1018,7 +1018,7 @@ mod tests {
     #[test]
     fn прочее_отказ() {
         for (argv, replace) in [
-            (s(&["bash", "-c", "id"]), false), // сторож: имена, не запуск
+            (s(&["bash", "-c", "id"]), false), // guard: names, not a launch
             (s(&["pacman", "-S", "x"]), false),                      // targets without `--`
             (s(&["pacman", "-Syu", "--"]), false),                   // glued flags, no targets
             (s(&["pacman", "-S", "--", "x", "-y"]), false),          // a flag among the targets

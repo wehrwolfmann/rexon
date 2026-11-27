@@ -1389,10 +1389,10 @@ pub fn watch_units(exec_start: &str, program: Option<&str>) -> Vec<(&'static str
                  [Path]\n\
                  PathChanged={PACMAN_LOCAL_DB}\n\
                  Unit={WATCH_SERVICE_UNIT}\n\
-                 # Большое обновление даёт сотни событий за секунды: с\n\
-                 # ограничением по умолчанию (200 за 2 с) слежка отключилась бы\n\
-                 # сама. Повторы безвредны: пока проверка идёт, новые\n\
-                 # срабатывания сливаются с ней.\n\
+                 # A big update gives hundreds of events within seconds: with\n\
+                 # the default limit (200 in 2 s) the watch would switch itself\n\
+                 # off. Repeats are harmless: while a check is running, new\n\
+                 # triggers merge into it.\n\
                  TriggerLimitIntervalSec=0\n\n\
                  [Install]\n\
                  WantedBy=default.target\n"
@@ -1405,8 +1405,8 @@ pub fn watch_units(exec_start: &str, program: Option<&str>) -> Vec<(&'static str
                  Description=Rexon: check pending updates after login and every 6 hours\n\n\
                  [Timer]\n\
                  OnStartupSec=90s\n\
-                 # Повтор раз в 6 часов: опасное обновление может появиться в\n\
-                 # репозиториях до обновления — предупредить, пока не поздно.\n\
+                 # Repeat every 6 hours: a dangerous update may appear in the\n\
+                 # repositories before the update — warn while it is not too late.\n\
                  OnUnitActiveSec=6h\n\
                  Unit={WATCH_SERVICE_UNIT}\n\n\
                  [Install]\n\
@@ -1422,9 +1422,9 @@ pub fn watch_units(exec_start: &str, program: Option<&str>) -> Vec<(&'static str
                  [Service]\n\
                  Type=oneshot\n\
                  ExecStart={exec_start}\n\
-                 # Ждёт конца транзакции pacman и нажатия в уведомлении.\n\
+                 # Waits for the end of the pacman transaction and for a press in the notification.\n\
                  TimeoutStartSec=infinity\n\
-                 # Rexon, открытый кнопкой уведомления, переживает проверку.\n\
+                 # Rexon, opened by the notification button, survives the check.\n\
                  KillMode=process\n\
                  Nice=10\n"
             ),

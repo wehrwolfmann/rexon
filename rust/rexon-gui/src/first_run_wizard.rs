@@ -237,7 +237,7 @@ fn registry() -> &'static Mutex<(u64, Vec<(u64, Notify)>)> {
 /// same technique as for "Take the tutorial again"
 /// (`onboarding_overlay::request_replay`).
 pub fn request_show() -> bool {
-    let mut reg = registry().lock().expect("реестр мастера не отравлен");
+    let mut reg = registry().lock().expect("the wizard registry is not poisoned");
     let mut told = 0usize;
     reg.1.retain(|(_, notify)| match notify() {
         Ok(()) => {
@@ -268,7 +268,7 @@ pub struct FirstRunWizardRust {
 impl Drop for FirstRunWizardRust {
     fn drop(&mut self) {
         if self.show_watch != 0 {
-            let mut reg = registry().lock().expect("реестр мастера не отравлен");
+            let mut reg = registry().lock().expect("the wizard registry is not poisoned");
             reg.1.retain(|(id, _)| *id != self.show_watch);
         }
     }
@@ -278,7 +278,7 @@ impl cxx_qt::Initialize for qobject::FirstRunWizard {
     fn initialize(mut self: Pin<&mut Self>) {
         let handle = self.as_ref().get_ref().qt_thread();
         let id = {
-            let mut reg = registry().lock().expect("реестр мастера не отравлен");
+            let mut reg = registry().lock().expect("the wizard registry is not poisoned");
             reg.0 += 1;
             let id = reg.0;
             reg.1.push((
@@ -361,14 +361,14 @@ impl qobject::FirstRunWizard {
         let mut manager = match SettingsManager::new() {
             Ok(m) => m,
             Err(e) => {
-                rexon_core::log_warn!("first-run", "настройки не открылись: {e}");
+                rexon_core::log_warn!("first-run", "settings did not open: {e}");
                 return false;
             }
         };
         match inst::session_first_run_decline(&mut manager, true) {
             Ok(()) => true,
             Err(e) => {
-                rexon_core::log_warn!("first-run", "отказ не сохранён: {e}");
+                rexon_core::log_warn!("first-run", "the refusal was not saved: {e}");
                 false
             }
         }
@@ -391,7 +391,7 @@ impl qobject::FirstRunWizard {
 
     fn install(self: Pin<&mut Self>, mode: &QString) -> bool {
         let Some(mode) = InstallMode::parse(&mode.to_string()) else {
-            rexon_core::log_warn!("first-run", "незнакомый режим «{mode}»");
+            rexon_core::log_warn!("first-run", "unknown mode \"{mode}\"");
             return false;
         };
         self.run_install(mode)
@@ -541,7 +541,7 @@ fn html(text: &str) -> String {
 /// fields are strings, numbers and lists), but it must not be kept quiet.
 fn serde_value<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or_else(|e| {
-        rexon_core::log_warn!("first-run", "подписи не переведены в JSON: {e}");
+        rexon_core::log_warn!("first-run", "labels not converted to JSON: {e}");
         Value::Null
     })
 }
@@ -592,7 +592,7 @@ fn run_install_with_io(
         let req = live_request(&io, lang, passwordless);
         let result = iexec::install(&io, mode, &req, sink, cancel);
         for line in io.journal() {
-            rexon_core::log_info!("first-run", "сухой прогон установки: {line}");
+            rexon_core::log_info!("first-run", "installation dry run: {line}");
         }
         return result;
     }
@@ -628,7 +628,7 @@ fn deliver(
 ) {
     if let Err(e) = handle.queue(work) {
         if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-            rexon_core::log_warn!("first-run", "ход установки не доставлен окну: {e:?}");
+            rexon_core::log_warn!("first-run", "installation progress not delivered to the window: {e:?}");
         }
     }
 }
@@ -738,7 +738,7 @@ impl SystemIo for DryRunIo {
     // ── Side actions: only the log ───────────────────────────────────────
 
     fn run(&self, argv: &[String], _timeout_secs: Option<u64>, _lang_c: bool) -> RunOut {
-        self.note(format!("запустил бы: {}", argv.join(" ")));
+        self.note(format!("would run: {}", argv.join(" ")));
         // The root script "laid out" the files of an installation for everyone:
         // then the core checks that Rexon is in place.
         if argv.first().is_some_and(|p| p.ends_with("pkexec")) {
@@ -757,13 +757,13 @@ impl SystemIo for DryRunIo {
     }
 
     fn write_text(&self, path: &str, content: &str) -> Result<(), String> {
-        self.note(format!("записал бы {path} ({} знаков)", content.chars().count()));
+        self.note(format!("would write {path} ({} characters)", content.chars().count()));
         self.add_file(path, 0o644);
         Ok(())
     }
 
     fn copy_file(&self, src: &str, dst: &str) -> Result<(), String> {
-        self.note(format!("скопировал бы {src} → {dst}"));
+        self.note(format!("would copy {src} → {dst}"));
         self.add_file(dst, 0o644);
         Ok(())
     }
@@ -773,26 +773,26 @@ impl InstallIo for DryRunIo {
     fn temp_dir(&self, prefix: &str, parent: Option<&str>) -> Result<String, String> {
         let base = parent.unwrap_or("/tmp").trim_end_matches('/').to_string();
         let path = format!("{base}/{prefix}dry-run");
-        self.note(format!("завёл бы временную папку {path}"));
+        self.note(format!("would create the temporary folder {path}"));
         self.dirs.borrow_mut().insert(path.clone());
         Ok(path)
     }
 
     fn rename(&self, src: &str, dst: &str) -> Result<(), String> {
-        self.note(format!("переименовал бы {src} → {dst}"));
+        self.note(format!("would rename {src} → {dst}"));
         self.dirs.borrow_mut().insert(dst.to_string());
         Ok(())
     }
 
     fn make_dirs(&self, path: &str, mode: Option<u32>) -> Result<(), String> {
-        self.note(format!("завёл бы папку {path} (права {:o})", mode.unwrap_or(0o755)));
+        self.note(format!("would create the folder {path} (mode {:o})", mode.unwrap_or(0o755)));
         self.dirs.borrow_mut().insert(path.to_string());
         Ok(())
     }
 
     fn write_file_mode(&self, path: &str, content: &str, mode: u32) -> Result<(), String> {
         self.note(format!(
-            "записал бы {path} (права {mode:o}, {} знаков)",
+            "would write {path} (mode {mode:o}, {} characters)",
             content.chars().count()
         ));
         self.add_file(path, mode);
@@ -800,7 +800,7 @@ impl InstallIo for DryRunIo {
     }
 
     fn copy_file_mode(&self, src: &str, dst: &str, mode: u32) -> Result<(), String> {
-        self.note(format!("скопировал бы {src} → {dst} (права {mode:o})"));
+        self.note(format!("would copy {src} → {dst} (mode {mode:o})"));
         self.add_file(dst, mode);
         Ok(())
     }
@@ -812,19 +812,19 @@ impl InstallIo for DryRunIo {
         _skip: &dyn Fn(&str) -> bool,
         _mode: &dyn Fn(bool, bool) -> u32,
     ) -> Result<usize, String> {
-        self.note(format!("скопировал бы дерево {src} → {dst}"));
+        self.note(format!("would copy the tree {src} → {dst}"));
         self.dirs.borrow_mut().insert(dst.to_string());
         Ok(0)
     }
 
     fn remove_file(&self, path: &str) {
-        self.note(format!("удалил бы файл {path}"));
+        self.note(format!("would remove the file {path}"));
         self.files.borrow_mut().remove(path);
         self.executable.borrow_mut().remove(path);
     }
 
     fn remove_tree(&self, path: &str) {
-        self.note(format!("удалил бы папку {path}"));
+        self.note(format!("would remove the folder {path}"));
         self.dirs.borrow_mut().remove(path);
     }
 }
@@ -840,7 +840,7 @@ mod tests {
         include_str!("first_run_wizard.rs")
             .split_once("#[cfg(test)]")
             .map(|(code, _)| code)
-            .expect("тестовый модуль на месте")
+            .expect("the test module is in place")
     }
 
     /// Not a single wizard label is typed anew in this file: all of them come
@@ -851,20 +851,18 @@ mod tests {
     fn no_human_text_is_typed_twice_in_this_file() {
         let src = code();
         for baked in [
-            "Добро пожаловать",
-            "Установить Rexon",
-            "Для всех пользователей",
-            "Только для вас",
-            "Больше не спрашивать",
-            "Пропустить",
-            "Повторить",
-            "Продолжить",
-            "Идёт установка",
-            "Готово",
-            "Пожалуйста, подождите",
-            "пароль администратора",
-            "Продолжить без установки",
-            "Не спрашивать пароль",
+            "Welcome to Rexon",
+            "Install Rexon",
+            "For everyone on this computer",
+            "Just for you",
+            "Standalone folder",
+            "Don't ask again",
+            "\"Skip\"",
+            "\"Retry\"",
+            "Installing Rexon",
+            "Please wait",
+            "administrator password",
+            "Don't ask for the password",
         ] {
             let hits: Vec<&str> = src
                 .lines()
@@ -873,7 +871,7 @@ mod tests {
                 .collect();
             assert!(
                 hits.is_empty(),
-                "человеческий текст «{baked}» набран здесь, а не взят у ядра: {hits:?}"
+                "human text \"{baked}\" is typed here instead of taken from the core: {hits:?}"
             );
         }
     }
@@ -884,12 +882,12 @@ mod tests {
     #[test]
     fn decisions_are_asked_of_the_core() {
         let src = code();
-        assert!(src.contains("inst::first_run_offer_live()"), "решение берётся не у ядра");
-        assert!(src.contains("inst::session_first_run_decline"), "отказ пишется мимо ядра");
-        assert!(src.contains("iexec::install(&io"), "установка идёт мимо исполнителя ядра");
-        assert!(src.contains("inst::result_texts"), "итог набран не ядром");
+        assert!(src.contains("inst::first_run_offer_live()"), "the decision is not taken from the core");
+        assert!(src.contains("inst::session_first_run_decline"), "the refusal bypasses the core");
+        assert!(src.contains("iexec::install(&io"), "the installation bypasses the core executor");
+        assert!(src.contains("inst::result_texts"), "the outcome is not built by the core");
         for own in ["installer_first_run_declined", "\"pkexec\".to_string()"] {
-            assert!(!src.contains(own), "мост завёл свою копию «{own}»");
+            assert!(!src.contains(own), "the bridge has its own copy of \"{own}\"");
         }
     }
 
@@ -910,11 +908,11 @@ mod tests {
 
         // Neither the folder nor the file exists on disk — everything stayed in
         // the log.
-        assert!(!scratch.exists(), "сухой прогон завёл настоящую папку {scratch:?}");
-        assert_eq!(out.returncode, Some(0), "прогон обязан идти дальше, не запуская команду");
+        assert!(!scratch.exists(), "the dry run created a real folder {scratch:?}");
+        assert_eq!(out.returncode, Some(0), "the run must go on without starting the command");
         let journal = io.journal();
-        assert_eq!(journal.len(), 3, "в журнале не все действия: {journal:?}");
-        assert!(journal[2].starts_with("запустил бы:"), "{journal:?}");
+        assert_eq!(journal.len(), 3, "not all actions are in the log: {journal:?}");
+        assert!(journal[2].starts_with("would run:"), "{journal:?}");
 
         // What was written is visible to the core executor: otherwise the next
         // step would fail.
@@ -933,7 +931,7 @@ mod tests {
         // on the same table as `dry_run_enabled`.
         for (value, want) in [("1", true), ("yes", true), ("", false), ("0", false), ("no", false)] {
             let on = !matches!(value.trim(), "" | "0" | "no" | "false");
-            assert_eq!(on, want, "значение «{value}»");
+            assert_eq!(on, want, "value \"{value}\"");
         }
     }
 
@@ -941,14 +939,14 @@ mod tests {
     /// the `operation` map are read by the shared `DeOperationDialog.qml`.
     #[test]
     fn operation_map_matches_the_shared_dialog() {
-        let op = OpView::running("проверка");
+        let op = OpView::running("check");
         let map = op.to_map();
         for key in [
             "phase", "title", "text", "informative", "status", "bar", "barMax", "current",
             "closeText", "closeEnabled", "cancellable", "resultText", "danger", "yesText",
             "noText", "okText", "cancelText",
         ] {
-            assert!(map.contains(&QString::from(key)), "в карте окна нет ключа «{key}»");
+            assert!(map.contains(&QString::from(key)), "the window map has no key \"{key}\"");
         }
     }
 }

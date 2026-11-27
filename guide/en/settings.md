@@ -7,7 +7,7 @@ things for the whole computer: which file manager opens folders, which
 programs open files by default, wallpapers from a picture or a video, ambient
 sounds and event sounds. The sections run top to bottom in one list; some of
 them only appear where they make sense (for example, panel protection only
-with KDE Plasma).
+appears on desktops whose panel Rexon can save).
 
 ![The Settings tab: language, interface skin, tour](../images/settings-top.png)
 
@@ -26,7 +26,7 @@ with KDE Plasma).
 | 📚 **Wallpaper Library** | Rexon wallpaper packs (.rxn) |
 | 🪟 **Import Windows Themes** | Bring over the look of your old Windows PC |
 | 🔒 **Default App Protection** | Keep a new desktop from replacing your programs |
-| 🛡️ **KDE Plasma Panel Protection** | With Plasma only: copies of the panel, widgets and shortcuts |
+| 🛡️ **Panel Protection** | Copies of the panels, applets and keyboard shortcuts of any desktop |
 | 🪟 **Desktop Appearance** | Only with a Plasma look fork installed (AeroShell and similar) |
 
 Animation, fonts, window title bar buttons, launch feedback, icons in
@@ -129,17 +129,41 @@ background for a dark theme, dark on light for a light one.
   the theme. **Return as It Was Before “…”** on the Appearance tab (or
   **"↩️ Put Back as It Was"** for a Distro Look) brings them back too.
 
-## Backups of the KDE Plasma panel
+## Panel copies
 
-**🛡️ KDE Plasma Panel Protection** appears when Plasma is running or copies
-of it are left.
+**🛡️ Panel Protection** saves the panel layout, applets and keyboard shortcuts
+of your desktop and brings them back if something broke after installing
+another desktop. It works on every desktop Rexon knows: KDE Plasma, GNOME,
+Cinnamon, MATE, XFCE, Budgie, Pantheon, LXQt, COSMIC, Deepin, Wayfire,
+Hyprland, Sway, niri and river.
 
-1. Press **"📦 Save Copy"** — Rexon saves the panel layout, widgets and
-   keyboard shortcuts.
-2. The copies appear in the "Saved copies" list.
-3. If the panel broke after installing another desktop, press **"Restore"**
-   next to the copy you want and confirm. The current panel layout will be
-   replaced.
+1. Press **"📦 Save Copy"**. The hint above the button says what exactly is
+   copied on this desktop.
+2. The copies of this desktop appear in the "Saved copies" list. Up to 10
+   copies are kept per desktop; the very first one, **"⭐ the original, before
+   Rexon"**, is never removed.
+3. Before installing or switching desktops, Rexon takes copies of the panels
+   of **all installed desktops** by itself: it is usually not the desktop
+   being installed that breaks, but a neighbour.
+4. If a panel broke, press **"Restore"** next to the copy you want and
+   confirm. Copies of other desktops are below, in the folded **"Copies of
+   other desktops"** block: you can restore them from here too, and that
+   desktop picks the copy up the next time you log in to it.
+
+Good to know:
+
+- GNOME, Budgie and Pantheon read some keyboard shortcuts from shared
+  settings. Restoring the shortcuts of one of them changes the others too;
+  Rexon names them in the question before restoring.
+- On KDE Plasma the shortcuts come back right away. If some shortcut could
+  not be handed to the running desktop, Rexon says how many will take effect
+  after you log in again. On river the shortcuts always apply only after you
+  log in again.
+- On Deepin, restoring shortcuts restarts the desktop's services for a
+  moment: the theme, the wallpaper slideshow and power settings may blink.
+  Rexon warns you beforehand.
+- Panel protection leaves the theme, wallpaper, fonts and colors alone: they
+  have their own sections and their own "Put Back as It Was".
 
 ## Wallpaper, sounds and more
 
