@@ -1008,6 +1008,7 @@ pub fn plymouth_already_stock_line(target: &str) -> String {
 /// Загрузочная заставка меняется (initramfs пересобирается).
 pub fn plymouth_switch_line(current: &str, target: &str) -> String {
     trf(
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         "🐧 Boot splash: “%1” → “%2” (rebuilding the initramfs; takes effect after a \
          reboot).",
         &[&current, &target],
@@ -1046,10 +1047,12 @@ pub fn sddm_removing_line(to_remove: &[String], default_theme: Option<&str>) -> 
     let files = to_remove.join(", ");
     match default_theme {
         Some(t) if !t.is_empty() => trf(
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             "🖥️ Login screen (SDDM): removing third-party settings [%1] → it goes back to “%2”.",
             &[&files, &t],
         ),
         _ => trf(
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             "🖥️ Login screen (SDDM): removing third-party settings [%1] → it goes back to \
              the distribution default.",
             &[&files],

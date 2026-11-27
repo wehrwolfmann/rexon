@@ -720,6 +720,10 @@ pub struct Undo {
     seq: u32,
     /// Прежние значения стола в порядке записи; `None` — не снимаются.
     values: Option<Vec<ValueBefore>>,
+    /// Пути, которых до прогона не было и которые ждут отметки «заведено»
+    /// после чужой записи ([`Self::guard_external`] → [`Self::after_external`]).
+    /// Их «что было» — «не было»: промежуточную копию с них не снимаем.
+    pending: Vec<std::path::PathBuf>,
 }
 
 /// Путь, тронутый прогоном ([`Undo::keep_into`]).
@@ -826,6 +830,9 @@ impl Undo {
     pub(crate) fn guard_external(&mut self, paths: &[std::path::PathBuf]) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
         let mut missing = Vec::new();
         for p in paths {
+            if self.pending.contains(p) {
+                continue; // уже ждёт отметки: «что было» — «не было»
+            }
             match std::fs::symlink_metadata(p) {
                 Ok(m) if m.is_dir() => {}
                 Ok(_) => self.keep_copy(p),
@@ -836,6 +843,9 @@ impl Undo {
                             break;
                         }
                         top = parent.to_path_buf();
+                    }
+                    if self.enabled {
+                        self.pending.push(p.clone());
                     }
                     missing.push((p.clone(), top));
                 }
@@ -849,6 +859,7 @@ impl Undo {
     pub(crate) fn after_external(&mut self, missing: Vec<(std::path::PathBuf, std::path::PathBuf)>) {
         let mut seen: Vec<std::path::PathBuf> = Vec::new();
         for (path, top) in missing {
+            self.pending.retain(|p| *p != path);
             let mut chain: Vec<std::path::PathBuf> = Vec::new();
             for a in path.ancestors() {
                 chain.push(a.to_path_buf());
@@ -883,6 +894,12 @@ impl Undo {
     /// удалось: вызывающий поступает как без отката.
     fn set_aside(&mut self, path: &Path) -> bool {
         if !self.enabled {
+            return false;
+        }
+        // Заведённое этим же прогоном откладывать незачем: до прогона его не
+        // было, при сбое его снимет сам откат, а отложенная копия стала бы
+        // ложным «что было» (см. [`Self::keep_copy`]).
+        if self.made_by_run(path) {
             return false;
         }
         let backup = self.side_path(path, "undo");
@@ -972,11 +989,29 @@ impl Undo {
         if !real.is_file() {
             return;
         }
+        // Заведённое этим же прогоном (сам файл, каталог-копия над ним или
+        // путь, ждущий отметки после чужой записи): до прогона его не было,
+        // и промежуточная копия стала бы ложным «что было» — «Вернуть как
+        // было» воскресило бы файл, которого у человека не было.
+        if self.made_by_run(path) || self.made_by_run(&real) {
+            return;
+        }
         let backup = self.side_path(&real, "undo");
         match std::fs::copy(&real, &backup) {
             Ok(_) => self.done.push(Done::Saved { path: real, backup }),
             Err(e) => crate::log_warn!("install", "{}: копия для отката не снята — {e}", real.display()),
         }
+    }
+
+    /// `path` заведён этим прогоном: отмечен заведённым (сам или каталог-копия
+    /// над ним) или ждёт отметки после чужой записи.
+    fn made_by_run(&self, path: &Path) -> bool {
+        self.pending.iter().any(|p| p == path)
+            || self.done.iter().any(|d| match d {
+                Done::Created(p) => p == path,
+                Done::CreatedTree(p) => path.starts_with(p),
+                Done::Saved { .. } => false,
+            })
     }
 
     /// Итог прогона: успех — отложенное стереть; сбой — снять положенное и

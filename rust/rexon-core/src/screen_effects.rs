@@ -32,6 +32,9 @@
 //!   подключения в управляемом блоке — тот же механизм, что у «Анимации»
 //!   ([`crate::animations::wm_include`]). Выключение снимает блок, конфиг
 //!   человека возвращается к прежним байтам.
+//! * Где своего шейдера на экран нет, но есть штатный чёрно-белый фильтр
+//!   (KDE, Pantheon, COSMIC), пресет «Чёрно-белый» включает этот фильтр
+//!   ([`plan_native_mono`]); остальные пресеты там не предлагаются.
 //!
 //! ⚖️ Происхождение: весь GLSL здесь — собственный код Rexon (Apache-2.0).
 //! Приёмы общеизвестные (развёртка косинусом, бочкообразное искажение,
@@ -44,7 +47,8 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::animations::{
-    argv, parse_state_line, run_steps, state_line, without_block, wm_include, wm_targets, LookCtx, LookIo, LookStep,
+    argv, gsettings_get, gsettings_set, kconfig_value, kwrite, parse_state_line, run_steps, state_line, without_block,
+    wm_include, wm_targets, LookCtx, LookIo, LookStep,
 };
 use crate::i18n::{n_, tr, trf};
 use crate::themes::WmSyntax;
@@ -702,6 +706,15 @@ pub fn support(de: &str, wayland: bool) -> Support {
     }
 }
 
+/// Контекст раздела для окружения `chosen`, выбранного в «Текущее
+/// окружение» вкладки «Оформление»: пусто, «определить автоматически» или
+/// тот же стол — контекст сеанса как есть; другой — его имя и ЕГО род сеанса
+/// ([`KNOWN_DESKTOPS`]; незнакомый — род сеанса прежний). Пояснение и запись
+/// раздела идут за выбранным столом, а не за запущенным.
+pub fn ctx_for(session: LookCtx, chosen: &str) -> LookCtx {
+    session.for_chosen(chosen)
+}
+
 /// Все известные окружения: (имя ядра, сеанс Wayland).
 pub const KNOWN_DESKTOPS: &[(&str, bool)] = &[
     ("gnome", true),
@@ -814,6 +827,7 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
     match ctx.de.as_str() {
         "hyprland" => read_hyprland(io, ctx),
         "gnome" | "cinnamon-mint" => read_gnome_cinnamon(io, ctx),
+        "kde" | "pantheon" | "cosmic" => read_native_mono(io, ctx),
         _ => EffectSettings::default(),
     }
 }
@@ -1054,6 +1068,191 @@ pub fn plan_gnome_cinnamon(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings)
     Ok(steps)
 }
 
+// ── Штатный чёрно-белый фильтр: KDE, Pantheon, COSMIC ─────────────────────
+//
+// Своего шейдера на весь экран здесь Rexon не кладёт, но у окружения есть
+// свой чёрно-белый фильтр — его и включает пресет «Чёрно-белый»:
+// * KDE: встроенный эффект KWin «Корректировка при цветовой слепоте»
+//   (`colorblindnesscorrection`), режим «Все цвета (оттенки серого)».
+//   Ключи — те же, что пишет модуль KDE «Специальные возможности»
+//   (`kcmaccessibilitycolorblindnesscorrection.kcfg`):
+//   `kwinrc [Plugins] colorblindnesscorrectionEnabled`,
+//   `[Effect-colorblindnesscorrection] Mode` (3 — оттенки серого) и
+//   `Intensity` (0…1); затем, как модуль KDE, `loadEffect`/`unloadEffect` и
+//   `reconfigureEffect` у `org.kde.KWin /Effects`. Фильтр, включённый
+//   человеком под цветовую слепоту (другой режим), Rexon не трогает: это
+//   его настройка доступности, а не наш эффект.
+// * Pantheon: Gala, схема `io.elementary.desktop.wm.accessibility`, ключи
+//   `enable-monochrome-filter` и `monochrome-filter-strength` (0…1). Gala
+//   следит за схемой сама.
+// * COSMIC: cosmic-comp хранит фильтр экрана в файле состояния
+//   `$XDG_STATE_HOME/cosmic-comp/a11y_screen_filter.ron` и читает его
+//   только при запуске (живьём фильтр меняется лишь протоколом Wayland
+//   самой оболочки), поэтому включение вступает в силу со следующего входа.
+//   Силы у фильтра COSMIC нет. Флаг `inverted` человека сохраняется.
+// Пробный показ на 15 секунд здесь не нужен: штатный фильтр не может
+// оставить чёрный экран, как несобравшийся шейдер.
+
+/// Эффект KWin с чёрно-белым режимом.
+pub const KWIN_CB_EFFECT: &str = "colorblindnesscorrection";
+const KWIN_CB_GROUP: &str = "Effect-colorblindnesscorrection";
+const KWIN_CB_ENABLED: &str = "colorblindnesscorrectionEnabled";
+/// Режим «оттенки серого» (четвёртый в перечне режимов эффекта KWin).
+const KWIN_CB_MONO: &str = "3";
+/// Схема Gala с чёрно-белым фильтром.
+pub const GALA_A11Y_SCHEMA: &str = "io.elementary.desktop.wm.accessibility";
+
+const MSG_KDE_FILTER_BUSY: &str = n_(
+    // TRANSLATORS: Screen effects on KDE Plasma: the person already uses Plasma's color filter for color blindness. "System Settings → Accessibility" is the KDE place, keep it as KDE translates it; arrows ← → point the way they should in your language: in right-to-left languages swap them.
+    "Plasma's color filter is already in use for color blindness correction. Rexon won't replace it: \
+     turn it off in System Settings → Accessibility first.",
+);
+// TRANSLATORS: Toast after screen effects were changed on COSMIC, which reads the setting only at login.
+const MSG_COSMIC_NEXT_LOGIN: &str = n_("COSMIC will apply this the next time you log in.");
+
+/// Окружение со штатным фильтром, но без своего шейдера Rexon: доступен
+/// только пресет «Чёрно-белый».
+pub fn native_mono_only(de: &str, wayland: bool) -> bool {
+    let s = support(de, wayland);
+    !s.ready && s.native_monochrome
+}
+
+/// Файл фильтра экрана COSMIC (`state_home` — `$XDG_STATE_HOME`, пусто —
+/// `~/.local/state`).
+pub fn cosmic_filter_path(state_home: &str, home: &str) -> String {
+    let base = if state_home.starts_with('/') {
+        state_home.trim_end_matches('/').to_string()
+    } else {
+        format!("{}/.local/state", home.trim_end_matches('/'))
+    };
+    format!("{base}/cosmic-comp/a11y_screen_filter.ron")
+}
+
+fn cosmic_filter_path_env(ctx: &LookCtx) -> String {
+    cosmic_filter_path(&std::env::var("XDG_STATE_HOME").unwrap_or_default(), &ctx.home)
+}
+
+/// Текст файла COSMIC (RON, в том же виде, что пишет cosmic-comp).
+fn cosmic_filter_content(inverted: bool, greyscale: bool) -> String {
+    let mut out = format!("(\n    inverted: {inverted},\n");
+    if greyscale {
+        out.push_str("    color_filter: Some(Greyscale),\n");
+    }
+    out.push(')');
+    out
+}
+
+/// Из файла COSMIC: (инверсия, оттенки серого).
+fn parse_cosmic_filter(text: &str) -> (bool, bool) {
+    let flat: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    (flat.contains("inverted:true"), flat.contains("color_filter:Some(Greyscale)"))
+}
+
+/// Вызов `org.kde.kwin.Effects` с именем эффекта (вне KDE — молча мимо).
+fn kwin_effects_call(method: &str) -> LookStep {
+    let method = format!("org.kde.kwin.Effects.{method}");
+    let arg = [crate::utils::DbusArg::Str(KWIN_CB_EFFECT.to_string())];
+    LookStep::Notify(vec![
+        crate::utils::dbus_call_argv("dbus-send", "dbus-send", "org.kde.KWin", "/Effects", &method, &arg),
+        crate::utils::dbus_call_argv("qdbus", "qdbus6", "org.kde.KWin", "/Effects", &method, &arg),
+    ])
+}
+
+/// Сила числом с точкой: `1` gsettings принял бы за целое и отверг для `d`.
+fn strength_value(strength: f64) -> String {
+    format!("{:.2}", strength.clamp(0.0, 1.0))
+}
+
+/// Что сейчас включено штатным фильтром.
+pub fn read_native_mono(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
+    // Штатные фильтры по умолчанию в полную силу (как у KDE и Gala).
+    let mut s = EffectSettings { preset: None, params: EffectParams { strength: 1.0, ..EffectParams::default() } };
+    let strength = |v: Option<String>| v.and_then(|v| v.parse::<f64>().ok()).map(|v| v.clamp(0.0, 1.0));
+    match ctx.de.as_str() {
+        "kde" => {
+            let on = kconfig_value(io, ctx, "kwinrc", "Plugins", KWIN_CB_ENABLED).as_deref() == Some("true")
+                && kconfig_value(io, ctx, "kwinrc", KWIN_CB_GROUP, "Mode").as_deref() == Some(KWIN_CB_MONO);
+            if on {
+                s.preset = Some(Preset::Monochrome);
+                s.params.strength = strength(kconfig_value(io, ctx, "kwinrc", KWIN_CB_GROUP, "Intensity")).unwrap_or(1.0);
+            }
+        }
+        "pantheon" => {
+            if gsettings_get(io, GALA_A11Y_SCHEMA, "enable-monochrome-filter").as_deref() == Some("true") {
+                s.preset = Some(Preset::Monochrome);
+            }
+            if let Some(v) = strength(gsettings_get(io, GALA_A11Y_SCHEMA, "monochrome-filter-strength")) {
+                s.params.strength = v;
+            }
+        }
+        "cosmic" => {
+            if io.read(&cosmic_filter_path_env(ctx)).is_some_and(|t| parse_cosmic_filter(&t).1) {
+                s.preset = Some(Preset::Monochrome);
+            }
+        }
+        _ => {}
+    }
+    s
+}
+
+/// План для штатного фильтра. `Err` — готовая фраза, почему нельзя.
+pub fn plan_native_mono(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
+    let want = match new.preset {
+        None => false,
+        Some(Preset::Monochrome) => true,
+        Some(_) => return Err(support(&ctx.de, ctx.wayland).note),
+    };
+    let cur = read_native_mono(io, ctx);
+    let on_now = cur.preset.is_some();
+    let strength = new.params.clamped().strength;
+    let same_strength = (cur.params.strength - strength).abs() < 0.005;
+    let mut steps = Vec::new();
+    match ctx.de.as_str() {
+        "kde" => {
+            let enabled = kconfig_value(io, ctx, "kwinrc", "Plugins", KWIN_CB_ENABLED).as_deref() == Some("true");
+            if !want {
+                if on_now {
+                    // Умолчания модуля KDE — удалением ключей: kwinrc
+                    // возвращается к виду до Rexon.
+                    steps.push(kwrite("kwinrc", "Plugins", KWIN_CB_ENABLED, None, true));
+                    steps.push(kwrite("kwinrc", KWIN_CB_GROUP, "Mode", None, false));
+                    steps.push(kwrite("kwinrc", KWIN_CB_GROUP, "Intensity", None, false));
+                    steps.push(kwin_effects_call("unloadEffect"));
+                }
+                return Ok(steps);
+            }
+            if enabled && !on_now {
+                return Err(tr(MSG_KDE_FILTER_BUSY));
+            }
+            if on_now && same_strength {
+                return Ok(steps);
+            }
+            steps.push(kwrite("kwinrc", "Plugins", KWIN_CB_ENABLED, Some("true"), true));
+            steps.push(kwrite("kwinrc", KWIN_CB_GROUP, "Mode", Some(KWIN_CB_MONO), false));
+            steps.push(kwrite("kwinrc", KWIN_CB_GROUP, "Intensity", Some(&strength_value(strength)), false));
+            steps.push(kwin_effects_call("loadEffect"));
+            steps.push(kwin_effects_call("reconfigureEffect"));
+        }
+        "pantheon" => {
+            if want && !(on_now && same_strength) {
+                steps.push(gsettings_set(GALA_A11Y_SCHEMA, "monochrome-filter-strength", &strength_value(strength)));
+            }
+            if want != on_now {
+                steps.push(gsettings_set(GALA_A11Y_SCHEMA, "enable-monochrome-filter", if want { "true" } else { "false" }));
+            }
+        }
+        "cosmic" => {
+            if want != on_now {
+                let path = cosmic_filter_path_env(ctx);
+                let inverted = io.read(&path).is_some_and(|t| parse_cosmic_filter(&t).0);
+                steps.push(LookStep::WriteFile { path, content: cosmic_filter_content(inverted, want) });
+            }
+        }
+        _ => return Err(support(&ctx.de, ctx.wayland).note),
+    }
+    Ok(steps)
+}
+
 fn hypr_reload() -> LookStep {
     LookStep::Notify(vec![argv(&["hyprctl", "reload"])])
 }
@@ -1063,6 +1262,7 @@ pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Re
     match ctx.de.as_str() {
         "hyprland" => plan_hyprland(io, ctx, new),
         "gnome" | "cinnamon-mint" => plan_gnome_cinnamon(io, ctx, new),
+        "kde" | "pantheon" | "cosmic" => plan_native_mono(io, ctx, new),
         _ => Err(support(&ctx.de, ctx.wayland).note),
     }
 }
@@ -1125,6 +1325,8 @@ pub fn apply(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> String {
         return String::new();
     }
     match run_steps(io, ctx, &steps) {
+        // COSMIC читает фильтр только при входе — «применено» было бы неправдой.
+        Ok(()) if ctx.de == "cosmic" => tr(MSG_COSMIC_NEXT_LOGIN),
         Ok(()) => tr(MSG_APPLIED),
         Err(e) => e,
     }
@@ -1152,6 +1354,15 @@ pub struct ScreenEffectsState {
     pub coverage: Coverage,
     /// Rexon умеет здесь включать эффекты: есть «Применить».
     pub can_apply: bool,
+    /// Только штатный чёрно-белый фильтр окружения ([`plan_native_mono`]):
+    /// плитки — «Выключено» и «Чёрно-белый».
+    pub monochrome_only: bool,
+    /// Ползунок силы что-то меняет (у фильтра COSMIC силы нет).
+    pub has_strength: bool,
+    /// Включённое показывается на пробу (15 с без ответа — откат). Нужно
+    /// только своему шейдеру: штатный фильтр чёрного экрана не оставит, а
+    /// COSMIC и вовсе применит его лишь при входе.
+    pub trial: bool,
     /// Честное пояснение из таблицы [`support`].
     pub note: String,
     /// Что нужно поставить (пусто — ничего).
@@ -1173,10 +1384,14 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ScreenEffectsState {
     let sup = support(&ctx.de, ctx.wayland);
     let cur = read_settings(io, ctx);
     let p = cur.params.clamped();
+    let mono_only = native_mono_only(&ctx.de, ctx.wayland);
     ScreenEffectsState {
         de: ctx.de.clone(),
         coverage: sup.coverage,
-        can_apply: sup.ready,
+        can_apply: sup.ready || mono_only,
+        monochrome_only: mono_only,
+        has_strength: ctx.de != "cosmic",
+        trial: sup.ready,
         note: sup.note,
         needs: sup.needs,
         per_window: sup.host.is_some_and(Host::per_window),
@@ -1188,6 +1403,7 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ScreenEffectsState {
         presets: Preset::ALL
             .iter()
             .enumerate()
+            .filter(|(_, p)| !mono_only || **p == Preset::Monochrome)
             .map(|(index, p)| PresetTile {
                 id: p.id(),
                 label: p.label(),
@@ -1253,6 +1469,25 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;
+
+    /// Выбранное в «Текущее окружение» побеждает запущенное: в сеансе KDE
+    /// при выбранном Wayfire пояснение — про Wayfire, а не про KWin.
+    #[test]
+    fn chosen_desktop_drives_the_note() {
+        let mut kde = LookCtx::new("kde", "/h", None);
+        kde.wayland = true;
+        let wf = ctx_for(kde.clone(), "wayfire");
+        assert_eq!((wf.de.as_str(), wf.wayland), ("wayfire", true));
+        assert_eq!(support(&wf.de, wf.wayland).note, support("wayfire", true).note);
+        assert_ne!(support(&wf.de, wf.wayland).note, support("kde", true).note);
+        // MATE — сеанс X11: совет про picom, а не «нет Wayland».
+        let mate = ctx_for(kde.clone(), "mate");
+        assert!(!mate.wayland);
+        for same in ["", "auto", "kde", "  "] {
+            let c = ctx_for(kde.clone(), same);
+            assert_eq!((c.de.as_str(), c.wayland), ("kde", true), "{same:?}");
+        }
+    }
 
     // ── генератор ──────────────────────────────────────────────────────────
 
@@ -1636,7 +1871,11 @@ mod tests {
 
         let k = LookCtx::new("kde", "/h", Some("/h/.config"));
         let st = read_state(&io, &k);
-        assert!(!st.can_apply && st.per_window && !st.moving && st.note.contains("KWin"));
+        // KDE: своего шейдера пока нет — только штатный чёрно-белый фильтр.
+        assert!(st.can_apply && st.monochrome_only && !st.trial && st.has_strength);
+        assert!(st.per_window && !st.moving && st.note.contains("KWin"));
+        assert_eq!(st.presets.iter().map(|t| (t.id, t.index)).collect::<Vec<_>>(), vec![("monochrome", 7)]);
+        assert!(read_state(&io, &c).trial, "свой шейдер — на пробу");
         let sway = read_state(&io, &LookCtx::new("sway", "/h", Some("/h/.config")));
         assert_eq!(sway.coverage, Coverage::None);
         assert!(!sway.can_apply);
@@ -1873,6 +2112,201 @@ mod shell_ext_tests {
         assert!(err.contains("older version"), "{err}");
         // А выключать там нечего — без ошибки.
         assert!(plan_settings(&io, &c, &EffectSettings::default()).unwrap().iter().all(|s| matches!(s, LookStep::WriteFile { .. })));
+        assert_eq!(read_settings(&io, &c).preset, None);
+    }
+}
+
+#[cfg(test)]
+mod native_mono_tests {
+    //! KDE, Pantheon, COSMIC: штатный чёрно-белый фильтр на подставной машине.
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    /// Файлы и gsettings в памяти; `kwriteconfig6` пишет в kwinrc по-настоящему
+    /// (разбором аргументов), чтобы снимок после записи видел итог.
+    #[derive(Default)]
+    struct NativeIo {
+        files: RefCell<HashMap<String, String>>,
+        gs: RefCell<HashMap<String, String>>,
+        ran: RefCell<Vec<Vec<String>>>,
+    }
+
+    const KWINRC: &str = "/h/.config/kwinrc";
+
+    impl NativeIo {
+        fn kwrite(&self, a: &[String]) {
+            let at = |flag: &str| a.iter().position(|x| x == flag).map(|i| a[i + 1].clone()).unwrap();
+            let (group, key) = (at("--group"), at("--key"));
+            let value = (!a.contains(&"--delete".to_string())).then(|| a.last().unwrap().clone());
+            let mut cfg: Vec<(String, Vec<(String, String)>)> = Vec::new();
+            let text = self.files.borrow().get(KWINRC).cloned().unwrap_or_default();
+            for line in text.lines() {
+                if let Some(g) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                    cfg.push((g.to_string(), Vec::new()));
+                } else if let Some((k, v)) = line.split_once('=') {
+                    cfg.last_mut().unwrap().1.push((k.to_string(), v.to_string()));
+                }
+            }
+            if !cfg.iter().any(|(g, _)| *g == group) {
+                cfg.push((group.clone(), Vec::new()));
+            }
+            let g = cfg.iter_mut().find(|(g, _)| *g == group).unwrap();
+            g.1.retain(|(k, _)| *k != key);
+            if let Some(v) = value {
+                g.1.push((key, v));
+            }
+            let mut out = String::new();
+            for (g, kv) in cfg.iter().filter(|(_, kv)| !kv.is_empty()) {
+                out.push_str(&format!("[{g}]\n"));
+                for (k, v) in kv {
+                    out.push_str(&format!("{k}={v}\n"));
+                }
+            }
+            self.files.borrow_mut().insert(KWINRC.to_string(), out);
+        }
+    }
+
+    impl LookIo for NativeIo {
+        fn run(&self, a: &[String]) -> (bool, String) {
+            self.ran.borrow_mut().push(a.to_vec());
+            match a[0].as_str() {
+                "kwriteconfig6" => self.kwrite(a),
+                "gsettings" => {
+                    let k = format!("{} {}", a[2], a[3]);
+                    if a[1] == "get" {
+                        return self.gs.borrow().get(&k).map_or((false, String::new()), |v| (true, v.clone()));
+                    }
+                    self.gs.borrow_mut().insert(k, a[4].clone());
+                }
+                _ => {}
+            }
+            (true, String::new())
+        }
+        fn have(&self, _: &str) -> bool {
+            true
+        }
+        fn read(&self, p: &str) -> Option<String> {
+            self.files.borrow().get(p).cloned()
+        }
+        fn write(&self, p: &str, t: &str) -> bool {
+            self.files.borrow_mut().insert(p.into(), t.into());
+            true
+        }
+        fn list_dir(&self, _: &str) -> Vec<String> {
+            Vec::new()
+        }
+    }
+
+    fn ctx(de: &str) -> LookCtx {
+        let mut c = LookCtx::new(de, "/h", Some("/h/.config"));
+        c.wayland = true;
+        c
+    }
+
+    fn mono(strength: f64) -> EffectSettings {
+        EffectSettings { preset: Some(Preset::Monochrome), params: EffectParams { strength, speed: 1.0 } }
+    }
+
+    fn calls(io: &NativeIo, method: &str) -> usize {
+        io.ran.borrow().iter().filter(|r| r.iter().any(|x| x.ends_with(method))).count()
+    }
+
+    #[test]
+    fn kde_on_change_off_restores_kwinrc() {
+        crate::i18n::set_language(Some("en"));
+        let c = ctx("kde");
+        let io = NativeIo::default();
+        let before = "[Plugins]\nblurEnabled=false\n".to_string();
+        io.files.borrow_mut().insert(KWINRC.into(), before.clone());
+        assert_eq!(read_settings(&io, &c).preset, None);
+
+        assert_eq!(apply(&io, &c, &mono(0.7)), "Screen effects applied.");
+        let rc = io.read(KWINRC).unwrap();
+        assert!(rc.contains("colorblindnesscorrectionEnabled=true"), "{rc}");
+        assert!(rc.contains("[Effect-colorblindnesscorrection]\nMode=3\nIntensity=0.70\n"), "{rc}");
+        assert_eq!(calls(&io, "loadEffect"), 1);
+        assert_eq!(calls(&io, "reconfigureEffect"), 1);
+        let now = read_settings(&io, &c);
+        assert_eq!((now.preset, now.params.strength), (Some(Preset::Monochrome), 0.7));
+
+        // То же ещё раз — делать нечего; другая сила — переписать.
+        assert!(plan_settings(&io, &c, &mono(0.7)).unwrap().is_empty());
+        assert!(!plan_settings(&io, &c, &mono(0.3)).unwrap().is_empty());
+
+        // Выключение — kwinrc как был до Rexon, эффект выгружен.
+        apply(&io, &c, &EffectSettings::default());
+        assert_eq!(io.read(KWINRC).unwrap(), before);
+        assert_eq!(calls(&io, "unloadEffect"), 1);
+        assert!(plan_settings(&io, &c, &EffectSettings::default()).unwrap().is_empty());
+
+        // Свои шейдеры здесь пока не применяются — честный отказ.
+        let err = plan_settings(&io, &c, &EffectSettings { preset: Some(Preset::Crt), ..mono(0.5) }).unwrap_err();
+        assert!(err.contains("KWin"), "{err}");
+    }
+
+    /// Фильтр цветовой слепоты человека (другой режим) не трогаем ни
+    /// включением, ни выключением.
+    #[test]
+    fn kde_colorblind_filter_of_the_person_is_left_alone() {
+        crate::i18n::set_language(Some("en"));
+        let c = ctx("kde");
+        let io = NativeIo::default();
+        let mine = "[Effect-colorblindnesscorrection]\nMode=1\n[Plugins]\ncolorblindnesscorrectionEnabled=true\n";
+        io.files.borrow_mut().insert(KWINRC.into(), mine.into());
+        assert_eq!(read_settings(&io, &c).preset, None);
+        let err = plan_settings(&io, &c, &mono(1.0)).unwrap_err();
+        assert!(err.contains("Accessibility"), "{err}");
+        assert!(plan_settings(&io, &c, &EffectSettings::default()).unwrap().is_empty());
+        assert_eq!(io.read(KWINRC).unwrap(), mine);
+    }
+
+    #[test]
+    fn pantheon_gala_keys() {
+        crate::i18n::set_language(Some("en"));
+        let c = ctx("pantheon");
+        let io = NativeIo::default();
+        io.gs.borrow_mut().insert(format!("{GALA_A11Y_SCHEMA} enable-monochrome-filter"), "false".into());
+        io.gs.borrow_mut().insert(format!("{GALA_A11Y_SCHEMA} monochrome-filter-strength"), "1.0".into());
+        let st = read_state(&io, &c);
+        assert!(st.can_apply && st.monochrome_only && st.has_strength && !st.trial);
+        assert_eq!(st.presets.len(), 1);
+        assert_eq!(st.strength, 1.0);
+
+        assert_eq!(apply(&io, &c, &mono(1.0)), "Screen effects applied.");
+        // Сила числом с точкой — тип `d` схемы Gala.
+        assert_eq!(io.gs.borrow()[&format!("{GALA_A11Y_SCHEMA} monochrome-filter-strength")], "1.00");
+        assert_eq!(read_settings(&io, &c).preset, Some(Preset::Monochrome));
+        assert!(plan_settings(&io, &c, &mono(1.0)).unwrap().is_empty());
+
+        apply(&io, &c, &EffectSettings::default());
+        assert_eq!(io.gs.borrow()[&format!("{GALA_A11Y_SCHEMA} enable-monochrome-filter")], "false");
+        // Сила помнится и у выключенного фильтра.
+        let now = read_settings(&io, &c);
+        assert_eq!((now.preset, now.params.strength), (None, 1.0));
+    }
+
+    #[test]
+    fn cosmic_state_file_keeps_inversion() {
+        crate::i18n::set_language(Some("en"));
+        let c = ctx("cosmic");
+        let io = NativeIo::default();
+        let path = cosmic_filter_path(&std::env::var("XDG_STATE_HOME").unwrap_or_default(), &c.home);
+        assert_eq!(cosmic_filter_path("", "/h"), "/h/.local/state/cosmic-comp/a11y_screen_filter.ron");
+        assert_eq!(cosmic_filter_path("/s/", "/h"), "/s/cosmic-comp/a11y_screen_filter.ron");
+        let st = read_state(&io, &c);
+        assert!(st.can_apply && st.monochrome_only && !st.has_strength && !st.trial);
+
+        // Включение говорит честно: заработает со следующего входа.
+        assert_eq!(apply(&io, &c, &mono(0.5)), "COSMIC will apply this the next time you log in.");
+        assert_eq!(io.read(&path).unwrap(), "(\n    inverted: false,\n    color_filter: Some(Greyscale),\n)");
+        assert_eq!(read_settings(&io, &c).preset, Some(Preset::Monochrome));
+        assert!(plan_settings(&io, &c, &mono(0.9)).unwrap().is_empty(), "силы у COSMIC нет");
+
+        // Инверсию человека сохраняем.
+        io.files.borrow_mut().insert(path.clone(), "(\n    inverted: true,\n    color_filter: Some(Greyscale),\n)".into());
+        apply(&io, &c, &EffectSettings::default());
+        assert_eq!(io.read(&path).unwrap(), "(\n    inverted: true,\n)");
         assert_eq!(read_settings(&io, &c).preset, None);
     }
 }

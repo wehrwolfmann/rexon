@@ -334,6 +334,151 @@ pub fn resolve_mimeapps_filename(de_id: &str) -> String {
     known.map(str::to_string).unwrap_or_else(|| format!("{de_id}-mimeapps.list"))
 }
 
+// ── Чужой автозапуск стола — только в его столе ─────────────────────────────
+//
+// Некоторые столы приносят программы, которые стартуют при входе в ЛЮБОЙ
+// стол: их записи в `/etc/xdg/autostart` не ограничены `OnlyShowIn=`.
+// Живой случай 08.11.2026: Deepin притащил менеджер ввода fcitx5 и его
+// помощника; в MATE fcitx5 перехватил раскладки (английская и русская у
+// него в разных группах — Alt+Shift перестал переключать), а значок
+// раскладки MATE пропал. Лечится пользовательской копией записи с
+// `OnlyShowIn=` того стола, который её принёс (`~/.config/autostart`
+// перекрывает системную запись с тем же именем).
+
+/// Запись автозапуска, которой место только в своём столе.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfinedAutostart {
+    /// Имя файла в `/etc/xdg/autostart`.
+    pub file: &'static str,
+    /// Значение `OnlyShowIn=` (имена из `XDG_CURRENT_DESKTOP` стола).
+    pub only_show_in: &'static str,
+    /// Ограничивать, только если этот пакет стоит КАК ЗАВИСИМОСТЬ: тогда его
+    /// притащил стол. Поставленный человеком сам (например, fcitx5 для
+    /// китайского ввода) не трогаем. `None` — помощник самого стола,
+    /// ограничивается всегда.
+    pub only_if_dependency: Option<&'static str>,
+}
+
+/// Таблица: что и каким столом ограничивать.
+pub const CONFINED_AUTOSTARTS: &[ConfinedAutostart] = &[
+    ConfinedAutostart {
+        file: "fcitx5-helper.desktop",
+        only_show_in: "Deepin;DDE;",
+        only_if_dependency: None,
+    },
+    ConfinedAutostart {
+        file: "org.fcitx.Fcitx5.desktop",
+        only_show_in: "Deepin;DDE;",
+        only_if_dependency: Some("fcitx5"),
+    },
+];
+
+/// Пометка в пользовательской копии: её завёл Rexon.
+pub const CONFINED_AUTOSTART_MARK: &str = "X-Rexon-Confined=true";
+
+/// Нужна ли копия: системная запись не ограничена столами, а своей копии
+/// у человека нет (её он мог завести сам — тогда решение за ним).
+pub fn needs_confined_autostart(system_text: &str, user_text: Option<&str>) -> bool {
+    if user_text.is_some() {
+        return false;
+    }
+    !system_text
+        .lines()
+        .any(|l| l.trim_start().starts_with("OnlyShowIn=") || l.trim_start().starts_with("NotShowIn="))
+}
+
+/// Текст пользовательской копии: системная запись без своих `OnlyShowIn=`/
+/// `NotShowIn=`, плюс ограничение столом и пометка Rexon.
+pub fn confined_autostart_text(system_text: &str, only_show_in: &str) -> String {
+    let mut out = String::new();
+    for line in system_text.lines() {
+        let t = line.trim_start();
+        if t.starts_with("OnlyShowIn=") || t.starts_with("NotShowIn=") {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&format!("OnlyShowIn={only_show_in}\n{CONFINED_AUTOSTART_MARK}\n"));
+    out
+}
+
+/// Имя списка терминалов своего стола — `<стол>-xdg-terminals.list`, где
+/// стол — ПЕРВЫЙ элемент `XDG_CURRENT_DESKTOP` в нижнем регистре: его список
+/// `xdg-terminal-exec` читает раньше всех остальных. Принимает и сырое
+/// `XDG_CURRENT_DESKTOP` (`MATE`, `X-Cinnamon`, `Budgie:GNOME`), и
+/// идентификатор Rexon (`cinnamon-mint` → `x-cinnamon-…`, `deepin` →
+/// `dde-…`) — по тому же правилу имён, что у `<стол>-mimeapps.list`.
+/// `None` — стол неизвестен (пустое окружение): общий список остаётся один.
+pub fn terminals_list_filename(desktop: &str) -> Option<String> {
+    let token = desktop.split(':').next().unwrap_or("").trim().to_lowercase();
+    if token.is_empty() {
+        return None;
+    }
+    let prefix = if is_known_de(&token) {
+        let mime = resolve_mimeapps_filename(&token);
+        mime.trim_end_matches("mimeapps.list").to_string()
+    } else {
+        format!("{token}-")
+    };
+    Some(format!("{prefix}xdg-terminals.list"))
+}
+
+/// Что сделать при входе в сеанс со списком терминалов своего стола.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminalsListPlan {
+    /// Записать родной терминал стола (`content` — весь текст файла).
+    Write { filename: String, terminal: String, content: String },
+    /// Человек выбрал терминал для этого стола в Rexon — не трогать.
+    KeepChosen { filename: String, terminal: String },
+    /// Уже записан родной терминал — ничего не делать.
+    UpToDate { filename: String },
+    /// Родного терминала нет (тайловые WM, незнакомые окружения) или он не
+    /// установлен, либо имя стола неизвестно — список не ведём.
+    Nothing,
+}
+
+/// Решение «список терминалов своего стола» при входе в сеанс.
+///
+/// Чужой список (без пометки Rexon) и прежний «родной» переписываются
+/// родным терминалом стола: именно чужой `mate-xdg-terminals.list` с
+/// GNOME Terminal открывал программы с `Terminal=true` не в mate-terminal
+/// (08.11.2026). Список с пометкой «выбрано человеком» — осознанный выбор во
+/// вкладке «Настройки» — остаётся как есть. Родной терминал — тот же, что
+/// [`apply_de_specific`] пишет в родное место стола (тайловые WM своего не
+/// имеют: у них терминал задаётся конфигом композитора).
+///
+/// `desktop` — сырое `XDG_CURRENT_DESKTOP`; `existing` — текущий текст
+/// списка (None — файла нет).
+pub fn native_terminals_list_plan(
+    de_id: &str,
+    desktop: &str,
+    existing: Option<&str>,
+    exists: &dyn Fn(&str) -> bool,
+) -> TerminalsListPlan {
+    let Some(filename) = terminals_list_filename(desktop) else {
+        return TerminalsListPlan::Nothing;
+    };
+    if let Some(terminal) = existing.and_then(crate::defaults::chosen_terminal_in_list) {
+        return TerminalsListPlan::KeepChosen { filename, terminal };
+    }
+    let Some(apps) = native_apps(de_id) else {
+        return TerminalsListPlan::Nothing;
+    };
+    let Some(terminal) = apps
+        .iter()
+        .find(|(k, _)| *k == "terminal")
+        .and_then(|(_, t)| resolve_desktop(t, exists))
+    else {
+        return TerminalsListPlan::Nothing;
+    };
+    let content = crate::defaults::desktop_terminals_list_text(&terminal, false);
+    if existing == Some(content.as_str()) {
+        return TerminalsListPlan::UpToDate { filename };
+    }
+    TerminalsListPlan::Write { filename, terminal, content }
+}
+
 /// Определить текущий DE — порт `_detect_current_de`. Вход — значения
 /// окружения (`XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, наличие
 /// `WAYLAND_DISPLAY`) вместо чтения `os.environ` внутри.
@@ -559,8 +704,77 @@ pub fn apply_de_specific(
     which: &dyn Fn(&str) -> bool,
     xfce_helpers_existing: Option<&str>,
 ) -> ApplyDeSpecific {
-    let apps = resolve_de_apps(de_id);
-    let terminal = app_get(&apps, "terminal").and_then(|t| resolve_desktop(t, exists));
+    apply_de_specific_with_terminal(
+        de_id,
+        None,
+        exists,
+        which,
+        xfce_helpers_existing,
+        &crate::defaults::xfce_system_helper_exists,
+    )
+}
+
+/// То же, но с терминалом, который человек выбрал для этого стола во вкладке
+/// «Настройки» (`chosen_terminal` — из списка своего стола с пометкой
+/// «выбрано человеком», см. [`native_terminals_list_plan`]). Выбор человека
+/// главнее родного терминала (решение Wehrwolfmann 08.11.2026): он идёт во
+/// ВСЕ родные места стола. Выбранный терминал не установлен — остаётся родной,
+/// и это сказано в журнале. `xfce_helper_exists` — есть ли у системы
+/// помощник exo для программы (для выбранного терминала XFCE без помощника
+/// заводится свой `custom-TerminalEmulator`, как во вкладке «Настройки»).
+pub fn apply_de_specific_with_terminal(
+    de_id: &str,
+    chosen_terminal: Option<&str>,
+    exists: &dyn Fn(&str) -> bool,
+    which: &dyn Fn(&str) -> bool,
+    xfce_helpers_existing: Option<&str>,
+    xfce_helper_exists: &dyn Fn(&str) -> bool,
+) -> ApplyDeSpecific {
+    let mut apps = resolve_de_apps(de_id);
+    let native = app_get(&apps, "terminal").map(str::to_string);
+    let mut notes = Vec::new();
+    let chosen = match chosen_terminal {
+        Some(c) if exists(c) => Some(c.to_string()),
+        Some(c) => {
+            let native_name = native.as_deref().map(terminal_exec_name).unwrap_or_default();
+            notes.push(trf(
+                "ℹ️ Terminal: %1 (%2 isn't installed)",
+                &[&native_name, &terminal_exec_name(c)],
+            ));
+            None
+        }
+        None => None,
+    };
+    if let Some(c) = &chosen {
+        match apps.iter_mut().find(|(k, _)| *k == "terminal") {
+            Some(e) => e.1 = c.clone(),
+            None => apps.push(("terminal", c.clone())),
+        }
+    }
+    let mut out = apply_de_specific_for(de_id, &apps, exists, which, xfce_helpers_existing);
+    // XFCE: имя помощника в `helpers.rc` пишет `apply_xfce`, но программе без
+    // помощника системы нужен свой — те же шаги, что у вкладки «Настройки».
+    if let (Some(c), "xfce") = (&chosen, de_id) {
+        out.file_steps.extend(crate::defaults::terminal_home_steps_with(
+            TerminalHome::Xfce,
+            c,
+            "~/.config",
+            xfce_helper_exists,
+        ));
+    }
+    notes.append(&mut out.logs);
+    out.logs = notes;
+    out
+}
+
+fn apply_de_specific_for(
+    de_id: &str,
+    apps: &[(&'static str, String)],
+    exists: &dyn Fn(&str) -> bool,
+    which: &dyn Fn(&str) -> bool,
+    xfce_helpers_existing: Option<&str>,
+) -> ApplyDeSpecific {
+    let terminal = app_get(apps, "terminal").and_then(|t| resolve_desktop(t, exists));
     let terminal = terminal.as_deref();
 
     match de_id {
@@ -568,7 +782,7 @@ pub fn apply_de_specific(
         "gnome" => apply_gnome(terminal, which),
         "mate" => apply_mate(terminal, which),
         "cinnamon-mint" => apply_cinnamon(terminal, which),
-        "xfce" => apply_xfce(&apps, xfce_helpers_existing),
+        "xfce" => apply_xfce(apps, xfce_helpers_existing),
         "lxqt" => apply_lxqt(terminal),
         // Budgie: схема GNOME, а также схема Cinnamon — её читает Nemo
         // (`crate::defaults::terminal_extra_homes`).
@@ -837,6 +1051,18 @@ const AUTOSTART_COMMENT: &str = crate::i18n::n_("Switches default applications f
 /// `Comment` — на всех языках каталога ([`crate::system_l10n::desktop_key`]):
 /// прежде он был только русским, без ключа языка, и английский покупатель
 /// видел русский.
+///
+/// ⛔ Фазы запуска (`X-GNOME-Autostart-Phase`) здесь НЕТ, и возвращать её
+/// нельзя. Прежний шаблон нёс `Initialization`, а gnome-session 49+
+/// сторонние записи с фазой не исполняет вовсе («sets
+/// X-GNOME-Autostart-Phase, but gnome-session no longer manages session
+/// services» в журнале) — в GNOME дефолты при входе молча не применялись.
+/// Ранний запуск больше никому не нужен: mimeapps читаются при открытии
+/// файла, а слот FileManager1 у живого процесса забирает
+/// [`crate::appdefaults_exec::DeAppSwitcher::ensure_filemanager1`]. Запись
+/// одна на все сеансы (`~/.config/autostart`), так что «фаза только для
+/// Cinnamon/MATE» невозможна — нужен общий знаменатель. Старые файлы
+/// чинит [`heal_autostart_text`].
 pub fn autostart_desktop_content(exec_path: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -845,10 +1071,35 @@ pub fn autostart_desktop_content(exec_path: &str) -> String {
          {comment}\
          Exec={exec_path} --apply-defaults\n\
          Terminal=false\n\
-         NoDisplay=true\n\
-         X-GNOME-Autostart-Phase=Initialization\n",
+         NoDisplay=true\n",
         comment = crate::system_l10n::desktop_key("Comment", AUTOSTART_COMMENT),
     )
+}
+
+/// Ключ фазы gnome-session, которого в нашей записи быть не должно (см.
+/// [`autostart_desktop_content`]).
+pub const LEGACY_AUTOSTART_PHASE_KEY: &str = "X-GNOME-Autostart-Phase";
+
+/// Починка уже лежащей у человека записи автозапуска дефолтов: снять строку
+/// фазы, всё остальное (Exec, `NotShowIn=` от зеркала композиторов,
+/// перевод) оставить как есть. `None` — чинить нечего.
+///
+/// Перезаписи «при следующем переключении стола» мало: в GNOME 49+ сама
+/// запись не исполняется, и сеанс GNOME её не исправит никогда. Поэтому
+/// починку зовёт ещё и вход в сеанс любого другого стола
+/// ([`crate::appdefaults_exec::DeAppSwitcher::apply_for_current_de`]):
+/// там старая запись исполняется и сама себя чинит к следующему входу в
+/// GNOME. Переключение стола через Rexon пишет запись заново целиком.
+pub fn heal_autostart_text(text: &str) -> Option<String> {
+    let is_phase = |l: &str| {
+        l.trim_start()
+            .strip_prefix(LEGACY_AUTOSTART_PHASE_KEY)
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    };
+    if !text.lines().any(is_phase) {
+        return None;
+    }
+    Some(text.split_inclusive('\n').filter(|l| !is_phase(l)).collect())
 }
 
 // ============================================================================

@@ -1,4 +1,4 @@
-[English](../en/settings.md) | [Русский](../ru/settings.md) | Deutsch
+[English](../en/settings.md) | [Русский](../ru/settings.md) | Deutsch | [简体中文](../zh-CN/settings.md) | [Français](../fr/settings.md)
 
 # Einstellungen
 
@@ -7,8 +7,7 @@ Infobereich) und einige Dinge für den ganzen Computer: welcher Dateimanager
 Ordner öffnet, welche Programme Dateien standardmäßig öffnen, Hintergründe
 aus einem Bild oder Video, Hintergrundgeräusche und Systemklänge. Die
 Abschnitte stehen untereinander in einer Liste; manche erscheinen nur dort,
-wo sie Sinn ergeben (zum Beispiel der Abschnitt zu den Arbeitsflächensymbolen
-nur in MATE).
+wo sie Sinn ergeben (zum Beispiel der Leistenschutz nur mit KDE Plasma).
 
 ![Der Reiter „Einstellungen“: Sprache, Oberflächen-Skin, Einführung](../images/settings-top.png)
 
@@ -26,18 +25,14 @@ nur in MATE).
 | 🎬 **Hintergrundbild (Bild / Video / YouTube / Web)** | Hintergrund aus einer Datei, einem YouTube- oder Vimeo-Video, einer Webseite |
 | 📚 **Hintergrundbibliothek** | Hintergrundpakete von Rexon (.rxn) |
 | 🪟 **Windows-Designs importieren** | Das Aussehen des alten Windows-PCs übernehmen |
-| 🌫️ **Hintergrund weichzeichnen** | Ein Bild-Hintergrund wird weichgezeichnet, damit Text darauf besser lesbar ist |
-| 🔊 **Hintergrundgeräusche** | Regen, Wind, Musik in Endlosschleife |
-| 🔔 **Systemklänge** | Klangdesign des Systems: Klicks, Benachrichtigungen, Fehler |
-| 🌽 **MATE: Arbeitsflächensymbole** | Nur in MATE: Symbole auf der Arbeitsfläche zeigen oder ausblenden |
 | 🔒 **Schutz der Standardanwendungen** | Verhindert, dass eine neue Arbeitsfläche Ihre Programme ersetzt |
 | 🛡️ **Schutz der KDE-Plasma-Leiste** | Nur mit Plasma: Sicherungen von Leiste, Widgets und Tastenkürzeln |
 | 🪟 **Erscheinungsbild der Desktop-Umgebung** | Nur mit einem installierten Plasma-Ableger (AeroShell u. Ä.) |
 
-Ganz unten stehen Links „Erscheinungsbild → …“. Animation, Schriftarten,
-Titelleistenknöpfe, Startrückmeldung und Symbole in Anwendungen sind in den
-Reiter „Erscheinungsbild“ umgezogen – dorthin, wo sie auch die
-KDE-Systemeinstellungen führen.
+Animation, Schriftarten, Titelleistenknöpfe, Startrückmeldung, Symbole
+in Anwendungen, das Weichzeichnen des Hintergrunds, Hintergrundgeräusche
+und Systemklänge finden Sie im Reiter „Erscheinungsbild“ – dort, wo sie auch
+die KDE-Systemeinstellungen führen.
 
 Haben Sie Ihr Passwort bereits eingegeben, steht oben im Reiter der Streifen
 „🔓 Rexon darf das System ändern, bis das Fenster geschlossen wird“.
@@ -176,13 +171,6 @@ Sicherungen davon vorhanden sind.
 
   ![Der Abschnitt „Hintergrundbild“](../images/settings-wallpaper.png)
 
-- **🌫️ Hintergrund weichzeichnen** — zeichnet einen Bild-Hintergrund weich;
-  das Original bleibt erhalten, und die Unschärfe lässt sich mit einem Klick
-  entfernen.
-- **🔊 Hintergrundgeräusche** — **„➕ Datei hinzufügen …“** spielt einen
-  Klang in Endlosschleife; **„⏹️ Alle stoppen“** schaltet alle aus.
-- **🔔 Systemklänge** — das Klangdesign, das Einschalten der Systemklänge und
-  Schaltflächen zum Probehören.
 - **🪟 Windows-Designs importieren** — **„📥 Designdatei auswählen …“**:
   Designs (.themepack, .theme), visuelle Stile (.msstyles), Symbole,
   Mauszeiger und DreamScene-Videohintergründe. Das fertige Design erscheint

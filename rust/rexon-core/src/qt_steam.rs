@@ -102,6 +102,9 @@ pub const SEG_BG: &str = "bg";
 /// Идентификатор подвкладки «Витрины профиля» (нарезка картинки под витрину,
 /// `steam_showcase`).
 pub const SEG_SHOWCASE: &str = "showcase";
+/// Идентификатор подвкладки «Заставка» (заставка Rexon для экрана простоя
+/// Steam Big Picture, `steam_screensaver`).
+pub const SEG_SCREENSAVER: &str = "screensaver";
 
 /// Состав и ПОРЯДОК чипов-переключателей. Заставка первой: она — флагманская
 /// фича вкладки, фоны профиля вторичны.
@@ -111,6 +114,7 @@ pub const SEGMENTS: &[(&str, &str)] = &[
     (SEG_SPLASH, n_("🎬 Startup Movie")),
     (SEG_BG, n_("🖼️ Steam Backgrounds")),
     (SEG_SHOWCASE, n_("🖼️ Profile Showcases")),
+    (SEG_SCREENSAVER, n_("🌙 Screensaver")),
 ];
 
 /// Чипы-переключатели с подписями на языке интерфейса.
@@ -118,12 +122,14 @@ pub fn segments() -> Vec<(&'static str, String)> {
     SEGMENTS.iter().map(|(key, label)| (*key, tr(label))).collect()
 }
 
-/// Индекс страницы стека по ключу подвкладки (0 — заставка, 1 — фоны,
-/// 2 — витрины). Незнакомый ключ — фоны, как было до витрин.
+/// Индекс страницы стека по ключу подвкладки (0 — видеозаставка, 1 — фоны,
+/// 2 — витрины, 3 — заставка Big Picture). Незнакомый ключ — фоны, как было
+/// до витрин.
 pub fn segment_index(key: &str) -> u32 {
     match key {
         SEG_SPLASH => 0,
         SEG_SHOWCASE => 2,
+        SEG_SCREENSAVER => 3,
         _ => 1,
     }
 }

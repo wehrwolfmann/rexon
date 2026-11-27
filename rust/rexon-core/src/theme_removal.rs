@@ -730,6 +730,19 @@ pub struct LiveRemoval {
     loose: std::cell::OnceCell<HashSet<String>>,
 }
 
+/// Нужен ли плитке ответ «у каких тем экрана входа и заставки нет
+/// пакета-владельца» ([`crate::installed_scan::LiveScan::loose_system_themes`]).
+///
+/// Ответ дорогой: один `pacman -Qo` на все каталоги тем SDDM и Plymouth
+/// читает списки файлов всех пакетов. 08.11.2026 на стенде он шёл 5 с, а на
+/// живой машине под нагрузкой диска раздел «Активные» из-за него висел на
+/// «Загрузка…» 20–60 с — ради включённой заставки загрузки, которой
+/// «Удалить» всё равно закрыто («сейчас используется»,
+/// [`RemovalRoots::verdict`] отвечает раньше, чем смотрит на ответ).
+fn loose_needed(in_helper_dir: bool, active: bool) -> bool {
+    in_helper_dir && !active
+}
+
 impl LiveRemoval {
     pub fn new() -> Self {
         LiveRemoval {
@@ -768,7 +781,7 @@ impl LiveRemoval {
         let in_helper_dir = path
             .rsplit_once('/')
             .is_some_and(|(parent, _)| self.roots.helper.iter().any(|d| d == parent));
-        let loose = if in_helper_dir {
+        let loose = if loose_needed(in_helper_dir, active) {
             self.loose.get_or_init(|| {
                 crate::installed_scan::LiveScan::new(Vec::new(), Default::default()).loose_system_themes()
             })
@@ -1013,6 +1026,25 @@ mod tests {
         assert_eq!(
             roots.verdict(&colors, false, &journal, &HashSet::new()),
             Verdict::Local { path: format!("{colors}.colors") }
+        );
+    }
+
+    /// Включённой теме экрана входа или заставки дорогой опрос владельцев не
+    /// нужен: «Удалить» у неё закрыто, что бы пакетная база ни ответила.
+    #[test]
+    fn active_helper_theme_skips_the_owner_query() {
+        assert!(!loose_needed(true, true));
+        assert!(loose_needed(true, false));
+        assert!(!loose_needed(false, false));
+        let (_, home, usr) = sandbox("active-ply");
+        let roots = RemovalRoots::new(&home, &usr);
+        let ply = format!("{usr}/share/plymouth/themes/cachyos-bootanimation");
+        mkdir(&ply);
+        let loose: HashSet<String> = [ply.clone()].into_iter().collect();
+        // Тот же ответ, что дал бы и полный опрос.
+        assert_eq!(
+            roots.verdict(&ply, true, &Map::new(), &HashSet::new()),
+            roots.verdict(&ply, true, &Map::new(), &loose)
         );
     }
 

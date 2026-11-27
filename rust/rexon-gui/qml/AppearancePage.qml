@@ -2200,6 +2200,26 @@ Item {
                             }
                         }
                     }
+
+                    // «⚙️ Настройки» у «Шрифтов», «Значков» и «Курсоров» (08.11.2026):
+                    // настройки того же рода — видом внутри раздела, а не
+                    // своей строкой боковой панели. Последний ребёнок потока
+                    // справа налево — на экране первым, сразу за поиском.
+                    // В виде настроек та же кнопка ведёт назад к плиткам:
+                    // выход там же, где вход.
+                    RexonButton {
+                        id: sectionSettingsButton
+                        objectName: "sectionSettingsButton"
+                        pal: root.pal
+                        tone: root.toneNav
+                        visible: page.sectionSettingsVisible
+                        height: headerRow.rowHeight
+                        text: page.sectionSettingsText
+                        ToolTip.text: page.sectionSettingsTooltip
+                        ToolTip.visible: hovered && page.sectionSettingsTooltip !== ""
+                        ToolTip.delay: 600
+                        onClicked: page.toggleSectionSettings()
+                    }
                 }
             }
 
@@ -3081,7 +3101,8 @@ Item {
                     }
                 }
 
-                // Разделы настроек (анимация, шрифты, кнопки заголовка…) —
+                // Разделы настроек (анимация, кнопки заголовка, вид
+                // «⚙️ Настройки» шрифтов и значков…) —
                 // те же, что были во вкладке «Настройки», её страницей в
                 // режиме одного раздела (`SettingsPage.panel`). Строится при
                 // первом заходе и дальше живёт; ключ раздела запоминается,
@@ -3106,7 +3127,7 @@ Item {
                     Binding {
                         target: settingsPanelLoader
                         property: "panel"
-                        value: page.installFileSection
+                        value: page.settingsPanel
                         when: page.screen === "settings"
                         restoreMode: Binding.RestoreNone
                     }
@@ -3114,6 +3135,7 @@ Item {
                     sourceComponent: Component {
                         SettingsPage {
                             panel: settingsPanelLoader.panel
+                            lookDe: page.de
                         }
                     }
                 }
@@ -3738,6 +3760,45 @@ Item {
                                 target: root.actions
                                 ignoreUnknownSignals: true
                                 function onActionDone(text, ok) { detailConky.reload(); }
+                            }
+
+                            // Папка виджета и его файл настроек — как
+                            // «открыть папку» и ручная правка у программ
+                            // управления виджетами. Файл — выбранной части.
+                            RowLayout {
+                                id: conkyOpenRow
+                                objectName: "conkyOpenRow"
+                                visible: detailConky.parts.length > 0
+                                spacing: 8
+
+                                RexonButton {
+                                    objectName: "conkyOpenFolderButton"
+                                    pal: root.pal
+                                    tone: root.toneSecondary
+                                    text: detailConky.texts.open_folder || ""
+                                    ToolTip.text: detailConky.texts.open_folder_tooltip || ""
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    onClicked: {
+                                        if (root.actions && root.actions.openConkyFolder)
+                                            root.actions.openConkyFolder(page.detailItemId);
+                                    }
+                                }
+
+                                RexonButton {
+                                    objectName: "conkyOpenFileButton"
+                                    pal: root.pal
+                                    tone: root.toneSecondary
+                                    enabled: detailConky.settingsConf !== ""
+                                    text: detailConky.texts.open_file || ""
+                                    ToolTip.text: detailConky.texts.open_file_tooltip || ""
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    onClicked: {
+                                        if (root.actions && root.actions.openConkyFile)
+                                            root.actions.openConkyFile(page.detailItemId, detailConky.settingsConf);
+                                    }
+                                }
                             }
 
                             RexonText {

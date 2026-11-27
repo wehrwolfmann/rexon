@@ -16,6 +16,7 @@ MD.Page {
     property int remoteCapability: 0
     property string remoteHint: ""
     property var tagOptions: []
+    property var typeLabels: ({})
 
     // A source that cannot name an item while listing it may still name it once
     // the item is opened, so let a detail lookup fill in what the row lacks.
@@ -24,7 +25,7 @@ MD.Page {
         return own.length > 0 ? own : String(root.details?.author ?? "");
     }
 
-    readonly property string formattedSize: formatSize(details?.size)
+    readonly property string formattedSize: W.I18n.formatSize(details?.size)
     readonly property string tagsText: formatTagList(details?.tags)
 
     function value(v) {
@@ -42,37 +43,6 @@ MD.Page {
         for (const tag of tags)
             out.push(W.I18n.optionLabel(root.tagOptions, tag));
         return out.join(", ");
-    }
-
-    function formatBytes(bytes) {
-        let v = Number(bytes ?? 0);
-        if (!(v > 0))
-            return "";
-        const u = ["B", "KB", "MB", "GB", "TB"];
-        let i = 0;
-        while (v >= 1024 && i < u.length - 1) {
-            v /= 1024;
-            ++i;
-        }
-        return v.toFixed(i === 0 ? 0 : 1) + " " + u[i];
-    }
-
-    function formatSize(s) {
-        const text = String(s ?? "").trim();
-        if (text.length === 0)
-            return "";
-        if (/^\d+$/.test(text))
-            return formatBytes(Number(text));
-        const m = text.match(/^([\d.,]+)\s*([KMGT]?B)$/i);
-        if (!m)
-            return text;
-        const num = parseFloat(m[1].replace(/,/g, ""));
-        if (isNaN(num))
-            return text;
-        const unit = m[2].toUpperCase();
-        if (unit === "B")
-            return formatBytes(num);
-        return num.toFixed(1) + " " + unit;
     }
 
     function subscriptionText(state) {
@@ -144,7 +114,7 @@ MD.Page {
             }
             InfoValue {
                 visible: root.hasText(root.item?.wpType)
-                text: root.value(root.item?.wpType)
+                text: W.I18n.valueLabel(root.typeLabels, root.item?.wpType)
             }
 
             InfoLabel {
@@ -235,6 +205,13 @@ MD.Page {
             InfoValue {
                 visible: root.hasText(root.details?.description)
                 text: root.value(root.details?.description)
+            }
+
+            W.RemoteDetailFields {
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                fields: root.details?.fields ?? []
+                labelForField: field => W.I18n.tr(field.labelText) || String(field.label ?? "")
             }
         }
     }

@@ -168,6 +168,7 @@
       ],
       "files": {
         "xdg-terminals.list": "org.kde.konsole.desktop\n",
+        "kde-xdg-terminals.list": "org.kde.konsole.desktop\n# Rexon: chosen by the user\n",
         "kdeglobals": "\n[General]\nTerminalApplication=konsole\nTerminalService=org.kde.konsole.desktop\n",
         "environment.d/rexon-terminal.conf": "TERMINAL=konsole\n"
       },
@@ -193,6 +194,7 @@
       ],
       "files": {
         "xdg-terminals.list": "gnome-terminal.desktop\n",
+        "gnome-xdg-terminals.list": "gnome-terminal.desktop\n# Rexon: chosen by the user\n",
         "environment.d/rexon-terminal.conf": "TERMINAL=gnome-terminal\n"
       },
       "de": "GNOME",
@@ -231,6 +233,7 @@
       ],
       "files": {
         "xdg-terminals.list": "mate-terminal.desktop\n",
+        "mate-xdg-terminals.list": "mate-terminal.desktop\n# Rexon: chosen by the user\n",
         "environment.d/rexon-terminal.conf": "TERMINAL=mate-terminal\n"
       },
       "de": "MATE",
@@ -255,6 +258,7 @@
       ],
       "files": {
         "xdg-terminals.list": "xfce4-terminal.desktop\n",
+        "xfce-xdg-terminals.list": "xfce4-terminal.desktop\n# Rexon: chosen by the user\n",
         "environment.d/rexon-terminal.conf": "TERMINAL=xfce4-terminal\n",
         "xfce4/helpers.rc": "TerminalEmulator=xfce4-terminal\n"
       },

@@ -109,6 +109,8 @@ Item {
     // спросить не вышло), тогда видна строка карточки.
     property string packagesLine: ""
     property string packagesNotice: ""
+    // Замена шапки по ответу пробы («Установлен частично»); пусто — шапка карточки.
+    property string statusOverride: ""
     // Набор не встанет из-за конфликта с установленным: «Установить» и
     // «Проверить / Восстановить» видны, но неактивны (причина — в
     // `packagesNotice` прямо над ними).
@@ -123,6 +125,7 @@ Item {
         root.versionText = "";
         root.versionPending = false;
         root.packagesLine = "";
+        root.statusOverride = "";
         root.packagesNotice = "";
         root.packagesBlocked = false;
         root.rebuildButton = "";
@@ -252,9 +255,10 @@ Item {
             root.versionText = line;
         }
 
-        function onPackagesReady(deId, installed, text, notice, blocked) {
+        function onPackagesReady(deId, installed, text, notice, blocked, status) {
             if (!root.card || deId !== root.card.deId || installed !== root.card.installed)
                 return;
+            root.statusOverride = status;
             root.packagesLine = text;
             root.packagesNotice = notice;
             root.packagesBlocked = blocked;
@@ -272,6 +276,12 @@ Item {
     // уводит фокус за нижний край, и вкладка выглядит зависшей.
     function ensureVisible(item) {
         if (!item || !cardFlick.contentItem)
+            return;
+        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
+        // вернулись из другой программы) — Qt возвращает фокус тому же
+        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
+        // иначе прокрученная вниз вкладка прыгает наверх.
+        if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(cardFlick.contentItem, 0, 0);
         const maxY = Math.max(0, cardFlick.contentHeight - cardFlick.height);
@@ -1091,8 +1101,9 @@ Item {
                             }
 
                             RexonText {
-                                text: root.card.statusText
-                                color: root.card.statusColor === ""
+                                text: root.statusOverride !== "" ? root.statusOverride : root.card.statusText
+                                color: root.statusOverride !== "" ? root.card.statusPartialColor
+                                       : root.card.statusColor === ""
                                        ? root.colTextSecondary : root.card.statusColor
                                 // Некрашеный статус — вторичный текст, а тот у
                                 // оригинала набран весом 600.

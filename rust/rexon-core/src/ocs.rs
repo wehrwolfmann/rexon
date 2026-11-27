@@ -1455,7 +1455,20 @@ impl<IO: OcsIo> OcsClient<IO> {
             // не разобрать (битый XML / нет <data>/<content>) → кеш
             Err(MalformedDetail) => self.io.cache_get_item(content_id).map(from_cache),
             Ok(None) => None,
-            Ok(Some(content)) => {
+            Ok(Some(mut content)) => {
+                // ⚠️ `<downloads>` у `content/data/<id>` — НЕ то число, что у
+                // того же товара в ответе-списке: живые ответы 08.11.2026 —
+                // Candy icons 3 118 105 в списке и 759 в деталях, Neon Icons
+                // 14 537 и 13 166, Neon-Dreamscape 6061 и 0. Плитка, сортировка
+                // «по скачиваниям» и сайт магазина считают по списку; детали
+                // свою цифру не объясняют. Чтобы плитка и панель деталей
+                // показывали одно и то же (и детали не затирали в кеше счётчик
+                // плитки), держим число из списка, если оно уже известно.
+                if let Some(known) = self.io.cache_get_item(&content.item.id) {
+                    if known.downloads > 0 {
+                        content.item.downloads = known.downloads;
+                    }
+                }
                 self.io.cache_put_item(&content.item);
                 Some(content)
             }

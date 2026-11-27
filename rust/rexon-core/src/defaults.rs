@@ -609,6 +609,57 @@ pub fn get_current_terminal(
 }
 
 // ============================================================================
+// Список терминалов для своего стола: `<стол>-xdg-terminals.list`
+// ============================================================================
+//
+// `xdg-terminal-exec` читает списки по порядку: сперва
+// `~/.config/<стол>-xdg-terminals.list` (стол — каждый элемент
+// `XDG_CURRENT_DESKTOP` в нижнем регистре), и только потом общий
+// `~/.config/xdg-terminals.list`. Список своего стола ПЕРЕБИВАЕТ общий.
+// Пойманный случай (08.11.2026, живая машина владельца): в MATE программа с
+// `Terminal=true` открылась в GNOME Terminal — его назвал чужой
+// `mate-xdg-terminals.list`, а общий список при этом держал konsole,
+// записанный когда-то из Plasma. Поэтому Rexon ведёт и список своего стола:
+// осознанный выбор во вкладке «Настройки» пишется туда с пометкой
+// [`TERMINALS_LIST_CHOSEN_MARK`], а при входе в сеанс стол с родным
+// терминалом получает его с пометкой [`TERMINALS_LIST_NATIVE_MARK`] — если
+// только человек не выбрал терминал для этого стола сам.
+
+/// Пометка списка своего стола: терминал выбран человеком в Rexon. Такой
+/// список вход в сеанс не переписывает. Строка-комментарий: `xdg-terminal-exec`
+/// пропускает строки с `#`.
+pub const TERMINALS_LIST_CHOSEN_MARK: &str = "# Rexon: chosen by the user";
+
+/// Пометка списка своего стола: родной терминал стола, записан при входе.
+pub const TERMINALS_LIST_NATIVE_MARK: &str = "# Rexon: native terminal of this desktop";
+
+/// Текст списка своего стола. Терминал — ПЕРВОЙ строкой: её же читает
+/// [`get_current_terminal`].
+pub fn desktop_terminals_list_text(terminal_desktop: &str, chosen: bool) -> String {
+    let mark = if chosen { TERMINALS_LIST_CHOSEN_MARK } else { TERMINALS_LIST_NATIVE_MARK };
+    format!("{terminal_desktop}\n{mark}\n")
+}
+
+/// Терминал, выбранный человеком для этого стола (список с пометкой
+/// [`TERMINALS_LIST_CHOSEN_MARK`]); `None` — выбора нет или список чужой.
+pub fn chosen_terminal_in_list(content: &str) -> Option<String> {
+    if !content.lines().any(|l| l.trim() == TERMINALS_LIST_CHOSEN_MARK) {
+        return None;
+    }
+    let first = content.lines().next().unwrap_or("").trim();
+    (!first.is_empty() && !first.starts_with('#')).then(|| first.to_string())
+}
+
+/// Какой список читать как «текущий терминал»: список своего стола, если в
+/// нём есть первая строка (`xdg-terminal-exec` берёт его раньше общего),
+/// иначе общий `xdg-terminals.list`.
+pub fn effective_terminals_list(desktop_list: Option<String>, general: Option<String>) -> Option<String> {
+    desktop_list
+        .filter(|c| c.lines().next().is_some_and(|l| !l.trim().is_empty()))
+        .or(general)
+}
+
+// ============================================================================
 // Свой перебор терминалов (там, где ни один источник ничего не сказал)
 // ============================================================================
 //
@@ -1120,6 +1171,15 @@ pub fn set_terminal_plan_with(
         path: format!("{cfg}/xdg-terminals.list"),
         content: format!("{terminal_desktop}\n"),
     });
+    // 1а. Список своего стола — он перебивает общий (см. раздел о
+    // `<стол>-xdg-terminals.list`); с пометкой «выбрано человеком», чтобы
+    // вход в сеанс не заменил выбор родным терминалом.
+    if let Some(name) = crate::appdefaults::terminals_list_filename(desktop) {
+        steps.push(TermStep::WriteFile {
+            path: format!("{cfg}/{name}"),
+            content: desktop_terminals_list_text(terminal_desktop, true),
+        });
+    }
     // 2. Схема GNOME: её читают GLib-программы в любом окружении.
     steps.extend(terminal_home_steps(TerminalHome::Gnome, terminal_desktop, &cfg));
     // 3. environment.d/rexon-terminal.conf.

@@ -218,6 +218,21 @@ pub mod qobject {
                     READ = install_file_filters, NOTIFY = chrome_changed)]
         #[qproperty(QString, install_file_section, cxx_name = "installFileSection",
                     READ = install_file_section, NOTIFY = chrome_changed)]
+        // Раздел вкладки «Настройки» на экране `settings` (ядро:
+        // `CatalogView::settings_panel_key`).
+        #[qproperty(QString, settings_panel, cxx_name = "settingsPanel",
+                    READ = settings_panel, NOTIFY = chrome_changed)]
+        // Кнопка «⚙️ Настройки» / «← К каталогу» в шапке «Шрифтов», «Значков»,
+        // «Курсоров», рамок окон и «GTK-тем» (ядро: `CatalogView::section_settings_panels`,
+        // `section_settings_open`).
+        #[qproperty(bool, section_settings_visible, cxx_name = "sectionSettingsVisible",
+                    READ = section_settings_visible, NOTIFY = chrome_changed)]
+        #[qproperty(bool, section_settings_open, cxx_name = "sectionSettingsOpen",
+                    READ = section_settings_open, NOTIFY = chrome_changed)]
+        #[qproperty(QString, section_settings_text, cxx_name = "sectionSettingsText",
+                    READ = section_settings_text, NOTIFY = chrome_changed)]
+        #[qproperty(QString, section_settings_tooltip, cxx_name = "sectionSettingsTooltip",
+                    READ = section_settings_tooltip, NOTIFY = chrome_changed)]
         // Установленное сверху над магазином раздела, выделять ли текущую
         // тему (ядро: `CatalogView::installed_view`, `marks_current`).
         #[qproperty(bool, installed_view, cxx_name = "installedView",
@@ -870,6 +885,16 @@ pub mod qobject {
         fn install_file_filters(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "installFileSection"]
         fn install_file_section(self: &AppearanceModel) -> QString;
+        #[cxx_name = "settingsPanel"]
+        fn settings_panel(self: &AppearanceModel) -> QString;
+        #[cxx_name = "sectionSettingsVisible"]
+        fn section_settings_visible(self: &AppearanceModel) -> bool;
+        #[cxx_name = "sectionSettingsOpen"]
+        fn section_settings_open(self: &AppearanceModel) -> bool;
+        #[cxx_name = "sectionSettingsText"]
+        fn section_settings_text(self: &AppearanceModel) -> QString;
+        #[cxx_name = "sectionSettingsTooltip"]
+        fn section_settings_tooltip(self: &AppearanceModel) -> QString;
         #[cxx_name = "sourceChips"]
         fn source_chips(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "styleChips"]
@@ -1148,6 +1173,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "selectCategory"]
         fn select_category(self: Pin<&mut AppearanceModel>, key: &QString);
+
+        /// Разделы с видом «⚙️ Настройки»: переключить вид «каталог ↔ ⚙️ Настройки».
+        #[qinvokable]
+        #[cxx_name = "toggleSectionSettings"]
+        fn toggle_section_settings(self: Pin<&mut AppearanceModel>);
 
         /// Магазин: `ocs` | `aur` | `both`.
         #[qinvokable]
@@ -2492,16 +2522,15 @@ impl qobject::AppearanceModel {
         // (сеанс MATE и сама программа).
         let mate_panel = rexon_core::mate_panel::is_available(
             &rexon_core::animations::SystemIo,
-            &rexon_core::mate_panel::PanelCtx::from_env(),
+            &rexon_core::mate_panel::PanelCtx::for_look(),
         );
         for cat in categories::grouped_sidebar(&me.sidebar, de) {
-            // Раздел настроек действует на ЗАПУЩЕННЫЙ стол, а не на
-            // выбранный в шапке: спрятанный в этом сеансе раздел (эффекты
-            // KWin вне KDE) не показываем и при выборе другого стола.
-            let available = categories::category_available(&cat.key, de)
-                && (cat.key != categories::MATE_PANEL_KEY || mate_panel)
-                && (!categories::is_settings_panel(&cat.key)
-                    || categories::category_available(&cat.key, &me.detected_de));
+            // Разделы настроек действуют на стол, ВЫБРАННЫЙ в шапке
+            // (`animations::LookCtx::for_look`), — и видны по нему же, а не
+            // по запущенному: раньше они писали в сеанс, и при выборе
+            // другого стола говорили про чужой (08.11.2026).
+            let available = categories::category_available_in(&cat.key, de, me.view.session)
+                && (cat.key != categories::MATE_PANEL_KEY || mate_panel);
             let group = categories::category_group(&cat.key, de);
             let opens_group = available && last_group != Some(group);
             if opens_group {
@@ -2635,6 +2664,29 @@ impl qobject::AppearanceModel {
     }
     fn install_file_section(&self) -> QString {
         QString::from(&self.rust().view.category.key)
+    }
+    fn settings_panel(&self) -> QString {
+        QString::from(&self.rust().view.settings_panel_key())
+    }
+    fn section_settings_visible(&self) -> bool {
+        self.rust().view.has_section_settings()
+    }
+    fn section_settings_open(&self) -> bool {
+        self.rust().view.section_settings_open()
+    }
+    fn section_settings_text(&self) -> QString {
+        if self.rust().view.section_settings_open() {
+            QString::from(&ap::detail_back_btn())
+        } else {
+            QString::from(&ap::section_settings_btn())
+        }
+    }
+    fn section_settings_tooltip(&self) -> QString {
+        let view = &self.rust().view;
+        if view.section_settings_open() {
+            return QString::default();
+        }
+        QString::from(&ap::section_settings_tooltip(&view.section_settings_panels()))
     }
     fn installed_view(&self) -> bool {
         self.rust().view.installed_view()
@@ -3180,6 +3232,14 @@ impl qobject::AppearanceModel {
     /// данными. Один вход — чтобы ни один переключатель не забыл про
     /// половину страницы (это и был `_update_chrome` + `_reload` оригинала).
     fn resync(mut self: Pin<&mut Self>) {
+        // Род сеанса выбранного стола — для разделов, возможных только на
+        // X11 или только на Wayland: стол сеанса — как есть, выбранный
+        // вручную — его род (`LookCtx::for_chosen`).
+        {
+            let de = self.rust().view.de.clone();
+            let wayland = rexon_core::animations::LookCtx::from_env().for_chosen(&de).wayland;
+            self.as_mut().rust_mut().view.session = categories::Session::from_wayland(wayland);
+        }
         // Есть ли программа Conky — для подписи её раздела: после установки
         // виджета (и программы вместе с ним) подпись обязана смениться.
         if self.rust().view.category.key == "conky" {
@@ -3275,6 +3335,7 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.view.de = choice.de_id.clone();
+            rexon_core::animations::set_chosen_desktop(&choice.de_id);
             me.detected_de = s(&v, "detectedDe").to_string();
             me.de_choices = ap::de_picker_choices(&choice.de_id, &me.detected_de);
         }
@@ -3378,6 +3439,9 @@ impl qobject::AppearanceModel {
             me.view.running_only = false;
             // Фильтр тона — своему разделу (у Plasma он тоже не помнится).
             me.view.tone_filter.clear();
+            // Вид «⚙️ Настройки» принадлежит разделу («Шрифты», «Значки», «Курсоры»):
+            // вернувшись, человек видит каталог, как при первом заходе.
+            me.view.section_settings = false;
             me.requests.forget_page_prefetches();
         }
         // Открытая карточка темы принадлежит разделу, из которого ушли: под
@@ -3395,6 +3459,25 @@ impl qobject::AppearanceModel {
         // Открыл раздел — сразу греем следующий: при переключении он
         // откроется из кеша мгновенно (прогрессивность оригинала).
         self.prioritize_prefetch();
+    }
+
+    fn toggle_section_settings(mut self: Pin<&mut Self>) {
+        if !self.rust().view.has_section_settings() {
+            return;
+        }
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.view.section_settings = !me.view.section_settings;
+            // Поиск принадлежит каталогу: в настройках его строки нет, и
+            // забытое слово не должно встретить человека по возвращении.
+            me.view.query.clear();
+        }
+        if self.rust().screen == "detail" {
+            self.as_mut().close_detail();
+        }
+        // Плитки уходят сразу (экран настроек), обратно — из кеша.
+        self.as_mut().clear_cards();
+        self.as_mut().resync();
     }
 
     fn set_source(mut self: Pin<&mut Self>, key: &QString) {
@@ -3476,6 +3559,7 @@ impl qobject::AppearanceModel {
                 return;
             }
             me.view.de = de_id.clone();
+            rexon_core::animations::set_chosen_desktop(&de_id);
             me.de_choices = choices;
             me.view.page = 0;
         }

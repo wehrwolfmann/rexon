@@ -20,6 +20,7 @@ import org.rexon.gui 1.0
 
 Rectangle {
     id: section
+    RexonBidi { id: bidi }
 
     property var pal: ({})
     /// Оформление вкладки (`SteamModel.styles`): группа, кнопки.
@@ -118,7 +119,7 @@ Rectangle {
             for (const p of (section.checkReport ? section.checkReport.parts : [])) {
                 if (p.found)
                     out.push({ key: "profile-" + p.role, title: p.label,
-                               subtitle: qsTranslate("rexon", "As on your profile: %1×%2 px").arg(p.shown_width).arg(p.shown_height),
+                               subtitle: bidi.arg(qsTranslate("rexon", "As on your profile: %1×%2 px"), p.shown_width, p.shown_height),
                                thumb: p.image_url, source: p.image_url });
             }
         } else {
@@ -314,7 +315,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: section.pal.text_secondary
-            text: qsTranslate("rexon", "Showcases are available from Steam level %1.").arg(section.geo.minLevel || 10)
+            text: bidi.arg(qsTranslate("rexon", "Showcases are available from Steam level %1."), section.geo.minLevel || 10)
         }
 
         // ── Картинка ──────────────────────────────────────────────────
@@ -334,9 +335,7 @@ Rectangle {
                 color: section.srcError !== "" ? section.warnColor : section.pal.text_primary
                 text: section.srcError !== "" ? "❌ " + section.srcError
                       : !section.srcInfo ? qsTranslate("rexon", "PNG, JPG or GIF (animated GIFs keep their animation).")
-                      : qsTranslate("rexon", "%1 — %2×%3 px, %4").arg(section.srcPath.split("/").pop())
-                            .arg(section.srcInfo.width).arg(section.srcInfo.height)
-                            .arg(section.srcInfo.format.toUpperCase())
+                      : bidi.arg(qsTranslate("rexon", "%1 — %2×%3 px, %4"), section.srcPath.split("/").pop(), section.srcInfo.width, section.srcInfo.height, section.srcInfo.format.toUpperCase())
             }
         }
         Repeater {
@@ -398,14 +397,14 @@ Rectangle {
                 model: {
                     let m = [{ key: "", label: qsTranslate("rexon", "No background") }];
                     if (section.bgCustomPath !== "")
-                        m.push({ key: "custom", label: qsTranslate("rexon", "Your file: %1").arg(section.bgCustomPath.split("/").pop()) });
+                        m.push({ key: "custom", label: bidi.arg(qsTranslate("rexon", "Your file: %1"), section.bgCustomPath.split("/").pop()) });
                     for (const b of (section.backgrounds || []))
                         m.push({
                             key: b.id,
                             // Анимированный фон — с той же отметкой, что на
                             // карточке в сетке фонов.
                             label: (b.mark ? b.mark + " " : "")
-                                   + (b.equipped ? qsTranslate("rexon", "%1 (on your profile)").arg(b.name) : b.name)
+                                   + (b.equipped ? bidi.arg(qsTranslate("rexon", "%1 (on your profile)"), b.name) : b.name)
                         });
                     return m;
                 }
@@ -587,7 +586,7 @@ Rectangle {
                     color: "transparent"
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: qsTranslate("rexon", "Level %1").arg(preview.g.minLevel || 10)
+                        text: bidi.arg(qsTranslate("rexon", "Level %1"), preview.g.minLevel || 10)
                         color: section.look.muted || "#acb2b8"
                         font.pixelSize: Math.max(8, 20 * preview.s)
                     }
@@ -696,9 +695,9 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 color: section.sliceError !== "" ? (section.warnColor) : section.pal.text_secondary
                 text: section.sliceBusy
-                      ? qsTranslate("rexon", "Saving… %1 %").arg(Math.round(section.sliceProgress * 100))
+                      ? bidi.arg(qsTranslate("rexon", "Saving… %1 %"), Math.round(section.sliceProgress * 100))
                       : section.sliceError !== "" ? section.sliceError
-                      : section.result ? qsTranslate("rexon", "Saved to %1").arg(section.result.report.dir)
+                      : section.result ? bidi.arg(qsTranslate("rexon", "Saved to %1"), section.result.report.dir)
                       : ""
             }
         }
@@ -710,7 +709,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 color: section.pal.text_primary
                 text: "✅ " + modelData.name + " — " + modelData.label + ", " + modelData.size + ", " + modelData.weight
-                      + (modelData.frames > 1 ? ", " + qsTranslate("rexon", "frames: %1").arg(modelData.frames) : "")
+                      + (modelData.frames > 1 ? ", " + bidi.arg(qsTranslate("rexon", "frames: %1"), modelData.frames) : "")
             }
         }
         Repeater {
@@ -761,7 +760,7 @@ Rectangle {
                 color: section.pal.text_primary
                 font.bold: true
                 font.pointSize: 12
-                text: section.wiz ? qsTranslate("rexon", "Upload to Steam: %1 — %2").arg(section.wiz.kindLabel).arg(section.wiz.name) : ""
+                text: section.wiz ? bidi.arg(qsTranslate("rexon", "Upload to Steam: %1 — %2"), section.wiz.kindLabel, section.wiz.name) : ""
             }
 
             Repeater {
@@ -860,9 +859,9 @@ Rectangle {
                                     pal: section.pal
                                     text: qsTranslate("rexon", "Copy the title")
                                     ToolTip.visible: hovered
-                                    ToolTip.text: qsTranslate("rexon", "Copies \"%1\" — paste it into the Title field on the upload page").arg(partRow.modelData.title)
+                                    ToolTip.text: bidi.arg(qsTranslate("rexon", "Copies \"%1\" — paste it into the Title field on the upload page"), partRow.modelData.title)
                                     onClicked: section.copy(partRow.modelData.title,
-                                                            qsTranslate("rexon", "Copied: %1").arg(partRow.modelData.title))
+                                                            bidi.arg(qsTranslate("rexon", "Copied: %1"), partRow.modelData.title))
                                 }
                                 RexonCheckBox {
                                     objectName: "showcaseUploaded_" + partRow.index

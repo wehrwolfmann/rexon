@@ -749,8 +749,11 @@ fn pkgbuild_arrays(
 ) -> std::collections::HashMap<&'static str, Vec<String>> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut cmd = std::process::Command::new("bash");
+    // `CARCH` makepkg задаёт сам (у нас — x86_64): от него зависят имена
+    // архитектурных источников (`waywallen-kde-…-${CARCH}-embed.zip`).
     cmd.env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("CARCH", "x86_64")
         .arg("-c")
         .arg(
             r#"source "$1" || exit 1

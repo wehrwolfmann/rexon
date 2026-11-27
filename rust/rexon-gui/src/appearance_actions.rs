@@ -532,6 +532,18 @@ pub mod qobject {
         #[cxx_name = "conkyLog"]
         fn conky_log(self: &AppearanceActions, item_id: &QString) -> QString;
 
+        /// «Открыть папку» виджета Conky в файловом менеджере; `false` —
+        /// виджета на диске уже нет или открыть нечем.
+        #[qinvokable]
+        #[cxx_name = "openConkyFolder"]
+        fn open_conky_folder(self: &AppearanceActions, item_id: &QString) -> bool;
+
+        /// «Открыть файл настроек» — часть `conf` виджета в редакторе по
+        /// умолчанию; чужой путь (не часть виджета) не открывается.
+        #[qinvokable]
+        #[cxx_name = "openConkyFile"]
+        fn open_conky_file(self: &AppearanceActions, item_id: &QString, conf: &QString) -> bool;
+
         /// Настройки виджета Conky (файл `conf` плитки `itemId`) — JSON
         /// `conky_overlay::SettingsView`: значения, выбор, подписи.
         #[qinvokable]
@@ -1107,6 +1119,25 @@ impl qobject::AppearanceActions {
             &rexon_core::de_apply::Ctx::live(),
             &name,
         ))
+    }
+
+    fn open_conky_folder(&self, item_id: &QString) -> bool {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let io = rexon_core::animations::SystemIo;
+        match rexon_core::conky_procs::widget_folder(&io, &rexon_core::de_apply::Ctx::live(), &name) {
+            Some(dir) => crate::extensions_actions::qobject::open_folder_url(&QString::from(&dir)),
+            None => false,
+        }
+    }
+
+    fn open_conky_file(&self, item_id: &QString, conf: &QString) -> bool {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let io = rexon_core::animations::SystemIo;
+        let ctx = rexon_core::de_apply::Ctx::live();
+        match rexon_core::conky_procs::part_file(&io, &ctx, &name, &conf.to_string()) {
+            Some(file) => crate::extensions_actions::qobject::open_folder_url(&QString::from(&file)),
+            None => false,
+        }
     }
 
     fn conky_settings(&self, item_id: &QString, conf: &QString) -> QString {

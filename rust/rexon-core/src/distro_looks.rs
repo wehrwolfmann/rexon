@@ -1740,13 +1740,22 @@ fn units_of(look: &Look, it: &PlannedItem, prepared: &Path, t: &Target) -> Vec<(
         names.into_iter().map(|n| (dir.join(&n), format!("{base}/{n}"))).collect()
     };
     if let Some(rest) = rel.strip_prefix("usr/share/") {
+        // Общий набор значков (`hicolor`, `locolor`) из пакета в профиль не
+        // кладётся: его каталог делят все программы, а `index.theme` пакета
+        // перекрыл бы системный (дефект 09.11.2026, [`crate::icon_hygiene`]).
+        let shared = |prefix: &str, unit: &str| prefix == "icons" && crate::icon_hygiene::is_reserved_icon_set(unit);
         for (prefix, which, to) in CONTAINERS {
             let base = base_dir(t, which, to);
             if rest == *prefix {
-                return children(&src, &base);
+                let mut units = children(&src, &base);
+                units.retain(|(p, _)| !p.file_name().is_some_and(|n| shared(prefix, &n.to_string_lossy())));
+                return units;
             }
             if let Some(tail) = rest.strip_prefix(&format!("{prefix}/")) {
                 let unit = tail.split('/').next().unwrap_or(tail);
+                if shared(prefix, unit) {
+                    return Vec::new();
+                }
                 let unit_src = prepared.join(format!("{}/{sid}/usr/share/{prefix}/{unit}", rxn::SOURCES_DIR));
                 return vec![(unit_src, format!("{base}/{unit}"))];
             }

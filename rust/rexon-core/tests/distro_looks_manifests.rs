@@ -788,6 +788,21 @@ OpenGL renderer string: AMD Radeon 780M
         install_fails: bool,
         extra: &[(&str, &str)],
     ) -> (Result<dl::AppliedLook, String>, Vec<String>) {
+        run_apply_with(b, de, id, &Request::default(), pkgs, in_repos, install_fails, extra)
+    }
+
+    /// [`run_apply`] с выбором человека (стиль образа, виды «по желанию»).
+    #[allow(clippy::too_many_arguments)]
+    fn run_apply_with(
+        b: &Bench,
+        de: &str,
+        id: &str,
+        req: &Request,
+        pkgs: &Pkgs,
+        in_repos: &dyn Fn(&str) -> bool,
+        install_fails: bool,
+        extra: &[(&str, &str)],
+    ) -> (Result<dl::AppliedLook, String>, Vec<String>) {
         let t = b.target(de);
         let missing = RefCell::new(Vec::new());
         let run = |argv: &[String], _: Option<u64>| b.run(argv, &missing);
@@ -798,7 +813,7 @@ OpenGL renderer string: AMD Radeon 780M
         let no_ext = |_: &str| false;
         let probes = Probes { owner_of: &owner, in_repos, extension_installed: &no_ext };
         let lk = look(id);
-        let plan = ready(dl::plan(&lk, &t, &Request::default(), &probes));
+        let plan = ready(dl::plan(&lk, &t, req, &probes));
         let install = |names: &[String]| -> Result<(), String> {
             if install_fails {
                 return Err("окно пароля закрыто".into());
@@ -1249,6 +1264,146 @@ OpenGL renderer string: AMD Radeon 780M
         match dl::plan(&look("steamos"), &t, &Request::default(), &probes) {
             Prepared::Refused { reason, .. } => assert!(reason.contains("icons"), "{reason}"),
             Prepared::Ready(p) => panic!("обязательные значки без пакета: {:?}", p.skipped),
+        }
+    }
+
+    /// Профили прочих поддержанных столов: тема GTK и то, что стол пишет сам.
+    fn gnome_profile(b: &Bench) {
+        b.put(".gsstore/org.gnome.desktop.interface/gtk-theme", "Adwaita");
+        b.put(".gsstore/org.gnome.desktop.wm.preferences/theme", "Adwaita");
+        b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
+    }
+
+    fn budgie_profile(b: &Bench) {
+        b.put(".gsstore/org.gnome.desktop.interface/gtk-theme", "Materia");
+        b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Materia\n");
+    }
+
+    fn lxqt_profile(b: &Bench) {
+        b.put(".config/lxqt/lxqt.conf", "[General]\ntheme=frost\n");
+        b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
+    }
+
+    fn hyprland_profile(b: &Bench) {
+        b.put(".config/hypr/hyprland.conf", "$mod = SUPER\n");
+        b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
+    }
+
+    /// Все столы, на которых блок «Как в дистрибутиве» даёт «Применить»
+    /// (`distro_looks::session_consumers`), с профилем до применения.
+    const LOOK_DESKS: &[(&str, fn(&Bench))] = &[
+        ("kde", plasma_profile),
+        ("mate", mate_profile),
+        ("xfce", xfce_profile),
+        ("cinnamon", cinnamon_profile),
+        ("gnome", gnome_profile),
+        ("budgie", budgie_profile),
+        ("lxqt", lxqt_profile),
+        ("sway", sway_profile),
+        ("hyprland", hyprland_profile),
+    ];
+
+    /// Выборы человека, которые стоит пройти: стиль по умолчанию и каждый
+    /// вариант свойства-списка образа (у SteamOS — Vapor и VGUI2).
+    fn look_requests(id: &str) -> Vec<(String, Request)> {
+        let lk = look(id);
+        let mut out = vec![("по умолчанию".to_string(), Request::default())];
+        for (key, prop) in dl::choice_properties(&lk) {
+            let options = serde_json::to_value(prop).unwrap();
+            for opt in options.get("options").and_then(Value::as_array).into_iter().flatten() {
+                let Some(v) = opt.as_str().or_else(|| opt.get("value").and_then(Value::as_str)) else { continue };
+                let mut values = PropValues::new();
+                values.insert(key.to_string(), Value::String(v.to_string()));
+                out.push((format!("{key}={v}"), Request { values, ..Default::default() }));
+            }
+        }
+        out
+    }
+
+    /// Матрица «образ × стол × стиль»: план собирается (а не отказ), каждая
+    /// невстающая часть названа с причиной, применение что-то меняет в
+    /// профиле, «Вернуть как было» возвращает профиль побайтно и снимает
+    /// пометку «применён»; повторный возврат честно говорит «нечего».
+    #[test]
+    fn every_look_on_every_desktop_applies_and_reverts_byte_for_byte() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        for &id in LOOKS {
+            for (choice, req) in look_requests(id) {
+                for &(de, profile) in LOOK_DESKS {
+                    let tag = format!("{id}/{de}/{choice}");
+                    let b = Bench::new(&format!("matrix-{id}-{de}-{}", choice.replace(['=', ' '], "-")));
+                    profile(&b);
+                    let before = b.snapshot();
+                    let pkgs = Pkgs::new(&[("libplasma", "libplasma"), ("breeze-cursors", "breeze-cursors")]);
+                    let t = b.target(de);
+                    let owner = |n: &str| pkgs.owner(n);
+                    let yes = |_: &str| true;
+                    let no = |_: &str| false;
+                    let probes = Probes { owner_of: &owner, in_repos: &yes, extension_installed: &no };
+                    let plan = ready(dl::plan(&look(id), &t, &req, &probes));
+                    assert!(!plan.items.is_empty(), "{tag}: в плане ни одной части");
+                    for s in plan.skipped.iter().chain(&plan.covered).chain(&plan.limits) {
+                        assert!(!s.reason.trim().is_empty(), "{tag}: «{}» без причины", s.kind);
+                    }
+                    assert!(
+                        plan.skipped.iter().any(|s| s.kind == "game-session") || !plan.items.iter().any(|i| i.kind == "game-session"),
+                        "{tag}: игровой режим без согласия"
+                    );
+                    let (r, missing) = run_apply_with(&b, de, id, &req, &pkgs, &yes, false, &[]);
+                    let applied = r.unwrap_or_else(|e| panic!("{tag}: {e}"));
+                    assert!(!applied.message.trim().is_empty(), "{tag}: итог пуст");
+                    if de == "kde" {
+                        assert!(missing.is_empty(), "{tag}: команды вне стенда: {missing:?}");
+                    }
+                    assert_ne!(b.snapshot(), before, "{tag}: ничего не применилось");
+                    assert!(dl::is_applied(id, &t.rexon_dir()), "{tag}: нет пометки «применён»");
+
+                    let back = run_revert(&b, de, id);
+                    assert!(back.reverted && back.not_restored.is_empty(), "{tag}: {back:?}");
+                    assert_eq!(back.restart_shell, de == "kde", "{tag}");
+                    let after = b.snapshot();
+                    let diff: Vec<&String> =
+                        before.keys().chain(after.keys()).filter(|k| before.get(*k) != after.get(*k)).collect();
+                    let shown: Vec<(String, String, String)> = diff
+                        .iter()
+                        .filter(|k| !k.ends_with('/'))
+                        .map(|k| {
+                            let text = |m: &BTreeMap<String, Vec<u8>>| m.get(*k).map(|v| String::from_utf8_lossy(v).into_owned()).unwrap_or_else(|| "<нет>".into());
+                            (k.to_string(), text(&before), text(&after))
+                        })
+                        .collect();
+                    assert!(diff.is_empty(), "{tag}: после «Вернуть как было» разошлось: {shown:#?}\nвозврат: {back:?}\nвызовы:\n{}", b.calls());
+                    assert!(!dl::is_applied(id, &t.rexon_dir()), "{tag}: пометка «применён» осталась");
+                    assert!(pkgs.removed.borrow().is_empty(), "{tag}: откат не снимает пакеты");
+
+                    let again = run_revert(&b, de, id);
+                    assert!(!again.reverted, "{tag}: второй возврат что-то нашёл: {again:?}");
+                    assert_eq!(b.snapshot(), before, "{tag}: второй возврат тронул профиль");
+                }
+            }
+        }
+    }
+
+    /// Игровой режим SteamOS по согласию: в плане AUR-пакеты только с
+    /// префиксом `aur/`, запрет `jupiter-hw-support` и сессии CachyOS — на
+    /// каждом столе, где образ применяется.
+    #[test]
+    fn steamos_game_mode_plan_on_every_desktop() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        for &(de, _) in LOOK_DESKS {
+            let b = Bench::new(&format!("game-mode-{de}"));
+            let t = b.target(de);
+            let owner = |n: &str| (n == "libplasma" || n == "breeze-cursors").then(|| n.to_string());
+            let yes = |_: &str| true;
+            let no = |_: &str| false;
+            let probes = Probes { owner_of: &owner, in_repos: &yes, extension_installed: &no };
+            let req = Request { enable: vec!["game-session".into()], ..Default::default() };
+            let plan = ready(dl::plan(&look("steamos"), &t, &req, &probes));
+            assert!(!plan.skipped.iter().any(|s| s.kind == "game-session" && s.reason == dl::not_chosen_reason()), "{de}: {:?}", plan.skipped);
+            let aur: Vec<&String> = plan.aur.iter().chain(&plan.aur_build).flat_map(|a| &a.packages).collect();
+            assert!(aur.iter().all(|n| n.starts_with("aur/")), "{de}: {aur:?}");
+            assert!(!aur.iter().any(|n| n.contains("jupiter-hw-support") || n.contains("gamescope-session-cachyos")), "{de}: {aur:?}");
+            assert!(!plan.install.iter().any(|d| serde_json::to_string(d).unwrap().contains("jupiter-hw-support")), "{de}");
         }
     }
 }

@@ -20,7 +20,25 @@ MD.Page {
         return hiddenIds.filter(id => !libraries.some(library => library.id === id));
     }
 
+    function editLibrary(library) {
+        if (sourceQuery.querying || removeQuery.querying)
+            return;
+        const source = (sourceQuery.sources || []).find(source => source.name === library.pluginName);
+        root.MD.MProp.page.pushItem('waywallen.ui/EditLibraryPage', {
+            libraryId: library.id,
+            originalName: library.name,
+            initialValues: Object.assign({}, library.settings),
+            schemas: source ? source.librarySettings : []
+        });
+    }
+
     actions: [
+        MD.Action {
+            icon.name: MD.Token.icon.image_search
+            text: qsTr("Auto detect libraries")
+            enabled: !autoDetectQuery.querying
+            onTriggered: autoDetectQuery.reload()
+        },
         MD.Action {
             icon.name: MD.Token.icon.add
             text: qsTr("Add library")
@@ -28,69 +46,49 @@ MD.Page {
         }
     ]
 
+    W.LibraryAutoDetectQuery {
+        id: autoDetectQuery
+        onFinished: {
+            if (addedCount === 0)
+                W.Action.toast(qsTr("No new libraries found"));
+        }
+    }
+
     W.LibraryRemoveQuery {
         id: removeQuery
     }
 
-    W.LibraryRenameQuery {
-        id: renameQuery
-        forwardError: false
-        onErrorOccurred: function (error) {
-            renameDialog.errorText = error;
-        }
-        onFinished: renameDialog.close()
+    W.SourceListQuery {
+        id: sourceQuery
     }
-
-    MD.Dialog {
-        id: renameDialog
-        property string errorText: ""
-        property string originalName: ""
-        title: qsTr("Rename library")
-        parent: MD.Overlay.overlay
-        modal: true
-        horizontalPadding: 24
-        implicitWidth: Math.min(400, parent ? parent.width - 48 : 400)
-        standardButtons: MD.Dialog.Cancel
-
-        function openFor(library) {
-            renameQuery.libraryId = library.id;
-            originalName = library.name;
-            nameField.text = library.name;
-            errorText = "";
-            open();
+    Component.onCompleted: sourceQuery.reload()
+    Connections {
+        target: W.Notify
+        function onDaemonReady() {
+            sourceQuery.reload();
         }
-
-        onOpened: nameField.forceActiveFocus()
-        contentItem: W.ApplyTextField {
-            id: nameField
-            placeholderText: qsTr("Library name")
-            enabled: !renameQuery.querying
-            canApply: text.trim().length > 0 && text.trim() !== renameDialog.originalName
-            error: renameDialog.errorText.length > 0
-            errorText: renameDialog.errorText
-            onTextEdited: renameDialog.errorText = ""
-            onApplied: value => {
-                renameQuery.name = value;
-                renameQuery.reload();
-            }
+        function onPluginChanged() {
+            sourceQuery.reload();
         }
     }
 
     contentItem: Item {
-        implicitHeight: Math.max(m_view.contentHeight, emptyLabel.implicitHeight) + 16
+        implicitHeight: Math.max(m_view.contentHeight + m_view.topMargin + m_view.bottomMargin, emptyLabel.implicitHeight + 16)
         implicitWidth: m_view.implicitWidth
 
-        MD.VerticalListView {
+        MD.VerticalLazyList {
             id: m_view
             width: parent.width
             height: parent.height
-            model: W.App.libraryManager.libraries
+            source: MD.ListSnapshotSource {
+                items: W.App.libraryManager.libraries
+            }
             spacing: 8
 
-            topMargin: 8
-            bottomMargin: 8
-            leftMargin: 12
-            rightMargin: 12
+            extraTopMargin: 8
+            extraBottomMargin: 8
+            extraLeftMargin: 12
+            extraRightMargin: 12
 
             footer: Column {
                 width: m_view.contentWidth
@@ -102,13 +100,15 @@ MD.Page {
                         required property var modelData
                         width: m_view.contentWidth
                         text: qsTr("Removed source #%1").arg(modelData)
-                        trailing: MD.IconButton {
-                            enabled: root.visibilityReady
-                            icon.name: MD.Token.icon.close
-                            Accessible.name: qsTr("Clear hidden state")
-                            MD.ToolTip.text: Accessible.name
-                            MD.ToolTip.visible: mdState.interactions.hovered
-                            onClicked: root.libraryQuery.toggleLibraryHidden(missingSourceItem.modelData)
+                        trailing: MD.ActionToolBar {
+                            actions: [
+                                MD.Action {
+                                    enabled: root.visibilityReady
+                                    icon.name: MD.Token.icon.close
+                                    text: qsTr("Clear hidden state")
+                                    onTriggered: root.libraryQuery.toggleLibraryHidden(missingSourceItem.modelData)
+                                }
+                            ]
                         }
                     }
                 }
@@ -116,13 +116,16 @@ MD.Page {
 
             delegate: MD.ListItem {
                 id: sourceItem
-                required property var modelData
+                required property MD.LazyRow row
+                readonly property var modelData: row.value
+                itemRow: row
                 readonly property string fullPath: String(modelData.path || "")
 
                 width: m_view.contentWidth
                 radius: 8
 
                 mdState.backgroundColor: MD.Token.color.surface_container
+                onClicked: root.editLibrary(sourceItem.modelData)
 
                 text: modelData.name
                 supportText: qsTr("Plugin: %1").arg(modelData.pluginName)
@@ -140,36 +143,33 @@ MD.Page {
                     color: MD.Token.color.on_surface_variant
                 }
 
-                trailing: Row {
-                    spacing: 4
-                    MD.IconButton {
-                        enabled: !renameQuery.querying
-                        icon.name: MD.Token.icon.edit
-                        Accessible.name: qsTr("Rename library")
-                        MD.ToolTip.text: Accessible.name
-                        MD.ToolTip.visible: mdState.interactions.hovered
-                        onClicked: renameDialog.openFor(sourceItem.modelData)
-                    }
-                    MD.IconToggleButton {
-                        visible: root.libraryQuery !== null
-                        enabled: root.visibilityReady
-                        checked: !root.hiddenIds.includes(sourceItem.modelData.id)
-                        icon.name: checked ? MD.Token.icon.visibility : MD.Token.icon.visibility_off
-                        Accessible.name: checked ? qsTr("Hide source") : qsTr("Show source")
-                        MD.ToolTip.text: Accessible.name
-                        MD.ToolTip.visible: mdState.interactions.hovered
-                        onCheckedChangeRequested: root.libraryQuery.toggleLibraryHidden(sourceItem.modelData.id)
-                    }
-                    MD.IconButton {
-                        icon.name: MD.Token.icon.delete
-                        Accessible.name: qsTr("Remove library")
-                        MD.ToolTip.text: Accessible.name
-                        MD.ToolTip.visible: mdState.interactions.hovered
-                        onClicked: {
-                            removeQuery.libraryId = sourceItem.modelData.id;
-                            removeQuery.reload();
+                trailing: MD.ActionToolBar {
+                    actions: [
+                        MD.Action {
+                            enabled: sourceItem.fullPath.length > 0
+                            icon.name: MD.Token.icon.folder_open
+                            text: qsTr("Open folder")
+                            onTriggered: MD.Util.openFolderExternally(sourceItem.fullPath)
+                        },
+                        MD.Action {
+                            visible: root.libraryQuery !== null
+                            enabled: root.visibilityReady
+                            checkable: true
+                            checked: !root.hiddenIds.includes(sourceItem.modelData.id)
+                            icon.name: checked ? MD.Token.icon.visibility : MD.Token.icon.visibility_off
+                            text: checked ? qsTr("Hide source") : qsTr("Show source")
+                            onTriggered: root.libraryQuery.toggleLibraryHidden(sourceItem.modelData.id)
+                        },
+                        MD.Action {
+                            enabled: !removeQuery.querying
+                            icon.name: MD.Token.icon.delete
+                            text: qsTr("Remove library")
+                            onTriggered: {
+                                removeQuery.libraryId = sourceItem.modelData.id;
+                                removeQuery.reload();
+                            }
                         }
-                    }
+                    ]
                 }
             }
         }

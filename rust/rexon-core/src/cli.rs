@@ -191,6 +191,10 @@ pub fn run_headless(args: &[String], out: &mut dyn FnMut(&str)) -> Option<i32> {
         if let Some(rc) = crate::session_guard::cli_route(args, out) {
             return Some(rc);
         }
+        // Сторож игрового режима: его зовёт сценарий gamescope-session-plus.
+        if let Some(rc) = crate::gamemode_guard::cli_route(args, out) {
+            return Some(rc);
+        }
     }
     match route {
         Route::Help => {
@@ -257,6 +261,8 @@ pub fn help_lines() -> Vec<String> {
         row(crate::app::RECOVER_KDE_FLAG, tr("roll back a broken Plasma look to the standard one")),
         // TRANSLATORS: `rexon --help`, explains the --session-guard-restore option.
         row(crate::session_guard::RESTORE_FLAG, tr("bring back the Plasma look that Rexon set aside after a crash")),
+        // TRANSLATORS: `rexon --help`, explains the --gamemode-preflight option.
+        row(crate::gamemode_guard::PREFLIGHT_FLAG, tr("check which video card game mode will show the picture on (changes nothing)")),
         // TRANSLATORS: `rexon --help`, explains the --sanitize-gtk option.
         row("--sanitize-gtk", tr("fix links to deleted themes in GTK settings")),
         // TRANSLATORS: `rexon --help`, explains the --conky-set option; NAME is typed literally.
@@ -572,10 +578,20 @@ fn redirect_stderr_to_log() -> bool {
 
 /// Каталоги переводов самой Qt, в порядке загрузки.
 ///
-/// `qtbase` — кнопки диалогов и меню правки, то есть всё, что покупатель
-/// видит; `qt` — исторический сводный каталог старых сборок Qt, он есть не
-/// везде и грузится вторым.
-pub const QT_TRANSLATION_CATALOGS: &[&str] = &["qtbase", "qt"];
+/// `qtbase` — кнопки диалогов и меню правки полей QtWidgets; `qtdeclarative`
+/// — строки Qt Quick, среди них меню правки полей QML (`TextArea`,
+/// `TextField`: контексты `CopyAction`, `SelectAllAction`…); `qt` —
+/// исторический сводный каталог старых сборок Qt, он есть не везде.
+///
+/// ⚠️ Поймано 08.11.2026: в Qt 6.12 меню правки QML переведено в
+/// `qtdeclarative` далеко не на все языки (немецкий есть, русского и
+/// китайского нет). Дыры закрывает шим окна: для этих контекстов он берёт
+/// те же надписи из `qtbase` (контекст `QLineEdit`), см.
+/// `rexon_gui_factory.cpp`.
+pub const QT_TRANSLATION_CATALOGS: &[&str] = &["qtbase", "qtdeclarative", "qt"];
+
+/// Каталог, без которого стандартные надписи Qt остаются английскими.
+pub const QT_BASE_CATALOG: &str = "qtbase";
 
 /// Разделитель имени каталога и кода языка (`qtbase_ru.qm`).
 pub const QT_TRANSLATION_SEPARATOR: &str = "_";
@@ -622,6 +638,20 @@ pub fn qt_translation_files(
                 .find(|path| exists(path))
         })
         .collect()
+}
+
+/// Строка журнала, если Rexon не по-английски, а каталога `qtbase` для его
+/// языка (с откатом `zh_CN` → `zh`) в `files` нет: стандартные надписи Qt
+/// тогда английские — без ошибки и без подмены системным языком.
+pub fn qt_translation_missing_note(language: &str, files: &[PathBuf]) -> Option<String> {
+    if qt_translation_candidates(QT_BASE_CATALOG, language).is_empty() {
+        return None;
+    }
+    let prefix = format!("{QT_BASE_CATALOG}{QT_TRANSLATION_SEPARATOR}");
+    let has_base = files.iter().any(|p| {
+        p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix))
+    });
+    (!has_base).then(|| format!("каталога Qt для {language} нет, стандартные надписи по-английски"))
 }
 
 /// Переменная окружения, по которой язык стандартных кнопок выбирает
@@ -967,7 +997,16 @@ mod tests {
         }
     }
     const SHIPPED: &[&str] =
-        &["qtbase_ru.qm", "qt_ru.qm", "qtbase_de.qm", "qtbase_en.qm", "qt_en.qm", "qtbase_pt_BR.qm"];
+        &[
+            "qtbase_ru.qm",
+            "qt_ru.qm",
+            "qtbase_de.qm",
+            "qtdeclarative_de.qm",
+            "qtbase_en.qm",
+            "qt_en.qm",
+            "qtbase_pt_BR.qm",
+            "qtbase_zh.qm",
+        ];
 
     fn qm(names: &[&str]) -> Vec<PathBuf> {
         names.iter().map(|n| Path::new(QT_DIR).join(n)).collect()
@@ -991,13 +1030,41 @@ mod tests {
         // Rexon по-русски — оба каталога.
         assert_eq!(qt_translation_files("ru", dir, &exists), qm(&["qtbase_ru.qm", "qt_ru.qm"]));
         // По-немецки — только то, что есть (`qt_de` нет).
-        assert_eq!(qt_translation_files("de", dir, &exists), qm(&["qtbase_de.qm"]));
+        assert_eq!(
+            qt_translation_files("de", dir, &exists),
+            qm(&["qtbase_de.qm", "qtdeclarative_de.qm"])
+        );
+        // Каталога под полный код нет — откат на язык без региона.
+        assert_eq!(qt_translation_files("zh_CN", dir, &exists), qm(&["qtbase_zh.qm"]));
         assert_eq!(qt_translation_files("pt_BR", dir, &exists), qm(&["qtbase_pt_BR.qm"]));
         // По-английски — НИЧЕГО, хотя `qtbase_en.qm` на диске есть.
         assert!(qt_translation_files("en", dir, &exists).is_empty());
         // Языка у Qt нет — откат на английский (пусто), а НЕ на русский.
         assert!(qt_translation_files("ja", dir, &exists).is_empty());
         assert!(qt_translation_files("uk", dir, &exists).is_empty());
+    }
+
+    /// Язык Rexon есть, каталога Qt нет: надписи Qt английские, одна
+    /// строка в журнал; системный язык в дело не идёт.
+    #[test]
+    fn нет_каталога_qt_для_языка_rexon_одна_строка_в_журнал() {
+        let exists = qt_has(SHIPPED);
+        let dir = Path::new(QT_DIR);
+        let ja = qt_translation_files("ja", dir, &exists);
+        assert!(ja.is_empty());
+        assert_eq!(
+            qt_translation_missing_note("ja", &ja).as_deref(),
+            Some("каталога Qt для ja нет, стандартные надписи по-английски")
+        );
+        // Есть только сводный `qt_*` без `qtbase_*` — тоже «нет».
+        assert!(qt_translation_missing_note("uk", &[dir.join("qt_uk.qm")]).is_some());
+        // Каталог есть (в том числе откатом) — молчим.
+        for lang in ["ru", "de", "pt_BR", "zh_CN"] {
+            let files = qt_translation_files(lang, dir, &exists);
+            assert_eq!(qt_translation_missing_note(lang, &files), None, "{lang}");
+        }
+        // Английский — исходный язык Qt, каталог ему не нужен.
+        assert_eq!(qt_translation_missing_note("en", &[]), None);
     }
 
     /// Сквозная сверка: окружение ▸ язык Rexon (как его выбирает

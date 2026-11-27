@@ -218,6 +218,12 @@ Item {
     function ensureVisible(item) {
         if (!item || !flick.contentItem)
             return;
+        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
+        // вернулись из другой программы) — Qt возвращает фокус тому же
+        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
+        // иначе прокрученная вниз вкладка прыгает наверх.
+        if (item.focusReason === Qt.ActiveWindowFocusReason)
+            return;
         const pos = item.mapToItem(flick.contentItem, 0, 0);
         const top = pos.y;
         const bottom = pos.y + item.height;

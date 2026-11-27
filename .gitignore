@@ -58,5 +58,6 @@ _archived/rexon/kpackage/io.openaxon.rexon.video/
 /.build-queue.lock
 /target-shared/
 /target-slot*/
+/target-wt/
 /.build-queue.lock.*
 /.build-queue.d/

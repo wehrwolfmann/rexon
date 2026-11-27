@@ -20,4 +20,9 @@ QtObject {
     property int capacityMiB: 64
     onCapacityMiBChanged: if (capacityMiB < 0)
         capacityMiB = 0
+
+    // waywallen 0.6.0: потолок кэша ТЕКСТУР окна. У штатного Qt Quick
+    // такого потолка нет — вызов принимается и ничего не делает.
+    function setTextureCapacityMiB(window, value) {
+    }
 }

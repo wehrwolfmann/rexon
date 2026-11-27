@@ -782,14 +782,19 @@ fn system_engine_before_bundled_and_managed() {
     assert_eq!(pick("0.5.1", "0.5.0"), system, "система новее");
 }
 
-/// Юнит, записанный на пропавший движок (пакет перестал вшивать AppImage),
-/// пересобирается на найденном; живой выбор и «ничего не нашлось» — прежний.
+/// Юнит пересобирается на движке, который Rexon запустил бы сейчас: и когда
+/// записанный пропал (пакет перестал вшивать AppImage), и когда он ещё лежит
+/// на диске, но это уже не текущий движок (старый управляемый AppImage при
+/// Rexon из пакета, 08.11.2026). «Ничего не нашлось» — прежний.
 #[test]
 fn unit_refresh_follows_vanished_engine() {
     let old = wc::engine_appimage_path(wc::ENGINE_DIR);
-    assert_eq!(wc::unit_refresh_binary(&old, false, Some(wc::SYSTEM_DAEMON)), wc::SYSTEM_DAEMON);
-    assert_eq!(wc::unit_refresh_binary(&old, true, Some(wc::SYSTEM_DAEMON)), old);
-    assert_eq!(wc::unit_refresh_binary(&old, false, None), old);
+    assert_eq!(wc::unit_refresh_binary(&old, Some(wc::SYSTEM_DAEMON)), wc::SYSTEM_DAEMON);
+    assert_eq!(wc::unit_refresh_binary(&old, None), old);
+    assert_eq!(wc::unit_refresh_binary(&old, Some("")), old);
+    let managed = wc::managed_appimage_path(HOME);
+    assert_eq!(wc::unit_refresh_binary(&managed, Some(&old)), old, "старая копия человека при движке пакета");
+    assert_eq!(wc::unit_refresh_binary(&old, Some(&old)), old);
 
     let written = wc::autostart_unit_content_with(&old, Some(wc::ENGINE_DIR));
     match wc::refresh_unit_plan_on(Some(&written), wc::SYSTEM_DAEMON, None, HOME, None) {
@@ -1577,14 +1582,31 @@ fn build(name: &str, id: u64) -> Vec<u8> {
         "plugin_list" => wc::plugin_list(id),
         "plugin_install" => wc::plugin_install(id, "/tmp/owe.zip"),
         "remote_availability" => wc::remote_availability(id),
-        "remote_search_plain" => wc::remote_search(id, "", "", 0, "", &s),
+        "remote_search_plain" => wc::remote_search(
+            id,
+            &wc::RemoteSearch {
+                query: "",
+                sort_key: "",
+                page: 0,
+                source_id: "",
+                tags: &s,
+                excluded_tags: &[],
+                filter_match_modes: &Default::default(),
+                cursor: "",
+            },
+        ),
         "remote_search_full" => wc::remote_search(
             id,
-            "город",
-            "popular",
-            3,
-            "steam",
-            &["anime".to_string(), "4k".to_string()],
+            &wc::RemoteSearch {
+                query: "город",
+                sort_key: "popular",
+                page: 3,
+                source_id: "steam",
+                tags: &["anime".to_string(), "4k".to_string()],
+                excluded_tags: &[],
+                filter_match_modes: &Default::default(),
+                cursor: "",
+            },
         ),
         "remote_details" => wc::remote_details(id, "42", "steam"),
         "remote_download" => wc::remote_download(id, "42", "steam"),
@@ -1792,17 +1814,17 @@ fn display_rename_несёт_номер_дисплея() {
 /// поле остаётся незаданным, и имя по умолчанию выбирает демон.
 #[test]
 fn library_add_несёт_обрезанное_имя() {
-    let req = wc::library_add_request("/обои", "we", "  Мастерская  ").expect("запрос уходит");
+    let req = wc::library_add_request("/обои", "we", "  Мастерская  ", Default::default()).expect("запрос уходит");
     assert_eq!(req.path, "/обои");
     assert_eq!(req.plugin_name, "we");
     assert_eq!(req.name.as_deref(), Some("Мастерская"));
 
     for blank in ["", "   ", "\t\n"] {
-        let req = wc::library_add_request("/обои", "we", blank).expect("запрос уходит");
+        let req = wc::library_add_request("/обои", "we", blank, Default::default()).expect("запрос уходит");
         assert_eq!(req.name, None, "пустое имя {blank:?} не шлётся");
     }
-    assert_eq!(wc::library_add_request("", "we", "Имя"), None, "без пути");
-    assert_eq!(wc::library_add_request("/обои", "", "Имя"), None, "без плагина");
+    assert_eq!(wc::library_add_request("", "we", "Имя", Default::default()), None, "без пути");
+    assert_eq!(wc::library_add_request("/обои", "", "Имя", Default::default()), None, "без плагина");
 
     let frame = wc::library_add(9, "/обои", "we", " Мастерская ");
     let request = pb::Request::decode(&frame[..]).expect("кадр разбирается");
@@ -1820,42 +1842,64 @@ fn library_add_несёт_обрезанное_имя() {
                 path: "/обои".into(),
                 plugin_name: "we".into(),
                 name: None,
+                settings: Default::default(),
             })),
         }
         .encode_to_vec()
     );
+    // waywallen 0.6.0: настройки библиотеки (`librarySettings` плагина)
+    // уходят картой строк — значения как `QVariant::toString()`.
+    let settings = wc::library_settings(&serde_json::json!({
+        "recursive": true, "depth": 3.0, "ratio": 1.5, "label": "Мои", "none": null
+    }));
+    assert_eq!(settings["recursive"], "true");
+    assert_eq!(settings["depth"], "3");
+    assert_eq!(settings["ratio"], "1.5");
+    assert_eq!(settings["label"], "Мои");
+    assert_eq!(settings["none"], "");
+    let req = wc::library_add_request("/обои", "we", "", settings.clone()).expect("запрос уходит");
+    assert_eq!(req.settings, settings);
+    assert!(wc::library_settings(&serde_json::json!([1, 2])).is_empty(), "не карта — пусто");
 }
 
-/// waywallen 0.5.0: переименование библиотеки (поле 92). Кадр разбирается
-/// в `LibraryRenameRequest{id, name}` с обрезанным именем; номер `<= 0` или
-/// пустое после среза имя — запрос не уходит (`LibraryRenameQuery::reload`).
+/// waywallen 0.6.0: правка библиотеки (поле 93) — имя и настройки одним
+/// запросом; вендорный интерфейс больше не шлёт `library_rename` (92).
+/// Кадр разбирается в `LibraryEditRequest{id, name, settings}` с обрезанным
+/// именем; номер `<= 0` или пустое после среза имя — запрос не уходит
+/// (`LibraryEditQuery::reload`).
 #[test]
-fn library_rename_кадр_и_отказы() {
+fn library_edit_кадр_и_отказы() {
     assert_eq!(
-        wc::request_payload_field_number("library_rename"),
-        Some(92),
-        "номер поля из proto 0.5.0"
+        wc::request_payload_field_number("library_edit"),
+        Some(93),
+        "номер поля из proto 0.6.0"
     );
-    let frame = wc::library_rename(11, 3, "  Обои с рабочего стола ");
+    let settings = wc::library_settings(&serde_json::json!({ "recursive": false }));
+    let frame = wc::library_edit(11, 3, "  Обои с рабочего стола ", settings.clone());
     let request = pb::Request::decode(&frame[..]).expect("кадр разбирается");
     assert_eq!(request.request_id, 11);
-    let Some(pb::request::Payload::LibraryRename(inner)) = request.payload else {
+    let Some(pb::request::Payload::LibraryEdit(inner)) = request.payload else {
         panic!("не тот вид запроса");
     };
     assert_eq!(inner.id, 3);
     assert_eq!(inner.name, "Обои с рабочего стола");
+    assert_eq!(inner.settings, settings);
 
-    let body = wc::library_rename_request(3, " Имя ").expect("запрос уходит");
-    assert_eq!(body, pb::LibraryRenameRequest { id: 3, name: "Имя".into() });
+    let body = wc::library_edit_request(3, " Имя ", settings.clone()).expect("запрос уходит");
+    assert_eq!(
+        body,
+        pb::LibraryEditRequest { id: 3, name: "Имя".into(), settings: settings.clone() }
+    );
     // Универсальный путь вкладки (тело + номер поля) даёт тот же кадр.
     assert_eq!(
-        wc::request_bytes(11, "library_rename", &body.encode_to_vec()).unwrap(),
-        wc::library_rename(11, 3, "Имя")
+        wc::request_bytes(11, "library_edit", &body.encode_to_vec()).unwrap(),
+        wc::library_edit(11, 3, "Имя", settings)
     );
-    assert_eq!(wc::library_rename_request(0, "Имя"), None, "номер 0");
-    assert_eq!(wc::library_rename_request(-4, "Имя"), None, "отрицательный номер");
-    assert_eq!(wc::library_rename_request(3, ""), None, "пустое имя");
-    assert_eq!(wc::library_rename_request(3, "   "), None, "имя из пробелов");
+    let none = || Default::default();
+    assert_eq!(wc::library_edit_request(0, "Имя", none()), None, "номер 0");
+    assert_eq!(wc::library_edit_request(-4, "Имя", none()), None, "отрицательный номер");
+    assert_eq!(wc::library_edit_request(3, "", none()), None, "пустое имя");
+    assert_eq!(wc::library_edit_request(3, "   ", none()), None, "имя из пробелов");
 }
 
 // ============================================================================

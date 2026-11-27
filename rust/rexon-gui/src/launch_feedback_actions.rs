@@ -50,23 +50,23 @@ pub struct LaunchFeedbackActionsRust;
 
 impl qobject::LaunchFeedbackActions {
     fn state(&self) -> cxx_qt_lib::QString {
-        let state = lf::read_state(&SystemIo, &LookCtx::from_env());
+        let state = lf::read_state(&SystemIo, &LookCtx::for_look());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
     fn set_cursor(&self, style: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&lf::apply_cursor(&SystemIo, &LookCtx::from_env(), &style.to_string()))
+        cxx_qt_lib::QString::from(&lf::apply_cursor(&SystemIo, &LookCtx::for_look(), &style.to_string()))
     }
 
     fn set_taskbar(&self, on: bool) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&lf::apply_taskbar(&SystemIo, &LookCtx::from_env(), on))
+        cxx_qt_lib::QString::from(&lf::apply_taskbar(&SystemIo, &LookCtx::for_look(), on))
     }
 
     fn set_timeout(&self, seconds: i32) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&lf::apply_timeout(&SystemIo, &LookCtx::from_env(), seconds.max(0) as u32))
+        cxx_qt_lib::QString::from(&lf::apply_timeout(&SystemIo, &LookCtx::for_look(), seconds.max(0) as u32))
     }
 
     fn defaults(&self) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&lf::apply_defaults(&SystemIo, &LookCtx::from_env()))
+        cxx_qt_lib::QString::from(&lf::apply_defaults(&SystemIo, &LookCtx::for_look()))
     }
 }

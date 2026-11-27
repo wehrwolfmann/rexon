@@ -136,6 +136,7 @@ fn transient_events_map_one_to_one() {
                     id: "123".into(),
                     state: 2,
                     error: String::new(),
+                    transfer: None,
                 },
             )),
             n::NotifySignal::RemoteDownloadProgress {
@@ -143,6 +144,30 @@ fn transient_events_map_one_to_one() {
                 id: "123".into(),
                 state: 2,
                 error: String::new(),
+                transfer: None,
+            },
+        ),
+        // waywallen 0.6.0: ход передачи доходит до склада; без полного
+        // размера «всего» — 0.
+        (
+            frame(pb::event::Payload::RemoteDownloadProgress(
+                pb::RemoteDownloadProgress {
+                    source_id: "steam".into(),
+                    id: "124".into(),
+                    state: 2,
+                    error: String::new(),
+                    transfer: Some(pb::RemoteDownloadTransfer {
+                        received_bytes: 4096,
+                        total_bytes: None,
+                    }),
+                },
+            )),
+            n::NotifySignal::RemoteDownloadProgress {
+                source_id: "steam".into(),
+                id: "124".into(),
+                state: 2,
+                error: String::new(),
+                transfer: Some((4096, 0)),
             },
         ),
         (

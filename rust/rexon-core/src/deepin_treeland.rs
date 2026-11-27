@@ -124,6 +124,7 @@ pub fn check_script() -> String {
     .replace("%REPO%", "${repo_ver}")
     .replace("%LOCAL%", "${local_ver}");
     let line2 = dq(&tr(
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         "The Treeland session keeps working on the old build. To update it, open Rexon → Desktops → Deepin → “Update the Treeland build”.",
     ));
     format!(

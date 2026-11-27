@@ -73,6 +73,105 @@ pub fn resolve_job(source: &str, resource: &str, wp_type: &str) -> Result<Job, &
     Err(ERR_NO_SOURCE)
 }
 
+/// Причины отказа waywallen 0.6.0 (`ThumbnailRequest::submit` оригинала).
+pub const ERR_NO_PREVIEW: &str = "No thumbnail preview source";
+pub const ERR_NOT_LOCAL: &str = "Thumbnail generation requires a local resource";
+/// Миниатюру «таймлайна» (обои по времени суток: KDE/GNOME) оригинал
+/// собирает из картинок описания. Этого у нас нет — без готового превью
+/// карточка честно пустая.
+pub const ERR_TIMELINE: &str = "Timeline thumbnails are not supported";
+
+/// Что делать с запросом миниатюры (waywallen 0.6.0).
+///
+/// С 0.6.0 карточка ВСЕГДА показывает `cachePath` запроса, поэтому готовое
+/// превью (и картинка без превью) отдаётся адресом как есть — анимированное
+/// превью остаётся анимированным. Делать кадр нужно только ролику без
+/// превью.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// Запрос выключен или входа нет.
+    Idle,
+    /// Показать этот адрес как есть.
+    Direct(String),
+    /// Отказ с причиной.
+    Failed(String),
+    /// Кадр из ролика (`resource`) — через кэш ([`live_lookup`]).
+    Generate,
+}
+
+/// Решение по свойствам запроса — порт `ThumbnailRequest::submit`.
+/// `cwd` — текущий каталог (относительный путь из QML).
+pub fn plan(
+    source: &str,
+    resource: &str,
+    wp_type: &str,
+    timeline: bool,
+    enabled: bool,
+    cwd: &str,
+) -> Plan {
+    if !enabled || (source.is_empty() && resource.is_empty()) {
+        return Plan::Idle;
+    }
+    if timeline {
+        return if source.is_empty() {
+            Plan::Failed(ERR_TIMELINE.to_string())
+        } else {
+            Plan::Direct(input_url(source, cwd))
+        };
+    }
+    let generate = source.is_empty() && wp_type == "video";
+    if !generate {
+        if source.is_empty() && wp_type != "image" {
+            return Plan::Failed(ERR_NO_PREVIEW.to_string());
+        }
+        let input = if source.is_empty() { resource } else { source };
+        return Plan::Direct(input_url(input, cwd));
+    }
+    if !input_url(resource, cwd).starts_with("file://") {
+        return Plan::Failed(ERR_NOT_LOCAL.to_string());
+    }
+    Plan::Generate
+}
+
+/// `input_url` оригинала: `:/…` — ресурс Qt (`qrc:/…`), строка со схемой —
+/// адрес как есть, остальное — путь к файлу (относительный — от `cwd`).
+pub fn input_url(value: &str, cwd: &str) -> String {
+    if let Some(rest) = value.strip_prefix(":/") {
+        return format!("qrc:/{rest}");
+    }
+    let has_scheme = value
+        .split_once(':')
+        .is_some_and(|(scheme, _)| {
+            scheme.len() > 1
+                && scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+        });
+    if has_scheme {
+        return value.to_string();
+    }
+    let path = if value.starts_with('/') {
+        value.to_string()
+    } else {
+        format!("{}/{}", cwd.trim_end_matches('/'), value)
+    };
+    format!("file://{}", clean_path(&path))
+}
+
+/// `QDir::cleanPath`: без `.`, `..` и повторных `/`.
+fn clean_path(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
 /// Корень кэша миниатюр: `WAYWALLEN_THUMB_DIR`, иначе
 /// `$XDG_CACHE_HOME/thumbnails`, иначе `~/.cache/thumbnails`. Тот же
 /// каталог, куда кладёт миниатюры движок обоев и файловый менеджер, —

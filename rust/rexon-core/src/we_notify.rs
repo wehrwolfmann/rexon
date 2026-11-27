@@ -130,6 +130,11 @@ pub enum NotifySignal {
         id: String,
         state: i32,
         error: String,
+        /// waywallen 0.6.0: ход передачи — `Some((принято, всего))`, если
+        /// демон его прислал; «всего» `0` — размер неизвестен. Сигнал
+        /// страницы его не несёт: он уходит в общий склад приобретения
+        /// (`setRemoteAcquisitionState` у оригинала).
+        transfer: Option<(u64, u64)>,
     },
     /// `playlistChanged()`.
     PlaylistChanged,
@@ -331,6 +336,10 @@ pub fn apply_event(state: &mut NotifyState, event: &pb::Event) -> Vec<NotifySign
                 id: p.id.clone(),
                 state: p.state,
                 error: p.error.clone(),
+                transfer: p
+                    .transfer
+                    .as_ref()
+                    .map(|t| (t.received_bytes, t.total_bytes.unwrap_or(0))),
             });
         }
         Payload::PlaylistChanged(_) => out.push(NotifySignal::PlaylistChanged),

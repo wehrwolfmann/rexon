@@ -24,6 +24,7 @@ pub mod axon_extract;
 pub mod axon_key;
 pub mod axon_library;
 pub mod axon_prepare;
+pub mod axon_window;
 pub mod backup;
 pub mod categories;
 pub mod cinnamon_spices;
@@ -72,9 +73,12 @@ pub mod global_save;
 pub mod gtk_sanitizer;
 pub mod gtk4_theme;
 pub mod i18n;
+/// Заставка при простое на рабочем столе: маршрут по окружениям, запреты, таймеры блокировки.
+pub mod idle_screensaver;
 pub mod imp_live;
 pub mod importers;
 pub mod distro_looks;
+pub mod icon_hygiene;
 pub mod install_journal;
 pub mod install_plan;
 pub mod installed_scan;
@@ -93,6 +97,7 @@ pub mod manifest_v4;
 pub mod mate_panel;
 pub mod models;
 pub mod net;
+pub mod notifications_slot;
 pub mod ocs;
 pub mod ocs_store;
 pub mod onboarding;
@@ -124,6 +129,8 @@ pub mod screenshots;
 pub mod screensaver_bridge;
 /// Сторож перед сеансом Plasma: вход без AeroThemePlasma, когда оно разошлось с Plasma.
 pub mod session_guard;
+/// Сторож игрового режима (gamescope-session-plus): карта экрана до входа, отказ вместо чёрного экрана.
+pub mod gamemode_guard;
 /// Сторож сеанса Plasma: падения KWin и plasmashell из-за AeroThemePlasma сразу после входа.
 pub mod session_watch;
 pub mod session_splash;

@@ -676,47 +676,34 @@ const CATALOG_TRAY_NOT_SHOWN: [&str; 15] = [
     "Unmute",
 ];
 
-/// Вендорные строки 0.5.0, которых в РУССКОМ каталоге апстрима ещё нет
-/// (`type="unfinished"`): умные плейлисты и фильтр «Библиотека». Перевод
-/// чужой программы правится у неё — эти строки идут ПОДАЧЕЙ в waywallen, а
-/// не нашим патчем. Список закрытый и сам себя снимает: как только апстрим
-/// переведёт строку, сверка потребует убрать её отсюда.
-const RU_AWAITING_UPSTREAM: [&str; 13] = [
-    "Add group",
-    "Clear rules",
-    "Create smart playlist",
-    "Default order",
-    "Library",
-    "No manual playlists found",
-    "Select library",
-    "Smart playlist",
-    "Unavailable library #%1",
-    "Waiting for matching wallpapers",
-    "Wallpapers matching these filters are updated automatically.",
-    "excludes",
-    "includes",
-];
+/// Вендорные строки, которых в РУССКОМ каталоге апстрима нет. Строки 0.5.0
+/// (умные плейлисты, фильтр «Библиотека») апстрим перевёл к 0.6.0 — список
+/// ими больше не занят. В 0.6.0 разметка позвала семь новых строк, а каталоги
+/// тега (все четыре: ru, de, fr, zh_CN) собраны без них — `lupdate` перед
+/// выпуском не перезапускали, записей нет вовсе, даже `unfinished`:
+///
+/// * «B», «KiB», «MiB», «GiB», «TiB» — единицы размера `I18n.formatBytes`
+///   (размер обоев, ход скачивания);
+/// * «h», «m» — часы и минуты интервала смены обоев на `PlaylistEditPage`
+///   (с пояснением для переводчика «hours»/«minutes»).
+///
+/// Перевод чужой программы правится у неё — эти строки идут ПОДАЧЕЙ в
+/// waywallen (с русского оригинала: «Б», «КиБ», «МиБ», «ГиБ», «ТиБ», «ч»,
+/// «мин»), а не нашим патчем. Список закрытый и сам себя снимает: как только
+/// апстрим переведёт строку, сверка потребует убрать её отсюда.
+const RU_AWAITING_UPSTREAM: [&str; 7] = ["B", "GiB", "KiB", "MiB", "TiB", "h", "m"];
 
-/// То же для НЕМЕЦКОГО каталога апстрима (с 0.5.0): те же строки умных
-/// плейлистов и фильтра «Библиотека» плюс вторая строка версии на «О
-/// программе». Немецкий перевод Rexon делается С РУССКОГО оригинала — и
-/// подача в waywallen тоже.
-const DE_AWAITING_UPSTREAM: [&str; 14] = [
-    "Add group",
-    "Clear rules",
-    "Create smart playlist",
-    "Daemon version %1",
-    "Default order",
-    "Library",
-    "No manual playlists found",
-    "Select library",
-    "Smart playlist",
-    "Unavailable library #%1",
-    "Waiting for matching wallpapers",
-    "Wallpapers matching these filters are updated automatically.",
-    "excludes",
-    "includes",
-];
+/// То же для НЕМЕЦКОГО каталога апстрима: те же семь строк 0.6.0. Немецкий
+/// перевод Rexon делается С РУССКОГО оригинала — и подача в waywallen тоже.
+const DE_AWAITING_UPSTREAM: [&str; 7] = RU_AWAITING_UPSTREAM;
+
+/// Записи каталога 0.6.0, строк которых нет уже нигде у апстрима — ни в
+/// `ui/qml`, ни в `ui/src` (на теге v0.6.0 они остались только в `.ts`):
+/// «256 MiB» и «512 MiB» — прежние варианты «Image GPU cache» в настройках,
+/// «Reverse order» — прежний пункт сортировки. Тот же недозапуск `lupdate`,
+/// что выше, только в другую сторону; вреда нет — перевод никто не спросит.
+/// Закрытый поимённый список, снимается сам, когда апстрим вычистит каталог.
+const CATALOG_STALE_IN_UPSTREAM: [&str; 3] = ["256 MiB", "512 MiB", "Reverse order"];
 
 #[test]
 fn every_vendor_string_has_a_german_translation() {
@@ -766,6 +753,7 @@ fn catalog_has_nothing_the_vendor_qml_lost() {
         .iter()
         .filter(|s| !CATALOG_ONLY_IN_VENDOR_CPP.contains(&s.as_str()))
         .filter(|s| !CATALOG_TRAY_NOT_SHOWN.contains(&s.as_str()))
+        .filter(|s| !CATALOG_STALE_IN_UPSTREAM.contains(&s.as_str()))
         .collect();
     assert!(stale.is_empty(), "{}", vendor_drift_report(&plan));
     // Список исключений не должен протухнуть: каждая строка обязана в
@@ -773,6 +761,7 @@ fn catalog_has_nothing_the_vendor_qml_lost() {
     for extra in CATALOG_ONLY_IN_VENDOR_CPP
         .iter()
         .chain(CATALOG_TRAY_NOT_SHOWN.iter())
+        .chain(CATALOG_STALE_IN_UPSTREAM.iter())
     {
         assert!(
             plan.stale.iter().any(|s| s == *extra),
@@ -855,8 +844,8 @@ fn committed_qm_is_compiled_from_the_vendored_catalog() {
     let root = vendor_root().to_string_lossy().into_owned();
     let codes = vendor_catalogs();
     assert!(
-        codes.iter().any(|c| c == "ru") && codes.iter().any(|c| c == "de"),
-        "вендорных каталогов: {codes:?} — ждали ru и de"
+        ["ru", "de", "zh_CN", "fr"].iter().all(|w| codes.iter().any(|c| c == w)),
+        "вендорных каталогов: {codes:?} — ждали ru, de, zh_CN и fr (fr — с waywallen 0.6.0)"
     );
     for code in &codes {
         let ts_path = l10n::vendor_ts_path_for(&root, code);
@@ -893,6 +882,76 @@ fn vendor_catalogs() -> Vec<String> {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     l10n::vendor_catalog_languages(&names)
+}
+
+/// Каждый каталог перевода апстрима (`ui/i18n/waywallen_*.ts` тега из
+/// `ui/UPSTREAM_TAG`) лежит в вендоре, слово в слово. 08.11.2026 вендорились
+/// только ru и de, а китайский, переведённый у апстрима с 0.5.0, потерялся
+/// — Rexon по-китайски показывал вкладку обоев по-английски.
+///
+/// Клон апстрима — `$REXON_WAYWALLEN_SOURCE`, иначе тот же, что у
+/// `scripts/rexon-vendor-update` (`~/Загрузки/owe-ref/waywallen`); нет
+/// клона или тега в нём — «НЕ ПРОВЕРЕНО», а не молчаливый пропуск. Без клона
+/// сторожит хотя бы то, что синхронизация берёт `ui/i18n` целиком.
+#[test]
+fn vendor_has_every_upstream_catalog() {
+    let script = include_str!("../../../scripts/sync-waywallen-qml.py");
+    assert!(
+        script.contains("\"ui/i18n\",") && !script.contains("\"ui/i18n/waywallen_"),
+        "sync-waywallen-qml.py обязан брать каталог ui/i18n целиком, а не список языков"
+    );
+    let source = std::env::var("REXON_WAYWALLEN_SOURCE").unwrap_or_else(|_| {
+        format!("{}/Загрузки/owe-ref/waywallen", std::env::var("HOME").unwrap_or_default())
+    });
+    let tag_file = vendor_root().join("waywallen/ui/UPSTREAM_TAG");
+    let tag_text = std::fs::read_to_string(&tag_file).expect("ui/UPSTREAM_TAG");
+    let tag = tag_text.split_whitespace().next().expect("тег в ui/UPSTREAM_TAG").to_string();
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| o.stdout)
+    };
+    let Some(listing) = git(&["ls-tree", "--name-only", &tag, "ui/i18n/"]) else {
+        eprintln!("НЕ ПРОВЕРЕНО: нет клона waywallen с тегом {tag} в {source} (REXON_WAYWALLEN_SOURCE)");
+        return;
+    };
+    let upstream: Vec<String> = String::from_utf8_lossy(&listing)
+        .lines()
+        .filter_map(|l| l.strip_prefix("ui/i18n/"))
+        .filter(|n| n.starts_with("waywallen_") && n.ends_with(".ts"))
+        .map(str::to_string)
+        .collect();
+    assert!(!upstream.is_empty(), "у тега {tag} нет каталогов ui/i18n/waywallen_*.ts");
+    let dir = vendor_root().join(l10n::VENDOR_I18N_REL);
+    for name in &upstream {
+        let theirs = git(&["show", &format!("{tag}:ui/i18n/{name}")]).expect("файл тега");
+        let ours = std::fs::read(dir.join(name))
+            .unwrap_or_else(|_| panic!("каталог апстрима {name} ({tag}) не вендорен — scripts/sync-waywallen-qml.py --ref {tag}"));
+        assert!(ours == theirs, "{name} разошёлся с апстримом {tag}");
+    }
+}
+
+/// Каждый язык Rexon, у которого вендор несёт каталог страниц, получает
+/// именно свой `.qm` (код языка Rexon ↔ имя файла): `zh_CN` →
+/// `waywallen_zh_CN.qm`, а не английские исходники.
+#[test]
+fn every_rexon_language_with_vendor_catalog_picks_its_qm() {
+    let codes = vendor_catalogs();
+    let linguas = include_str!("../../../po/LINGUAS");
+    for lang in linguas.split_whitespace().filter(|l| !l.starts_with('#')) {
+        if !codes.iter().any(|c| c == lang) {
+            continue;
+        }
+        let plan = l10n::plan_ui_language(lang, "", &codes).expect("план языка");
+        assert_eq!(plan.qm_file, l10n::qm_file_name(lang), "язык Rexon {lang}");
+        assert!(vendor_root().join(&plan.qm_file).is_file(), "нет собранного {}", plan.qm_file);
+    }
+    assert!(codes.iter().any(|c| c == "zh_CN"), "китайского каталога в вендоре нет: {codes:?}");
 }
 
 #[test]

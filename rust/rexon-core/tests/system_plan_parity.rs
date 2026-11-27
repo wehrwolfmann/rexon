@@ -221,6 +221,10 @@ fn scripts_match_python_verbatim() {
     // Nautilus, gedit, gThumb, VLC, Lollypop, Atril (ALT —
     // mate-document-viewer), mate-calc, mate-system-monitor, GNOME Disks; в
     // белом списке и в защите текущего стола.
+    // Переснято 13.11.2026 (pkg-помощник): стол сеанса по `Desktop=` logind
+    // узнаёт UKUI (`ukui`, `kylin-wlcom`) — общая таблица
+    // `system::XDG_TOKEN_TO_DE`. Пакетов у UKUI в каталоге нет, защищать
+    // помощнику пока нечего.
     assert_eq!(
         json!(de_helper_pkg_table()),
         s["de_helper_pkg_table"],
@@ -1227,6 +1231,9 @@ fn missing_password_prompt_message_speaks_plain_russian() {
 #[test]
 fn appearance_root_install_texts_speak_plain_russian() {
     use rexon_core::appearance_installer::{self as ai, RootEnv};
+    // Текст и ожидание берутся из каталога по отдельности: без закрепления
+    // соседняя сверка успевает сменить язык между ними.
+    let _lang = i18n_pin::en();
     let sddm = rexon_core::categories::category_by_id(std::path::Path::new("/sb/home"), 101).unwrap();
     let env = RootEnv {
         is_plasmalogin: false,
@@ -1979,6 +1986,42 @@ fn live_machine_is_on_plasma_login_manager() {
 ///     строке «Enter a …», у которой смысла для человека нет. С 02.11.2026
 ///     так же глухи «:: Repository <имя>» (шапка меню) и «:: Proceed with
 ///     installation? [Y/n]» — эталон этих двух строк поправлен намеренно.
+/// Живьём 08.11.2026 (установка lxqt-wayland-session, r2101): английский
+/// ход транзакции без счётчика, список необязательных зависимостей,
+/// сообщения скриптов пакетов и болтовня хуков snapper/limine в окно не
+/// идут; «installing x...» — по-русски; хук — счётчиком без своего имени.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn pacman_transaction_chatter_stays_out_of_the_window() {
+    let _lang = i18n_pin::ru();
+    use rexon_core::system_plan::parse_pacman_line;
+    let shown = |raw: &str| parse_pacman_line(raw).map(|p| p.message).unwrap_or_else(|| format!("RAW:{raw}"));
+    for hidden in [
+        "checking keyring...",
+        "checking dependencies...",
+        "checking for file conflicts...",
+        "resolving dependencies...",
+        "Optional dependencies for lxqt-wayland-session",
+        "    labwc [installed]",
+        "    kwin [installed]",
+        "    river",
+        "    xdg-desktop-portal-wlr: screen sharing [installed]",
+        "===> For a working LXQt wayland session, please install a supported Wayland compositor.",
+        "===> See https://wiki.archlinux.org/title/LXQt#Wayland",
+        "Performing snapper pre snapshots for the following configurations...",
+        "==> root: 1488",
+        "Waiting for limine-snapper-sync to finish",
+    ] {
+        assert_eq!(shown(hidden), "", "{hidden}");
+    }
+    assert_eq!(shown("installing lxqt-wayland-session..."), "📦 Установка: lxqt-wayland-session");
+    let hook = shown("(2/4) Checking the local deepin-session-treeland build against deepin-session...");
+    assert_eq!(hook, "🔧 (2/4) Завершение установки…");
+    // Стадии makepkg и чужой текст — как раньше.
+    assert_eq!(shown("==> Making package: mate-tweak"), "RAW:==> Making package: mate-tweak");
+    assert_eq!(shown("какая-то русская строка"), "RAW:какая-то русская строка");
+}
+
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pacman_progress_lines_match_python() {
@@ -2913,4 +2956,46 @@ default “breeze”."
         sp::nixos_de_snippet("hyprland").unwrap(),
         "programs.hyprland.enable = true;\n# + set up waybar, wofi, kitty, etc."
     );
+}
+
+/// Живой случай 08.11.2026: «Проверить / Восстановить» Budgie при обрыве
+/// сети — ни одно зеркало не отдало файлы. Человек видит понятное
+/// объяснение, а не весь вывод pacman со строками «up to date -- skipping».
+#[test]
+fn download_failure_is_explained_not_dumped() {
+    // Текст и ожидание берутся из каталога по отдельности: без закрепления
+    // соседняя сверка (`i18n_pin::ru()`) успевает сменить язык между ними.
+    let _lang = i18n_pin::en();
+    let stderr = "warning: budgie-desktop-10.10.2-3.1 is up to date -- skipping\n\
+        error: failed retrieving file 'lollypop-1.4.48-1-any.pkg.tar.zst' from mirror.zyner.org : Connection timed out after 10000 milliseconds\n\
+        warning: failed to retrieve some files\n\
+        error: failed to commit transaction (failed to retrieve some files)\n\
+        Errors occurred, no packages were upgraded.";
+    let out = rexon_core::system_plan::batch_main_result(
+        Some((1, stderr, "")),
+        true,
+        &["lollypop".to_string()],
+        false,
+        PkgFamily::Arch,
+        &|| true,
+        &|| None,
+    );
+    assert!(!out.ok);
+    assert_eq!(out.message, rexon_core::system_plan::download_failed_message());
+    assert!(!out.message.contains("up to date"));
+}
+
+/// Отказ без разобранной причины: остаются только строки `error:`, и
+/// отказ одного зеркала среди них не считается.
+#[test]
+fn manager_error_keeps_only_error_lines() {
+    let raw = "warning: nemo-6.6.4-1.1 is up to date -- skipping\n\
+        resolving dependencies...\n\
+        error: failed retrieving file 'a.pkg.tar.zst' from m.example : timed out\n\
+        error: something unexpected happened";
+    assert_eq!(rexon_core::system_plan::manager_error_lines(raw), "error: something unexpected happened");
+    // Строк `error:` нет — текст не теряется.
+    assert_eq!(rexon_core::system_plan::manager_error_lines("  just text  "), "just text");
+    assert!(rexon_core::system_plan::download_failed("error: failed to commit transaction (failed to retrieve some files)"));
+    assert!(!rexon_core::system_plan::download_failed("error: failed to commit transaction (conflicting files)"));
 }

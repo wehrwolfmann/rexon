@@ -132,7 +132,8 @@ pub mod qobject {
         /// пакеты, предупреждение, набор не встанет из-за конфликта)`.
         /// Пустая строка — спросить не вышло, и страница остаётся при своём
         /// счёте имён. `blocked` — кнопки, ставящие набор, неактивны
-        /// (`qd::PackagesView::install_blocked`).
+        /// (`qd::PackagesView::install_blocked`). `status` — замена шапки
+        /// («Установлен частично»), пусто — шапка как есть.
         #[qsignal]
         #[cxx_name = "packagesReady"]
         fn packages_ready(
@@ -142,6 +143,7 @@ pub mod qobject {
             text: QString,
             notice: QString,
             blocked: bool,
+            status: QString,
         );
 
         /// Вторая половина ответа на `requestPackages`: пакет набора ждёт
@@ -359,10 +361,10 @@ pub struct DesktopsActionsRust {
     /// заменить. Та же кнопка под предупреждением; живёт и сбрасывается
     /// вместе с предпросмотром.
     swap_offers: Arc<Mutex<HashMap<String, Vec<system_plan::PkgConflict>>>>,
-    /// Установленные столы, к которым можно добавить сеанс Wayland
-    /// (`system::wayland_session_ready` = нет). Та же кнопка под
+    /// Установленные столы, к которым можно добавить недостающий сеанс
+    /// (`system::missing_session`): Wayland или X11. Та же кнопка под
     /// предупреждением; живёт и сбрасывается вместе с предпросмотром.
-    session_offers: Arc<Mutex<HashSet<String>>>,
+    session_offers: Arc<Mutex<HashMap<String, system::SessionKind>>>,
     op: OpView,
     pending: Option<PendingOp>,
     cancel: Option<dx::CancelToken>,
@@ -484,6 +486,8 @@ impl OpView {
                 let mut om = QMap::<QMapPair_QString_QVariant>::default();
                 om.insert(QString::from("value"), s(&o.value));
                 om.insert(QString::from("label"), s(&o.label));
+                om.insert(QString::from("description"), s(&o.description));
+                om.insert(QString::from("enabled"), QVariant::from(&o.enabled));
                 options.append(QVariant::from(&om));
             }
             let mut cm = QMap::<QMapPair_QString_QVariant>::default();
@@ -563,6 +567,9 @@ enum PendingOp {
         done_text_restart: String,
         /// Выбранный сеанс (`None` — у стола выбора нет).
         session: Option<system::SessionKind>,
+        /// «➕ Добавить вариант …» на карточке установленного стола: ставится
+        /// только сеанс `session` (`dx::add_session_live`), не набор стола.
+        add_session: bool,
     },
     /// Переключение на другой стол с выходом из сессии.
     Switch {
@@ -623,6 +630,8 @@ enum ShellJob {
 /// Что исполняет рабочий поток.
 enum Job {
     Install(String, Vec<String>, Option<system::SessionKind>),
+    /// Добавить сеанс установленному столу.
+    AddSession(String, system::SessionKind),
     Switch(String),
     Remove(String),
     Rebuild(Vec<String>),
@@ -780,6 +789,7 @@ impl qobject::DesktopsActions {
                 QString::from(&view.text),
                 QString::from(&view.notice),
                 view.install_blocked,
+                QString::from(&view.status_override),
             );
             let offered = self
                 .as_ref()
@@ -813,8 +823,9 @@ impl qobject::DesktopsActions {
                 .session_offers
                 .lock()
                 .ok()
-                .is_some_and(|set| set.contains(&de_id));
-            let (button, hint) = offer_texts(treeland.as_ref(), &swaps, offered, session.then_some(de_id.as_str()));
+                .and_then(|map| map.get(&de_id).copied());
+            let session_de = session.map(|kind| (de_id.as_str(), kind));
+            let (button, hint) = offer_texts(treeland.as_ref(), &swaps, offered, session_de);
             self.as_mut().rebuild_offer_ready(
                 QString::from(&de_id),
                 installed,
@@ -863,21 +874,16 @@ impl qobject::DesktopsActions {
             } else {
                 aur_trust_warm(&session_aur);
             }
-            // Стол стоит, а войти в его Wayland нельзя — предложить добавить.
-            let session_offer = installed
-                && !rexon_core::distro_compat::running_on_steamos()
-                && system::wayland_session_ready(
-                    &de_id,
-                    family,
-                    &|f| std::path::Path::new(f).exists(),
-                    &system::binary_in_path,
-                ) == Some(false);
-            if let Ok(mut set) = session_offers.lock() {
-                if session_offer {
-                    set.insert(de_id.clone());
-                } else {
-                    set.remove(&de_id);
-                }
+            // Стол стоит, а войти в один из его сеансов нельзя — предложить
+            // добавить недостающий.
+            let session_offer = installed_sessions_live(&de_id, family)
+                .filter(|_| installed)
+                .and_then(system::missing_session);
+            if let Ok(mut map) = session_offers.lock() {
+                match session_offer {
+                    Some(kind) => map.insert(de_id.clone(), kind),
+                    None => map.remove(&de_id),
+                };
             }
             // Что из набора не ставится, потому что ждёт пересборки против
             // новой библиотеки, — то можно собрать из исходников Arch. При
@@ -896,7 +902,7 @@ impl qobject::DesktopsActions {
                 treeland.offer.as_ref(),
                 &swaps,
                 !candidates.is_empty(),
-                session_offer.then_some(de_id.as_str()),
+                session_offer.map(|kind| (de_id.as_str(), kind)),
             );
             if let Ok(mut map) = swap_offers.lock() {
                 if swaps.is_empty() {
@@ -928,6 +934,7 @@ impl qobject::DesktopsActions {
                     QString::from(&view.text),
                     QString::from(&view.notice),
                     view.install_blocked,
+                    QString::from(&view.status_override),
                 );
                 object.as_mut().rebuild_offer_ready(
                     QString::from(&de_id),
@@ -954,25 +961,25 @@ impl qobject::DesktopsActions {
             self.report_unknown(&de_id);
             return false;
         };
-        // Стол с двумя сеансами (Cinnamon, Xfce, LXQt, MATE): переключатель
-        // «X11 / Wayland» в том же окне, по умолчанию — проверенный X11.
-        if let Some(kind) = session_offer_default(&de_id) {
-            self.ask_install_session(&de_id, kind);
+        // Стол с двумя сеансами (Cinnamon, Xfce, LXQt, MATE): карточки
+        // «X11 / Wayland / Оба» в том же окне, предвыбран рекомендованный.
+        if let Some(pick) = session_offer_default(&de_id) {
+            self.ask_install_session(&de_id, pick);
             return false;
         }
         self.ask_install(&de_id, qd::install_texts(&name), Vec::new(), None, None);
         false
     }
 
-    /// Вопрос установки с переключателем сеанса `kind`.
-    fn ask_install_session(self: Pin<&mut Self>, de_id: &str, kind: system::SessionKind) {
+    /// Вопрос установки с выбранным вариантом сеанса `pick`.
+    fn ask_install_session(self: Pin<&mut Self>, de_id: &str, pick: system::SessionPick) {
         let family = system::DistroDetector::detect_live().family_live();
         let helper = aur_helper_present(family);
         let risk = session_aur_risk(de_id, family);
-        let texts = qd::install_texts_with_session(de_id, family, kind, helper, &risk);
-        let choice = qd::session_choice(de_id, family, kind, helper);
-        // Wayland не предложен (MATE без помощника AUR) — ставится X11.
-        let kind = if choice.is_some() { kind } else { system::SessionKind::X11 };
+        let texts = qd::install_texts_with_session(de_id, family, pick, helper, &risk);
+        let choice = qd::session_choice(de_id, family, pick, helper);
+        // Wayland недоступен (MATE без помощника AUR) — ставится X11.
+        let kind = qd::session_pick_effective(de_id, family, pick, helper).install_kind();
         self.ask_install(de_id, texts, Vec::new(), Some(kind), choice);
     }
 
@@ -1186,6 +1193,7 @@ impl qobject::DesktopsActions {
                     done_text: texts.done_text.clone(),
                     done_text_restart: texts.done_text_restart.clone(),
                     session,
+                    add_session: false,
                 });
                 self.as_mut()
                     .set_status(dx::awaiting_answer(&texts.operation_title));
@@ -1245,6 +1253,7 @@ impl qobject::DesktopsActions {
                 done_text,
                 done_text_restart,
                 session,
+                add_session,
             } => {
                 if !done_text_restart.is_empty() {
                     restart_result = Some(format!("<b>{done_title}</b><br>{}", html(&done_text_restart)));
@@ -1255,7 +1264,11 @@ impl qobject::DesktopsActions {
                 } else {
                     format!("<b>{done_title}</b><br>{}", html(&done_text))
                 };
-                (operation_title, result, Job::Install(de_id, replace, session))
+                let job = match session {
+                    Some(kind) if add_session => Job::AddSession(de_id, kind),
+                    _ => Job::Install(de_id, replace, session),
+                };
+                (operation_title, result, job)
             }
             // Успех смены — это выход из сессии; итоговой приписки нет.
             PendingOp::Switch {
@@ -1340,6 +1353,7 @@ impl qobject::DesktopsActions {
                     let reverted = dl::revert_live(&id, &de).map(|r| r.message);
                     look_outcome(&*sink, reverted, &mut job_result)
                 }
+                Job::AddSession(de_id, kind) => dx::add_session_live(sink, token, &de_id, kind),
                 Job::Install(de_id, replace, session) if replace.is_empty() => {
                     dx::install_de_live(sink, token, &de_id, &current, session)
                 }
@@ -1359,6 +1373,10 @@ impl qobject::DesktopsActions {
                     dx::shell_remove_live(sink, token, &wm, shell, &current)
                 }
             };
+            // Состав столов мог поменяться (и при неудаче — часть
+            // поставилась): у нескольких демонов уведомлений одно имя шины,
+            // и без нашего выбора уведомления рисовал бы чужой.
+            rexon_core::notifications_slot::sync_live();
             let result = match restart_result {
                 Some(text) if outcome.restart_needed => text,
                 _ => job_result.unwrap_or(result),
@@ -1392,8 +1410,8 @@ impl qobject::DesktopsActions {
         if let Ok(mut map) = self.as_ref().get_ref().rust().swap_offers.lock() {
             map.clear();
         }
-        if let Ok(mut set) = self.as_ref().get_ref().rust().session_offers.lock() {
-            set.clear();
+        if let Ok(mut map) = self.as_ref().get_ref().rust().session_offers.lock() {
+            map.clear();
         }
         if outcome.ok {
             self.desktops_changed();
@@ -1669,8 +1687,9 @@ impl qobject::DesktopsActions {
             .ok()
             .and_then(|map| map.get(&de_id).cloned())
             .unwrap_or_default();
-        // Та же кнопка — добавить сеанс Wayland к установленному столу
-        // (уступает пересборке: так же решает `offer_texts`).
+        // Та же кнопка — добавить недостающий сеанс (Wayland или X11) к
+        // установленному столу (уступает пересборке: так же решает
+        // `offer_texts`).
         let session = self
             .as_ref()
             .get_ref()
@@ -1678,19 +1697,26 @@ impl qobject::DesktopsActions {
             .session_offers
             .lock()
             .ok()
-            .is_some_and(|set| set.contains(&de_id));
-        if candidates.is_empty() && session {
+            .and_then(|map| map.get(&de_id).copied());
+        if let Some(kind) = session.filter(|_| candidates.is_empty()) {
             let family = system::DistroDetector::detect_live().family_live();
             let helper = aur_helper_present(family);
-            if qd::session_choice(&de_id, family, system::SessionKind::Wayland, helper).is_none() {
+            let pick = match kind {
+                system::SessionKind::X11 => system::SessionPick::X11,
+                system::SessionKind::Wayland => system::SessionPick::Wayland,
+            };
+            if qd::session_pick_effective(&de_id, family, pick, helper) != pick {
                 // MATE без помощника AUR: объяснить, а не ставить впустую.
                 let name = qd::display_name(&de_id).to_string();
-                let title = qd::session_add_texts(&de_id, family, helper, "").confirm_title;
+                let title = qd::session_add_texts(&de_id, family, kind, helper, "").confirm_title;
                 self.show_notice(&title, &qd::session_no_aur_helper_text(&name));
                 return;
             }
-            let texts = qd::session_add_texts(&de_id, family, helper, &session_aur_risk(&de_id, family));
-            self.ask_install(&de_id, texts, Vec::new(), Some(system::SessionKind::Wayland), None);
+            let texts = qd::session_add_texts(&de_id, family, kind, helper, &session_aur_risk(&de_id, family));
+            self.as_mut().ask_install(&de_id, texts, Vec::new(), Some(kind), None);
+            if let Some(PendingOp::Install { add_session, .. }) = self.as_mut().rust_mut().pending.as_mut() {
+                *add_session = true;
+            }
             return;
         }
         if candidates.is_empty() {
@@ -1965,8 +1991,8 @@ impl qobject::DesktopsActions {
             {
                 // Значения приходят из наших же вариантов; незнакомое —
                 // безопасный X11, а не окно без ответа на «Да».
-                let kind = system::SessionKind::from_value(&value.to_string()).unwrap_or(system::SessionKind::X11);
-                self.ask_install_session(&de_id, kind);
+                let pick = system::SessionPick::from_value(&value.to_string()).unwrap_or(system::SessionPick::X11);
+                self.ask_install_session(&de_id, pick);
             }
             other => self.as_mut().rust_mut().pending = other,
         }
@@ -2151,7 +2177,7 @@ fn offer_texts(
     treeland: Option<&dt::Offer>,
     swaps: &[system_plan::PkgConflict],
     rebuild_offered: bool,
-    session_de: Option<&str>,
+    session_de: Option<(&str, system::SessionKind)>,
 ) -> (String, String) {
     match treeland {
         Some(offer) => treeland_offer_texts(offer),
@@ -2161,7 +2187,7 @@ fn offer_texts(
         ),
         None if rebuild_offered => rebuild_offer_texts(true),
         None => match session_de {
-            Some(de) => (qd::session_offer_button(), qd::session_offer_hint(de)),
+            Some((de, kind)) => (qd::session_offer_button(kind), qd::session_offer_hint(de, kind)),
             None => (String::new(), String::new()),
         },
     }
@@ -2184,6 +2210,15 @@ fn packages_view_of(
     let main = system::get_packages(de_id, family).len();
     let aur_names = system::get_aur_packages(de_id, family);
     let mut view = qd::packages_view(installed, preview, main, aur_names.len());
+    // Какие сеансы установленного стола работают: «Сеансы: X11 + Wayland».
+    if installed {
+        let line = installed_sessions_live(de_id, family)
+            .map(|s| qd::session_status_line(de_id, family, s))
+            .unwrap_or_default();
+        if !line.is_empty() {
+            view.text = if view.text.is_empty() { line } else { format!("{}\n{line}", view.text) };
+        }
+    }
     // Признаки риска у пакетов из AUR (то же, что значок на плитке AUR в
     // «Оформлении»): только данные, уже полученные `aur_trust_warm`, — без
     // сети, этот путь зовётся и из потока Qt. Установку не запрещает.
@@ -2207,12 +2242,26 @@ fn packages_view_of(
 /// Сеанс по умолчанию, если в окне установки нужен переключатель «X11 /
 /// Wayland»: у стола оба сеанса в этом семействе и это не SteamOS (там
 /// столы ставятся образом, без пакетного набора).
-fn session_offer_default(de_id: &str) -> Option<system::SessionKind> {
+fn session_offer_default(de_id: &str) -> Option<system::SessionPick> {
     if rexon_core::distro_compat::running_on_steamos() {
         return None;
     }
     let family = system::DistroDetector::detect_live().family_live();
     qd::session_default(de_id, family)
+}
+
+/// Сеансы установленного стола по файлам системы (`system::installed_sessions`).
+/// На SteamOS столы ставятся образом — выбора сеанса там нет.
+fn installed_sessions_live(de_id: &str, family: system::PkgFamily) -> Option<(bool, bool)> {
+    if rexon_core::distro_compat::running_on_steamos() {
+        return None;
+    }
+    system::installed_sessions(
+        de_id,
+        family,
+        &|f| std::path::Path::new(f).exists(),
+        &system::binary_in_path,
+    )
 }
 
 /// Есть ли помощник AUR (yay, paru…) — тот же выбор, что у исполнителя.

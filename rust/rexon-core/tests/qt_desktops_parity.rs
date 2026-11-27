@@ -1891,59 +1891,98 @@ mod looks {
 
 /// Выбор есть ровно у столов с двумя сеансами в Arch; у Plasma 6.8,
 /// GNOME 51, Budgie 10.10, Pantheon 8, COSMIC и Deepin сеанс один — Wayland.
+/// Вариантов три: X11, Wayland и оба; у каждого — пояснение карточки.
 #[test]
 fn session_choice_only_where_two_sessions_exist() {
-    use system::SessionKind;
+    use system::SessionPick;
+    let _lang = i18n_pin::en();
     let two = ["cinnamon-mint", "xfce", "lxqt", "mate"];
     for de in system::list_de_ids() {
-        let choice = qd::session_choice(de, PkgFamily::Arch, SessionKind::X11, true);
+        let choice = qd::session_choice(de, PkgFamily::Arch, SessionPick::X11, true);
         assert_eq!(choice.is_some(), two.contains(&de), "{de}");
         // Вне Arch набор не проверен — выбора нет, ставится как раньше.
-        assert!(qd::session_choice(de, PkgFamily::Debian, SessionKind::X11, true).is_none(), "{de}");
+        assert!(qd::session_choice(de, PkgFamily::Debian, SessionPick::X11, true).is_none(), "{de}");
     }
     for de in two {
-        let c = qd::session_choice(de, PkgFamily::Arch, SessionKind::Wayland, true).unwrap();
+        let c = qd::session_choice(de, PkgFamily::Arch, SessionPick::Both, true).unwrap();
         assert_eq!(c.name, qd::SESSION_CHOICE_NAME);
-        assert_eq!(c.current, "wayland");
+        assert_eq!(c.current, "both");
         let values: Vec<&str> = c.options.iter().map(|o| o.value.as_str()).collect();
-        assert_eq!(values, ["x11", "wayland"], "{de}");
+        assert_eq!(values, ["x11", "wayland", "both"], "{de}");
         for o in &c.options {
-            assert_eq!(system::SessionKind::from_value(&o.value).map(|k| k.as_str()), Some(o.value.as_str()));
+            assert_eq!(SessionPick::from_value(&o.value).map(|k| k.as_str()), Some(o.value.as_str()));
+            assert!(o.enabled, "{de}: {o:?}");
+            assert!(!o.description.is_empty(), "{de}: {o:?}");
         }
     }
-    // MATE без помощника AUR: Wayland не предлагается вовсе.
-    assert!(qd::session_choice("mate", PkgFamily::Arch, SessionKind::X11, false).is_none());
-    assert!(qd::session_choice("xfce", PkgFamily::Arch, SessionKind::X11, false).is_some());
+    // MATE без помощника AUR: Wayland и «Оба» видны, но недоступны, а
+    // выбранным остаётся X11, что бы ни пришло из окна.
+    let mate = qd::session_choice("mate", PkgFamily::Arch, SessionPick::Wayland, false).unwrap();
+    let enabled: Vec<bool> = mate.options.iter().map(|o| o.enabled).collect();
+    assert_eq!(enabled, [true, false, false]);
+    assert_eq!(mate.current, "x11");
+    assert!(mate.options[1].description.contains("yay or paru"), "{:?}", mate.options[1]);
+    let xfce = qd::session_choice("xfce", PkgFamily::Arch, SessionPick::Wayland, false).unwrap();
+    assert!(xfce.options.iter().all(|o| o.enabled));
+    assert_eq!(xfce.current, "wayland");
 }
 
-/// Выбор по умолчанию и подписи — из признака зрелости Wayland в таблице:
-/// зрелый — Wayland «(рекомендуется)», экспериментальный — проверенный X11.
-/// На 03.11.2026 зрелый только у LXQt (пометку проект снял в 2.3.0).
+/// Набор по варианту: «Wayland» и «Оба» ставят добавку Wayland, «X11» — нет.
+#[test]
+fn session_pick_sets_install_kind() {
+    use system::{SessionKind, SessionPick};
+    assert_eq!(SessionPick::X11.install_kind(), SessionKind::X11);
+    assert_eq!(SessionPick::Wayland.install_kind(), SessionKind::Wayland);
+    assert_eq!(SessionPick::Both.install_kind(), SessionKind::Wayland);
+    assert_eq!(SessionPick::from_value("nope"), None);
+    let arch = PkgFamily::Arch;
+    for pick in SessionPick::ALL {
+        assert_eq!(qd::session_pick_effective("mate", arch, pick, false), SessionPick::X11);
+        assert_eq!(qd::session_pick_effective("mate", arch, pick, true), pick);
+        assert_eq!(qd::session_pick_effective("xfce", arch, pick, false), pick);
+    }
+}
+
+/// Рекомендованный вариант и подписи — из признака зрелости Wayland в
+/// таблице: зрелый — Wayland «(рекомендуется)», экспериментальный —
+/// проверенный X11. На 03.11.2026 зрелый только у LXQt (пометку проект снял
+/// в 2.3.0).
 #[test]
 fn session_default_follows_wayland_maturity() {
-    use system::{SessionKind, WaylandMaturity};
+    use system::{SessionPick, WaylandMaturity};
     let _lang = i18n_pin::ru();
     let arch = PkgFamily::Arch;
     for (de, v) in system::SESSION_VARIANTS {
         let want = match v.maturity {
-            WaylandMaturity::Mature => SessionKind::Wayland,
-            _ => SessionKind::X11,
+            WaylandMaturity::Mature => SessionPick::Wayland,
+            _ => SessionPick::X11,
         };
-        assert_eq!(v.default_session(), want, "{de}");
+        assert_eq!(v.default_pick(), want, "{de}");
+        assert_eq!(v.default_pick().install_kind(), v.default_session(), "{de}");
         assert_eq!(qd::session_default(de, arch), Some(want), "{de}");
-        let labels: Vec<String> =
-            qd::session_choice(de, arch, want, true).unwrap().options.into_iter().map(|o| o.label).collect();
+        let c = qd::session_choice(de, arch, want, true).unwrap();
+        assert_eq!(c.current, want.as_str(), "{de}");
+        let labels: Vec<String> = c.options.iter().map(|o| o.label.clone()).collect();
+        let recommended: Vec<&String> = labels.iter().filter(|l| l.contains("(рекомендуется)")).collect();
+        assert_eq!(recommended.len(), 1, "{de}: {labels:?}");
         let meta = system::DE_META.iter().find(|m| m.id == *de).expect("стол в DE_META");
-        let way = qd::install_texts_with_session(de, arch, SessionKind::Wayland, true, "").confirm_html;
+        let way = &c.options[1].description;
+        assert!(c.options[0].description.contains("старых компьютеров"), "{de}: {:?}", c.options[0]);
+        assert!(way.contains("без разрывов"), "{de}: {way}");
+        assert!(c.options[2].description.contains("экране входа"), "{de}: {:?}", c.options[2]);
         if v.maturity == WaylandMaturity::Mature {
-            assert_eq!(labels, ["X11 — проверенный", "Wayland — новее (рекомендуется)"], "{de}");
+            assert_eq!(labels[0], "X11 — проверенный", "{de}");
+            assert_eq!(labels[1], "Wayland — новее (рекомендуется)", "{de}");
             assert_eq!(meta.session_text(), "X11 + Wayland", "{de}");
             assert!(!way.contains("экспериментальн"), "{de}: {way}");
         } else {
             assert_eq!(labels[0], "X11 — проверенный (рекомендуется)", "{de}");
-            assert!(!labels[1].contains("рекомендуется"), "{de}: {labels:?}");
             assert!(meta.session_text().starts_with("X11 + Wayland (экспериментально"), "{de}");
             assert!(way.contains("экспериментальный"), "{de}: {way}");
+        }
+        // Чужой композитор окон — сказано на карточке Wayland.
+        if !v.wayland_compositor.is_empty() {
+            assert!(way.contains(v.wayland_compositor), "{de}: {way}");
         }
     }
     let state = |de: &str| system::session_variants(de, arch).map(|v| v.maturity);
@@ -1954,10 +1993,11 @@ fn session_default_follows_wayland_maturity() {
 
     drop(_lang);
     let _en = i18n_pin::en();
-    let lxqt = qd::session_choice("lxqt", arch, SessionKind::Wayland, true).unwrap();
+    let lxqt = qd::session_choice("lxqt", arch, SessionPick::Wayland, true).unwrap();
     assert_eq!(lxqt.options[1].label, "Wayland — newer (recommended)");
     assert_eq!(lxqt.options[0].label, "X11 — proven");
-    let way = qd::install_texts_with_session("lxqt", arch, SessionKind::Wayland, true, "").confirm_html;
+    assert_eq!(lxqt.options[2].label, "Both (choose on the login screen)");
+    let way = qd::install_texts_with_session("lxqt", arch, SessionPick::Wayland, true, "").confirm_html;
     assert!(!way.contains("experimental"), "{way}");
 }
 
@@ -2009,43 +2049,125 @@ fn wayland_session_ready_needs_file_and_compositor() {
     assert_eq!(system::wayland_session_ready("kde", arch, &|_| true, &|_| true), None);
 }
 
-/// Тексты окна: пояснение меняется вместе с выбором, итог называет сеанс
-/// так, как его пишет экран входа; у MATE — предупреждение про AUR.
+/// Тексты окна: итог называет сеанс так, как его пишет экран входа (у
+/// «Оба» — оба имени); у MATE — предупреждение про AUR на вопросе и на
+/// карточках.
 #[test]
 fn session_texts_follow_choice() {
-    use system::SessionKind;
+    use system::{SessionKind, SessionPick};
     let _lang = i18n_pin::en();
     let arch = PkgFamily::Arch;
-    let x11 = qd::install_texts_with_session("xfce", arch, SessionKind::X11, true, "");
-    let way = qd::install_texts_with_session("xfce", arch, SessionKind::Wayland, true, "");
-    assert!(x11.confirm_html.contains("<b>X11</b>"), "{}", x11.confirm_html);
-    assert!(way.confirm_html.contains("<b>Wayland</b>") && way.confirm_html.contains("labwc"), "{}", way.confirm_html);
+    let x11 = qd::install_texts_with_session("xfce", arch, SessionPick::X11, true, "");
+    let way = qd::install_texts_with_session("xfce", arch, SessionPick::Wayland, true, "");
+    let both = qd::install_texts_with_session("xfce", arch, SessionPick::Both, true, "");
     assert!(x11.done_text.contains("“Xfce Session”"), "{}", x11.done_text);
     assert!(way.done_text.contains("“Xfce Session (Wayland)”"), "{}", way.done_text);
     assert!(way.done_text_restart.contains("“Xfce Session (Wayland)”"));
-    // Начало вопроса — прежнее «Установить …?», строка про пароль — последней.
+    assert!(
+        both.done_text.contains("“Xfce Session”") && both.done_text.contains("“Xfce Session (Wayland)”"),
+        "{}",
+        both.done_text
+    );
+    // Пояснения — на карточках: у Xfce вопрос остаётся прежним.
     let plain = qd::install_texts("XFCE").confirm_html;
-    let (question, password) = plain.split_once("<br><br>").unwrap();
-    assert!(way.confirm_html.starts_with(question), "{}", way.confirm_html);
-    assert!(way.confirm_html.ends_with(password), "{}", way.confirm_html);
-    // У MATE кнопка Wayland сама говорит «из AUR».
-    let mate_choice = qd::session_choice("mate", arch, SessionKind::X11, true).unwrap();
+    assert_eq!(way.confirm_html, plain);
+    assert_eq!(x11.confirm_html, plain);
+    // У MATE карточки Wayland и «Оба» сами говорят «из AUR».
+    let mate_choice = qd::session_choice("mate", arch, SessionPick::X11, true).unwrap();
     assert!(mate_choice.options[1].label.contains("AUR"), "{:?}", mate_choice.options);
-    let xfce_choice = qd::session_choice("xfce", arch, SessionKind::X11, true).unwrap();
+    assert!(mate_choice.options[2].label.contains("AUR"), "{:?}", mate_choice.options);
+    assert!(!mate_choice.options[0].label.contains("AUR"));
+    let xfce_choice = qd::session_choice("xfce", arch, SessionPick::X11, true).unwrap();
     assert!(!xfce_choice.options[1].label.contains("AUR"));
 
-    let mate = qd::install_texts_with_session("mate", arch, SessionKind::Wayland, true, "RISK-LINE");
-    assert!(mate.confirm_html.contains("AUR") && mate.confirm_html.contains("RISK-LINE"), "{}", mate.confirm_html);
-    assert!(!qd::install_texts_with_session("xfce", arch, SessionKind::Wayland, true, "RISK-LINE")
+    let mate_plain = qd::install_texts(qd::display_name("mate")).confirm_html;
+    let (question, password) = mate_plain.split_once("<br><br>").unwrap();
+    for pick in [SessionPick::Wayland, SessionPick::Both] {
+        let mate = qd::install_texts_with_session("mate", arch, pick, true, "RISK-LINE");
+        assert!(mate.confirm_html.contains("AUR") && mate.confirm_html.contains("RISK-LINE"), "{}", mate.confirm_html);
+        // Начало вопроса — прежнее «Установить …?», строка про пароль — последней.
+        assert!(mate.confirm_html.starts_with(question), "{}", mate.confirm_html);
+        assert!(mate.confirm_html.ends_with(password), "{}", mate.confirm_html);
+    }
+    assert!(!qd::install_texts_with_session("mate", arch, SessionPick::X11, true, "RISK-LINE")
+        .confirm_html
+        .contains("RISK-LINE"));
+    assert!(!qd::install_texts_with_session("xfce", arch, SessionPick::Wayland, true, "RISK-LINE")
         .confirm_html
         .contains("RISK-LINE"));
     // MATE без помощника AUR: объяснение и итог про X11.
-    let no_helper = qd::install_texts_with_session("mate", arch, SessionKind::Wayland, false, "");
+    let no_helper = qd::install_texts_with_session("mate", arch, SessionPick::Wayland, false, "");
     assert!(no_helper.confirm_html.contains("yay or paru"), "{}", no_helper.confirm_html);
     assert!(no_helper.done_text.contains("“MATE”"), "{}", no_helper.done_text);
 
-    let add = qd::session_add_texts("lxqt", arch, true, "");
+    let add = qd::session_add_texts("lxqt", arch, SessionKind::Wayland, true, "");
     assert!(add.done_text.contains("“LXQt (Wayland)”"), "{}", add.done_text);
-    assert!(!qd::session_offer_button().is_empty());
-    assert!(qd::session_offer_hint("lxqt").contains("LXQt"));
+    let add_x11 = qd::session_add_texts("lxqt", arch, SessionKind::X11, true, "");
+    assert!(add_x11.done_text.contains("“LXQt Desktop”"), "{}", add_x11.done_text);
+    assert!(add_x11.confirm_html.contains("<b>X11</b>"), "{}", add_x11.confirm_html);
+    assert_ne!(qd::session_offer_button(SessionKind::Wayland), qd::session_offer_button(SessionKind::X11));
+    assert!(qd::session_offer_button(SessionKind::X11).contains("X11"));
+    assert!(qd::session_offer_hint("lxqt", SessionKind::Wayland).contains("LXQt"));
+    assert!(qd::session_offer_hint("lxqt", SessionKind::X11).contains("X11"));
+}
+
+/// Строка карточки установленного стола и кнопка недостающего сеанса — по
+/// файлам сеансов и программам в системе.
+#[test]
+fn installed_sessions_line_and_missing_offer() {
+    use system::SessionKind;
+    let _lang = i18n_pin::ru();
+    let arch = PkgFamily::Arch;
+    let xorg = |b: &str| b == system::X11_SERVER_BINARY || b == "labwc";
+    let both = |f: &str| f.ends_with("/xfce.desktop") || f.ends_with("/xfce-wayland.desktop");
+    let x11_only = |f: &str| f.ends_with("/xfce.desktop");
+    let way_only = |f: &str| f.ends_with("/xfce-wayland.desktop");
+    assert_eq!(system::installed_sessions("xfce", arch, &both, &xorg), Some((true, true)));
+    assert_eq!(system::installed_sessions("xfce", arch, &x11_only, &xorg), Some((true, false)));
+    assert_eq!(system::installed_sessions("xfce", arch, &way_only, &xorg), Some((false, true)));
+    // Без X-сервера сеанс X11 не стартует, даже если файл лежит.
+    assert_eq!(system::installed_sessions("xfce", arch, &both, &|b| b == "labwc"), Some((false, true)));
+    assert_eq!(system::installed_sessions("kde", arch, &both, &xorg), None);
+
+    assert_eq!(system::missing_session((true, true)), None);
+    assert_eq!(system::missing_session((true, false)), Some(SessionKind::Wayland));
+    assert_eq!(system::missing_session((false, true)), Some(SessionKind::X11));
+    assert_eq!(system::missing_session((false, false)), Some(SessionKind::Wayland));
+
+    assert_eq!(qd::session_status_line("xfce", arch, (true, true)), "Сеансы: X11 + Wayland (экспериментально)");
+    assert_eq!(qd::session_status_line("xfce", arch, (true, false)), "Сеанс: X11");
+    assert_eq!(qd::session_status_line("xfce", arch, (false, true)), "Сеанс: Wayland (экспериментальный)");
+    assert_eq!(qd::session_status_line("lxqt", arch, (true, true)), "Сеансы: X11 + Wayland");
+    assert_eq!(qd::session_status_line("lxqt", arch, (false, true)), "Сеанс: Wayland");
+    assert_eq!(qd::session_status_line("kde", arch, (true, true)), "");
+    // У каждого стола с выбором файл X11-сеанса — в xsessions.
+    for (de, v) in system::SESSION_VARIANTS {
+        assert!(v.x11_session_file.starts_with("/usr/share/xsessions/"), "{de}");
+    }
+}
+
+/// Живой случай 08.11.2026: GNOME удалён целиком, потом вручную доставлен один
+/// gnome-shell — 45 программ стола нет. Шапка — «Установлен частично»;
+/// один новый пакет группы (pluma-plugins у MATE) — шапку не меняет.
+#[test]
+fn partial_install_changes_header_only_when_most_is_missing() {
+    use rexon_core::system_plan::InstallPreview;
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let gnome = InstallPreview {
+        members: s(&["gnome-shell", "gdm", "baobab", "epiphany", "gnome-calculator"]),
+        new_packages: s(&["gdm", "baobab", "epiphany", "gnome-calculator"]),
+        ..InstallPreview::default()
+    };
+    assert!(qd::is_partial_install(&gnome));
+    assert_eq!(qd::packages_view(true, Some(&gnome), 5, 0).status_override, qd::status_partial());
+    // Не установлен — шапка своя («Не установлен»), замены нет.
+    assert!(qd::packages_view(false, Some(&gnome), 5, 0).status_override.is_empty());
+
+    let mate = InstallPreview {
+        members: s(&["caja", "marco", "mate-panel", "pluma", "pluma-plugins"]),
+        new_packages: s(&["pluma-plugins"]),
+        ..InstallPreview::default()
+    };
+    assert!(!qd::is_partial_install(&mate));
+    assert!(qd::packages_view(true, Some(&mate), 5, 0).status_override.is_empty());
 }

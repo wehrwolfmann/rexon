@@ -1398,22 +1398,38 @@ mod tests {
             .find("id: m_prop_delegate")
             .expect("в панели деталей обязан быть делегат свойств");
         let block = &PANEL_QML[start..];
+        // waywallen 0.6.0: делегат получает одну `required property
+        // MD.LazyRow row` (источник `MD.ItemModelSource` над нашей моделью),
+        // а роли читает как `row.value.<роль>`. До 0.6.0 каждая роль была
+        // своим `required property`. Понимаем оба вида.
         let mut required: Vec<&str> = Vec::new();
         for line in block.lines() {
             let line = line.trim();
-            let Some(rest) = line.strip_prefix("required property ") else {
-                if !required.is_empty() && !line.is_empty() {
-                    // Объявления идут одним куском: первая же строка после
-                    // них закрывает список.
-                    break;
+            if let Some(rest) = line.strip_prefix("required property ") {
+                let name = rest
+                    .split_whitespace()
+                    .nth(1)
+                    .expect("у объявления есть тип и имя");
+                if name != "row" {
+                    required.push(name);
                 }
                 continue;
-            };
-            let name = rest
-                .split_whitespace()
-                .nth(1)
-                .expect("у объявления есть тип и имя");
-            required.push(name);
+            }
+            if let Some((_, tail)) = line.split_once(": row.value.") {
+                let name = tail
+                    .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                    .next()
+                    .unwrap_or("");
+                if !name.is_empty() {
+                    required.push(name);
+                }
+                continue;
+            }
+            if !required.is_empty() && !line.is_empty() && !line.starts_with("readonly property") {
+                // Объявления идут одним куском: первая же строка после
+                // них закрывает список.
+                break;
+            }
         }
         assert!(
             required.len() >= 10,

@@ -304,6 +304,88 @@ fn restart_only_after_upgrading_plugin_in_use() {
     assert!(!w::restart_after_install(false, true, true), "ничего не ставили — без перезапуска");
 }
 
+// ── тихое освежение установленного плагина (дефект 12.11.2026) ───────────
+
+/// Плагин 0.4.x от 06.10 у человека, бандл 0.4.5, демон 0.6.0.
+fn refresh_check(present: bool, installed_sha: &str) -> w::PluginCheck {
+    w::PluginCheck {
+        bundle_version: Some("0.4.5".into()),
+        bundle_sha: Some("bbbbbbbbbbbbbbbb".into()),
+        installed: if present {
+            w::InstalledPlugin {
+                present: true,
+                vendor_version: Some("0.4.0".into()),
+                marker: true,
+                runtime_sha: Some(installed_sha.into()),
+            }
+        } else {
+            w::InstalledPlugin::default()
+        },
+        daemon_version: Some("0.6.0".into()),
+        consent: false,
+    }
+}
+
+#[test]
+fn refresh_upgrades_installed_outdated_plugin() {
+    let d = w::refresh_decision(&refresh_check(true, "aaaaaaaaaaaaaaaa"), true, true);
+    assert_eq!(d, w::RefreshDecision::Upgrade);
+    assert!(d.upgrades());
+    // Демон ещё не известен (старт Rexon) — сторож не мешает обновить.
+    let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
+    c.daemon_version = None;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Upgrade);
+}
+
+#[test]
+fn refresh_never_installs_missing_plugin() {
+    for (tool, bundle) in [(true, true), (false, true), (true, false), (false, false)] {
+        let d = w::refresh_decision(&refresh_check(false, ""), tool, bundle);
+        assert_eq!(d, w::RefreshDecision::NotInstalled, "инструмент {tool}, бандл {bundle}");
+        assert!(!d.upgrades());
+    }
+}
+
+#[test]
+fn refresh_keeps_matching_plugin() {
+    // Тот же рантайм — ничего, даже без инструмента и бандла (дешёвый путь).
+    for (tool, bundle) in [(true, true), (false, false)] {
+        let d = w::refresh_decision(&refresh_check(true, "bbbbbbbbbbbbbbbb"), tool, bundle);
+        assert_eq!(d, w::RefreshDecision::UpToDate, "инструмент {tool}, бандл {bundle}");
+    }
+}
+
+#[test]
+fn refresh_skips_without_kpackagetool_or_bundle() {
+    let c = refresh_check(true, "aaaaaaaaaaaaaaaa");
+    assert_eq!(w::refresh_decision(&c, false, true), w::RefreshDecision::NoTool);
+    assert_eq!(w::refresh_decision(&c, true, false), w::RefreshDecision::NoBundle);
+}
+
+#[test]
+fn refresh_respects_version_guard() {
+    // Установленный новее бандла — не трогаем.
+    let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
+    c.installed.vendor_version = Some("0.4.9".into());
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::KeepNewer));
+    // Чужой неизвестной версии — молча не меняем (спрашивает вкладка).
+    let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
+    c.installed.vendor_version = None;
+    c.installed.marker = false;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::AskForeign));
+    // Согласие из прошлой проверки молчаливое освежение не расширяет.
+    c.consent = true;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::AskForeign));
+}
+
+#[test]
+fn refresh_restarts_plasmashell_only_on_kde_when_in_use() {
+    assert!(w::refresh_restarts(true, true, true));
+    assert!(!w::refresh_restarts(false, true, true), "не KDE — оболочку не трогаем");
+    assert!(!w::refresh_restarts(true, true, false), "обновили невыбранный — без перезапуска");
+    assert!(!w::refresh_restarts(true, false, true), "ничего не ставили — без перезапуска");
+}
+
 #[test]
 fn any_selected_logic() {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -689,14 +771,19 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::plugin_protocol("0.4.1"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.2"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.3"), Some(9));
-    assert_eq!(w::plugin_protocol("0.4.4"), None, "вне проверенной таблицы — не угадываем");
+    assert_eq!(w::plugin_protocol("0.4.4"), Some(9));
+    assert_eq!(w::plugin_protocol("0.4.5"), Some(9));
+    assert_eq!(w::plugin_protocol("0.4.6"), None, "вне проверенной таблицы — не угадываем");
     assert_eq!(w::daemon_protocols("0.4.3"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.3.9"), Some((8, 8)));
     assert_eq!(w::daemon_protocols("0.4.4"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.4.5"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.5.0"), Some((9, 9)));
-    assert_eq!(w::daemon_protocols("0.5.1"), None);
+    assert_eq!(w::daemon_protocols("0.5.1"), Some((9, 9)));
+    assert_eq!(w::daemon_protocols("0.6.0"), Some((9, 9)));
+    assert_eq!(w::daemon_protocols("0.6.1"), None);
     assert_eq!(w::compatible_with_daemon(Some("0.4.3"), Some("0.5.0")), Some(true));
+    assert_eq!(w::compatible_with_daemon(Some("0.4.5"), Some("0.6.0")), Some(true));
     assert_eq!(w::daemon_protocols("0.2.6"), None);
     assert_eq!(w::compatible_with_daemon(Some("0.3.3"), Some("0.4.3")), Some(false));
     assert_eq!(w::compatible_with_daemon(Some("0.4.0"), Some("0.4.3")), Some(true));

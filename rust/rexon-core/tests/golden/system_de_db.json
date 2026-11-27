@@ -53,7 +53,8 @@
   "boss": "debian",
   "redos": "fedora",
   "rosa": "fedora",
-  "calculate": "gentoo"
+  "calculate": "gentoo",
+  "openkylin": "debian"
  },
  "id_map_order": [
   "arch",
@@ -109,7 +110,8 @@
   "boss",
   "redos",
   "rosa",
-  "calculate"
+  "calculate",
+  "openkylin"
  ],
  "de_ids": [
   "cinnamon-mint",

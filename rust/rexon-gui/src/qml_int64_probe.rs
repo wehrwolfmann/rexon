@@ -81,9 +81,9 @@ const CASES: &[Case] = &[
 "#,
     },
     Case {
-        name: "LibraryRenameQuery.libraryId ← литерал (waywallen 0.5.0)",
+        name: "LibraryEditQuery.libraryId ← литерал (waywallen 0.6.0)",
         body: r#"
-    property QtObject target: W.LibraryRenameQuery { libraryId: 7; name: "Обои" }
+    property QtObject target: W.LibraryEditQuery { libraryId: 7; name: "Обои" }
     readonly property bool probeOk: Number(target.libraryId) === 7 && target.name === "Обои"
         && !target.querying
     readonly property string probeWhy: "" + target.libraryId + " / " + typeof target.libraryId
@@ -96,6 +96,17 @@ const CASES: &[Case] = &[
     property QtObject target: W.LibraryAddQuery { path: "/p"; pluginName: "we"; name: "Мастерская" }
     readonly property bool probeOk: target.name === "Мастерская" && target.pluginName === "we"
     readonly property string probeWhy: target.name + " / " + target.pluginName
+"#,
+    },
+    Case {
+        name: "LibraryAddQuery/LibraryEditQuery.settings — карта из QML (waywallen 0.6.0)",
+        body: r#"
+    property QtObject target: W.LibraryAddQuery { settings: ({ recursive: true, depth: 3 }) }
+    property QtObject edit: W.LibraryEditQuery { libraryId: 7; settings: ({ recursive: false }) }
+    readonly property bool probeOk: target.settings.recursive === true
+        && Number(target.settings.depth) === 3 && edit.settings.recursive === false
+    readonly property string probeWhy: JSON.stringify(target.settings) + " / "
+        + JSON.stringify(edit.settings)
 "#,
     },
     Case {

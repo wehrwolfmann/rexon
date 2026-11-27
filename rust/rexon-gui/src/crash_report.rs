@@ -427,7 +427,9 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
     // Значок окна в панели задач X11 — тот же, что у главного окна.
     crate::tray::set_app_window_icon();
     QGuiApplication::set_desktop_file_name(&QString::from(qt_app::DESKTOP_FILE_NAME));
-    // Окно о крахе говорит на языке Rexon — и справа налево тоже.
+    // Окно о крахе говорит на языке Rexon — и справа налево тоже, и
+    // стандартные надписи Qt (меню правки поля с отчётом) тоже.
+    crate::install_qt_translations(&rexon_core::i18n::current_language());
     crate::fonts::install_rtl_fallbacks();
 
     let mut engine = QQmlApplicationEngine::new();
@@ -773,6 +775,9 @@ mod tests {
         );
         // Заголовок окна берётся из этого свойства, а не из имени приложения.
         assert!(DIALOG_QML.contains("title: dialogTitle"));
-        assert!(!DIALOG_QML.contains("Qt.application"));
+        // Направление письма (`Qt.application.layoutDirection`) брать можно —
+        // нельзя имя приложения.
+        assert!(!DIALOG_QML.contains("Qt.application.name"));
+        assert!(!DIALOG_QML.contains("Qt.application.displayName"));
     }
 }

@@ -1217,3 +1217,190 @@ fn english_compliance_has_no_russian() {
         assert!(!cyrillic(&own), "русский текст в английском журнале: {line:?}");
     }
 }
+
+// ============================================================================
+// Терминал: выбор человека главнее родного (решение Wehrwolfmann 08.11.2026)
+// ============================================================================
+//
+// Выбор во вкладке «Настройки» лежит в `<стол>-xdg-terminals.list` с
+// пометкой «выбрано человеком». Проверка при входе ставит в родное место
+// стола ЕГО, а не родной терминал; без выбора — родной, как раньше; выбранный,
+// но не установленный — родной, и это сказано в журнале.
+
+/// Машина для сверки терминала: файлы, установленные программы, ответы
+/// `gsettings get`; запущенные команды копятся в `argv_log`.
+#[derive(Default)]
+struct TermIo {
+    files: std::collections::BTreeMap<String, String>,
+    tools: Vec<String>,
+    gsettings: std::collections::BTreeMap<String, String>,
+    argv_log: Vec<Vec<String>>,
+}
+
+impl ComplianceIo for TermIo {
+    fn run(&mut self, argv: &[String], _timeout: Option<u64>) -> Option<RunResult> {
+        self.argv_log.push(argv.to_vec());
+        if argv.len() == 4 && argv[0] == "gsettings" && argv[1] == "get" {
+            let key = format!("{} {}", argv[2], argv[3]);
+            return self.gsettings.get(&key).map(|v| RunResult { ok: true, stdout: format!("'{v}'\n") });
+        }
+        Some(RunResult { ok: true, stdout: String::new() })
+    }
+    fn which(&mut self, name: &str) -> bool {
+        self.tools.iter().any(|t| t == name)
+    }
+    fn env(&mut self, _name: &str) -> String {
+        String::new()
+    }
+    fn exists(&mut self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+    fn is_file(&mut self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+    fn is_dir(&mut self, _path: &str) -> bool {
+        false
+    }
+    fn read_text(&mut self, path: &str) -> Option<String> {
+        self.files.get(path).cloned()
+    }
+    fn scandir(&mut self, _path: &str) -> Option<Vec<ScanEntry>> {
+        None
+    }
+    fn listdir(&mut self, _path: &str) -> Vec<String> {
+        Vec::new()
+    }
+    fn makedirs(&mut self, _path: &str) {}
+    fn write_text(&mut self, path: &str, content: &str) {
+        self.files.insert(path.to_string(), content.to_string());
+    }
+    fn replace(&mut self, _src: &str, _dst: &str) {}
+    fn realpath(&mut self, path: &str) -> String {
+        path.to_string()
+    }
+    fn mkdtemp(&mut self, _prefix: &str, _dir: Option<&str>) -> String {
+        String::new()
+    }
+    fn mkstemp(&mut self, _prefix: &str, _suffix: &str) -> String {
+        String::new()
+    }
+    fn chmod(&mut self, _path: &str, _mode: u32) {}
+    fn remove_file(&mut self, _path: &str) {}
+    fn remove_tree(&mut self, _path: &str) {}
+    fn copy_file(&mut self, _src: &str, _dst: &str) {}
+}
+
+const TERM_HOME: &str = "/home/tester";
+
+impl TermIo {
+    fn new(tools: &[&str]) -> Self {
+        TermIo { tools: tools.iter().map(|s| s.to_string()).collect(), ..Default::default() }
+    }
+    fn chosen(mut self, list: &str, terminal: &str) -> Self {
+        self.files.insert(
+            format!("{TERM_HOME}/.config/{list}"),
+            rexon_core::defaults::desktop_terminals_list_text(terminal, true),
+        );
+        self
+    }
+    fn gset(mut self, schema: &str, value: &str) -> Self {
+        self.gsettings.insert(format!("{schema} exec"), value.to_string());
+        self
+    }
+    fn sets(&self, schema: &str) -> Vec<String> {
+        self.argv_log
+            .iter()
+            .filter(|a| a.len() == 5 && a[0] == "gsettings" && a[1] == "set" && a[2] == schema)
+            .map(|a| format!("{}={}", a[3], a[4]))
+            .collect()
+    }
+}
+
+fn term_run(io: &mut TermIo, desktop: &str) -> (Results, Vec<String>) {
+    let mut log = Vec::new();
+    let results = Compliance::new(io, TERM_HOME, PkgFamily::Unknown, false, false, false)
+        .run_for_current_de(desktop, &mut log);
+    (results, log)
+}
+
+fn result_of<'a>(results: &'a Results, key: &str) -> Option<&'a str> {
+    results.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
+const MATE_SCHEMA: &str = "org.mate.applications-terminal";
+const GNOME_SCHEMA: &str = "org.gnome.desktop.default-applications.terminal";
+
+#[test]
+fn chosen_terminal_wins_over_native_in_mate() {
+    let _lang = i18n_pin::en();
+    // Выбор человека — konsole: в схему MATE идёт он, с его exec-arg.
+    let mut io = TermIo::new(&["konsole", "mate-terminal"])
+        .chosen("mate-xdg-terminals.list", "org.kde.konsole.desktop")
+        .gset(MATE_SCHEMA, "mate-terminal");
+    let (results, _) = term_run(&mut io, "MATE");
+    assert_eq!(io.sets(MATE_SCHEMA), vec!["exec=konsole", "exec-arg=-e"]);
+    assert_eq!(result_of(&results, "mate_terminal"), Some("fixed"));
+
+    // Уже стоит выбранный — не трогаем.
+    let mut io = TermIo::new(&["konsole", "mate-terminal"])
+        .chosen("mate-xdg-terminals.list", "org.kde.konsole.desktop")
+        .gset(MATE_SCHEMA, "konsole");
+    let (results, _) = term_run(&mut io, "MATE");
+    assert!(io.sets(MATE_SCHEMA).is_empty(), "{:?}", io.argv_log);
+    assert_eq!(result_of(&results, "mate_terminal"), Some("ok"));
+
+    // Без выбора — родной, как раньше.
+    let mut io = TermIo::new(&["konsole", "mate-terminal"]).gset(MATE_SCHEMA, "konsole");
+    term_run(&mut io, "MATE");
+    assert_eq!(io.sets(MATE_SCHEMA), vec!["exec=mate-terminal", "exec-arg=-x"]);
+
+    // Выбранный не установлен — родной, и сказано в журнале.
+    let mut io = TermIo::new(&["mate-terminal"])
+        .chosen("mate-xdg-terminals.list", "kitty.desktop")
+        .gset(MATE_SCHEMA, "xterm");
+    let (_, log) = term_run(&mut io, "MATE");
+    assert_eq!(io.sets(MATE_SCHEMA), vec!["exec=mate-terminal", "exec-arg=-x"]);
+    assert!(
+        log.iter().any(|l| l.contains("Terminal: mate-terminal (kitty isn't installed)")),
+        "{log:?}"
+    );
+}
+
+#[test]
+fn chosen_terminal_wins_over_native_in_kde() {
+    let kdeglobals = format!("{TERM_HOME}/.config/kdeglobals");
+    let kw = |io: &TermIo| -> Vec<String> {
+        io.argv_log
+            .iter()
+            .filter(|a| a.first().map(String::as_str) == Some("kwriteconfig6"))
+            .map(|a| a[a.len() - 2..].join("="))
+            .collect()
+    };
+    let mut io = TermIo::new(&["kitty", "konsole", "kwriteconfig6"]).chosen("kde-xdg-terminals.list", "kitty.desktop");
+    io.files.insert(kdeglobals.clone(), "[General]\nTerminalApplication=konsole\n".into());
+    let (results, _) = term_run(&mut io, "KDE");
+    assert_eq!(kw(&io), vec!["TerminalApplication=kitty", "TerminalService=kitty.desktop"]);
+    assert_eq!(result_of(&results, "kde_terminal"), Some("fixed"));
+
+    // Без выбора konsole остаётся konsole.
+    let mut io = TermIo::new(&["kitty", "konsole", "kwriteconfig6"]);
+    io.files.insert(kdeglobals.clone(), "[General]\nTerminalApplication=konsole\n".into());
+    let (results, _) = term_run(&mut io, "KDE");
+    assert!(kw(&io).is_empty(), "{:?}", io.argv_log);
+    assert_eq!(result_of(&results, "kde_terminal"), Some("ok"));
+}
+
+#[test]
+fn chosen_terminal_wins_over_native_in_gnome() {
+    let mut io = TermIo::new(&["alacritty", "gnome-terminal"])
+        .chosen("gnome-xdg-terminals.list", "Alacritty.desktop")
+        .gset(GNOME_SCHEMA, "kgx");
+    let (results, _) = term_run(&mut io, "GNOME");
+    assert_eq!(io.sets(GNOME_SCHEMA), vec!["exec=alacritty", "exec-arg=-e"]);
+    assert_eq!(result_of(&results, "gnome_terminal"), Some("fixed"));
+
+    // Без выбора родной терминал GNOME не трогается.
+    let mut io = TermIo::new(&["alacritty", "gnome-terminal"]).gset(GNOME_SCHEMA, "kgx");
+    term_run(&mut io, "GNOME");
+    assert!(io.sets(GNOME_SCHEMA).is_empty(), "{:?}", io.argv_log);
+}

@@ -1864,6 +1864,32 @@ pub fn resolve_preview_in(
     backfill_preview_for(env, apply_kind, name)
 }
 
+/// Пометка на плитке темы курсоров, переведённой из Windows (решение
+/// Wehrwolfmann 03.10.2026: «🪟 из Windows»).
+// TRANSLATORS: badge on a cursor theme tile: the theme was converted from Windows cursors.
+const FROM_WINDOWS_LABEL: &str = n_("🪟 From Windows");
+
+/// Тема курсоров переведена из Windows импортёром Rexon?
+///
+/// Признак — строка `X-Rexon-Source=windows` в `index.theme`
+/// ([`crate::importers::WINDOWS_CURSOR_ORIGIN_KEY`]). Темы, переведённые до
+/// этой строки, узнаются по `Comment`, который импортёр пишет сам и всегда
+/// одинаково (`Imported from Windows cursors (N cursors)`).
+pub fn is_windows_cursor_theme(fs: &FsSnapshot, theme_dir: &str) -> bool {
+    if theme_dir.is_empty() {
+        return false;
+    }
+    let Some(text) = fs.read_text(&join(theme_dir, "index.theme")) else {
+        return false;
+    };
+    let key = crate::importers::WINDOWS_CURSOR_ORIGIN_KEY;
+    if name_from_ini(text, &[key.to_string()]).is_some_and(|v| v.eq_ignore_ascii_case("windows")) {
+        return true;
+    }
+    name_from_ini(text, &["Comment".to_string()])
+        .is_some_and(|c| c.starts_with("Imported from Windows cursors ("))
+}
+
 // ============================================================================
 // Построение ThemeItem — порт _mk_item / _mk_local_item
 // ============================================================================
@@ -1911,12 +1937,19 @@ fn mk_item(
         let source = theme_source_name(env.fs, &theme_dir, name, &display);
         (display, source)
     };
-    let description = theme_description(env.fs, &theme_dir, env.locale);
+    let mut description = theme_description(env.fs, &theme_dir, env.locale);
+    // Курсоры из Windows: пометка источника на плитке и описание на языке
+    // интерфейса вместо английского `Comment`, записанного импортёром.
+    let mut origin = String::new();
+    if t.apply_kind == "cursor" && is_windows_cursor_theme(env.fs, &theme_dir) {
+        origin = format!(" · {}", tr(FROM_WINDOWS_LABEL));
+        description = tr("Imported from Windows");
+    }
     ThemeItem {
         id: format!("local:{}:{name}", t.apply_kind),
         name: display,
         description,
-        author: format!("{} {} · {badge}", t.icon, type_label(t)),
+        author: format!("{} {} · {badge}{origin}", t.icon, type_label(t)),
         category_id: t.cat_id,
         installed: true,
         install_path,
@@ -4916,6 +4949,59 @@ mod tests {
         assert_eq!(backfill_preview_for(&env, "icons", "Win7 Icon Theme"), "/c/icons.png");
         // Без раздела — прежнее правило подстроки.
         assert_eq!(backfill_preview(&env, "Win7"), "/c/icons.png");
+    }
+
+    /// Курсоры, переведённые из Windows, несут на плитке «🪟 из Windows» и
+    /// описание на языке интерфейса — и по новой строке `X-Rexon-Source`, и
+    /// по `Comment` тем, переведённых раньше; обычная тема пометки не берёт.
+    #[test]
+    fn windows_cursor_theme_tile_carries_origin_badge() {
+        let themes = [
+            ("Neu", "[Icon Theme]\nName=Neu\nComment=Imported from Windows cursors (3 cursors)\nX-Rexon-Source=windows\n"),
+            ("Alt", "[Icon Theme]\nName=Alt\nComment=Imported from Windows cursors (17 cursors)\n"),
+            ("Bibata", "[Icon Theme]\nName=Bibata\nComment=Material cursors\n"),
+        ];
+        let mut dirs: HashMap<String, Vec<String>> = HashMap::new();
+        let mut files: HashMap<String, String> = HashMap::new();
+        dirs.insert("/h/.icons".into(), themes.iter().map(|(n, _)| n.to_string()).collect());
+        for (name, index) in themes {
+            dirs.insert(format!("/h/.icons/{name}"), vec!["cursors".into(), "index.theme".into()]);
+            dirs.insert(format!("/h/.icons/{name}/cursors"), Vec::new());
+            files.insert(format!("/h/.icons/{name}/index.theme"), index.to_string());
+        }
+        let fs = FsSnapshot::from_parts(dirs, files);
+        assert!(is_windows_cursor_theme(&fs, "/h/.icons/Neu"));
+        assert!(is_windows_cursor_theme(&fs, "/h/.icons/Alt"));
+        assert!(!is_windows_cursor_theme(&fs, "/h/.icons/Bibata"));
+        assert!(!is_windows_cursor_theme(&fs, "/h/.icons/Nichts"));
+        assert!(!is_windows_cursor_theme(&fs, ""));
+
+        let preview_file = |_: &str| None;
+        let store = StoreRecords::default();
+        let env = ScanEnv {
+            home: "/h",
+            usr_root: "/usr",
+            fs: &fs,
+            ocs_cache: &[],
+            preview_file: &preview_file,
+            store: &store,
+            locale: "ru",
+            standard_icons: None,
+        };
+        let cursor = types_for("/h", "/usr").into_iter().find(|t| t.apply_kind == "cursor").unwrap();
+        let badge = tr(FROM_WINDOWS_LABEL);
+        for name in ["Neu", "Alt"] {
+            let item = mk_item(&env, &cursor, name, "/h/.icons", false, DOWNLOADED_LABEL);
+            assert!(item.author.ends_with(&format!(" · {badge}")), "{name}: {}", item.author);
+            assert_eq!(item.description, tr("Imported from Windows"), "{name}");
+            // Активная тема: пометка источника остаётся рядом с «✅».
+            let active = mk_item(&env, &cursor, name, "/h/.icons", true, "");
+            assert!(active.author.contains(&local_active_badge()), "{}", active.author);
+            assert!(active.author.ends_with(&badge), "{}", active.author);
+        }
+        let plain = mk_item(&env, &cursor, "Bibata", "/h/.icons", false, DOWNLOADED_LABEL);
+        assert!(!plain.author.contains(&badge), "{}", plain.author);
+        assert_eq!(plain.description, "Material cursors");
     }
 
     /// Первый шаг цепочки: миниатюра вида в подкаталоге темы и снимок,

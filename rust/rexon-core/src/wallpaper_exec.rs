@@ -373,6 +373,12 @@ pub trait WpSys {
         we_stopper().map(|stop| stop(timeout_ms))
     }
 
+    /// Убрать вывод waywallen, который без живых обоев закрывает стол своей
+    /// заглушкой (GNOME: расширение `org.waywallen.gnome` красит стол
+    /// чёрным, [`crate::wallpaper_backend::set_waywallen_gnome_display`]).
+    /// По умолчанию ничего: подставные швы живой сеанс не трогают.
+    fn release_waywallen_display(&mut self) {}
+
     /// Rexon поставил обоями стола картинку `path` — следом пересчитать
     /// «Цвет акцента из обоев» вне Plasma ([`crate::accent::follow_wallpaper`]).
     /// По умолчанию ничего: подставные швы настоящих настроек не трогают.
@@ -554,6 +560,10 @@ impl LiveSys {
 impl WpSys for LiveSys {
     fn static_wallpaper_changed(&mut self, path: &str) {
         crate::accent::live_follow_wallpaper(path);
+    }
+
+    fn release_waywallen_display(&mut self) {
+        crate::wallpaper_backend::set_waywallen_gnome_display_live(false);
     }
 
     fn run(&mut self, argv: &[String], timeout: f64) -> Option<RunOut> {
@@ -2525,8 +2535,11 @@ impl<S: WpSys> WallpaperExec<S> {
         if !yields_we_wallpapers(fmt) {
             return;
         }
-        let Some((status, killed)) = self.sys.stop_we_wallpapers(crate::we_client::STOP_TIMEOUT_MS)
-        else {
+        let stopped = self.sys.stop_we_wallpapers(crate::we_client::STOP_TIMEOUT_MS);
+        // Вывод waywallen — и тогда, когда снимать рендереры было некому
+        // (процесс без Qt): его заглушка закрыла бы наши обои и без них.
+        self.sys.release_waywallen_display();
+        let Some((status, killed)) = stopped else {
             return;
         };
         if status == crate::we_client::STOP_STOPPED && killed > 0 {
@@ -3478,29 +3491,6 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// MATE: включить или выключить иконки рабочего стола.
-    ///
-    /// Без проверки владельца стола — в отличие от [`Self::set_desktop_icons`]:
-    /// здесь человек нажал кнопку САМ и именно про MATE, и молча ничего не
-    /// делать в ответ на прямое нажатие нельзя (правило #13).
-    ///
-    /// Истина — все команды отработали. ⭐ Починка: прежде итог не смотрелся
-    /// вовсе, и кнопка рапортовала «иконки включены» даже там, где схемы
-    /// настроек MATE нет.
-    pub fn mate_set_desktop_icons(&mut self, visible: bool) -> bool {
-        let mut ok = true;
-        for argv in wpe::desktop_icons_argvs("mate", visible) {
-            let done = matches!(
-                self.sys.run(&argv, wpe::DESKTOP_CMD_TIMEOUT_SEC),
-                Some(ref out) if out.rc == 0
-            );
-            if !done {
-                log_line("warning", &format!("иконки MATE: команда не отработала: {}", argv.join(" ")));
-            }
-            ok &= done;
-        }
-        ok
-    }
 
     // ── размытие обоев ────────────────────────────────────────────────────
 
@@ -3634,34 +3624,6 @@ impl<S: WpSys> WallpaperExec<S> {
         true
     }
 
-    /// MATE: перезапустить рабочий стол Caja. Истина — стол на месте.
-    ///
-    /// ⚠️ Починка класса «сами же и убили». `caja --force-desktop` при
-    /// работающей Caja передаёт ей просьбу и выходит, а при НЕработающей —
-    /// сам становится рабочим столом и живёт дальше. Прежде команда шла
-    /// через «запустить и дождаться» со сроком 5 секунд, и по сроку процесс
-    /// убивался: человек, у которого стол пропал, нажимал «Перезапустить» и
-    /// через пять секунд снова оставался без стола. Теперь процесс поднимается
-    /// своим сеансом и не снимается: успех — жив после отсрочки движка ИЛИ
-    /// вышел с нулём; отказ — не запустился или вышел с ошибкой.
-    pub fn mate_restart_caja_desktop(&mut self) -> bool {
-        let argv = wpe::caja_restart_argv();
-        let proc = match self.sys.spawn(&argv, true) {
-            Ok(proc) => proc,
-            Err(e) => {
-                log_line("error", &format!("Caja не запустилась: {e}"));
-                return false;
-            }
-        };
-        match self.wait_alive(proc) {
-            None => true,
-            Some(0) => true,
-            Some(rc) => {
-                log_line("error", &format!("Caja вышла с ошибкой (код {rc})"));
-                false
-            }
-        }
-    }
 
     fn home(&mut self) -> String {
         let home = self.sys.env("HOME");
@@ -3771,6 +3733,8 @@ mod tests {
         /// Когда просили снять WE-обои: (запущено команд, поднято процессов)
         /// на тот миг — по ним видно, что снятие шло ДО своих обоев.
         we_stops: Vec<(usize, usize)>,
+        /// Когда просили убрать вывод waywallen — в тех же мерках.
+        display_releases: Vec<(usize, usize)>,
     }
 
     impl FakeSys {
@@ -3892,6 +3856,9 @@ mod tests {
             self.we_stops.push((self.ran.len(), self.spawned.len()));
             self.we_stop.clone()
         }
+        fn release_waywallen_display(&mut self) {
+            self.display_releases.push((self.ran.len(), self.spawned.len()));
+        }
     }
 
     fn exec(de: &str, session: &str, sys: FakeSys) -> WallpaperExec<FakeSys> {
@@ -3913,6 +3880,27 @@ mod tests {
         assert_eq!(sys.we_stops, vec![(0, 0)], "WE-обои сняты не первыми: {:?}", sys.we_stops);
         assert!(!sys.ran.is_empty(), "картинка так и не поставлена");
         assert!(!res.message.contains("Wallpaper Engine"), "лишняя приписка: {}", res.message);
+    }
+
+    /// Вывод waywallen (GNOME: расширение с чёрной заглушкой) убирается
+    /// вместе со снятием WE-обоев — до своих обоев и даже без крюка снятия;
+    /// ради отказа — нет.
+    #[test]
+    fn own_wallpaper_releases_waywallen_display() {
+        for fmt in ["static", "video"] {
+            let mut sys = FakeSys::default();
+            sys.host = Some("/usr/bin/rexon-wallpaper-host".to_string());
+            sys.we_stop = None;
+            let mut e = exec("gnome", "wayland", sys);
+            e.apply("/home/u/лес.png", fmt, "");
+            let releases = e.sys_mut().display_releases.clone();
+            assert_eq!(releases, vec![(0, 0)], "{fmt}: {releases:?}");
+        }
+        let mut sys = FakeSys::default();
+        sys.missing_paths.push("/home/u/нет.png".to_string());
+        let mut e = exec("gnome", "wayland", sys);
+        assert!(!e.apply("/home/u/нет.png", "static", "").ok);
+        assert!(e.sys_mut().display_releases.is_empty(), "убрали ради отказа");
     }
 
     /// Снять WE-обою не вышло: свои обои всё равно ставятся, а человек
@@ -4848,42 +4836,6 @@ mod tests {
         assert!(!e.ambient_playing("дождь"));
     }
 
-    /// MATE-кнопки делают ровно то, что написано на них, — и делают всегда:
-    /// человек нажал сам, и проверка «а Caja ли владеет столом» тут была бы
-    /// молчаливым отказом на прямое нажатие.
-    #[test]
-    fn the_mate_buttons_always_do_what_they_say() {
-        let sys = FakeSys::default();
-        let mut e = exec("mate", "x11", sys);
-        assert!(e.mate_set_desktop_icons(false), "исправные команды — не отказ");
-        assert!(
-            lines(&mut e)
-                .iter()
-                .any(|l| l.contains("org.mate.background show-desktop-icons false")),
-            "иконки не погасли: {:?}",
-            lines(&mut e)
-        );
-        assert!(e.mate_restart_caja_desktop(), "живая Caja — не отказ");
-        let spawned = e.sys_mut().spawned.clone();
-        assert!(
-            spawned
-                .iter()
-                .any(|(argv, own_session)| argv.join(" ").contains("caja --force-desktop")
-                    && *own_session),
-            "стол Caja не поднимался своим сеансом: {spawned:?}"
-        );
-        // Стол не «запускается и дожидается»: такой запуск убивал Caja по сроку.
-        assert!(
-            !lines(&mut e).iter().any(|l| l.contains("caja")),
-            "Caja запущена с ожиданием — по сроку её снимут"
-        );
-        assert!(e.sys_mut().killed.is_empty(), "поднятый стол Caja снят");
-        // Проверки владельца стола тут быть НЕ должно.
-        assert!(
-            !lines(&mut e).iter().any(|l| l.contains("gsettings get")),
-            "прямое нажатие спросило разрешения"
-        );
-    }
 
     // ── видео из файла ───────────────────────────────────────────────────
 
@@ -5690,26 +5642,6 @@ mod tests {
         assert!(!e.status().blur_active);
     }
 
-    /// ⭐ Кнопки MATE не рапортуют успех, которого не было.
-    #[test]
-    fn the_mate_buttons_report_failures() {
-        let mut sys = FakeSys::default();
-        sys.answer("gsettings", 1, "");
-        sys.missing.push("caja".to_string());
-        let mut e = exec("mate", "x11", sys);
-        assert!(!e.mate_set_desktop_icons(true), "упавшая команда названа успехом");
-        assert!(!e.mate_restart_caja_desktop(), "незапустившаяся Caja названа успехом");
-
-        // Caja, вышедшая с ошибкой, — отказ; вышедшая с нулём — успех.
-        let mut sys = FakeSys::default();
-        sys.spawn_rc = vec![Some(1)];
-        let mut e = exec("mate", "x11", sys);
-        assert!(!e.mate_restart_caja_desktop());
-        let mut sys = FakeSys::default();
-        sys.spawn_rc = vec![Some(0)];
-        let mut e = exec("mate", "x11", sys);
-        assert!(e.mate_restart_caja_desktop(), "просьба работающей Caja — успех");
-    }
 
     // ── живой прогон: настоящие процессы, чужой рабочий стол не трогаем ────
 

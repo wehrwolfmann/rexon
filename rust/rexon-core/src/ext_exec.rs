@@ -1115,8 +1115,16 @@ pub fn install_from_file(rxn_path: &str) -> ExecResult<Installed> {
 /// слало вовсе — внешнее приложение моста об установке не узнавало.
 fn install_rxn(path: &Path) -> ExecResult<(String, Vec<String>)> {
     let tmp = mkdtemp(&std::env::temp_dir(), "rexon_rxn_")?;
-    let outcome = install_unpacked(path, &tmp);
+    let mut outcome = install_unpacked(path, &tmp);
     let _ = std::fs::remove_dir_all(&tmp);
+    // Любой пакет мог положить значки или курсоры: заодно проверить общий
+    // набор `hicolor` профиля — урезанный `index.theme` в нём прячет значки
+    // всего стола ([`crate::icon_hygiene`]). Проверка — одно чтение файла.
+    if let Ok((_, notes)) = &mut outcome {
+        if let Some(line) = crate::icon_hygiene::heal_live() {
+            notes.push(line);
+        }
+    }
     if let Ok((name, _)) = &outcome {
         let bridge = crate::rexon_bridge::RexonBridge::new_default();
         if let Err(e) = announce_installed(&bridge, name, std::time::SystemTime::now()) {

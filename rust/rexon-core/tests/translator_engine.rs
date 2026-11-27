@@ -1675,3 +1675,208 @@ fn xp_rule_helpers() {
     assert_eq!(tr::drop_invented_repeats("en", "ru", "Both A and B", "и A, и B"), "и A, и B");
     assert!(tr::is_pictograph('✨') && tr::is_pictograph('🚀') && !tr::is_pictograph('ё'));
 }
+
+
+// ============================================================================
+// Описание «Candy icons» (KDE Store 1305251, eliverlara, 08.11): ссылки-имена
+// и устойчивые термины
+// ============================================================================
+//
+// Живая проверка 08.11: «…чтобы соответствовать моему Сладкий тема темы»
+// (текст ссылки «Sweet» переведён, «icon theme» → «икона темы»), «Note» →
+// «Записка», «open an issue» → «открыть вопрос», «pull request» → «вытащить
+// запрос». Описание — ДОСЛОВНО из OCS API KDE Store.
+
+const CANDY_DESCRIPTION: &str = "<h2>Support Me &hearts;<br />Your support is truly vital to keep this and my other linux projects alive, so it would be great if you consider becoming a supporter on any of the different platforms, any help means a lot<br /><br />- <a href=\"https://github.com/sponsors/eliverlara\">Become a sponsor on github</a><br />- <a href=\"https://ko-fi.com/eliverlara\">Become a sponsor on Ko-fi</a><br />- <a href=\"https://www.paypal.com/paypalme/eliverlara\">Donate using PayPal</a><br /><br />Sweet gradient icon theme originally created to fit my <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> theme<br /><br />If you want you can combine them with any of the options provided in <a href=\"https://www.opendesktop.org/p/1284047/\">sweet-folders</a> as shown in the second screenshot<br /><br /><b>Note</b><br /><br />To request for icons please <a href=\"https://github.com/EliverLara/candy-icons/issues\">open an issue</a> on github, or if you want to contribute open a <a href=\"https://github.com/EliverLara/candy-icons/pulls\">pull request</a></h2>";
+
+const CANDY_NAME: &str = "Candy icons";
+const CANDY_AUTHOR: &str = "eliverlara";
+
+/// Общие требования к переводу описания «Candy icons».
+fn assert_candy_is_fixed(text: &str) {
+    let lower = text.to_lowercase();
+    assert!(
+        text.contains("<a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a>"),
+        "ссылка-имя тронута: {text}"
+    );
+    assert!(
+        text.contains("<a href=\"https://www.opendesktop.org/p/1284047/\">sweet-folders</a>"),
+        "{text}"
+    );
+    for bad in ["сладк", "тема темы", "икона", "иконы", "записка", "открыть вопрос", "вытащить"] {
+        assert!(!lower.contains(bad), "осталось «{bad}»: {text}");
+    }
+    for want in ["<b>Примечание</b>", "заявку", "запрос на слияние", "тем"] {
+        assert!(text.contains(want), "нет «{want}»: {text}");
+    }
+}
+
+/// Сценарий на ответах живой модели (замер 08.11, Firefox en→ru): фраза со
+/// ссылкой-именем уходит движку ЦЕЛИКОМ, а не «Sweet» и «theme» поодиночке.
+#[test]
+fn candy_name_link_is_folded_into_its_sentence_and_kept() {
+    let engine = ScriptedEngine::new(|s| {
+        Some(
+            match s {
+                "Sweet gradient icon theme originally created to fit my Sweet theme" => {
+                    "сладкий градиент икона темы, первоначально созданный в соответствии с моей \
+                     сладкой темой"
+                }
+                "@0@ gradient icon theme originally created to fit my @1@ theme" => {
+                    "@0@ градиент икона темы, первоначально созданный в соответствии с моей темой @1@"
+                }
+                "Note" => "записка",
+                "To request for icons please" => "запросить иконки, пожалуйста",
+                "open an issue" => "открыть вопрос",
+                "pull request" => "вытащить запрос",
+                "Sweet" | "theme" => panic!("кусок фразы со ссылкой ушёл движку один: {s}"),
+                _ => return None,
+            }
+            .to_string(),
+        )
+    });
+    let home = TempHome::new("candy");
+    let mut cache = LiveCache::open(&home.0);
+    let out = te::translate_live_guarded(
+        CANDY_DESCRIPTION,
+        "ru_RU.UTF-8",
+        &engine,
+        &mut cache,
+        &[CANDY_NAME, CANDY_AUTHOR],
+    );
+    assert!(out.was_translated);
+    assert_candy_is_fixed(&out.text);
+    assert!(out.text.contains("тема значков"), "{}", out.text);
+    assert!(out.text.contains("темой <a href"), "{}", out.text);
+    assert!(out.text.contains("Запросить значки"), "{}", out.text);
+    // Ссылки-проза по-прежнему переводятся: «Become a sponsor on github».
+    assert!(!out.text.contains(">Become a sponsor on github<"), "{}", out.text);
+    // Слаг не склеивается: соседние куски уходят движку как прежде, сам слаг —
+    // никогда.
+    assert!(
+        engine.seen().iter().any(|s| s == "as shown in the second screenshot"),
+        "{:?}",
+        engine.seen()
+    );
+    assert!(!engine.seen().iter().any(|s| s.contains("sweet-folders")), "{:?}", engine.seen());
+}
+
+/// Без перевода склеенная фраза возвращается исходной разметкой байт в байт.
+#[test]
+fn candy_untranslated_folded_sentence_keeps_its_markup() {
+    use rexon_core::translator::{fold_name_links, render_folded, segment_html, translatable_flags};
+    let html = "<p>Made to fit my <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> theme \
+                and <a href=\"https://github.com/EliverLara/Nordic\">Nordic</a>.</p>";
+    let (segs, runs) = fold_name_links(segment_html(html));
+    let flags = translatable_flags(&segs);
+    assert_eq!(render_folded(&segs, &flags, &runs, |_| String::new()), html);
+    // Две ссылки в одной фразе — одна склейка, имена по порядку.
+    let run = runs.iter().flatten().next().expect("склейка");
+    assert_eq!(run.names(), ["Sweet", "Nordic"]);
+    assert_eq!(run.plain(), "Made to fit my Sweet theme and Nordic.");
+    // Перевод без имени — тоже разметка оригинала, а не потерянная ссылка.
+    assert_eq!(render_folded(&segs, &flags, &runs, |_| "без имён".to_string()), html);
+    let linked = render_folded(&segs, &flags, &runs, |_| "под мою тему Sweet и Nordic.".to_string());
+    assert_eq!(
+        linked,
+        "<p>под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> и \
+         <a href=\"https://github.com/EliverLara/Nordic\">Nordic</a>.</p>"
+    );
+    // Имя ссылки стоит во фразе дважды: тег встаёт на то же по счёту.
+    let html = "<p>Sweet icons to fit my <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> theme</p>";
+    let (segs, runs) = fold_name_links(segment_html(html));
+    let flags = translatable_flags(&segs);
+    assert_eq!(
+        render_folded(&segs, &flags, &runs, |_| "значки Sweet под мою тему Sweet".to_string()),
+        "<p>значки Sweet под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a></p>"
+    );
+    // Движок одно вхождение потерял — берётся ближайшее по месту.
+    assert_eq!(
+        render_folded(&segs, &flags, &runs, |_| "значки под мою тему Sweet".to_string()),
+        "<p>значки под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a></p>"
+    );
+}
+
+/// Что считается ссылкой-именем, а что — прозой.
+#[test]
+fn candy_name_link_rules() {
+    use rexon_core::translator::{is_name_link, is_product_page_url, markdown_name_links, technical_spans};
+    assert!(is_name_link("Sweet", "https://www.gnome-look.org/p/1253385/"));
+    assert!(is_name_link("sweet-folders", "https://www.opendesktop.org/p/1284047/"));
+    assert!(is_name_link("Nordic", "https://github.com/EliverLara/Nordic"));
+    assert!(is_name_link("Sweet Dark", "https://store.kde.org/p/1294174"));
+    assert!(!is_name_link("open an issue", "https://github.com/EliverLara/candy-icons/issues"));
+    assert!(!is_name_link("pull request", "https://github.com/EliverLara/candy-icons/pulls"));
+    assert!(!is_name_link("Become a sponsor on github", "https://github.com/sponsors/eliverlara"));
+    assert!(!is_name_link("Download", "https://www.gnome-look.org/p/1253385/"));
+    assert!(!is_name_link("Here", "https://github.com/EliverLara/Nordic"));
+    assert!(!is_name_link("Sweet", "https://www.paypal.com/paypalme/eliverlara"));
+    assert!(!is_product_page_url("https://github.com/sponsors/eliverlara"));
+    assert!(!is_product_page_url("https://github.com/EliverLara/candy-icons/issues"));
+    // Markdown: имя под охраной целиком, проза-ссылка — нет.
+    let md = "Made to fit my [Sweet Dark](https://store.kde.org/p/1294174) theme, [open an issue](https://github.com/a/b/issues).";
+    let spans = markdown_name_links(md);
+    assert_eq!(spans.len(), 1);
+    assert_eq!(&md[spans[0].0..spans[0].1], "[Sweet Dark](https://store.kde.org/p/1294174)");
+    assert!(technical_spans(md).contains(&spans[0]));
+}
+
+/// Словарь устойчивых терминов — на живых ответах модели (замер 08.11).
+#[test]
+fn candy_stable_terms_are_fixed() {
+    use rexon_core::translator::apply_term_fixes;
+    let fix = |src: &str, tgt: &str| apply_term_fixes("en", "ru", src, tgt);
+    assert_eq!(fix("Note", "записка"), "примечание");
+    assert_eq!(fix("Note:", "заметка:"), "примечание:");
+    assert_eq!(fix("NOTE", "НОТЕ ПРИМЕЧАНИЕ"), "Примечание");
+    assert_eq!(fix("Note: requires Kvantum.", "заметка: требует Kvantum."), "примечание: требует Kvantum.");
+    // «Note» не в начале — слово как слово.
+    assert_eq!(fix("Take a note of it.", "сделайте заметку."), "сделайте заметку.");
+    assert_eq!(fix("open an issue", "открыть вопрос"), "создать заявку");
+    assert_eq!(
+        fix("Feel free to open an issue if you find a bug.", "не стесняйтесь открывать проблему, если вы обнаружите ошибку."),
+        "не стесняйтесь создавать заявку, если вы обнаружите ошибку."
+    );
+    assert_eq!(fix("Report bugs on the issue tracker.", "сообщить об ошибках в трекере вопросов."), "сообщить об ошибках в трекере заявок.");
+    assert_eq!(fix("pull request", "вытащить запрос"), "запрос на слияние");
+    assert_eq!(fix("Pull requests are welcome.", "вытащитные запросы приветствуются."), "запросы на слияние приветствуются.");
+    assert_eq!(fix("An icon theme for KDE.", "иконописная тема для KDE."), "тема значков для KDE.");
+    assert_eq!(fix("Icon theme", "икона тема"), "тема значков");
+    assert_eq!(
+        fix("Sweet gradient icon theme", "Sweet тема иконы градиента"),
+        "Sweet тема значков градиента"
+    );
+    assert_eq!(fix("This icon set is based on Papirus.", "этот набор иконок основан на Papirus."), "этот набор значков основан на Papirus.");
+    assert_eq!(fix("To request for icons please", "запросить иконки, пожалуйста"), "запросить значки, пожалуйста");
+    // «иконки» при единственном `icon` — может быть родительным падежом.
+    assert_eq!(fix("The icon color", "цвет иконки"), "цвет иконки");
+    assert_eq!(fix("A cursor theme for Linux.", "курсорная тема для Linux."), "тема курсоров для Linux.");
+    assert_eq!(fix("theme", "тема темы"), "тема");
+    assert_eq!(fix("Please star the repository if you like it.", "пожалуйста, отведайте репозиторий, если вам это нравится."), "пожалуйста, отметьте звёздочкой репозиторий, если вам это нравится.");
+    assert_eq!(fix("A plasma widget that shows the weather.", "плазменный виджет, который показывает погоду."), "виджет Plasma, который показывает погоду.");
+    // Уже верное — не трогается.
+    assert_eq!(fix("A dark GTK theme with Kvantum support.", "темная тема GTK с поддержкой Kvantum."), "темная тема GTK с поддержкой Kvantum.");
+}
+
+/// Живая сверка всего описания на настоящей модели.
+#[test]
+#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+fn live_candy_icons_description_is_fixed() {
+    if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
+        std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
+    }
+    let engine = te::LiveEngine::new();
+    assert!(engine.available("en", "ru"), "модель не загрузилась");
+    let home = TempHome::new("live-candy");
+    let mut cache = LiveCache::open(&home.0);
+    let out = te::translate_live_guarded(
+        CANDY_DESCRIPTION,
+        "ru_RU.UTF-8",
+        &engine,
+        &mut cache,
+        &[CANDY_NAME, CANDY_AUTHOR],
+    );
+    println!("{}", out.text);
+    assert_candy_is_fixed(&out.text);
+    assert!(out.text.contains("скриншот"), "фраза у «sweet-folders» обрублена: {}", out.text);
+}

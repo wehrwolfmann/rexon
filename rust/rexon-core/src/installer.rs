@@ -1989,6 +1989,7 @@ pub fn passwordless_consent_texts(_lang: Lang) -> PasswordlessConsentTexts {
         // TRANSLATORS: %1 is the menu button (☰), %2 is the menu item that
         // uninstalls Rexon, both exactly as the window shows them.
         undo: trf(
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             "How to undo: uninstall Rexon from its menu (%1 → “%2”) — the \
              permission is removed together with the application.",
             &[&menu, &uninstall_label],

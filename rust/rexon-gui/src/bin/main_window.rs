@@ -37,7 +37,6 @@
 // Код возврата в режиме `--selftest`: 0 — все проверки прошли, 1 — хоть
 // одна провалилась, 2 — окно не отчиталось за отведённое время.
 
-use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 
 use cxx_qt_lib::{
@@ -72,8 +71,6 @@ const SELFTEST_TIMEOUT_SECS: u64 = 30;
 // линковка вместо моста cxx: через границу ходят только строки и числа,
 // мост был бы лишним звеном.
 extern "C" {
-    fn rexon_qt_translations_dir(buf: *mut c_char, len: c_int) -> c_int;
-    fn rexon_install_qt_translations(paths: *const *const c_char, count: c_int) -> c_int;
     fn rexon_drain_thread_pool(ms: c_int) -> c_int;
     fn rexon_stop_media_players() -> c_int;
     fn rexon_qt_runtime_version() -> *const c_char;
@@ -293,6 +290,16 @@ fn main() {
             println!("{line}");
             applog::write_opts(applog::Level::Info, "gtk", line, false);
         });
+        // Урезанный `~/.local/share/icons/hicolor/index.theme` перекрывает
+        // системный и прячет значки всего стола (дефект 09.11.2026) —
+        // переименовать в `.bak-rexon-<дата>`; полный файл не трогается.
+        // Одно чтение файла, поэтому до первого окна.
+        if let Some(line) = rexon_core::icon_hygiene::heal_live() {
+            println!("{line}");
+        }
+        // Несколько демонов уведомлений на одно имя шины (столы ставились
+        // и мимо Rexon) — выбор по столу; уже в порядке — ничего не делает.
+        std::thread::spawn(rexon_core::notifications_slot::sync_live);
     }
 
     // ── Один Rexon на сессию ──────────────────────────────────────────
@@ -477,7 +484,7 @@ fn main() {
     // Надписи на СОБСТВЕННЫХ кнопках Qt («OK», «Cancel», «Show Details…»,
     // меню правки в полях ввода) — на языке Rexon, а не системы: их рисует
     // сама Qt, и никакой наш перевод до них не достаёт.
-    install_qt_translations(&language);
+    rexon_gui::install_qt_translations(&language);
     install_app_translation(&language);
     // Арабский, персидский и иврит — своими шрифтами, а не DejaVu, который
     // fontconfig отдаёт первым (семейства — ядро, `qt_app::RTL_FALLBACK_FONTS`).
@@ -489,6 +496,13 @@ fn main() {
     // первой загрузки QML — тот же порядок, что у питоновского хозяина, и
     // та же дверь (`rexon_gui::we_env`), второй копии здесь нет.
     rexon_gui::we_env::prepare_process();
+    // Плагин обоев KDE, уже стоящий у человека, — в ногу с бандлом этого
+    // Rexon, на любом рабочем столе (дефект 12.11.2026: Rexon обновил движок
+    // и плагин в бандле, а в ~/.local остался старый — при входе в Plasma он
+    // повесил plasmashell). Обычный старт — только сверка хэшей, в фоне.
+    if !selftest {
+        rexon_gui::we_socket::refresh_installed_kde_plugin("старт Rexon");
+    }
 
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
@@ -776,43 +790,6 @@ fn main() {
         log_info!("exit", "выход за {} мс, код {code}", exit_started.elapsed().as_millis());
     }
     std::process::exit(code);
-}
-
-/// Включить каталоги переводов самой Qt для языка Rexon `language`.
-///
-/// Решение — за ядром (`cli::qt_translation_files`): какие файлы, в каком
-/// порядке, и что у английского (и у языка, которого у Qt нет) их нет
-/// вовсе. Здесь только два вызова шима — узнать каталог переводов Qt и
-/// включить названные файлы: обёрток `QTranslator` и `QLibraryInfo` в
-/// cxx-qt-lib 0.9 нет ни одной.
-///
-/// Молчание при неудаче намеренно: каталога `qt` нет в большинстве сборок
-/// Qt6, и ругаться на его отсутствие значило бы пугать человека штатным
-/// положением дел.
-fn install_qt_translations(language: &str) {
-    let dir = qt_translations_dir();
-    let files = cli::qt_translation_files(language, std::path::Path::new(&dir), &|p| p.is_file());
-    let owned: Vec<CString> = files
-        .iter()
-        .filter_map(|p| CString::new(p.to_string_lossy().as_bytes()).ok())
-        .collect();
-    let ptrs: Vec<*const c_char> = owned.iter().map(|c| c.as_ptr()).collect();
-    unsafe { rexon_install_qt_translations(ptrs.as_ptr(), ptrs.len() as c_int) };
-}
-
-/// Каталог переводов самой Qt (`QLibraryInfo::TranslationsPath`); пусто —
-/// шим не ответил, и тогда ни один файл не найдётся (английские кнопки).
-fn qt_translations_dir() -> String {
-    let mut buf = vec![0u8; 512];
-    loop {
-        let need = unsafe { rexon_qt_translations_dir(buf.as_mut_ptr().cast(), buf.len() as c_int) };
-        let need = usize::try_from(need).unwrap_or(0);
-        if need < buf.len() {
-            buf.truncate(need);
-            return String::from_utf8_lossy(&buf).into_owned();
-        }
-        buf.resize(need + 1, 0);
-    }
 }
 
 /// Перевод строк QML (`qsTranslate("rexon", …)`) — тот же язык и ТОТ ЖЕ

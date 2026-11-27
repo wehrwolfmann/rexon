@@ -273,7 +273,8 @@ fn apply_for_current_de_kde_full_pass() {
     assert!(ok);
     assert_eq!(logs[0], "🖥️ Текущий рабочий стол: kde");
     assert_eq!(logs[1], "📝 Создан kde-mimeapps.list");
-    assert_eq!(logs[2], "✅ KDE терминал: konsole");
+    assert_eq!(logs[2], "📝 Создан kde-xdg-terminals.list");
+    assert_eq!(logs[3], "✅ KDE терминал: konsole");
 
     // Порядок действий: сначала профиль, потом настройка терминала, и лишь
     // затем слот «Показать в папке» — так журнал читается сверху вниз.
@@ -342,6 +343,84 @@ fn skip_is_not_reported_as_created_file() {
 }
 
 // ============================================================================
+// Список терминалов своего стола (`<стол>-xdg-terminals.list`)
+// ============================================================================
+
+/// Подставная машина с MATE, где стоят и чужие терминалы.
+fn mate_io() -> FakeIo {
+    FakeIo::new()
+        .desktop("caja.desktop")
+        .desktop("mate-terminal.desktop")
+        .desktop("org.gnome.Terminal.desktop")
+        .desktop("org.kde.konsole.desktop")
+}
+
+/// Случай 08.11.2026 с живой машины владельца: в MATE чужой
+/// `mate-xdg-terminals.list` называл GNOME Terminal, общий список — konsole,
+/// и программа с `Terminal=true` открывалась не в mate-terminal. Вход в сеанс
+/// выправляет список своего стола; общий не трогается.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn login_fixes_foreign_desktop_terminals_list() {
+    let _lang = i18n_pin::ru();
+    let list = format!("{CFG}/mate-xdg-terminals.list");
+    let general = format!("{CFG}/xdg-terminals.list");
+    let io = mate_io()
+        .file(&list, "org.gnome.Terminal.desktop\n")
+        .file(&general, "org.kde.konsole.desktop\n");
+    let sw = DeAppSwitcher::new(&io, env_for("MATE"));
+
+    let (ok, logs) = sw.apply_for_current_de();
+    assert!(ok);
+    let text = io.content(&list).unwrap();
+    assert_eq!(text.lines().next(), Some("mate-terminal.desktop"), "{text}");
+    assert!(text.contains(rexon_core::defaults::TERMINALS_LIST_NATIVE_MARK), "{text}");
+    assert!(logs.contains(&"✅ Исправлено: терминал → mate-terminal".to_string()), "{logs:?}");
+    assert_eq!(io.content(&general).unwrap(), "org.kde.konsole.desktop\n");
+
+    // Второй вход ничего не переписывает.
+    let before = io.written_paths().len();
+    let (_, logs) = sw.apply_for_current_de();
+    assert!(!io.written_paths()[before..].contains(&list), "{logs:?}");
+    assert!(logs.contains(&"✅ mate-xdg-terminals.list уже существует".to_string()), "{logs:?}");
+}
+
+/// Осознанный выбор во вкладке «Настройки» (пометка «выбрано человеком»)
+/// вход в сеанс не заменяет родным терминалом.
+#[test]
+fn login_keeps_terminal_chosen_in_rexon() {
+    let list = format!("{CFG}/mate-xdg-terminals.list");
+    let chosen = rexon_core::defaults::desktop_terminals_list_text("org.kde.konsole.desktop", true);
+    let io = mate_io().file(&list, &chosen);
+    let sw = DeAppSwitcher::new(&io, env_for("MATE"));
+
+    sw.apply_for_current_de();
+    assert_eq!(io.content(&list).unwrap(), chosen);
+    assert!(!io.written_paths().contains(&list), "{:?}", io.written_paths());
+
+    // И в родное место стола (схема MATE) идёт он, а не mate-terminal.
+    let io = mate_io().tool("gsettings").file(&list, &chosen);
+    DeAppSwitcher::new(&io, env_for("MATE")).apply_for_current_de();
+    let cmds = io.commands();
+    assert!(cmds.contains(&"gsettings set org.mate.applications-terminal exec konsole".to_string()), "{cmds:?}");
+    assert!(!cmds.iter().any(|c| c.contains("exec mate-terminal")), "{cmds:?}");
+}
+
+/// Смена стола через Rexon заводит список целевого стола по его
+/// идентификатору (Cinnamon — `x-cinnamon-…`, как `x-cinnamon-mimeapps.list`).
+#[test]
+fn switch_de_writes_target_desktop_terminals_list() {
+    let io = FakeIo::new()
+        .desktop("nemo.desktop")
+        .desktop("org.gnome.Terminal.desktop");
+    let sw = DeAppSwitcher::new(&io, env_for("KDE"));
+    let mut logs = Vec::new();
+    sw.on_switch_de("cinnamon-mint", &mut logs);
+    let text = io.content(&format!("{CFG}/x-cinnamon-xdg-terminals.list")).expect("список Cinnamon");
+    assert_eq!(text.lines().next(), Some("org.gnome.Terminal.desktop"), "{text}");
+}
+
+// ============================================================================
 // XFCE: helpers.rc читается и пишется по одному и тому же пути
 // ============================================================================
 
@@ -389,6 +468,71 @@ fn autostart_prefers_rexon_from_path() {
     let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
     let text = io.content(&path).expect("autostart");
     assert!(text.contains("Exec=/usr/bin/rexon --apply-defaults"), "{text}");
+}
+
+/// ⛔ gnome-session 49+ не исполняет сторонние записи с
+/// `X-GNOME-Autostart-Phase`: в новой записи фазы нет ни у одного входа.
+#[test]
+fn autostart_has_no_gnome_session_phase() {
+    let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
+    for rexon in [Some("/usr/bin/rexon"), None] {
+        let mut io = kde_io();
+        io.rexon_path = rexon.map(str::to_string);
+        let sw = DeAppSwitcher::new(&io, env_for("GNOME"));
+        assert!(sw.install_autostart().0);
+        let text = io.content(&path).expect("autostart");
+        assert!(!text.contains("Autostart-Phase"), "{text}");
+        assert!(text.contains(" --apply-defaults\n"), "{text}");
+    }
+}
+
+/// Запись прежних версий (с фазой) чинится при входе в сеанс другого
+/// стола: строка фазы снята, всё прочее, включая `NotShowIn=` зеркала
+/// композиторов, на месте. Отсутствующую запись починка НЕ создаёт.
+#[test]
+fn login_heals_legacy_autostart_phase() {
+    let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
+    let legacy = "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\n\
+                  Exec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\n\
+                  X-GNOME-Autostart-Phase=Initialization\nNotShowIn=Hyprland;\n";
+    let io = kde_io().file(&path, legacy);
+    let sw = DeAppSwitcher::new(&io, env_for("KDE"));
+    assert!(sw.apply_for_current_de().0);
+    assert_eq!(
+        io.content(&path).unwrap(),
+        "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\n\
+         Exec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\n\
+         NotShowIn=Hyprland;\n"
+    );
+    // Повторно чинить нечего — записи нет.
+    let writes_before = io.written_paths().len();
+    assert!(!sw.heal_autostart());
+    assert_eq!(io.written_paths().len(), writes_before);
+
+    // Записи нет — и не появляется.
+    let io = kde_io();
+    let sw = DeAppSwitcher::new(&io, env_for("KDE"));
+    assert!(sw.apply_for_current_de().0);
+    assert_eq!(io.content(&path), None);
+    assert!(!io.written_paths().contains(&path), "{:?}", io.written_paths());
+}
+
+#[test]
+fn heal_autostart_text_cases() {
+    use rexon_core::appdefaults::heal_autostart_text as heal;
+    assert_eq!(heal("[Desktop Entry]\nExec=x\n"), None);
+    assert_eq!(
+        heal("[Desktop Entry]\nX-GNOME-Autostart-Phase = Initialization\nExec=x\n").as_deref(),
+        Some("[Desktop Entry]\nExec=x\n")
+    );
+    // Чужие ключи с похожим началом не трогаются.
+    assert_eq!(heal("[Desktop Entry]\nX-GNOME-Autostart-Phases-Note=1\n"), None);
+    assert_eq!(heal("[Desktop Entry]\nX-GNOME-Autostart-enabled=true\n"), None);
+    // Последняя строка без перевода строки.
+    assert_eq!(
+        heal("[Desktop Entry]\nExec=x\nX-GNOME-Autostart-Phase=Initialization").as_deref(),
+        Some("[Desktop Entry]\nExec=x\n")
+    );
 }
 
 /// ⭐ ПОЧИНЕНО ПРИ ПЕРЕНОСЕ: оригинал без `rexon` в PATH писал в автозапуск
@@ -571,7 +715,7 @@ fn login_route_never_kills_file_manager_with_open_windows() {
     let sw = DeAppSwitcher::new(&io, env_for("KDE"));
     let (_, logs) = sw.apply_for_current_de();
     let all = logs.join("\n");
-    assert!(all.contains("открыты окна"), "{all}");
+    assert!(all.contains("Закройте его окна"), "{all}");
     assert!(io.ops().iter().all(|o| o.0 != "terminate"), "{:?}", io.ops());
     assert!(
         !io.commands().iter().any(|c| c.contains("--quit")),
@@ -935,7 +1079,8 @@ fn english_switcher_log_has_no_russian() {
     let (ok, logs) = DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
     assert!(ok);
     assert_eq!(logs[0], "🖥️ Current desktop: kde");
-    assert_eq!(logs[2], "✅ KDE terminal: konsole");
+    assert_eq!(logs[2], "📝 Created kde-xdg-terminals.list");
+    assert_eq!(logs[3], "✅ KDE terminal: konsole");
 
     let io = kde_io()
         .file(
@@ -961,4 +1106,58 @@ fn english_switcher_log_has_no_russian() {
     for line in logs.iter().chain(&thunar).chain(&unknown) {
         assert!(!has_cyrillic(line), "{line}");
     }
+}
+
+/// Случай 08.11.2026: Deepin притащил fcitx5 и его помощника, их автозапуск
+/// без `OnlyShowIn=` стартовал в MATE и перехватывал раскладки. Вход в сеанс
+/// заводит пользовательские копии с `OnlyShowIn=Deepin;DDE;`.
+#[test]
+fn login_confines_deepin_input_method_autostart() {
+    let helper = "/etc/xdg/autostart/fcitx5-helper.desktop";
+    let fcitx = "/etc/xdg/autostart/org.fcitx.Fcitx5.desktop";
+    let entry = "[Desktop Entry]\nType=Application\nExec=fcitx5 -d\n";
+    let io = mate_io()
+        .file(helper, "[Desktop Entry]\nType=Application\nExec=fcitx5-helper\n")
+        .file(fcitx, entry)
+        .tool("pacman")
+        .reply("pacman", true, "fcitx5\n");
+    let sw = DeAppSwitcher::new(&io, env_for("MATE"));
+    sw.apply_for_current_de();
+    for name in ["fcitx5-helper.desktop", "org.fcitx.Fcitx5.desktop"] {
+        let text = io.content(&format!("{CFG}/autostart/{name}")).unwrap_or_default();
+        assert!(text.contains("OnlyShowIn=Deepin;DDE;"), "{name}: {text}");
+        assert!(text.contains("X-Rexon-Confined=true"), "{name}: {text}");
+    }
+    // Второй вход ничего не переписывает: копия уже своя.
+    let before = io.written_paths().len();
+    sw.apply_for_current_de();
+    let again: Vec<String> = io.written_paths().into_iter().skip(before).filter(|p| p.contains("/autostart/")).collect();
+    assert!(again.is_empty(), "второй вход переписал: {again:?}");
+}
+
+/// fcitx5, поставленный человеком САМ (не зависимостью), не ограничивается:
+/// это его метод ввода во всех столах. Помощник Deepin — ограничивается.
+#[test]
+fn login_keeps_input_method_installed_on_purpose() {
+    let io = mate_io()
+        .file("/etc/xdg/autostart/fcitx5-helper.desktop", "[Desktop Entry]\nExec=fcitx5-helper\n")
+        .file("/etc/xdg/autostart/org.fcitx.Fcitx5.desktop", "[Desktop Entry]\nExec=fcitx5 -d\n")
+        .tool("pacman")
+        .reply("pacman", false, "");
+    let sw = DeAppSwitcher::new(&io, env_for("MATE"));
+    sw.apply_for_current_de();
+    assert!(io.content(&format!("{CFG}/autostart/fcitx5-helper.desktop")).is_some());
+    assert!(io.content(&format!("{CFG}/autostart/org.fcitx.Fcitx5.desktop")).is_none());
+}
+
+/// Своя копия человека и уже ограниченная системная запись не трогаются.
+#[test]
+fn confined_autostart_respects_existing_choices() {
+    use rexon_core::appdefaults as ad;
+    assert!(!ad::needs_confined_autostart("[Desktop Entry]\n", Some("[Desktop Entry]\nHidden=true\n")));
+    assert!(!ad::needs_confined_autostart("[Desktop Entry]\nOnlyShowIn=Deepin;\n", None));
+    assert!(ad::needs_confined_autostart("[Desktop Entry]\nExec=x\n", None));
+    let text = ad::confined_autostart_text("[Desktop Entry]\nNotShowIn=KDE;\nExec=x\n", "Deepin;DDE;");
+    assert!(!text.contains("NotShowIn"));
+    assert!(text.ends_with("OnlyShowIn=Deepin;DDE;\nX-Rexon-Confined=true\n"));
 }

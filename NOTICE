@@ -81,14 +81,14 @@ Copyright (c) 2026 hypengw
     поставку не входят.
   * Сам демон waywallen — ОТДЕЛЬНЫЙ процесс (D-Bus + WebSocket), и с
     30.10.2026 Rexon его НЕ поставляет: пакет Rexon для дистрибутивов
-    зависит от системного пакета waywallen (не старше 0.5.0 — тега, с
+    зависит от системного пакета waywallen (не старше 0.6.0 — тега, с
     которого сняты протокол и интерфейс выше), который ставит и обновляет
     пакетный менеджер; лицензию и исходники демона несёт его пакет. Rexon
     запускает его как отдельную программу (/usr/bin/waywallen).
   * Исключение — сборка с вшитым движком (REXON_BUNDLED_ENGINE=1: поставка
-    Steam, ручная установка). Она везёт выпуск v0.5.0 без изменений:
+    Steam, ручная установка). Она везёт выпуск v0.6.0 без изменений:
     /usr/lib/rexon/engine/waywallen.AppImage (официальный
-    waywallen-0.5.0-x86_64.AppImage, sha256 e6216c5f…90083). Текст MIT
+    waywallen-0.6.0-x86_64.AppImage, sha256 d17e19c6…351fd). Текст MIT
     ниже; отдельным файлом — /usr/share/licenses/rexon-git/LICENSE.waywallen-MIT.
     ⚠️ Внутри AppImage апстрим везёт сторонние библиотеки со своими
     лицензиями: Qt 6 (LGPL-3.0), GLib (LGPL-2.1+), FFmpeg (libavcodec,
@@ -124,7 +124,7 @@ Copyright (c) 2026 hypengw
 
 waywallen-display (Plasma-плагин обоев org.waywallen.kde)
 ---------------------------------------------------------
-https://github.com/waywallen/waywallen-display (выпуск v0.4.1)
+https://github.com/waywallen/waywallen-display (выпуск v0.4.5)
 Copyright (c) 2026 hypengw
 Лицензия: у апстрима записана двояко — файл extensions/kde/LICENSE несёт
 MIT, а metadata.json плазмоида объявляет GPL-2.0-or-later. Уточнение
@@ -135,8 +135,8 @@ LICENSE.waywallen-kde-GPL-2.0.
 Использование в Rexon:
   * Плазмоид `org.waywallen.kde` в репозитории Rexon не лежит. Пакет при
     сборке скачивает официальный архив выпуска
-    `waywallen-kde-0.4.1-x86_64-embed.zip` (sha256 = digest выпуска на
-    GitHub: 5358ce1693a23b69c7fe1751d1b8afb976ef4c96574875ee845a38df01383743),
+    `waywallen-kde-0.4.5-x86_64.zip` (sha256 = digest выпуска на
+    GitHub: dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41),
     распаковывает его в
     /usr/lib/rexon/rexon/kpackage/ и ставит БЕЗ ИЗМЕНЕНИЙ: наших правок
     поверх нет, двоичный файл не стрипуется. Рядом кладётся только наш
@@ -159,7 +159,7 @@ LICENSE.waywallen-kde-GPL-2.0.
 QmlMaterial (QML-плагин оформления вкладки обоев; в дереве НЕТ, в поставке ЕСТЬ)
 -------------------------------------------------------------------------------
 https://github.com/hypengw/QmlMaterial
-(коммит f1464c52d42732acb1363122b9b1a2360fd505b3 — пин
+(коммит bdb63fb3e61ae03923c484c58183cf17f68cbae4 — пин
 data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN)
 Copyright (c) 2024-2025 hypengw (hypengwip@gmail.com)
 Лицензия: MIT
@@ -180,12 +180,12 @@ Copyright (c) 2024-2025 hypengw (hypengwip@gmail.com)
 QExtra (QML-плагин картинок вкладки обоев; в дереве НЕТ, в поставке ЕСТЬ)
 -----------------------------------------------------------------------
 https://github.com/hypengw/QExtra
-(коммит b3fd790bb4a5c5cf7c0cc0384cc140e78e627609)
+(коммит 3fcb45c1722ca434d3abb89832f79d28756ab93f)
 Copyright (c) 2026 hypengw
 Лицензия: MIT OR Apache-2.0 (по выбору; Rexon использует на условиях MIT)
 
 Использование в Rexon:
-  * Типы QE.AnimatedImage и QE.ImageCache, которые зовёт вендорная разметка
+  * Типы QE.AnimatedImage, QE.Image и QE.ImageCache, которые зовёт вендорная разметка
     waywallen (миниатюры и анимации библиотеки обоев), даёт плагин автора.
     Исходников QExtra в дереве Rexon нет: пакет при сборке берёт их по
     ревизии из tools/qextra_plugin/lito.lock (срез lito.lock того выпуска
@@ -242,19 +242,19 @@ https://github.com/waywallen/open-wallpaper-engine
     Это ОТДЕЛЬНЫЕ исполняемые процессы, которые запускает демон waywallen
     (fork/exec); Rexon их код не линкует и не включает в свои бинари.
   * С 30.10.2026 Rexon плагин НЕ поставляет: пакет Rexon для дистрибутивов
-    зависит от системного пакета open-wallpaper-engine (не старше 0.3.2),
+    зависит от системного пакета open-wallpaper-engine (не старше 0.3.3),
     который ставит плагин в /usr/share/waywallen/plugins/ и несёт его
     лицензию, исходники и зависимости (CEF и др.).
   * Исключение — сборка с вшитым движком (REXON_BUNDLED_ENGINE=1). Она
-    везёт официальный выпуск плагина без изменений (v0.3.2, коммит
-    dd07afa79d3e8c34daa61391cc641954d3d01fe0):
+    везёт официальный выпуск плагина без изменений (v0.3.3, коммит
+    f119c26860fa4607565994fb29c864eb0ee7cd15):
     /usr/lib/rexon/engine/plugins/org.waywallen.open-wallpaper-engine/
-    (org.waywallen.open-wallpaper-engine-0.3.2-linux-x86_64.zip,
-    sha256 282c97fc…6ad0). В пакете это «простое объединение» (mere
+    (org.waywallen.open-wallpaper-engine-0.3.3-linux-x86_64.zip,
+    sha256 0944e6f5…30e3). В пакете это «простое объединение» (mere
     aggregation, GPL-2 §2).
     GPL-2 §3(a): полный соответствующий исходник того же тега — вместе с
     зависимостями сборки из lito.lock и исходниками обёртки CEF — лежит
-    рядом, /usr/share/rexon/sources/open-wallpaper-engine-0.3.2-src.tar.xz
+    рядом, /usr/share/rexon/sources/open-wallpaper-engine-0.3.3-src.tar.xz
     (перечень — SOURCES.txt внутри архива). Текст лицензии —
     /usr/share/licenses/rexon-git/LICENSE.open-wallpaper-engine-GPL-2.0.
     Внутри плагина апстрим везёт CEF (Chromium Embedded Framework,
@@ -411,6 +411,14 @@ Commons (лицензия и автор — на странице файла), �
     (cube-normal.png, switcher.png) — официальная вики проекта Wayfire
     (зеркало вики репозитория WayfireWM/wayfire); своей лицензии у вики
     не указано, у самого репозитория Wayfire — MIT.
+Для Hyprland:
+  * Commons, Omarchy_Tokyo_Night_theme.png — GPLv2+, автор David Heinemeier
+    Hansson;
+  * https://github.com/YAWTUUYAS/hyprland-riced, каталог screenshots/
+    (desktop.png, wofi.png) — лицензия репозитория MIT.
+Для niri:
+  * снимок из README и docs/wiki/img/blur.png репозитория
+    https://github.com/niri-wm/niri — лицензия репозитория GPL-3.0.
 
 Свои снимки River (data/assets/screenshots/river*.png) В ПАКЕТ ВХОДЯТ.
 Сняты Wehrwolfmann 24.10.2026 во вложенном сеансе river-classic 0.3.17

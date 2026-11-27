@@ -574,6 +574,26 @@ fn get_item_net_fail_falls_back_to_cache() {
     assert_eq!(io.final_log_texts().len(), 1);
 }
 
+/// Счётчик скачиваний у деталей магазина — другое число, чем у того же товара
+/// в списке (Candy icons 08.11.2026: 3 118 105 в списке, 759 в деталях).
+/// Детали держат число плитки, иначе плитка и панель расходятся, а запись в
+/// кеше затирает счётчик плитки; без записи в кеше — число деталей.
+#[test]
+fn get_item_keeps_the_list_download_count() {
+    let mut io = FakeNet::with(vec![Reply::Ok(LIST_XML.to_vec(), None)]);
+    io.items = vec![Some(ThemeItem { downloads: 3_118_105, ..cached_item("1352754", "плитка", 104) })];
+    let mut c = client(io);
+    let got = c.get_item("1352754").expect("элемент");
+    assert_eq!(got.item.downloads, 3_118_105);
+
+    let mut c = client(FakeNet::with(vec![Reply::Ok(LIST_XML.to_vec(), None)]));
+    let raw = c.get_item("1352754").expect("элемент").item.downloads;
+    let mut io = FakeNet::with(vec![Reply::Ok(LIST_XML.to_vec(), None)]);
+    io.items = vec![Some(cached_item("1352754", "плитка без счётчика", 104))];
+    let mut c = client(io);
+    assert_eq!(c.get_item("1352754").expect("элемент").item.downloads, raw);
+}
+
 /// Детали для показа: свежие из кеша — БЕЗ сети; промах — обычный запрос.
 #[test]
 fn get_item_cached_uses_fresh_detail_and_skips_network() {

@@ -1,4 +1,4 @@
-English | [Русский](../ru/wallpaper-engine.md) | [Deutsch](../de/wallpaper-engine.md)
+English | [Русский](../ru/wallpaper-engine.md) | [Deutsch](../de/wallpaper-engine.md) | [简体中文](../zh-CN/wallpaper-engine.md) | [Français](../fr/wallpaper-engine.md)
 
 # Wallpaper Engine
 
@@ -50,7 +50,10 @@ nothing to set up:
   the wallpaper. If it doesn't appear, turn the extension on and log in again.
 - **MATE, Xfce, Cinnamon, Budgie, LXQt, LXDE, Pantheon, Deepin and other
   desktops in an X11 session** — Rexon's own wallpaper player shows it. Some
-  engine features may be unavailable here.
+  engine features may be unavailable here. In MATE the desktop icons stay on
+  top of the live wallpaper when Caja can draw a see-through desktop — Rexon
+  turns that on by itself. If it can't, the icons are hidden while the live
+  wallpaper runs (the tab says so in one line) and come back when it stops.
 
 On a Wayland compositor Rexon doesn't know there are no live wallpapers.
 

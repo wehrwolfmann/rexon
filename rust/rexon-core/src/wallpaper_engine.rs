@@ -1197,21 +1197,27 @@ pub fn shell_owner_message(shell: DesktopShell) -> String {
 /// включённых расширений в его настройках.
 pub fn shell_ext_state_argv(de: &str) -> Vec<String> {
     if de == "gnome" {
-        argv(&[
-            "gdbus",
-            "call",
-            "--session",
-            "--dest",
-            "org.gnome.Shell",
-            "--object-path",
-            "/org/gnome/Shell",
-            "--method",
-            "org.gnome.Shell.Extensions.GetExtensionInfo",
-            SHELL_EXT_ID,
-        ])
+        gnome_ext_info_argv(SHELL_EXT_ID)
     } else {
         argv(&["gsettings", "get", "org.cinnamon", "enabled-extensions"])
     }
+}
+
+/// `GetExtensionInfo` у GNOME Shell для любого расширения `uuid`; ответ
+/// разбирает [`parse_shell_ext_state`] с `de = "gnome"`.
+pub fn gnome_ext_info_argv(uuid: &str) -> Vec<String> {
+    argv(&[
+        "gdbus",
+        "call",
+        "--session",
+        "--dest",
+        "org.gnome.Shell",
+        "--object-path",
+        "/org/gnome/Shell",
+        "--method",
+        "org.gnome.Shell.Extensions.GetExtensionInfo",
+        uuid,
+    ])
 }
 
 /// Состояние нашего расширения оболочки глазами самой оболочки.
@@ -2921,15 +2927,6 @@ pub fn caja_desktop_argv() -> Vec<String> {
         "org.mate.background",
         "show-desktop-icons",
     ])
-}
-
-/// Перезапуск рабочего стола Caja на MATE.
-///
-/// Отдельная кнопка, а не часть гашения иконок: стол Caja иногда остаётся
-/// пустым после смены обоев или темы, и человеку нужен способ вернуть его,
-/// не выходя из сеанса.
-pub fn caja_restart_argv() -> Vec<String> {
-    argv(&["caja", "--force-desktop", "--no-default-window"])
 }
 
 /// Что спросить у системы ПЕРЕД тем, как гасить иконки, либо `None`.

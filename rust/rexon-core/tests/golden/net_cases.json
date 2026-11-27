@@ -706,6 +706,11 @@
  "get_item_ok": {
   "cache": [
    {
+    "call": "get_item",
+    "hit": false,
+    "id": "1352754"
+   },
+   {
     "call": "put_item",
     "id": "1352754"
    }

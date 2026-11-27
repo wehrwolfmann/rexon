@@ -677,6 +677,7 @@ pub const SKINS: &[Skin] = &[
         id: "synthwave",
         // Имя стиля — латиницей на всех языках, поэтому без `n_`.
         label: "Synthwave / Neon Space Retro",
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         description: n_("Neon retro: a purple→blue gradient, pink/green/cyan accents, neon borders and rounded corners. The glow is approximated (Qt QSS doesn't support box-shadow)."),
         palette: Some(&[
             ("Window", "#1a0533"),
@@ -1028,8 +1029,19 @@ pub fn qml_palette(skin_id: &str) -> BTreeMap<String, String> {
     // таблицу поверхностей: у неё есть прозрачность, и `parse_hex` её не
     // разбирает по замыслу.
     out.insert("text_disabled".to_string(), disabled_text_color(skin_id));
+    // Подложка неактивной части ползунка (`RexonSlider` читает `pal.track`):
+    // нейтральная заливка виджетных карточек, читается на любом скине. Здесь,
+    // а не у отдельных страниц: прежде ключ клали только «Настройки» и
+    // «Steam», и ползунки «Оформления» (Conky, «Эффекты экрана», «Анимация»)
+    // получали `undefined` — Qt ругался «Unable to assign [undefined] to
+    // QColor». ⚠️ Через переводчик: `rgba(...)` QML читает как недопустимый
+    // цвет и рисует ЧЁРНЫМ ([`css_color_to_qml`]).
+    out.insert("track".to_string(), css_color_to_qml(&neutral_rgba(SLIDER_TRACK_ALPHA)));
     out
 }
+
+/// Плотность подложки ползунка (доля [`neutral_rgba`]).
+pub const SLIDER_TRACK_ALPHA: f64 = 0.18;
 
 /// То же для ДЕЙСТВУЮЩЕГО скина.
 pub fn active_qml_palette() -> BTreeMap<String, String> {

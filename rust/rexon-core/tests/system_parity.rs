@@ -129,6 +129,48 @@ fn id_map_matches_python() {
     assert_eq!(json!(order), fx["id_map_order"], "порядок ID_MAP");
 }
 
+/// Kylin: openKylin — Debian по таблице (`ID_LIKE` у неё нет), Kylin OS —
+/// по менеджеру пакетов машины (один `ID=kylin` у Debian- и RPM-редакции).
+#[test]
+fn kylin_family_by_id_or_binaries() {
+    let det = |text: &str| DistroDetector::from_os_release_files(Some(text), None);
+    let none = |_: &str| false;
+    let openkylin = det("ID=openkylin\nNAME=\"openKylin\"\nVERSION_ID=\"3.0\"\n");
+    assert_eq!(openkylin.family(&none), PkgFamily::Debian);
+
+    let kylin = det("ID=kylin\nNAME=\"Kylin\"\nVERSION_ID=\"V10\"\n");
+    assert_eq!(kylin.family(&|b: &str| matches!(b, "apt-get" | "dpkg")), PkgFamily::Debian);
+    assert_eq!(kylin.family(&|b: &str| matches!(b, "dnf" | "rpm")), PkgFamily::Fedora);
+    assert_eq!(kylin.family(&|b: &str| b == "yum"), PkgFamily::Fedora);
+    assert_eq!(kylin.family(&none), PkgFamily::Unknown);
+}
+
+/// Сеанс UKUI узнаётся по `XDG_CURRENT_DESKTOP` и по имени сеанса, на X11 и
+/// на Wayland, но стол остаётся «узнанным и неподдержанным»: не тайловым, не
+/// MATE, без записи в каталоге — и с честной строкой для человека.
+#[test]
+fn ukui_session_recognized_but_unsupported() {
+    use rexon_core::system::{detect_current_de, unsupported_desktop_name, unsupported_desktop_notice};
+    for (xdg, session, wayland) in [
+        ("UKUI", "ukui", false),
+        ("UKUI", "kylin-wlcom", true),
+        ("ubuntukylin:UKUI", "ukui-wayland", true),
+        ("", "ukui", false),
+        ("", "kylin-wlcom", true),
+    ] {
+        assert_eq!(detect_current_de(xdg, session, wayland).as_deref(), Some("ukui"), "{xdg:?} / {session:?}");
+    }
+    assert!(!list_de_ids().contains(&"ukui"), "UKUI пока не в каталоге");
+    assert_eq!(rexon_core::de_customization::de_from_id("ukui"), None, "не тайловый и не MATE");
+    assert!(!rexon_core::qt_desktops::TILING_IDS.contains(&"ukui"));
+    assert_eq!(unsupported_desktop_name("ukui"), Some("UKUI"));
+    assert_eq!(unsupported_desktop_name("mate"), None);
+    assert_eq!(unsupported_desktop_notice("kde"), None);
+    let _lang = i18n_pin::en();
+    let notice = unsupported_desktop_notice("ukui").unwrap();
+    assert!(notice.contains("UKUI") && notice.contains("doesn't support"), "{notice}");
+}
+
 #[test]
 fn de_database_matches_python() {
     let fx = db_fx();

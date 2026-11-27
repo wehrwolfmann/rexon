@@ -43,7 +43,11 @@
 //     это значит только, что две одинаковые анимации могут идти вразнобой;
 //   * у АНИМИРОВАННОГО файла первый кадр анимации декодируется в потоке
 //     интерфейса (так устроен штатный `AnimatedImage`) — уже после того,
-//     как неподвижный слой показал картинку.
+//     как неподвижный слой показал картинку;
+//   * waywallen 0.6.0: `loadingMode` (`Image.qml` рядом) — `Suspended`
+//     не грузит вовсе, `Prefetch` грузит как обычно (очерёдности у
+//     штатного декодера нет); `preparationScope` и `frameDataRequired`
+//     принимаются и ничего не делают.
 import QtQuick
 
 Item {
@@ -63,6 +67,15 @@ Item {
     property real speed: 1
     property bool sharedPlayback: false
     property bool retainWhileLoading: false
+    // waywallen 0.6.0 (QExtra 3fcb45c): режим загрузки и подготовка кадров.
+    property int loadingMode: 0
+    property Item preparationScope
+    property bool frameDataRequired: true
+
+    // Кадр на экране есть — картинка готова (или удержана при загрузке).
+    readonly property bool hasFrame: m_still.status === Image.Ready
+        || (root.retainWhileLoading && m_still.status === Image.Loading && m_still.implicitWidth > 0)
+    readonly property size intrinsicSize: Qt.size(m_still.implicitWidth, m_still.implicitHeight)
 
     readonly property alias status: m_still.status
     readonly property alias progress: m_still.progress
@@ -131,7 +144,8 @@ Item {
         anchors.fill: parent
         visible: m_movie.status !== AnimatedImage.Ready
         asynchronous: true
-        source: root.source
+        // `Suspended` (2): карточка вне экрана — не грузить вовсе.
+        source: root.loadingMode === 2 ? "" : root.source
         sourceSize: root._decodeSize
         fillMode: root.fillMode
         horizontalAlignment: root.horizontalAlignment

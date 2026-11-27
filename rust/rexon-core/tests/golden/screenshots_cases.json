@@ -385,15 +385,15 @@
  "filename_for_de": {
   "cinnamon-mint": "LinuxMint22-Wilma-English.png",
   "cinnamon": null,
-  "xfce": "Xfce_4.18_in_Arch_Linux.png",
+  "xfce": "Xubuntu_24.04_LTS_default_desktop_-_English.png",
   "mate": "Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
   "gnome": "Fedora_Workstation_39_Desktop_English.png",
   "kde": "KDE_neon_6_Breeze_Desktop_English.png",
   "budgie": "Ubuntu_Budgie_22.04_Desktop.png",
   "cosmic": "Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
-  "hyprland": "Hyprland_screen.png",
+  "hyprland": "Omarchy_Tokyo_Night_theme.png",
   "lxqt": "Lubuntu_24.04_LTS_default_desktop_-_English.jpg",
-  "niri": "Screenshot_LXQt-Niri_2025-06-11.png",
+  "niri": null,
   "sway": "Sway_1.4_Window_Manager.png",
   "foo": null,
   "bar-baz": null,
@@ -409,7 +409,7 @@
   "xfce": [
    "https://cdn.xfce.org/about/screenshots/4.20-1.png",
    "https://cdn.xfce.org/about/screenshots/4.18-1.png",
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Xubuntu_24.04_LTS_default_desktop_-_English.png"
   ],
   "mate": [
    "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
@@ -446,7 +446,7 @@
    "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png"
   ],
   "hyprland": [
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png",
    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png",
    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png"
   ],
@@ -457,7 +457,7 @@
   ],
   "niri": [
    "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Screenshot_LXQt-Niri_2025-06-11.png?width=1200"
+   "https://raw.githubusercontent.com/niri-wm/niri/main/docs/wiki/img/blur.png"
   ],
   "sway": [
    "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
@@ -480,7 +480,7 @@
   "pantheon": "https://commons.wikimedia.org/wiki/Special:FilePath/Elementary_OS_8.0_default_desktop_-_English.png",
   "deepin": "https://commons.wikimedia.org/wiki/Special:FilePath/Deepin_Linux_23.1_default_desktop_-_English.png",
   "cosmic": "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
-  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png",
   "lxqt": "https://lxqt-project.org/images/screenshots/light.png",
   "niri": "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
   "sway": "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
@@ -495,7 +495,7 @@
   "kde": "https://commons.wikimedia.org/wiki/Special:FilePath/KDE_neon_6_Breeze_Desktop_English.png",
   "budgie": "https://buddiesofbudgie.org/images/blog/2023/01/MainDesktop.jpg",
   "cosmic": "https://commons.wikimedia.org/wiki/Special:FilePath/Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
-  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+  "hyprland": "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png",
   "lxqt": "https://lxqt-project.org/images/screenshots/light.png",
   "niri": "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
   "sway": "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
@@ -516,7 +516,7 @@
   "xfce": [
    "https://cdn.xfce.org/about/screenshots/4.20-1.png",
    "https://cdn.xfce.org/about/screenshots/4.18-1.png",
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Xubuntu_24.04_LTS_default_desktop_-_English.png"
   ],
   "mate": [
    "https://commons.wikimedia.org/wiki/Special:FilePath/Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
@@ -544,7 +544,7 @@
    "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png"
   ],
   "hyprland": [
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+   "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png",
    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png",
    "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png"
   ],
@@ -555,7 +555,7 @@
   ],
   "niri": [
    "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
-   "https://commons.wikimedia.org/wiki/Special:FilePath/Screenshot_LXQt-Niri_2025-06-11.png?width=1200"
+   "https://raw.githubusercontent.com/niri-wm/niri/main/docs/wiki/img/blur.png"
   ],
   "sway": [
    "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_1.4_Window_Manager.png?width=1200",
@@ -956,7 +956,7 @@
    ],
    [
     "hyprland",
-    "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png"
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png"
    ],
    [
     "hyprland_1",
@@ -1000,7 +1000,7 @@
    ],
    [
     "xfce_2",
-    "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png"
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Xubuntu_24.04_LTS_default_desktop_-_English.png"
    ],
    [
     "wayfire",

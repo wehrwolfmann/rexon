@@ -556,6 +556,9 @@ pub fn send_request_frame(field: &str, frame: &[u8]) {
             if display_setup() == rexon_core::wallpaper_backend::DisplaySetup::RexonHost {
                 rexon_core::log_info!("x11-display", "применение обоев: дисплеев нет — поднимаем вывод на рабочий стол X11, кадр «{field}» ждёт");
                 start_rexon_display_host();
+            } else if display_setup() == rexon_core::wallpaper_backend::DisplaySetup::GnomeExtension {
+                rexon_core::log_info!("gnome-display", "применение обоев: дисплеев нет — включаем расширение вывода waywallen, кадр «{field}» ждёт");
+                start_gnome_display_extension();
             } else {
                 rexon_core::log_info!("kde-plugin", "применение обоев: дисплеев нет — назначаем плагин обоев KDE, кадр «{field}» ждёт");
                 let daemon_version = KDE_DAEMON_VERSION.lock().ok().and_then(|v| v.clone());
@@ -1642,6 +1645,10 @@ fn package_watch_loop() {
             }
         }
         rexon_core::log_info!("we", "сверяю движок и плагины живого демона с пакетом");
+        // Служба автозапуска — тот же движок, что сверяется: юнит, смотрящий
+        // в прежнюю копию, после обновления пакета поднял бы при входе старый
+        // демон (и перезапуск службы ниже — тоже).
+        crate::autostart_queries::refresh_autostart_unit();
         let mut retries = 0;
         while package_check() && retries < we_client::ENGINE_WATCH_BUSY_RETRIES {
             retries += 1;
@@ -1795,7 +1802,26 @@ pub fn kde_plugin_backend() -> bool {
 
 /// Как в этом сеансе у демона появляется дисплей (решение ядра).
 pub fn display_setup() -> rexon_core::wallpaper_backend::DisplaySetup {
-    session_backend().display_setup()
+    rexon_core::wallpaper_backend::display_setup_for(
+        session_backend(),
+        &std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
+        rexon_core::wallpaper_backend::waywallen_gnome_ext_installed_live(),
+    )
+}
+
+/// GNOME: включить расширение вывода waywallen (Rexon выключает его, ставя
+/// свои обои, — иначе его чёрная заглушка закрывает стол). Шина оболочки —
+/// в отдельном потоке; дальше придержку ведёт то же ядро (`release_held`).
+fn start_gnome_display_extension() {
+    let spawned = std::thread::Builder::new().name("rexon-gnome-display".into()).spawn(|| {
+        use rexon_core::wallpaper_backend::{set_waywallen_gnome_display_live, GnomeDisplaySwitch as R};
+        let ok = matches!(set_waywallen_gnome_display_live(true), R::Switched | R::Already);
+        kde_select_finished_without_plugin(ok);
+    });
+    if let Err(e) = spawned {
+        rexon_core::log_warn!("gnome-display", "включение расширения вывода не запущено: {e}");
+        kde_select_finished_without_plugin(false);
+    }
 }
 
 // ── X11: хост обоев Rexon — клиент вывода демона ───────────────────────────
@@ -2180,7 +2206,6 @@ fn ensure_kde_plugin(
     purpose: KdePurpose,
 ) -> (bool, bool, Option<Vec<rexon_core::waywallen_kde_plugin::DesktopPlugin>>, String) {
     use rexon_core::waywallen_kde_plugin as wkp;
-    use std::path::Path;
 
     if !wkp::is_kde(&env.desktop) {
         return (true, false, None, "не KDE — пропускаем (no-op)".to_owned());
@@ -2203,47 +2228,24 @@ fn ensure_kde_plugin(
     );
 
     let outcome = if plan.action.installs() {
-        let bundle_valid = Path::new(&bundle).is_dir() && Path::new(&wkp::metadata_json_path(&bundle)).is_file();
-        // Маркер «ставили мы»: версия бандла, без неё — хэш рантайма.
-        let marker_value = check.bundle_version.clone().or_else(|| check.bundle_sha.clone());
-        let mut launch_error: Option<String> = None;
-        let outcome = wkp::install_or_upgrade(
-            tool.as_deref(),
-            &bundle,
-            bundle_valid,
-            check.installed.present,
-            // Решение «ставить» уже принято сторожем — no-op конвейера не нужен.
-            None,
-            marker_value.as_deref(),
-            &mut |argv| match run(argv, wkp::KPACKAGETOOL_TIMEOUT as f64) {
-                Some(out) => out,
-                None => {
-                    launch_error.get_or_insert_with(|| argv.join(" "));
-                    wkp::RunOutput { rc: -1, stdout: String::new(), stderr: String::new() }
+        let bundle_valid = bundle_is_valid(&bundle);
+        match run_kpackagetool(tool.as_deref(), &bundle, bundle_valid, &check, &marker) {
+            Ok(outcome) => {
+                publish_kde_plugin(KdePluginState::default());
+                outcome
+            }
+            Err(reason) => {
+                if consent {
+                    let previous = KDE_STATE.lock().ok().and_then(|s| s.clone()).unwrap_or_default();
+                    publish_kde_plugin(KdePluginState {
+                        installing: false,
+                        failure: Some(reason.clone()),
+                        ..previous
+                    });
                 }
-            },
-        );
-        let failure = launch_error
-            .map(|cmd| format!("kpackagetool6 ошибка запуска: {cmd}"))
-            .or_else(|| (!outcome.ok).then(|| outcome.message.clone()));
-        if let Some(reason) = failure {
-            if consent {
-                let previous = KDE_STATE.lock().ok().and_then(|s| s.clone()).unwrap_or_default();
-                publish_kde_plugin(KdePluginState {
-                    installing: false,
-                    failure: Some(reason.clone()),
-                    ..previous
-                });
-            }
-            return (false, false, None, format!("{reason}; {summary}"));
-        }
-        if let Some(version) = &outcome.marker_to_write {
-            if let Err(e) = rexon_core::utils::atomic_write(&marker, version) {
-                rexon_core::log_warn!("kde-plugin", "не удалось записать метку версии плагина обоев: {e}");
+                return (false, false, None, format!("{reason}; {summary}"));
             }
         }
-        publish_kde_plugin(KdePluginState::default());
-        outcome
     } else {
         publish_kde_plugin(KdePluginState { notice: plan.notice.clone(), installing: false, failure: None });
         wkp::InstallOutcome {
@@ -2308,6 +2310,139 @@ fn ensure_kde_plugin(
         Some(_) => (true, false),
     };
     (true, selected_now, previous, wkp::ensure_message(&base, selected, restarted))
+}
+
+/// Бандл пригоден для kpackagetool6: каталог с metadata.json.
+fn bundle_is_valid(bundle: &str) -> bool {
+    use std::path::Path;
+    Path::new(bundle).is_dir()
+        && Path::new(&rexon_core::waywallen_kde_plugin::metadata_json_path(bundle)).is_file()
+}
+
+/// Поставить/обновить плагин из бандла конвейером ядра (`install_or_upgrade`)
+/// и записать маркер «ставили мы». Общий для применения обоев и тихого
+/// освежения. `Err` — причина для журнала (сырая, kpackagetool6).
+fn run_kpackagetool(
+    tool: Option<&str>,
+    bundle: &str,
+    bundle_valid: bool,
+    check: &rexon_core::waywallen_kde_plugin::PluginCheck,
+    marker: &str,
+) -> Result<rexon_core::waywallen_kde_plugin::InstallOutcome, String> {
+    use rexon_core::waywallen_kde_plugin as wkp;
+    // Маркер «ставили мы»: версия бандла, без неё — хэш рантайма.
+    let marker_value = check.bundle_version.clone().or_else(|| check.bundle_sha.clone());
+    let mut launch_error: Option<String> = None;
+    let outcome = wkp::install_or_upgrade(
+        tool,
+        bundle,
+        bundle_valid,
+        check.installed.present,
+        // Решение «ставить» уже принято сторожем — no-op конвейера не нужен.
+        None,
+        marker_value.as_deref(),
+        &mut |argv| match run(argv, wkp::KPACKAGETOOL_TIMEOUT as f64) {
+            Some(out) => out,
+            None => {
+                launch_error.get_or_insert_with(|| argv.join(" "));
+                wkp::RunOutput { rc: -1, stdout: String::new(), stderr: String::new() }
+            }
+        },
+    );
+    if let Some(reason) = launch_error
+        .map(|cmd| format!("kpackagetool6 ошибка запуска: {cmd}"))
+        .or_else(|| (!outcome.ok).then(|| outcome.message.clone()))
+    {
+        return Err(reason);
+    }
+    if let Some(version) = &outcome.marker_to_write {
+        if let Err(e) = rexon_core::utils::atomic_write(marker, version) {
+            rexon_core::log_warn!("kde-plugin", "не удалось записать метку версии плагина обоев: {e}");
+        }
+    }
+    Ok(outcome)
+}
+
+/// Тихо освежить УЖЕ установленный плагин обоев KDE, если он разошёлся с
+/// бандлом (решение — `waywallen_kde_plugin::refresh_decision`). Зовут старт
+/// Rexon и успешное обновление движка; работает на ЛЮБОМ рабочем столе.
+/// Не установленный плагин не ставится. Идёт в фоновом потоке под тем же
+/// замком, что и подготовка при применении обоев.
+/// Версию движка спрашивает у бинаря, который будет запущен, и только когда
+/// без неё не решить.
+pub fn refresh_installed_kde_plugin(trigger: &'static str) {
+    let spawned = std::thread::Builder::new().name("rexon-kde-refresh".into()).spawn(move || {
+        let message = {
+            let _guard = KDE_ENSURE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            refresh_kde_plugin(&KdeEnv::live())
+        };
+        match message {
+            Ok(Some(text)) => rexon_core::log_info!("kde-plugin", "освежение плагина обоев KDE ({trigger}): {text}"),
+            Ok(None) => {}
+            Err(text) => rexon_core::log_warn!("kde-plugin", "освежение плагина обоев KDE ({trigger}) не удалось: {text}"),
+        }
+    });
+    if let Err(e) = spawned {
+        rexon_core::log_warn!("kde-plugin", "освежение плагина обоев KDE ({trigger}) не запущено: {e}");
+    }
+}
+
+/// Исполнитель [`refresh_installed_kde_plugin`]. `Ok(None)` — говорить
+/// нечего (плагина нет или он совпадает с бандлом: обычный старт).
+fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
+    use rexon_core::waywallen_kde_plugin::{self as wkp, RefreshDecision};
+
+    let bundle = wkp::bundle_dir(&env.pkg_dir);
+    let install = wkp::install_dir(&env.home);
+    let marker = wkp::version_marker(&env.home);
+    let tool = rexon_core::utils::resolve_tool("kpackagetool6", &[], env.path.as_deref());
+    let bundle_valid = bundle_is_valid(&bundle);
+
+    let mut check = read_plugin_check(&bundle, &install, &marker, None, false);
+    let mut decision = wkp::refresh_decision(&check, tool.is_some(), bundle_valid);
+    // Версию демона спрашиваем лишь тогда, когда без неё не решить: бандл
+    // может не подходить к демону, и тогда рабочий плагин не портим.
+    if decision.upgrades() {
+        use rexon_core::we_client::DaemonFs;
+        check.daemon_version =
+            find_daemon_binary().as_deref().and_then(|bin| crate::we_env::FsProbe.binary_version(bin));
+        decision = wkp::refresh_decision(&check, tool.is_some(), bundle_valid);
+    }
+    let versions = format!(
+        "бандл {}, установлен {}, демон {}",
+        check.bundle_version.as_deref().unwrap_or("?"),
+        check.installed.vendor_version.as_deref().unwrap_or("?"),
+        check.daemon_version.as_deref().unwrap_or("?"),
+    );
+    match decision {
+        RefreshDecision::NotInstalled | RefreshDecision::UpToDate => return Ok(None),
+        RefreshDecision::NoTool => {
+            return Ok(Some(format!("kpackagetool6 не найден — пропускаем ({versions})")))
+        }
+        RefreshDecision::NoBundle => return Err(format!("забандленный пакет не найден: {bundle}")),
+        RefreshDecision::Skip(action) => {
+            return Ok(Some(format!("сторож версии против ({}) — не трогаем ({versions})", action.as_str())))
+        }
+        RefreshDecision::Upgrade => {}
+    }
+
+    let outcome = run_kpackagetool(tool.as_deref(), &bundle, bundle_valid, &check, &marker)
+        .map_err(|reason| format!("{reason} ({versions})"))?;
+    publish_kde_plugin(KdePluginState::default());
+
+    // Plasma спрашиваем только на KDE: вне его оболочки нет, перезапускать
+    // нечего — новый плагин она загрузит при следующем входе.
+    let on_kde = wkp::is_kde(&env.desktop);
+    let in_use = on_kde
+        && outcome.installed_now
+        && plasma_evaluate(env, &wkp::current_plugins_js(), 10.0)
+            .is_some_and(|out| wkp::any_selected(&wkp::parse_current_plugins(&out)));
+    let restarted = wkp::refresh_restarts(on_kde, outcome.installed_now, in_use) && restart_plasmashell(env);
+    Ok(Some(format!(
+        "{} ({versions}){}",
+        outcome.message,
+        if restarted { "; plasmashell перезапущен" } else { "" }
+    )))
 }
 
 /// Запуск команды с таймаутом; `None` — не запустилась или не уложилась.

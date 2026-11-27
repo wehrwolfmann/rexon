@@ -35,11 +35,12 @@ QtObject {
     // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
     // появляется, только когда плагин обоев уже назначен, а назначает его
     // Rexon при запуске плейлиста — без этой ветки запуск на свежей системе
-    // был недоступен навсегда. Пока дисплеев нет, цель — «все рабочие
-    // столы»; кадр придерживает транспорт Rexon до регистрации дисплея.
-    // Правка живёт в patches/0011-playlist-without-displays-on-kde.patch.
+    // был недоступен, пока человек сам не выберет «Все». Пока дисплеев нет,
+    // цель — «все рабочие столы»; кадр придерживает транспорт Rexon до
+    // регистрации дисплея. Правка живёт в
+    // patches/0011-playlist-without-displays-on-kde.patch.
     readonly property bool playWithoutDisplays: !targetState.hasTargets && W.App.playWithoutDisplays
-    readonly property bool hasPlayTarget: targetState.hasSelection || playWithoutDisplays
+    readonly property bool hasPlayTarget: targetState.allTargets || targetState.hasSelection || playWithoutDisplays
 
     Component.onCompleted: {
         if (!playlistSheetSettings.targetScopeMigrated) {
@@ -51,11 +52,7 @@ QtObject {
     }
 
     function playlistIsPlayingOnSelectedTargets(playlist) {
-        if (!playlist || !root.hasPlayTarget)
-            return false;
-        // ПРАВКА REXON: без дисплеев ничего не играет — `every()` по
-        // пустому набору ответил бы «уже играет» и превратил запуск в паузу.
-        if (targetState.selectedDisplayIds.length === 0)
+        if (!playlist || !root.hasPlayTarget || targetState.selectedDisplayIds.length === 0)
             return false;
         const playlistId = String(playlist.id);
         return targetState.selectedDisplayIds.every(displayId => {
@@ -103,7 +100,7 @@ QtObject {
             playlistPlaybackMutation.deactivate(targetState.wireTargets, targetState.allTargets ? playlist.id : 0);
             return;
         }
-        if (root.playWithoutDisplays) {
+        if (root.playWithoutDisplays && !targetState.allTargets) {
             // ПРАВКА REXON: «все рабочие столы» — как вендорное «все»
             // (пустые цели и подключение новых дисплеев).
             targetState.selectAll();

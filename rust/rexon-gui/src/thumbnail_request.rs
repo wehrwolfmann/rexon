@@ -52,6 +52,20 @@ pub mod qobject {
         #[qproperty(QUrl, cache_path, cxx_name = "cachePath", READ = cache_path,
                     NOTIFY = cache_path_changed)]
         #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
+        /// waywallen 0.6.0: обои-«таймлайн» (по времени суток), запрос
+        /// включён (карточка видна), предзагрузка, держать прежнюю картинку,
+        /// пока готовится новая, и длинная сторона миниатюры.
+        #[qproperty(bool, timeline, READ = timeline, WRITE = set_timeline,
+                    NOTIFY = timeline_changed)]
+        #[qproperty(bool, enabled, READ = enabled, WRITE = set_enabled,
+                    NOTIFY = enabled_changed)]
+        #[qproperty(bool, prefetch, READ = prefetch, WRITE = set_prefetch,
+                    NOTIFY = prefetch_changed)]
+        #[qproperty(bool, retain_while_loading, cxx_name = "retainWhileLoading",
+                    READ = retain_while_loading, WRITE = set_retain_while_loading,
+                    NOTIFY = retain_while_loading_changed)]
+        #[qproperty(i32, maximum_edge, cxx_name = "maximumEdge", READ = maximum_edge,
+                    WRITE = set_maximum_edge, NOTIFY = maximum_edge_changed)]
         type ThumbnailRequest = super::ThumbnailRequestRust;
     }
 
@@ -74,6 +88,21 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "errorChanged"]
         fn error_changed(self: Pin<&mut ThumbnailRequest>);
+        #[qsignal]
+        #[cxx_name = "timelineChanged"]
+        fn timeline_changed(self: Pin<&mut ThumbnailRequest>);
+        #[qsignal]
+        #[cxx_name = "enabledChanged"]
+        fn enabled_changed(self: Pin<&mut ThumbnailRequest>);
+        #[qsignal]
+        #[cxx_name = "prefetchChanged"]
+        fn prefetch_changed(self: Pin<&mut ThumbnailRequest>);
+        #[qsignal]
+        #[cxx_name = "retainWhileLoadingChanged"]
+        fn retain_while_loading_changed(self: Pin<&mut ThumbnailRequest>);
+        #[qsignal]
+        #[cxx_name = "maximumEdgeChanged"]
+        fn maximum_edge_changed(self: Pin<&mut ThumbnailRequest>);
     }
 
     extern "RustQt" {
@@ -91,6 +120,30 @@ pub mod qobject {
         #[cxx_name = "cachePath"]
         fn cache_path(self: &ThumbnailRequest) -> QUrl;
         fn error(self: &ThumbnailRequest) -> QString;
+        fn timeline(self: &ThumbnailRequest) -> bool;
+        #[cxx_name = "setTimeline"]
+        fn set_timeline(self: Pin<&mut ThumbnailRequest>, value: bool);
+        fn enabled(self: &ThumbnailRequest) -> bool;
+        #[cxx_name = "setEnabled"]
+        fn set_enabled(self: Pin<&mut ThumbnailRequest>, value: bool);
+        fn prefetch(self: &ThumbnailRequest) -> bool;
+        #[cxx_name = "setPrefetch"]
+        fn set_prefetch(self: Pin<&mut ThumbnailRequest>, value: bool);
+        #[cxx_name = "retainWhileLoading"]
+        fn retain_while_loading(self: &ThumbnailRequest) -> bool;
+        #[cxx_name = "setRetainWhileLoading"]
+        fn set_retain_while_loading(self: Pin<&mut ThumbnailRequest>, value: bool);
+        #[cxx_name = "maximumEdge"]
+        fn maximum_edge(self: &ThumbnailRequest) -> i32;
+        #[cxx_name = "setMaximumEdge"]
+        fn set_maximum_edge(self: Pin<&mut ThumbnailRequest>, value: i32);
+    }
+
+    extern "RustQt" {
+        /// waywallen 0.6.0: пересчитать заново (`ThumbnailImage` после
+        /// ошибки картинки).
+        #[qinvokable]
+        fn reload(self: Pin<&mut ThumbnailRequest>);
     }
 
     impl cxx_qt::Threading for ThumbnailRequest {}
@@ -178,13 +231,18 @@ fn worker() {
     }
 }
 
-#[derive(Default)]
 pub struct ThumbnailRequestRust {
     source: String,
     resource: String,
     wp_type: String,
+    timeline: bool,
+    enabled: bool,
+    prefetch: bool,
+    retain: bool,
+    maximum_edge: i32,
     state: i32,
-    /// Путь готового PNG; пусто — миниатюры нет.
+    /// Адрес картинки: путь готового PNG либо адрес превью как есть
+    /// (`file://`, `qrc:`, `https://`); пусто — миниатюры нет.
     cache_path: String,
     error: String,
     /// Номер пересчёта. Ответ рабочего потока принимается, только если с
@@ -192,6 +250,41 @@ pub struct ThumbnailRequestRust {
     generation: u64,
     /// Пересчёт уже стоит в очереди главного потока.
     scheduled: bool,
+}
+
+impl Default for ThumbnailRequestRust {
+    fn default() -> Self {
+        Self {
+            source: String::new(),
+            resource: String::new(),
+            wp_type: String::new(),
+            timeline: false,
+            // Как у оригинала: включён, пока страница не скажет иного.
+            enabled: true,
+            prefetch: false,
+            retain: false,
+            maximum_edge: th::MAX_EDGE as i32,
+            state: th::STATE_IDLE,
+            cache_path: String::new(),
+            error: String::new(),
+            generation: 0,
+            scheduled: false,
+        }
+    }
+}
+
+/// Сеттер булева свойства, пересчитывающий миниатюру.
+macro_rules! flag_setter {
+    ($set:ident, $field:ident, $signal:ident) => {
+        pub fn $set(mut self: Pin<&mut Self>, value: bool) {
+            if self.$field == value {
+                return;
+            }
+            self.as_mut().rust_mut().$field = value;
+            self.as_mut().$signal();
+            self.schedule();
+        }
+    };
 }
 
 impl cxx_qt::Initialize for qobject::ThumbnailRequest {
@@ -252,9 +345,76 @@ impl qobject::ThumbnailRequest {
     pub fn cache_path(&self) -> QUrl {
         if self.cache_path.is_empty() {
             QUrl::default()
-        } else {
+        } else if self.cache_path.starts_with('/') {
             QUrl::from_local_file(&QString::from(&self.cache_path))
+        } else {
+            QUrl::from(&QString::from(&self.cache_path))
         }
+    }
+
+    pub fn timeline(&self) -> bool {
+        self.timeline
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn prefetch(&self) -> bool {
+        self.prefetch
+    }
+
+    pub fn retain_while_loading(&self) -> bool {
+        self.retain
+    }
+
+    pub fn maximum_edge(&self) -> i32 {
+        self.maximum_edge
+    }
+
+    flag_setter!(set_timeline, timeline, timeline_changed);
+    flag_setter!(set_enabled, enabled, enabled_changed);
+
+    /// Предзагрузка меняет у оригинала только очерёдность в пуле. Наша
+    /// очередь кадров одна на всех и коротка (кадр нужен лишь роликам без
+    /// превью), поэтому свойство принимается и запоминается, но порядок не
+    /// меняет.
+    pub fn set_prefetch(mut self: Pin<&mut Self>, value: bool) {
+        if self.prefetch == value {
+            return;
+        }
+        self.as_mut().rust_mut().prefetch = value;
+        self.prefetch_changed();
+    }
+
+    /// Без удержания картинка пропадает сразу, как только запрос ушёл в
+    /// ожидание (оригинал: `publish(state, {})` при `!value && state != Ready`).
+    pub fn set_retain_while_loading(mut self: Pin<&mut Self>, value: bool) {
+        if self.retain == value {
+            return;
+        }
+        self.as_mut().rust_mut().retain = value;
+        if !value && self.state != th::STATE_READY {
+            let (state, error) = (self.state, self.error.clone());
+            self.as_mut().apply(state, String::new(), error);
+        }
+        self.retain_while_loading_changed();
+    }
+
+    /// Длинная сторона, 1…4096. Кадр ролика наш генератор снимает в
+    /// [`th::MAX_EDGE`] (карточка больше не просит), значение — для страницы.
+    pub fn set_maximum_edge(mut self: Pin<&mut Self>, value: i32) {
+        let value = value.clamp(1, 4096);
+        if self.maximum_edge == value {
+            return;
+        }
+        self.as_mut().rust_mut().maximum_edge = value;
+        self.as_mut().maximum_edge_changed();
+        self.schedule();
+    }
+
+    pub fn reload(self: Pin<&mut Self>) {
+        self.schedule();
     }
 
     pub fn error(&self) -> QString {
@@ -284,13 +444,33 @@ impl qobject::ThumbnailRequest {
             // Прежний ответ, если он ещё в пути, с этого места устарел.
             rust.generation = generation;
         }
-        match th::live_lookup(&self.source, &self.resource, &self.wp_type) {
-            th::Lookup::Ready(path) => self.apply(th::STATE_READY, path, String::new()),
-            th::Lookup::Failed(why) => self.apply(th::STATE_FAILED, String::new(), why),
-            th::Lookup::Miss(job) => {
-                self.as_mut().apply(th::STATE_LOADING, String::new(), String::new());
-                submit(job, self.qt_thread(), generation);
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "/".to_string());
+        let plan = th::plan(
+            &self.source,
+            &self.resource,
+            &self.wp_type,
+            self.timeline,
+            self.enabled,
+            &cwd,
+        );
+        match plan {
+            th::Plan::Idle => {
+                let kept = if self.retain { self.cache_path.clone() } else { String::new() };
+                self.apply(th::STATE_IDLE, kept, String::new());
             }
+            th::Plan::Direct(url) => self.apply(th::STATE_READY, url, String::new()),
+            th::Plan::Failed(why) => self.apply(th::STATE_FAILED, String::new(), why),
+            th::Plan::Generate => match th::live_lookup("", &self.resource, "video") {
+                th::Lookup::Ready(path) => self.apply(th::STATE_READY, path, String::new()),
+                th::Lookup::Failed(why) => self.apply(th::STATE_FAILED, String::new(), why),
+                th::Lookup::Miss(job) => {
+                    let kept = if self.retain { self.cache_path.clone() } else { String::new() };
+                    self.as_mut().apply(th::STATE_LOADING, kept, String::new());
+                    submit(job, self.qt_thread(), generation);
+                }
+            },
         }
     }
 
@@ -301,7 +481,11 @@ impl qobject::ThumbnailRequest {
         }
         match result {
             Ok(path) => self.apply(th::STATE_READY, path, String::new()),
-            Err(why) => self.apply(th::STATE_FAILED, String::new(), why),
+            Err(why) => {
+                // Как у оригинала: при удержании прежняя картинка остаётся.
+                let kept = if self.retain { self.cache_path.clone() } else { String::new() };
+                self.apply(th::STATE_FAILED, kept, why)
+            }
         }
     }
 

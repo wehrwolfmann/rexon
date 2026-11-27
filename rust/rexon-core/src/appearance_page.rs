@@ -1376,6 +1376,17 @@ pub struct CatalogView {
     pub conky_installable: bool,
     /// Сеанс Wayland — у Conky на Wayland своя оговорка.
     pub wayland: bool,
+    /// Открыт вид «⚙️ Настройки» раздела каталога (системные шрифты в
+    /// «Шрифтах», значки и панели инструментов в «Значках», отклик при
+    /// запуске в «Курсорах», анимация программ в «GTK-темах» —
+    /// `categories::SECTION_SETTINGS`) вместо плиток. Принадлежит разделу:
+    /// при уходе из него сбрасывается, и в раздел человек возвращается к
+    /// каталогу.
+    pub section_settings: bool,
+    /// Род сеанса выбранного стола: разделы, невозможные в нём (эффекты
+    /// экрана MATE на Wayland), не видны (`categories::category_available_in`).
+    /// Ставит окно; по умолчанию — «любой».
+    pub session: categories::Session,
 }
 
 impl CatalogView {
@@ -1402,6 +1413,8 @@ impl CatalogView {
             conky_installed: true,
             conky_installable: false,
             wayland: false,
+            section_settings: false,
+            session: categories::Session::Any,
         }
     }
 
@@ -1443,7 +1456,41 @@ impl CatalogView {
     /// с разделом вкладки «Настройки», а не полка
     /// (`categories::SETTINGS_PANELS`).
     pub fn is_settings_panel(&self) -> bool {
-        categories::is_settings_panel(&self.category.key)
+        categories::is_settings_panel(&self.category.key) || self.section_settings_open()
+    }
+
+    /// Вид «⚙️ Настройки» раздела каталога — кнопка в шапке «Шрифтов»,
+    /// «Значков», «Курсоров», рамок окон и «GTK-тем» (08.11.2026: каталог и
+    /// настройки одного рода в одном разделе, а не двумя строками боковой
+    /// панели): какие разделы настроек в нём. Пусто — кнопки нет (у раздела
+    /// их нет, в этом столе настраивать нечего или раздел закрыт).
+    pub fn section_settings_panels(&self) -> Vec<&'static str> {
+        if self.de_blocked() || self.steamos_blocked() {
+            return Vec::new();
+        }
+        categories::section_settings_panels(&self.category.key, &self.de)
+    }
+
+    /// Есть ли у раздела вид «⚙️ Настройки».
+    pub fn has_section_settings(&self) -> bool {
+        !self.section_settings_panels().is_empty()
+    }
+
+    /// Открыт ли сейчас вид настроек раздела.
+    pub fn section_settings_open(&self) -> bool {
+        self.section_settings && self.has_section_settings()
+    }
+
+    /// Какие разделы вкладки «Настройки» показать на экране
+    /// [`SCREEN_SETTINGS`] (через запятую — `SettingsPage.panel`): у
+    /// разделов настроек — свой ключ, у раздела каталога в виде настроек —
+    /// его разделы из `categories::SECTION_SETTINGS`.
+    pub fn settings_panel_key(&self) -> String {
+        if self.section_settings_open() {
+            self.section_settings_panels().join(",")
+        } else {
+            self.category.key.clone()
+        }
     }
 
     /// Объяснение вместо полки: раздела нет в этом рабочем столе либо он
@@ -1628,7 +1675,7 @@ impl CatalogView {
 
     /// Раздела нет в выбранном рабочем столе.
     pub fn de_blocked(&self) -> bool {
-        !categories::category_available(&self.category.key, &self.de)
+        !categories::category_available_in(&self.category.key, &self.de, self.session)
     }
 
     /// `cat_id` (или зонт «id1,id2») для запроса каталога.
@@ -2666,7 +2713,7 @@ pub fn store_query(cat: &ThemeCategory, de: &str) -> String {
 /// Раздел виден в окружении каталога — раздел, которого здесь нет, человек
 /// не откроет, и греть его витрину незачем.
 fn shown_here(view: &CatalogView, cat: &ThemeCategory) -> bool {
-    categories::category_available(&cat.key, &view.de)
+    categories::category_available_in(&cat.key, &view.de, view.session)
 }
 
 /// Раздел закрыт на SteamOS — его витрина человеку не покажется, греть её
@@ -2794,6 +2841,9 @@ pub fn de_picker_choices(selected: &str, detected: &str) -> Vec<(String, String)
                 .into_iter()
                 .find(|(id, _)| id == detected)
                 .map(|(_, n)| n)
+                // Узнанный, но неподдержанный стол (UKUI) — его именем, а
+                // не сырым идентификатором.
+                .or_else(|| crate::system::unsupported_desktop_name(detected).map(str::to_string))
                 .unwrap_or_else(|| detected.to_string())
         });
     for (id, name) in out.iter_mut() {
@@ -4645,6 +4695,57 @@ pub fn refresh_tooltip() -> String {
     tr("Refresh catalog")
 }
 
+
+/// Кнопка вида «Настройки» в шапке раздела каталога
+/// ([`CatalogView::section_settings_panel`]) и подсказки к ней — по
+/// разделу настроек.
+pub fn section_settings_btn() -> String {
+    tr("⚙️ Settings")
+}
+pub fn font_settings_tooltip() -> String {
+    tr("Fonts of the interface, terminal, menus and window titles, text smoothing and font DPI")
+}
+pub fn app_widgets_settings_tooltip() -> String {
+    tr("Icons in menus and on buttons, text on toolbar buttons — in all applications")
+}
+pub fn launch_feedback_settings_tooltip() -> String {
+    tr("How the pointer and the task bar show that an application is starting.")
+}
+pub fn app_animations_settings_tooltip() -> String {
+    tr("Animations inside applications")
+}
+pub fn window_buttons_settings_tooltip() -> String {
+    tr("Title bar buttons: which ones, on which side and in what order")
+}
+pub fn desktop_effects_settings_tooltip() -> String {
+    tr("Turn on and set up the effects KWin already has: magic lamp, translucency, blur and others")
+}
+/// Подсказка кнопки для разделов настроек `panels` — по строке на раздел.
+pub fn section_settings_tooltip(panels: &[&str]) -> String {
+    panels.iter().map(|p| section_settings_tooltip_one(p)).collect::<Vec<_>>().join("\n")
+}
+/// Пояснение рамки вкладки «Настройки» `id` (`qt_settings::SECTIONS`):
+/// вторая формулировка той же мысли не заводится.
+fn group_desc(id: &str) -> String {
+    crate::qt_settings::section_texts(id, "").map(|(_, desc)| desc).unwrap_or_default()
+}
+fn section_settings_tooltip_one(panel: &str) -> String {
+    match panel {
+        categories::WINDOW_BUTTONS_KEY => window_buttons_settings_tooltip(),
+        // Пояснение самой рамки «Размытие обоев» — второй формулировки нет.
+        categories::WALLPAPER_BLUR_PANEL => group_desc("blurGroup"),
+        categories::EVENT_SOUNDS_PANEL => group_desc("soundThemeGroup"),
+        categories::AMBIENT_SOUNDS_PANEL => group_desc("ambientGroup"),
+        categories::APP_WIDGETS_PANEL => app_widgets_settings_tooltip(),
+        categories::LAUNCH_FEEDBACK_PANEL => launch_feedback_settings_tooltip(),
+        categories::ANIMATIONS_KEY => app_animations_settings_tooltip(),
+        categories::DESKTOP_EFFECTS_PANEL => desktop_effects_settings_tooltip(),
+        _ => font_settings_tooltip(),
+    }
+}
+/// Та же кнопка, пока открыт вид настроек, ведёт назад к плиткам раздела —
+/// подписью возврата из карточки темы ([`detail_back_btn`]): «назад к
+/// каталогу» на вкладке выглядит везде одинаково.
 
 /// «Установить из файла…» в шапке раздела — тема, которая уже лежит на
 /// диске (`crate::local_install`).

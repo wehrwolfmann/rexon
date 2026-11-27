@@ -18,6 +18,11 @@ use rexon_core::plasma_login::{self as plm, KauthBus, KauthCall, KauthReply, Plm
 use rexon_core::system_plan::{DesktopLook, SddmLook, SddmNumlock};
 use serde_json::{json, Value};
 
+// Причины отказа сверяются по-английски, а язык процесса по умолчанию — как
+// у машины (у владельца русский, и каталог стоит в /usr/share/locale).
+// Закрепление под замком: сверки одного файла идут параллельно.
+mod i18n_pin;
+
 const GOLDEN: &str = "tests/golden/plasma_login_cases.json";
 
 fn golden() -> Value {
@@ -188,6 +193,7 @@ fn cases() -> Value {
 
 #[test]
 fn эталон_вызовов_помощника() {
+    let _lang = i18n_pin::en();
     let got = cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("REXON_GOLDEN_WRITE").is_some() {
@@ -229,6 +235,7 @@ fn байты_qdatastream_как_у_qt() {
 
 #[test]
 fn ответы_помощника_как_у_kauth() {
+    let _lang = i18n_pin::en();
     let r = |n: &str| plm::decode_reply(&qt(n)).unwrap();
     assert_eq!((r("reply_success").kind, r("reply_success").code), (plm::REPLY_SUCCESS, 0));
     assert_eq!((r("reply_helper_error").kind, r("reply_helper_error").code), (plm::REPLY_HELPER_ERROR, -1));
@@ -252,6 +259,7 @@ fn ответы_помощника_как_у_kauth() {
 
 #[test]
 fn отказы_до_пароля_и_ошибки_шины() {
+    let _lang = i18n_pin::en();
     // Не картинка — помощник не зовётся.
     let e = plm::background_with(&vm_facts(), Some("/x/a.txt"), &|_| Some(b"hello".to_vec()), &|_| some_fd(), &mut Never)
         .unwrap_err();
@@ -273,7 +281,7 @@ fn отказы_до_пароля_и_ошибки_шины() {
 
 #[test]
 fn вид_раздела() {
-    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    let _lang = i18n_pin::en();
     let look = PlmLook { plasma: true, items: vec!["A".into()], ..PlmLook::default() };
     let std_view = plm::greeter_view(&vm_facts(), &look, "/usr/share/wallpapers/Next/x.png", "");
     assert!(std_view.visible && std_view.can_change);
@@ -312,7 +320,7 @@ fn вид_раздела() {
 /// своя картинка пересылается заново; не открылась — отказ до пароля.
 #[test]
 fn часы_как_у_kcm() {
-    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    let _lang = i18n_pin::en();
     let facts = vm_facts();
     assert!(!plm::show_clock(&facts), "в ВМ часы выключены");
     let on = plm::clock_config(&facts, true);
@@ -352,7 +360,7 @@ fn часы_как_у_kcm() {
 /// WebP — только при модуле WebP у Qt 6 (приветствие PLM на Qt 6).
 #[test]
 fn webp_у_plm() {
-    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    let _lang = i18n_pin::en();
     let webp: &[u8] = b"RIFF\x10\0\0\0WEBPVP8 ";
     let e = plm::background_with(&vm_facts(), Some("/x.webp"), &|_| Some(webp.to_vec()), &|_| some_fd(), &mut Never)
         .unwrap_err();
@@ -368,7 +376,7 @@ fn webp_у_plm() {
 /// Превью — `plasma-login-greeter --test` из каталога libexec (6.8.2).
 #[test]
 fn превью_plm() {
-    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    let _lang = i18n_pin::en();
     assert_eq!(
         plm::preview_argv(&|p| p == "/usr/libexec/plasma-login-greeter").unwrap(),
         ["/usr/libexec/plasma-login-greeter", "--test"]

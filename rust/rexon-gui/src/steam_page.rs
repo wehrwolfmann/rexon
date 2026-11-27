@@ -1442,13 +1442,8 @@ impl qobject::SteamModel {
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
         );
-        // Подложка неактивной части ползунка (подвкладка «Витрины профиля») —
-        // тот же цвет, что у вкладки «Настройки». Без ключа `RexonSlider`
-        // рисует полосу чёрной.
-        out.insert(
-            QString::from("track"),
-            qstr(&ui_base::css_color_to_qml(&ui_base::neutral_rgba(0.18))),
-        );
+        // Подложка ползунка (`track`) приходит с общей палитрой
+        // (`ui_base::qml_palette`).
         out
     }
 }
@@ -2218,12 +2213,20 @@ impl qobject::SteamModel {
         };
         self.as_mut().rust_mut().tasks = Some(Arc::new(tasks));
 
+        // Кадры плиток заказываются уже здесь: страница отдаёт ролики
+        // (`setMovies`) ДО `start`, когда задач ещё нет, и заказ тогда уходит
+        // в пустоту. Дальше его повторял только `reset_showcase` в конце
+        // этой функции — а без Steam или без учётки до него не доходит, и
+        // все плитки (свои ролики, ролики стенда) навсегда оставались с
+        // хлопушкой. Для кадра не нужны ни Steam, ни учётка — только ffmpeg.
         let root = self.rust().steam_root.clone();
         if root.is_empty() {
+            self.rust().request_posters();
             self.as_mut().set_bg_notice(&qs::bg_no_steam());
             return;
         }
         let Some(sid) = steam_workers::detect_account(&root) else {
+            self.rust().request_posters();
             self.as_mut().set_bg_notice(&qs::bg_no_account());
             return;
         };

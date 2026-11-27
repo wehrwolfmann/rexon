@@ -34,6 +34,7 @@
 //! (`$WINEPREFIX`, `~/.wine`, Bottles, Lutris, Heroic, umu, PlayOnLinux,
 //! префиксы Proton в библиотеках Steam) на один уровень вглубь.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
@@ -430,6 +431,131 @@ pub struct LibraryEntry {
     pub preview_url: String,
     pub description: String,
     pub tags: String,
+    /// Сведения для фильтров, подробностей и свойств показа.
+    pub details: AxonDetails,
+}
+
+/// Сведения записи `WallPaperData`, которые нужны фильтрам библиотеки,
+/// окну подробностей и свойствам показа, — всё как записал Axon.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AxonDetails {
+    /// В избранном (`IsFavorite` = 1). Это лишь копия признака с сервера
+    /// Razer: переключить его без учётки нельзя, годится только для фильтра.
+    pub is_favorite: bool,
+    /// Цена в серебре (`Silver`): больше нуля — «премиальные» обои.
+    pub silver: u64,
+    /// Куплены за серебро (`IsRedeemed` = 1).
+    pub is_redeemed: bool,
+    /// Награда за скачивание (`DownloadReward`); в библиотеке 2.11.1.0 поля
+    /// нет, и фильтр «Награды» тогда пуст — как у самого Axon.
+    pub download_reward: u64,
+    /// `PaperType`: `Generate` — обои, созданные ИИ-генератором Axon.
+    pub paper_type: String,
+    /// `Method` — способ создания (у ИИ-обоев), как записан.
+    pub method: String,
+    /// `DetailId` — номер ИИ-творения; ненулевой у ИИ-обоев.
+    pub detail_id: u64,
+    /// Номера категорий каталога (`Category`: `"18,17"`).
+    pub categories: Vec<String>,
+    /// Серии (`CollectionInfos`): номер и название.
+    pub collections: Vec<(String, String)>,
+    /// Лайки (`Upvoted`).
+    pub upvoted: u64,
+    /// Скачивания (`Downloads`).
+    pub downloads: u64,
+    /// Звук этих обоев выключен (`IsMute`).
+    pub is_mute: bool,
+    /// Свойства показа (`PlayEffects`): яркость, контраст, тон, насыщенность,
+    /// скорость, стиль заполнения… Значения — строками, как у Axon.
+    pub play_effects: BTreeMap<String, String>,
+}
+
+impl AxonDetails {
+    /// ИИ-обои: так их отбирает сам Axon (`DetailId` есть); `PaperType`
+    /// `Generate` — тот же признак у записей, пришедших из облака.
+    pub fn is_ai(&self) -> bool {
+        self.detail_id != 0 || self.paper_type.eq_ignore_ascii_case("generate")
+    }
+}
+
+/// Число из поля, где Axon пишет то число, то строку; прочее — 0.
+fn loose_u64(v: Option<&Value>) -> u64 {
+    match v {
+        Some(Value::Number(n)) => n
+            .as_u64()
+            .or_else(|| n.as_f64().filter(|f| *f > 0.0).map(|f| f as u64))
+            .unwrap_or(0),
+        Some(Value::String(s)) => s.trim().parse().unwrap_or(0),
+        Some(Value::Bool(b)) => u64::from(*b),
+        _ => 0,
+    }
+}
+
+/// Признак: `1`, `"1"`, `true`, `"true"`.
+fn loose_bool(v: Option<&Value>) -> bool {
+    match v {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
+        Some(Value::String(s)) => matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true"),
+        _ => false,
+    }
+}
+
+/// `PlayEffects`: словарь, либо он же строкой JSON (так его пишет
+/// проигрыватель Axon). Значения — строками.
+fn parse_play_effects(v: Option<&Value>) -> BTreeMap<String, String> {
+    let parsed;
+    let obj = match v {
+        Some(Value::Object(o)) => Some(o),
+        Some(Value::String(s)) if !s.trim().is_empty() => {
+            parsed = serde_json::from_str::<Value>(s).ok();
+            parsed.as_ref().and_then(Value::as_object)
+        }
+        _ => None,
+    };
+    obj.into_iter()
+        .flatten()
+        .filter(|(_, x)| !x.is_null())
+        .map(|(k, x)| (k.clone(), loose_str(Some(x))))
+        .collect()
+}
+
+/// Сведения из сырой записи библиотеки.
+fn parse_details(raw: &Value) -> AxonDetails {
+    let categories = loose_str(raw.get("Category"))
+        .split(',')
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+        .collect();
+    let collections = raw
+        .get("CollectionInfos")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|c| (loose_str(c.get("collection_id")), loose_str(c.get("title"))))
+        .filter(|(id, title)| !id.is_empty() || !title.is_empty())
+        .collect();
+    AxonDetails {
+        is_favorite: loose_bool(raw.get("IsFavorite")),
+        silver: loose_u64(raw.get("Silver")),
+        is_redeemed: loose_bool(raw.get("IsRedeemed")),
+        download_reward: loose_u64(raw.get("DownloadReward")),
+        paper_type: loose_str(raw.get("PaperType")),
+        method: loose_str(raw.get("Method")),
+        detail_id: loose_u64(raw.get("DetailId")),
+        categories,
+        collections,
+        upvoted: loose_u64(raw.get("Upvoted")),
+        downloads: loose_u64(raw.get("Downloads")),
+        is_mute: loose_bool(raw.get("IsMute")),
+        play_effects: parse_play_effects(raw.get("PlayEffects")),
+    }
+}
+
+/// Теги записи (`AllTags`: `" Cyberpunk,Some Artist, 3D"`) списком.
+pub fn tag_list(tags: &str) -> Vec<String> {
+    tags.split(',').map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect()
 }
 
 /// `3840x2160` → (ширина, высота).
@@ -468,19 +594,26 @@ pub fn parse_library(text: &str) -> Result<Vec<LibraryEntry>, String> {
             preview_url: loose_str(raw.get("PreviewSource")),
             description: loose_str(raw.get("Description")),
             tags: loose_str(raw.get("AllTags")),
+            details: parse_details(raw),
             id,
         });
     }
     Ok(out)
 }
 
-/// Плейлист одного экрана.
+/// Плейлист (очередь показа) одного экрана.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayList {
     pub monitor: String,
     pub wallpaper_ids: Vec<String>,
     pub current_index: usize,
     pub mute: bool,
+    /// Громкость экрана 0–100 (`MaxVolume`).
+    pub volume: u32,
+    /// Показ остановлен кнопкой «Стоп» (`IsStopped`).
+    pub stopped: bool,
+    /// Этот экран выбран в панели очереди (`IsSelect`).
+    pub selected: bool,
 }
 
 impl PlayList {
@@ -490,26 +623,135 @@ impl PlayList {
     }
 }
 
-/// Разбор `PlayListSetting`.
-pub fn parse_playlists(text: &str) -> Result<Vec<PlayList>, String> {
+/// Порядок смены обоев в очереди (`PlayOrder`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PlayOrder {
+    /// «По порядку» (`Ordered`).
+    #[default]
+    Ordered,
+    /// «Случайно» (`Random`).
+    Random,
+}
+
+/// Как обои ложатся на несколько экранов (`PlayMode`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PlayMode {
+    /// Разные обои на каждом экране (`None`).
+    #[default]
+    Separate,
+    /// Выбранный экран повторяется на остальных (`Duplicate`).
+    Duplicate,
+    /// Обои выбранного экрана растянуты на все (`Span`).
+    Span,
+}
+
+/// Таймер смены обоев «Никогда» (`SwitchIntervalSeconds` не больше нуля).
+pub const SWITCH_NEVER: i64 = -1;
+
+/// `PlayListSetting` целиком: очереди экранов и общие настройки показа.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayListSetting {
+    /// Через сколько секунд менять обои; [`SWITCH_NEVER`] — никогда.
+    pub switch_interval_seconds: i64,
+    /// Таймер задан своим числом («Пользовательский»), а не из списка.
+    pub is_custom_interval: bool,
+    pub play_order: PlayOrder,
+    pub play_mode: PlayMode,
+    /// «Общий режим»: пауза на экране, где окно развёрнуто во весь экран
+    /// (`IsPauseWhenFullScreen`).
+    pub pause_when_fullscreen: bool,
+    /// «Экономичный режим»: пауза на всех экранах при полноэкранной игре
+    /// (`IsPauseAllWhenD3dFullScreen`).
+    pub pause_all_when_game_fullscreen: bool,
+    /// Громкость по умолчанию 0–100 (`DefaultVolume`).
+    pub default_volume: u32,
+    pub playlists: Vec<PlayList>,
+}
+
+impl Default for PlayListSetting {
+    fn default() -> Self {
+        PlayListSetting {
+            switch_interval_seconds: SWITCH_NEVER,
+            is_custom_interval: false,
+            play_order: PlayOrder::Ordered,
+            play_mode: PlayMode::Separate,
+            pause_when_fullscreen: false,
+            pause_all_when_game_fullscreen: false,
+            default_volume: 50,
+            playlists: Vec::new(),
+        }
+    }
+}
+
+/// Громкость 0–100; поля нет — `fallback`.
+fn volume_of(v: Option<&Value>, fallback: u32) -> u32 {
+    match v {
+        None | Some(Value::Null) => fallback,
+        x => loose_u64(x).min(100) as u32,
+    }
+}
+
+/// Разбор `PlayListSetting` вместе с настройками показа. Нет массива
+/// `PlayLists` — ошибка (файл не тот); недостающие настройки — умолчания.
+pub fn parse_playlist_setting(text: &str) -> Result<PlayListSetting, String> {
     let v: Value = serde_json::from_str(strip_bom(text)).map_err(|e| e.to_string())?;
     let lists = v
         .get("PlayLists")
         .and_then(Value::as_array)
         .ok_or_else(|| "PlayListSetting: нет PlayLists".to_string())?;
-    Ok(lists
-        .iter()
-        .map(|p| PlayList {
-            monitor: loose_str(p.get("MonitorId")),
-            wallpaper_ids: p
-                .get("WallpaperIds")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().map(|x| loose_str(Some(x))).filter(|s| !s.is_empty()).collect())
-                .unwrap_or_default(),
-            current_index: p.get("CurrentPlayIndex").and_then(Value::as_u64).unwrap_or(0) as usize,
-            mute: p.get("IsMute").and_then(Value::as_bool).unwrap_or(false),
-        })
-        .collect())
+    let d = PlayListSetting::default();
+    let interval = match v.get("SwitchIntervalSeconds") {
+        Some(Value::Number(n)) => n.as_i64().unwrap_or(SWITCH_NEVER),
+        Some(Value::String(s)) => s.trim().parse().unwrap_or(SWITCH_NEVER),
+        _ => SWITCH_NEVER,
+    };
+    let play_order = match loose_str(v.get("PlayOrder")).to_ascii_lowercase().as_str() {
+        "random" => PlayOrder::Random,
+        _ => PlayOrder::Ordered,
+    };
+    let play_mode = match loose_str(v.get("PlayMode")).to_ascii_lowercase().as_str() {
+        "duplicate" => PlayMode::Duplicate,
+        "span" => PlayMode::Span,
+        _ => PlayMode::Separate,
+    };
+    Ok(PlayListSetting {
+        switch_interval_seconds: if interval <= 0 { SWITCH_NEVER } else { interval },
+        is_custom_interval: loose_bool(v.get("IsCustomInterval")),
+        play_order,
+        play_mode,
+        pause_when_fullscreen: loose_bool(v.get("IsPauseWhenFullScreen")),
+        pause_all_when_game_fullscreen: loose_bool(v.get("IsPauseAllWhenD3dFullScreen")),
+        default_volume: volume_of(v.get("DefaultVolume"), d.default_volume),
+        playlists: lists
+            .iter()
+            .map(|p| PlayList {
+                monitor: loose_str(p.get("MonitorId")),
+                wallpaper_ids: p
+                    .get("WallpaperIds")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().map(|x| loose_str(Some(x))).filter(|s| !s.is_empty()).collect())
+                    .unwrap_or_default(),
+                current_index: p.get("CurrentPlayIndex").and_then(Value::as_u64).unwrap_or(0) as usize,
+                mute: loose_bool(p.get("IsMute")),
+                volume: volume_of(p.get("MaxVolume"), 100),
+                stopped: loose_bool(p.get("IsStopped")),
+                selected: loose_bool(p.get("IsSelect")),
+            })
+            .collect(),
+    })
+}
+
+/// Разбор `PlayListSetting`: только очереди экранов.
+pub fn parse_playlists(text: &str) -> Result<Vec<PlayList>, String> {
+    parse_playlist_setting(text).map(|s| s.playlists)
+}
+
+/// Настройки показа учётной записи (`PlayListSetting`), если файл есть и
+/// читается. Только чтение: файлы Axon Rexon не правит.
+pub fn read_playlist_setting(account: &Path) -> Option<PlayListSetting> {
+    fs::read(account.join(PLAYLIST_FILE))
+        .ok()
+        .and_then(|b| parse_playlist_setting(&String::from_utf8_lossy(&b)).ok())
 }
 
 /// Описание скачанных обоев (`ResourceConfig.txt`).
@@ -560,6 +802,10 @@ pub struct AxonWallpaper {
     /// Состояние из библиотеки (`WallPaperStatus`: `Installed`, `Playing`…).
     pub status: String,
     pub description: String,
+    /// Теги (`AllTags`), как записаны: через запятую.
+    pub tags: String,
+    /// Сведения для фильтров, подробностей и свойств показа.
+    pub details: AxonDetails,
     /// Префикс Wine, из которого обои.
     pub prefix: PathBuf,
 }
@@ -695,16 +941,16 @@ fn build(
         downloaded,
         status: e.status,
         description: e.description,
+        tags: e.tags,
+        details: e.details,
         prefix: prefix.to_path_buf(),
     }
 }
 
 /// Что Axon показывает сейчас по плейлистам учётной записи.
 fn playing_ids(account: &Path) -> Vec<String> {
-    fs::read(account.join(PLAYLIST_FILE))
-        .ok()
-        .and_then(|b| parse_playlists(&String::from_utf8_lossy(&b)).ok())
-        .map(|lists| lists.iter().filter_map(|p| p.current().map(str::to_string)).collect())
+    read_playlist_setting(account)
+        .map(|s| s.playlists.iter().filter_map(|p| p.current().map(str::to_string)).collect())
         .unwrap_or_default()
 }
 
@@ -884,6 +1130,8 @@ fn merge(list: &mut Vec<AxonWallpaper>, w: AxonWallpaper) {
                     w.author = old.author.clone();
                     w.cover_url = old.cover_url.clone();
                     w.audible = old.audible;
+                    w.tags = old.tags.clone();
+                    w.details = old.details.clone();
                 }
                 list[i] = w;
             }
@@ -900,6 +1148,10 @@ pub struct AxonLibrary {
     pub source_dirs: Vec<PathBuf>,
     /// Найдена ли хоть одна библиотека или папка с обоями.
     pub found: bool,
+    /// Настройки показа (`PlayListSetting`) самой свежей учётной записи,
+    /// у которой они есть. Только для чтения: очередь, таймер и паузы Rexon
+    /// держит в своих настройках, а отсюда берёт начальные значения.
+    pub play_setting: Option<PlayListSetting>,
     /// Что не прочиталось (для журнала): файл и причина.
     pub problems: Vec<String>,
 }
@@ -924,6 +1176,9 @@ pub fn read_roots(roots: &[AxonRoot]) -> AxonLibrary {
     accounts.sort_by(|a, b| b.0.cmp(&a.0));
     let mut lib = AxonLibrary { found: !accounts.is_empty(), ..AxonLibrary::default() };
     for (_, r, acc) in accounts {
+        if lib.play_setting.is_none() {
+            lib.play_setting = read_playlist_setting(&acc);
+        }
         let store = store_dir(&r.prefix, &r.root, &acc);
         if store.is_dir() && !lib.source_dirs.contains(&store) {
             lib.source_dirs.push(store);

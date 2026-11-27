@@ -32,8 +32,8 @@ case "${REXON_BUNDLED_ENGINE:-0}" in
 esac
 # Нижние границы пакетов движка обоев (depends ниже); почему именно они —
 # блок «Движок обоев» после options.
-_ww_min=0.5.0
-_owe_min=0.3.2
+_ww_min=0.6.0
+_owe_min=0.3.3
 # Своё — Apache-2.0 (LICENSE + NOTICE), но в пакете едет и чужое: движок автоперевода
 # (fxtranslate, MPL-2.0) с вкомпилированными gemmology (MIT) и xsimd
 # (BSD-3-Clause), файлы модели Mozilla (MPL-2.0) и Plasma-плагин обоев
@@ -66,16 +66,23 @@ license=('Apache-2.0' 'MPL-2.0' 'MIT' 'BSD-3-Clause'
 if [[ $_bundled_engine == 1 ]]; then license+=('GPL-2.0-only'); fi
 depends=(
   glibc
-  gcc-libs
+  libgcc               # libgcc_s; gcc-libs в Arch — метапакет всех библиотек GCC
+  libstdc++            # (libgfortran, libasan…), а нужны только эти две
   bash                 # помощники polkit — bash-скрипты, и лаунчер /usr/bin/rexon
   qt6-base             # Core/Gui/Widgets/DBus/Network/WaylandClient
   qt6-declarative      # QML / QtQuick / Controls / Layouts
+  qt6-translations     # стандартные надписи самой Qt (меню правки полей, кнопки
+                       # диалогов) на языке Rexon; без него они английские
+  qt6-svg              # окно, снимки тем и хост обоев линкуются с libQt6Svg
+  qt6-imageformats     # плагин Qt для .webp: без него картинки расширений
+                       # с extensions.gnome.org (и прочие webp) не показываются
   qt6-webengine        # web-обои: rexon-wallpaper-host --mode web (dlopen + QML-импорт)
   qt6-multimedia       # звук scene-обоев: QML-импорт QtMultimedia
   qt6-websockets       # вкладка Wallpaper Engine (QtWebSockets)
   layer-shell-qt       # wlr-layer-shell BACKGROUND под Wayland
   vulkan-icd-loader    # Flash-обои: rexon-wallpaper-host --mode swf рисует через Vulkan (wgpu)
-  alsa-lib             # звук Flash-обоев: cpal ходит в libasound (PipeWire отдаёт его своим плагином)
+  alsa-lib             # звук Flash-обоев: cpal ходит в libasound (PipeWire отдаёт его своим плагином);
+                       # его же заголовки нужны сборке — в makedepends не дублируем
   mpv                  # rexon-splash-overlay линкуется с libmpv (заставка входа)
   wayland
   libglvnd             # EGL заставки входа
@@ -120,11 +127,18 @@ if [[ $_bundled_engine == 1 ]]; then
                          # через fusermount из PATH
     at-spi2-core         # плагин OWE: libcef.so веб-рендерера линкуется с
                          # libatk/libatspi (namcap: E: Dependency at-spi2-core)
+    # Остальные библиотеки, с которыми прямо слинкованы бинари плагина OWE
+    # (libcef.so, libGLESv2.so, рисовальщик сцен). На машине с графикой они
+    # и так стоят транзитом, но прямые зависимости пишем явно.
+    nss nspr libcups expat systemd-libs mesa
+    libx11 libxcb libxext libxfixes libxcomposite libxdamage libxrandr
+    libxkbcommon cairo pango
+    lz4 fontconfig freetype2 libva
   )
 else
   # Движок обоев — отдельными пакетами. Нижние границы — версии, под которые
   # сверены вендорный интерфейс и протокол (см. блок «Движок обоев» ниже):
-  # демон старше 0.5.0 не знает полей control.proto, которые шлёт ядро.
+  # демон старше 0.6.0 не знает полей control.proto, которые шлёт ядро.
   depends+=(
     "waywallen>=${_ww_min}"                 # демон /usr/bin/waywallen
     "open-wallpaper-engine>=${_owe_min}"    # scene- и web-обои Wallpaper Engine
@@ -142,7 +156,6 @@ makedepends=(git glib2 rust
              # подаётся переменной LITO.
              'lito>=0.8.7' clang lld llvm
              glslang vulkan-headers libpulse   # wavsen внутри QExtra
-             alsa-lib    # заголовки libasound для cpal (звук Flash-обоев)
              # Flash-обои: build.rs крейта ruffle_core собирает встроенные
              # классы ActionScript 3 (playerglobal) компилятором на Java и
              # без `java` в PATH падает: «Java could not be found on your
@@ -150,6 +163,9 @@ makedepends=(git glib2 rust
              java-runtime-headless
              gettext)    # msgfmt: po/*.po → .mo переводов интерфейса (build.rs
                          # rexon-gui); его же читает QML — отдельного .qm нет
+# Вшитому движку на сборке нужен patchelf: снять с рисовальщиков OWE
+# сборочный RUNPATH апстрима (_owe_fix_runpath).
+if [[ $_bundled_engine == 1 ]]; then makedepends+=(patchelf); fi
 checkdepends=(desktop-file-utils appstream)
 optdepends=(
   'yt-dlp: YouTube-обои (потоковое видео как обои)'
@@ -159,6 +175,10 @@ optdepends=(
   'vulkan-driver: Flash-обои (любой Vulkan-драйвер видеокарты: vulkan-radeon, vulkan-intel, nvidia-utils)'
   '7zip: запасная распаковка архивов курсоров .7z/.rar, которые не берёт bsdtar'
   'unrar: запасная распаковка RAR-архивов курсоров, которые не открыли bsdtar и 7zip'
+  'kwin: предпросмотр оформления окон KDE (QML-модуль org.kde.kwin.private.kdecoration)'
+  'libplasma: плагин обоев waywallen для рабочего стола Plasma (org.waywallen.kde)'
+  'kirigami: плагин обоев waywallen для рабочего стола Plasma (org.waywallen.kde)'
+  'plasma-workspace: плагин обоев waywallen для рабочего стола Plasma (org.waywallen.kde)'
 )
 provides=(rexon)
 conflicts=(rexon)
@@ -196,9 +216,9 @@ install=rexon-git.install
 #     вкладки; prepare() падает, если они разошлись. С демоном старше ядро
 #     говорило бы полями, которых тот не знает;
 #   * _owe_min — плагин, сверенный с демоном _ww_min: entry_version 4,
-#     spawn_version 10 (договор плагинов SUPPORTED_ENTRY_VERSIONS = [3, 4],
-#     SPAWN_VERSION = 10, мост — протокол 3; сверка по git diff тегов
-#     30.10.2026).
+#     spawn_version 10 (договор плагинов демона 0.6.0
+#     SUPPORTED_ENTRY_VERSIONS = [3..7], SPAWN_VERSION = 10, мост — протокол
+#     3; сверка по git diff тегов 08.11.2026).
 # Верхних границ нет намеренно: договор плагинов и control.proto у апстрима
 # растут добавлениями, а потолок в depends остановил бы обновление системы
 # целиком. Что демон новее проверенного — видно в Rexon: бейдж сверки
@@ -211,8 +231,8 @@ install=rexon-git.install
 # plasma-workspace, то есть Plasma целиком на любой рабочий стол, а Rexon
 # ставит плазмоид только на KDE и только человеку (kpackagetool6 в
 # ~/.local/share). Демон и плазмоид обновляются ТОЛЬКО вместе: 0.4.x —
-# протокол вывода v9; плазмоид 0.4.3 (waywallen-display, сверка 23.10.2026)
-# демону 0.5.0 подходит.
+# протокол вывода v9; плазмоид 0.4.5 (waywallen-display, сверка 08.11.2026)
+# демону 0.6.0 подходит.
 # ⚠️В базе демона миграции только вперёд: демон, хоть раз запущенный новее,
 # оставляет базу, на которой старший не стартует — откат движка только с
 # базой.
@@ -222,8 +242,12 @@ install=rexon-git.install
 # и сумма записаны ещё в data/kpackage/org.waywallen.kde/vendor.toml;
 # `vendor-check` краснеет, если они здесь и там разойдутся или сумма не
 # совпадёт с digest выпуска на GitHub.
-_wwd_ver=0.4.3
-_wwd_zip="waywallen-kde-${_wwd_ver}-x86_64-embed.zip"
+# ${CARCH} в именах файлов — всегда x86_64 (arch выше): так их зовут выпуски
+# апстрима.
+_wwd_ver=0.4.5
+# С 0.4.5 у архива нет суффикса «-embed» (waywallen-display 4bbbfcc), состав
+# тот же.
+_wwd_zip="waywallen-kde-${_wwd_ver}-${CARCH}.zip"
 
 # ── Вшитый движок (REXON_BUNDLED_ENGINE=1) ───────────────────────────
 # Рецепт прежней поставки (28.09–30.10.2026), оставлен вариантом: Steam,
@@ -238,12 +262,12 @@ _wwd_zip="waywallen-kde-${_wwd_ver}-x86_64-embed.zip"
 # ровно тот тег, с которого сняты протокол и вендорный интерфейс
 # (_ww_ver = proto/UPSTREAM_TAG, prepare() сверяет), плагин — не младше
 # _owe_min. Меняя одну из версий, сверять две другие.
-_ww_ver=0.5.0
-_ww_appimage="waywallen-${_ww_ver}-x86_64.AppImage"
-_owe_ver=0.3.2
-_owe_commit=dd07afa79d3e8c34daa61391cc641954d3d01fe0   # тег v0.3.2
+_ww_ver=0.6.0
+_ww_appimage="waywallen-${_ww_ver}-${CARCH}.AppImage"
+_owe_ver=0.3.3
+_owe_commit=f119c26860fa4607565994fb29c864eb0ee7cd15   # тег v0.3.3
 _owe_id=org.waywallen.open-wallpaper-engine
-_owe_zip="${_owe_id}-${_owe_ver}-linux-x86_64.zip"
+_owe_zip="${_owe_id}-${_owe_ver}-linux-${CARCH}.zip"
 
 # Полный исходник OWE (GPL-2.0-only §3(a)). Подмодулей git у тега нет, но
 # сборка тянет зависимости своим сборщиком lito: их список, ревизии и
@@ -255,10 +279,10 @@ _owe_zip="${_owe_id}-${_owe_ver}-linux-x86_64.zip"
 # git: имя|адрес|коммит|каталог набора lito
 _owe_git=(
   'glslang|https://github.com/KhronosGroup/glslang.git|275822a6261ee689aadb1da5f09a0ec2f058685c|c395e2aaa9cb8d8fb93b07b4c4d577edfa6e698ecff8b9495da8e176be545138'
-  'wavsen|https://github.com/hypengw/wavsen.git|756437443d84905a027f115c75ec6ae6b19692e7|ae428a7b7cbbfb5d3e52828e69bd383980b4062df55286ee89687319a05eccb9'
+  'wavsen|https://github.com/hypengw/wavsen.git|92f37f4748a17a36f946e64c8a4a0880cc9fbe23|9beefe95de501fe25f4f0444d8670e4517513f3ae849f44f4f204d0e3c1efdf9'
   'quickjs|https://github.com/quickjs-ng/quickjs.git|3c051980ab7e783dfbfb1c70c014ce5e05ecf24c|331b9bd81fcec183b71723ba4f8b3c47ed128fe90f9e2095beff407999fe4283'
-  'vectext|https://github.com/vecren/vectext.git|d918972da5c08b5afc73b812062e855fce2d847d|58b71a442d23e9c30c7ad7e559f8235bf4041fd325ca85c431b49aae79adea5a'
-  'vrento|https://github.com/vecren/vrento.git|5cc289e6511d86cf6207a4677b22da88a3592505|1e02a493890947348849132f7d6d9766059f7eeee5fac408f5a5aac8bc7c74b6'
+  'vectext|https://github.com/vecren/vectext.git|36fc965d8cb418f9dc17d31683dc268dabb52cb2|21970ad8a7f3b1c43ee2acdaf92336ce20163dc1ec66cfbb3bdaa7a05b1dff35'
+  'vrento|https://github.com/vecren/vrento.git|550e3c1f44ccafc064eb6b4b0b320764f5b65692|68c3fd2b4d56cd425913dceff8a8f550029ee9da8b5785a31db735bf2e436b62'
   'eigen|https://chromium.googlesource.com/external/gitlab.com/libeigen/eigen.git|bc3b39870ecb690a623a3f49149a358b95c5781d|b8200cc545ec10dd9086947f174b97b20d038960af0922e188a78f5b750992ef'
 )
 # реестр lito: имя|версия|sha256 архива (= checksum в lito.lock)
@@ -266,24 +290,24 @@ _owe_reg=(
   'licrypto|0.1.2|0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad'
   'liffto|0.1.0|d9bf4462318ff04aaf80401c7b02a7116907f1f4d22111ab5eb3d491d1bc94e4'
   'lito-spirv|0.1.0|feeeeb78f97962e7414f1f9170c8bcabd9396d3c77a416b3962d5a4225b3699d'
-  'liunicode|0.1.0|821677a163b1103e7d8cbed70dbaeb0690047a1e163f6b4f42567db425d26985'
-  'rstd-alloc|0.1.9|635337c8b61ea1831c0be6389b7a1b315fd0bf47286a65f327234eee9587cb72'
-  'rstd-argparse|0.1.9|c9b43c8e568c4a28583a003e48937d8abfc43d31c08d29efea8f5805c246142e'
-  'rstd-basic|0.1.9|b6b976bcc413983344c1e0e1ef7c2ba97afc98bf908bd8e286257e9471096626'
-  'rstd-bench|0.1.9|c1459b3264cf3123b1c300bf3e5385e3ae3d85fb57cce548e3429abf827712f9'
-  'rstd-core|0.1.9|6b25690ae436fe5eb3c85381ee6b97fbd387347bd308495495f5f7142d25beb6'
-  'rstd-cppstd|0.1.9|2e3fd42d5fb41a82f166b212ac61b31d3b53a63dfe22ddba4814c536c5a77ba5'
-  'rstd-dlopn|0.1.9|28d8d0db136fc1e6430d5dbb4e7ba3d60114da81d04e419fa36520257a61e84a'
-  'rstd-json|0.1.9|ddee37fc80bf73466ff19388c2efbfab0c8f80db9958a762e8b2b7a58204337e'
-  'rstd-log|0.1.9|111d55c706af6f34e4b951ccdd51c493d9afe6668b4cedb30b7ca83fca5ee783'
-  'rstd-nostd|0.1.9|f4d0d3105a9f83c9668a81720b4d16b1abd9c4c314e4ceb2b3f77ce59f43719e'
-  'rstd-parse|0.1.9|68fbf350d3dcde887d110bb2e43560d61a8abdfb29bb91ba251aed6da4f3a2c5'
-  'rstd-runtime|0.1.9|885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d'
-  'rstd-serde|0.1.9|2842a0ace60e0f906bf3938c54f0accc5fea5777c1001617044a2f95674710b8'
-  'rstd-std|0.1.9|6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2'
-  'rstd-test|0.1.9|1a8ec426208a2378c9e12c2ef90218470a7bd31ba974255c9cb53be2ba08e5e4'
+  'liunicode|0.1.1|6b99808201e17df098c037acdc01906052310a89c329e65a982bb57e2d6896f2'
+  'rstd-alloc|0.1.12|b41179c39527204741065253a7318c1c34579f193f3d8d873e81fdb78cea0772'
+  'rstd-argparse|0.1.12|bcd9c165594ee58467567a5cb51c1db7c9bb9d70fd65e5f050ccac14cbc2845e'
+  'rstd-basic|0.1.12|4fe023f3978806491db134408e08530743ee9edc07f3e480bcaca12411620408'
+  'rstd-bench|0.1.12|48456e3a461dbad14443bb1accc36adff72ddbe348c1c32d016de992120966ce'
+  'rstd-core|0.1.12|aa43e1f5747b0dc302ff551c71eba4b87d4d6af5333a2f4641b92f4911d32f25'
+  'rstd-cppstd|0.1.12|1be59bf54b9a5c77f924f2b88d50aadb9fe8645ebbf0740c479fddfe741621ec'
+  'rstd-dlopn|0.1.12|cf2b5aaeb16ca650b1d3bf99763bec3e6e9821fc00878d1a1266b6444d6b8c3c'
+  'rstd-json|0.1.12|94fd4287d63712e5a3cd982c9b97163331d5ce50207caa48e5d67006bf8b650c'
+  'rstd-log|0.1.12|9438ce3f70798b5d980e44fcc58315de1c55ba1be6870c7b1d0f6d8728890a20'
+  'rstd-nostd|0.1.12|5c36ff1aec0cd0957d204677733b3d9845d7a45733d9e76740ba8176c321642f'
+  'rstd-parse|0.1.12|ebcc6aecdd9312adc787049a8da781bea77e0e95533f40bcea1f85928277965d'
+  'rstd-runtime|0.1.12|148e45e0acad164ed992a9aa7a31cdd9a305a5efa006e5efdb2e6755fc19f419'
+  'rstd-serde|0.1.12|95da246e9def66be2b2b797cb9904adc4ae454d7d08ad23453f8485cfa4e0639'
+  'rstd-std|0.1.12|432a43c8a2660e2880b719f70f62025b9b6a1e12d081fc425e349f609e3ac2c4'
+  'rstd-test|0.1.12|3c58436bc379e06ed5ed178586455b05dbd243ee0d51f11f205acf65c5c3c599'
   'spirvto|0.1.0|331b447bb6ba8e08d5bdb58958dce5dd894f09d1b99d54276dc5403d44aac324'
-  'vvk|0.1.1|4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f'
+  'vvk|0.1.2|5342ef810782acabfd73f14469294faefa594fc0696fdacddd8de7978a2ef177'
 )
 # CEF (BSD-3-Clause) — готовая сборка Spotify, её libcef.so плагин везёт
 # бинарём. В бинарь веб-рендерера статически входит только обёртка
@@ -300,7 +324,7 @@ _cef_sha=6d43607675e47ed6bfa40d1cfce136d04e7720529f8f1c4435d4ba1dcd1839b2
 # data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN, и prepare()
 # ниже падает, если здешняя копия от него отстала (разъехавшись, они дают
 # самый неприятный класс дефектов: вендорный QML новый, библиотека старая).
-_qm_pin=f1464c52d42732acb1363122b9b1a2360fd505b3
+_qm_pin=bdb63fb3e61ae03923c484c58183cf17f68cbae4
 
 # QML-плагин QExtra (hypengw/QExtra, MIT OR Apache-2.0) — настоящие
 # QE.AnimatedImage и QE.ImageCache вкладки обоев. Собирается из исходников
@@ -312,26 +336,29 @@ _qm_pin=f1464c52d42732acb1363122b9b1a2360fd505b3
 # (.lito/source-bundle/v1/, раскладку называет сам `lito lock export`).
 # git: имя|адрес|коммит
 _qe_git=(
-  'QExtra|https://github.com/hypengw/QExtra.git|b3fd790bb4a5c5cf7c0cc0384cc140e78e627609'
-  'ncrequest|https://github.com/hypengw/ncrequest.git|2ba60ef6321f5e7f5bccc5fe086d2682bcaccf40'
-  'wavsen|https://github.com/hypengw/wavsen.git|756437443d84905a027f115c75ec6ae6b19692e7'
+  'QExtra|https://github.com/hypengw/QExtra.git|3fcb45c1722ca434d3abb89832f79d28756ab93f'
+  'wavsen|https://github.com/hypengw/wavsen.git|92f37f4748a17a36f946e64c8a4a0880cc9fbe23'
 )
 # реестр lito: имя|версия|sha256 архива (= checksum в lito.lock)
 _qe_reg=(
-  'licrypto|0.1.2|0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad'
-  'lihttpto|0.1.1|41caed3f900c29d3aa65dfc4bc21fad72bd09575768ce46af68b372c5eb32bef'
-  'lito-qt|0.1.1|dbc4671deb79a843fe48430adc463d4ff5132437949d6c86bf325de97a224409'
-  'liwebsocketo|0.1.0|4b3b5a8a52ecc129b4bc67ef95754d559caf06dce02f5f7380f53e6dcd7ff87b'
-  'rstd-alloc|0.1.9|635337c8b61ea1831c0be6389b7a1b315fd0bf47286a65f327234eee9587cb72'
-  'rstd-basic|0.1.9|b6b976bcc413983344c1e0e1ef7c2ba97afc98bf908bd8e286257e9471096626'
-  'rstd-core|0.1.9|6b25690ae436fe5eb3c85381ee6b97fbd387347bd308495495f5f7142d25beb6'
-  'rstd-cppstd|0.1.9|2e3fd42d5fb41a82f166b212ac61b31d3b53a63dfe22ddba4814c536c5a77ba5'
-  'rstd-dlopn|0.1.9|28d8d0db136fc1e6430d5dbb4e7ba3d60114da81d04e419fa36520257a61e84a'
-  'rstd-log|0.1.9|111d55c706af6f34e4b951ccdd51c493d9afe6668b4cedb30b7ca83fca5ee783'
-  'rstd-parse|0.1.9|68fbf350d3dcde887d110bb2e43560d61a8abdfb29bb91ba251aed6da4f3a2c5'
-  'rstd-runtime|0.1.9|885f4e4b263e217783e492039f76b3c391caae3526f967f69a1bd2c6bc11c57d'
-  'rstd-std|0.1.9|6063af22c908566661f87a9a3241bf0512c82f239eb476346e81763c4396eda2'
-  'vvk|0.1.1|4cd65b1ce61da6babdcf41b8137b355642bda5786a9b9f12e70aebe7a9b2d95f'
+  'licrypto|0.2.1|18cc0822951548c7cb2882365fbcefe975471d708c7ba4401db0ba1f8881087c'
+  'lifetchto|0.1.1|fed03f063355d912c80375b5ed1c636d8cb41035807cbedb440310b26f7505ca'
+  'lihttpto|0.1.3|7c6a208c1ccc8684ab85a39d4b745e192287fa2917a477495a536300bfef6544'
+  'lito-qt|0.1.2|098b4912c66360e40952cafb3a6a71dc5dbb2cecc34cf3885341782b17a34a9a'
+  'liwebsocketo|0.1.1|018d0cec18643570f0874adbe7f54fdac03f5e48412d69100564e3337b1d799e'
+  'ncrequest|0.2.1|97a861ed78aa675be3229aeca2d9ebb7ec2f606002a03479116d1d665f6d9c43'
+  'rstd-alloc|0.1.12|b41179c39527204741065253a7318c1c34579f193f3d8d873e81fdb78cea0772'
+  'rstd-basic|0.1.12|4fe023f3978806491db134408e08530743ee9edc07f3e480bcaca12411620408'
+  'rstd-core|0.1.12|aa43e1f5747b0dc302ff551c71eba4b87d4d6af5333a2f4641b92f4911d32f25'
+  'rstd-cppstd|0.1.12|1be59bf54b9a5c77f924f2b88d50aadb9fe8645ebbf0740c479fddfe741621ec'
+  'rstd-dlopn|0.1.12|cf2b5aaeb16ca650b1d3bf99763bec3e6e9821fc00878d1a1266b6444d6b8c3c'
+  'rstd-json|0.1.12|94fd4287d63712e5a3cd982c9b97163331d5ce50207caa48e5d67006bf8b650c'
+  'rstd-log|0.1.12|9438ce3f70798b5d980e44fcc58315de1c55ba1be6870c7b1d0f6d8728890a20'
+  'rstd-parse|0.1.12|ebcc6aecdd9312adc787049a8da781bea77e0e95533f40bcea1f85928277965d'
+  'rstd-runtime|0.1.12|148e45e0acad164ed992a9aa7a31cdd9a305a5efa006e5efdb2e6755fc19f419'
+  'rstd-serde|0.1.12|95da246e9def66be2b2b797cb9904adc4ae454d7d08ad23453f8485cfa4e0639'
+  'rstd-std|0.1.12|432a43c8a2660e2880b719f70f62025b9b6a1e12d081fc425e349f609e3ac2c4'
+  'vvk|0.1.2|5342ef810782acabfd73f14469294faefa594fc0696fdacddd8de7978a2ef177'
 )
 
 # Шрифты Material Symbols лежат в репозитории QmlMaterial указателями
@@ -410,7 +437,7 @@ sha256sums=('SKIP'
             '22663f2633246da809ba5e3b08161e774117135500c22664a17352c10eb1db34'
             '3c6e3ffd275c96a220ae28ddb55b8c2b86b44ffecc1eeb6c8195c1536de4ac74'
             '07ed9055319f2adc50a16bc7e636fe1547ab745eb986e40b6384956dc1fc6cfd'
-            'dd5bb9934e2c0fb0ead14960571cd3fb84b66dbde3266cef81e4ab7ea8e51edb') # плазмоид (= digest выпуска)
+            'dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41') # плазмоид (= digest выпуска)
 for _e in "${_qe_git[@]}"; do sha256sums+=('SKIP'); done    # прибиты коммитами
 for _e in "${_qe_reg[@]}"; do
   IFS='|' read -r _ _ _s <<<"$_e"
@@ -425,9 +452,9 @@ if [[ $_bundled_engine == 1 ]]; then
            "${_owe_zip}::https://github.com/waywallen/open-wallpaper-engine/releases/download/v${_owe_ver}/${_owe_zip}"
            "open-wallpaper-engine::git+https://github.com/waywallen/open-wallpaper-engine.git#commit=${_owe_commit}"
            "${_cef_archive}::${_cef_url}")
-  sha256sums+=('e6216c5fffc7056122b105e5745950c9ee77710e294a63b687c4b3871e190083'  # AppImage (= digest выпуска GitHub)
+  sha256sums+=('d17e19c671ab1962699eaadf34833dc75515a8bdc6fa74286498e0255ab351fd'  # AppImage (= digest выпуска GitHub)
                '2d1edaf74e77c63e166ed948c2fee17a50dd15f73d8e9db249117e5fde8bef24'  # MIT waywallen
-               '282c97fc67857420135c25faca95eae40ea6a50169adc2671b008622ef126ad0'  # плагин OWE (= digest выпуска)
+               '0944e6f5ebb0565555cee9756e78643ebf67845d962b9a1993fccef7a0cd30e3'  # плагин OWE (= digest выпуска)
                'SKIP'                                                              # git OWE — прибит коммитом
                "$_cef_sha")
   noextract+=("${_owe_zip}"          # распаковывает prepare(): в свой каталог
@@ -1048,9 +1075,15 @@ LAUNCHER
   # строку авторства. Перечень — NOTICE, раздел «QExtra».
   install -Dm644 "$srcdir/qextra-src-QExtra/LICENSE-MIT" \
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE.QExtra-MIT"
-  install -Dm644 "$srcdir/qextra-src-ncrequest/LICENSE.txt" \
-    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ncrequest-MIT"
   local _e _n _v
+  # ncrequest с QExtra 0.6.0 приходит пакетом реестра lito (архив
+  # lito-ncrequest-*.tar.zst), а не git-исходником qextra-src-ncrequest.
+  for _e in "${_qe_reg[@]}"; do
+    IFS='|' read -r _n _v _ <<<"$_e"
+    [[ "$_n" == ncrequest ]] || continue
+    bsdtar -xOf "$srcdir/lito-$_n-$_v.tar.zst" "$_n-$_v/LICENSE.txt" \
+      > "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ncrequest-MIT"
+  done
   for _e in "${_qe_reg[@]}"; do
     IFS='|' read -r _n _v _ <<<"$_e"
     [[ "$_n" == lihttpto ]] || continue
@@ -1136,6 +1169,7 @@ _package_bundled_engine() {
   install -d "$eng/plugins"
   cp -a --no-preserve=ownership "$srcdir/owe-plugin" "$eng/plugins/$_owe_id"
   chmod -R u+rwX,go+rX,go-w "$eng/plugins/$_owe_id"
+  _owe_fix_runpath "$eng/plugins/$_owe_id"
 
   # GPL-2.0-only §3(a): полный исходник рядом с бинарём + текст лицензии.
   install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}-src.tar.xz" \
@@ -1146,4 +1180,28 @@ _package_bundled_engine() {
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE.waywallen-MIT"
   install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}/third_party-cef/"*/LICENSE.txt \
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE.CEF-BSD-3-Clause"
+}
+
+# Рисовальщики OWE собраны в CI апстрима и помнят его сборочный RUNPATH
+# (/home/runner/work/…/conda-envs/owe-plugin/lib). У человека такого
+# каталога нет, а завести его может любой пользователь с именем runner —
+# и подложить свои библиотеки (namcap: E: Insecure RUNPATH). Оставляем
+# только записи от $ORIGIN: libcef.so веб-рендереру нужна из его же
+# каталога, а libwaywallen-bridge.so и ffmpeg обоим подаёт демон через
+# LD_LIBRARY_PATH своего образа. Демон и ядро (`we_client::plugin_manifest_copy`)
+# узнают плагин по версии из plugin.toml, а не по суммам файлов — правка
+# ELF сверке не мешает.
+_owe_fix_runpath() {
+  local f rp keep
+  while IFS= read -r -d '' f; do
+    [[ "$(head -c4 "$f" | od -An -c | tr -d ' ')" == '177ELF' ]] || continue
+    rp=$(patchelf --print-rpath "$f") || return 1
+    [[ -n $rp ]] || continue
+    keep=$(tr ':' '\n' <<<"$rp" | { grep -E '^\$ORIGIN(/|$)' || true; } | paste -sd: -)
+    if [[ -z $keep ]]; then
+      patchelf --remove-rpath "$f" || return 1
+    elif [[ $keep != "$rp" ]]; then
+      patchelf --set-rpath "$keep" "$f" || return 1
+    fi
+  done < <(find "$1" -type f -print0)
 }

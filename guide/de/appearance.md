@@ -1,4 +1,4 @@
-[English](../en/appearance.md) | [Русский](../ru/appearance.md) | Deutsch
+[English](../en/appearance.md) | [Русский](../ru/appearance.md) | Deutsch | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md)
 
 # Erscheinungsbild
 
@@ -182,7 +182,14 @@ Fensterrahmen hat jeder Desktop seine eigenen: in KDE **Fenster
 (Aurorae)**, in XFCE, MATE und LXQt (Openbox, labwc) **Fensterrahmen**. In
 Cinnamon zeichnet das GTK-Design die Rahmen.
 
-Direkt nach den Rahmen folgt der Bereich **Knöpfe der Titelleiste**:
+Die Knöpfe der Titelleiste stellen Sie gleich dort ein, im Bereich der
+Rahmen: mit dem Knopf **⚙️ Einstellungen** oben darin (wie der Reiter
+„Titelleistenknöpfe“ des KDE-Moduls „Fensterdekorationen“), zurück geht es
+mit **←  Zurück zum Katalog**. In Cinnamon ist das der Bereich
+**Cinnamon-Design**; auf Desktops ohne eigenen Rahmenbereich (GNOME,
+Budgie, Pantheon, COSMIC, Deepin, Kachel-Fenstermanager) der Bereich
+**GTK-Designs**: Dort zeichnet das GTK-Design oder das GTK-Programm selbst
+die Titelleiste. In den Einstellungen:
 
 - **Position der Knöpfe:** — „Rechts (wie in Windows)“ oder „Links (wie in
   macOS)“;
@@ -211,35 +218,43 @@ AUR.
 
 ### Symbole, Mauszeiger, Startrückmeldung
 
-- **Symbole** und **Mauszeiger** — Designs für Symbole und Zeiger. Im
+- **Symbole** und **Mauszeiger** — Designs für Symbole und Zeiger. Der Knopf
+  **⚙️ Einstellungen** oben im Bereich „Symbole“ öffnet an Ort und Stelle
+  Symbole in Menüs und auf Knöpfen und die Beschriftung der Werkzeugleisten
+  in Programmen („Nur Symbole“, „Nur Text“, „Text neben Symbolen“, „Text
+  unter Symbolen“); **←  Zurück zum Katalog** führt zu den Designs zurück. Im
   Bereich der Mauszeiger gibt es das Feld **Größe:** — die Zeigergröße in
   Pixeln. Rexon wendet sie in den Einstellungen des Desktops, in GTK- und
   Qt-Programmen und in der Konfiguration von sway, niri oder Hyprland an.
-- **Startrückmeldung** — wie Zeiger und Taskleiste zeigen, dass ein
+- **Startrückmeldung** (nur KDE) — der Knopf **⚙️ Einstellungen** oben im
+  Bereich „Mauszeiger“: wie Zeiger und Taskleiste zeigen, dass ein
   Programm startet: Zeiger „Keine“, „Unbewegt“, „Blinkend“ oder „Hüpfend“,
   Animation der Schaltfläche in der Taskleiste und nach welcher Zeit sie
-  endet.
-- **Symbole und Werkzeugleisten in Programmen** — Symbole in Menüs und auf
-  Knöpfen und die Beschriftung der Werkzeugleisten („Nur Symbole“, „Nur
-  Text“, „Text neben Symbolen“, „Text unter Symbolen“).
+  endet. Wo der Desktop diese Einstellung nicht hat, fehlt der Knopf.
 
 ### GTK-Designs
 
 Designs für GTK-Programme (Firefox, GIMP, die meisten Programme von GNOME,
 XFCE, MATE und Cinnamon). GNOME, Cinnamon, MATE und XFCE haben daneben
 eigene Bereiche: **GNOME-Shell-Design**, **Cinnamon-Design**, **LXQt-Design**
-und weitere.
+und weitere. Auf Desktops ohne Fensteranimationen öffnet der Knopf
+**⚙️ Einstellungen** oben im Bereich das Kästchen **Keine Animationen** —
+Animationen in Programmen.
 
 ### Schriftarten und Schriftverwaltung
 
-**Systemschriftarten** — die Schriften der Oberfläche, des Terminals,
-kleiner Beschriftungen, der Werkzeugleisten, Menüs und Fenstertitel. Klicken
+Der Bereich **Schriftarten** (mit dem Symbol 🔤 in der Gruppe „Für alle
+Programme“) enthält Schriften aus dem KDE Store. Der Knopf
+**⚙️ Einstellungen** oben darin öffnet an Ort und Stelle die
+Systemschriftarten: die Schriften der Oberfläche, des Terminals, kleiner
+Beschriftungen, der Werkzeugleisten, Menüs und Fenstertitel;
+**←  Zurück zum Katalog** führt zum Store zurück. Klicken
 Sie auf den Knopf einer Schrift, um Schriftfamilie und Größe zu wählen, oder
 auf **🔤 Alle Schriften ändern …**, um allen auf einmal dieselbe Schrift zu
 geben. Darunter stehen **Textglättung** (Kantenglättung,
 Subpixel-Darstellung, Hinting) und **Schrift-DPI erzwingen:**.
 
-![Der Bereich „Systemschriftarten“](../images/appearance-fonts.png)
+![Einstellungen des Bereichs „Schriftarten“](../images/appearance-fonts.png)
 
 **🗂️ Schriften verwalten …** öffnet die Liste aller Schriften auf dem
 Computer:
@@ -256,37 +271,48 @@ Computer:
 - eigene Schriftgruppen (**➕ Neue Gruppe …**), eine ganze Gruppe ein- oder
   ausschalten, eine Gruppe als ZIP-Archiv exportieren.
 
-Der Bereich **Schriftarten** (mit dem Symbol 🔤 in der Gruppe „Für alle
-Programme“) enthält Schriften aus dem KDE Store.
-
 ### Hintergrundbilder und Klänge
 
-- **HD-Hintergründe** — Bilder für die Arbeitsfläche aus dem Store.
+- **HD-Hintergründe** — Bilder für die Arbeitsfläche aus dem Store. Der
+  Knopf **⚙️ Einstellungen** oben im Bereich ist **🌫️ Hintergrund
+  weichzeichnen**: Er zeichnet einen Bild-Hintergrund weich, damit Symbole
+  und Fenster darauf besser lesbar sind; das Original bleibt erhalten.
 - **Hintergrund-Plugins** (nur KDE) — lebendige Plasma-Hintergründe.
 - **Klänge** — Klangthemen. Die Klänge eines Themas können Sie vor der
   Installation anhören (**🔊 Vor der Installation anhören**): Das Thema wird
   in einen temporären Ordner heruntergeladen, installiert wird nichts. Sind
   die Systemklänge ausgeschaltet, bietet Rexon an, sie **einzuschalten**.
+  Der Knopf **⚙️ Einstellungen** oben im Bereich enthält **🔔 Systemklänge**
+  (Klangdesign des Desktops, Systemklänge einschalten, Probehören) und
+  **🔊 Hintergrundgeräusche** (**➕ Datei hinzufügen …** spielt einen Klang in
+  Endlosschleife, Lautstärke, **⏹️ Alle stoppen**, Liste der laufenden
+  Klänge). Hintergrundgeräusche spielen weiter, wenn Sie den Bereich
+  verlassen.
 
 Bewegte Hintergründe finden Sie im Reiter Wallpaper Engine.
 
-### Animationen, Bildschirmeffekte, Arbeitsflächeneffekte
+### Animationen und Bildschirmeffekte
 
 Das sind die letzten Bereiche der Desktop-Gruppe.
 
 - **Animationen** — **Keine Animationen** oder
   **Animationsgeschwindigkeit:** von „Langsam“ bis „Schnell“, dazu die Wahl
   der Effekte: Öffnen und Schließen von Fenstern, Minimieren, Wechsel der
-  virtuellen Arbeitsflächen, Aufklappfenster und so weiter.
+  virtuellen Arbeitsflächen, Aufklappfenster und so weiter. Wo der
+  Fenstermanager keine Fensteranimationen hat (MATE, Xfce, LXQt, Deepin,
+  sway und andere Kachel-Fenstermanager außer Hyprland und niri), gibt es
+  den Bereich nicht: das Kästchen **Keine Animationen** für Programme ist
+  der Knopf **⚙️ Einstellungen** im Bereich „GTK-Designs“.
 - **Bildschirmeffekte** — der Bildschirm wie ein alter Röhrenmonitor, eine
   abgenutzte Videokassette oder ein Filmstreifen: „Bildzeilen“,
   „Röhrenbildschirm“, „Grüner Monitor“, „Bernsteinfarbener Monitor“,
   „Videokassette“, „Analoges Fernsehen“, „Filmstreifen“, „Schwarzweiß“.
   Schieberegler **Stärke:** und **Bewegungstempo:**. Wie der Bereich auf
   Ihrem Desktop funktioniert und was er dafür braucht, steht oben (Zeile
-  „Benötigt: …“).
-- **Arbeitsflächeneffekte** (nur KDE) — Effekte des Fenstermanagers KWin,
-  mit Suche und einem Knopf „Einrichten …“ bei jedem Effekt.
+  „Benötigt: …“). Wo sich die Effekte gar nicht einschalten lassen (sway,
+  river, labwc, niri, Budgie, Deepin), gibt es den Bereich nicht; in MATE,
+  Xfce und LXQt fehlt er in einer Wayland-Sitzung — dort gehen die Effekte
+  nur unter X11.
 
 ![Der Bereich „Bildschirmeffekte“ in MATE](../images/appearance-screeneffects.png)
 
@@ -323,7 +349,10 @@ warum.
 ### Bereiche einzelner Desktops
 
 - KDE: **Plasma-Stile**, **Fensterwechsler (Alt+Tab)**, **KWin-Skripte**,
-  **KWin-Effekte**.
+  **KWin-Effekte** — neue Effekte aus dem KDE Store; der Knopf
+  **⚙️ Einstellungen** oben im Bereich schaltet die Effekte ein, die KWin
+  schon hat (Wunderlampe, Transparenz, Unschärfe und andere), und richtet
+  sie ein — mit Suche und einem Knopf „Einrichten …“ bei jedem Effekt.
 - GNOME: **GNOME-Shell-Design**, **GNOME-Erweiterungen**.
 - MATE: **Leisten-Layout** — fertige Leisten-Anordnungen mit einem Klick.
 

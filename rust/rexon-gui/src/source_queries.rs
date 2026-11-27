@@ -1,5 +1,6 @@
 // Источники и библиотеки обоев: список source-плагинов, добавление,
-// переименование (waywallen 0.5.0) и удаление библиотеки, автоопределение.
+// правка (waywallen 0.6.0: имя и настройки; в 0.5.0 — только
+// переименование) и удаление библиотеки, автоопределение.
 //
 // Эталон — waywallen `ui/src/query/{source,library}_query.cpp`
 // @e5626c1 (вендорный коммит v0.2.6+9), а не наш Python-мост. Порт чинит два
@@ -53,10 +54,15 @@ pub mod qobject {
         #[qproperty(QString, name, READ = name, WRITE = set_name, NOTIFY = name_changed)]
         #[qproperty(QString, plugin_name, cxx_name = "pluginName", READ = plugin_name,
                     WRITE = set_plugin_name, NOTIFY = plugin_name_changed)]
+        /// waywallen 0.6.0: значения настроек новой библиотеки
+        /// (`librarySettings` плагина, `LibrarySettingsFields`) — карта.
+        #[qproperty(QVariant, settings, READ = settings, WRITE = set_settings,
+                    NOTIFY = settings_changed)]
         type LibraryAddQuery = super::LibraryAddQueryRust;
 
-        /// waywallen 0.5.0: переименовать библиотеку (диалог «Rename library»
-        /// SourceManagePage). Номер — `f64` по той же причине, что у
+        /// waywallen 0.6.0: правка библиотеки — имя и настройки
+        /// (`EditLibraryPage`; в 0.5.0 это был `LibraryRenameQuery` диалога
+        /// «Rename library»). Номер — `f64` по той же причине, что у
         /// `LibraryRemoveQuery` ниже.
         #[qobject]
         #[qml_element]
@@ -68,7 +74,9 @@ pub mod qobject {
         #[qproperty(f64, library_id, cxx_name = "libraryId", READ = library_id,
                     WRITE = set_library_id, NOTIFY = library_id_changed)]
         #[qproperty(QString, name, READ = name, WRITE = set_name, NOTIFY = name_changed)]
-        type LibraryRenameQuery = super::LibraryRenameQueryRust;
+        #[qproperty(QVariant, settings, READ = settings, WRITE = set_settings,
+                    NOTIFY = settings_changed)]
+        type LibraryEditQuery = super::LibraryEditQueryRust;
 
         #[qobject]
         #[qml_element]
@@ -151,27 +159,27 @@ pub mod qobject {
 
         #[qsignal]
         #[cxx_name = "statusChanged"]
-        fn status_changed(self: Pin<&mut LibraryRenameQuery>, status: i32);
+        fn status_changed(self: Pin<&mut LibraryEditQuery>, status: i32);
         #[qsignal]
         #[cxx_name = "queryingChanged"]
-        fn querying_changed(self: Pin<&mut LibraryRenameQuery>);
+        fn querying_changed(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
         #[cxx_name = "errorChanged"]
-        fn error_changed(self: Pin<&mut LibraryRenameQuery>);
+        fn error_changed(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
         #[cxx_name = "forwardErrorChanged"]
-        fn forward_error_changed(self: Pin<&mut LibraryRenameQuery>);
+        fn forward_error_changed(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
-        fn finished(self: Pin<&mut LibraryRenameQuery>);
+        fn finished(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
         #[cxx_name = "errorOccurred"]
-        fn error_occurred(self: Pin<&mut LibraryRenameQuery>, error: QString);
+        fn error_occurred(self: Pin<&mut LibraryEditQuery>, error: QString);
         #[qsignal]
         #[cxx_name = "appErrorOccurred"]
-        fn app_error_occurred(self: Pin<&mut LibraryRenameQuery>, error: QString);
+        fn app_error_occurred(self: Pin<&mut LibraryEditQuery>, error: QString);
         #[qsignal]
         #[cxx_name = "sendRequest"]
-        fn send_request(self: Pin<&mut LibraryRenameQuery>, token: i64, field: QString,
+        fn send_request(self: Pin<&mut LibraryEditQuery>, token: i64, field: QString,
                         request: QByteArray);
 
         #[qsignal]
@@ -237,11 +245,17 @@ pub mod qobject {
         #[cxx_name = "pluginNameChanged"]
         fn plugin_name_changed(self: Pin<&mut LibraryAddQuery>);
         #[qsignal]
+        #[cxx_name = "settingsChanged"]
+        fn settings_changed(self: Pin<&mut LibraryAddQuery>);
+        #[qsignal]
+        #[cxx_name = "settingsChanged"]
+        fn settings_changed(self: Pin<&mut LibraryEditQuery>);
+        #[qsignal]
         #[cxx_name = "libraryIdChanged"]
-        fn library_id_changed(self: Pin<&mut LibraryRenameQuery>);
+        fn library_id_changed(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
         #[cxx_name = "nameChanged"]
-        fn name_changed(self: Pin<&mut LibraryRenameQuery>);
+        fn name_changed(self: Pin<&mut LibraryEditQuery>);
         #[qsignal]
         #[cxx_name = "libraryIdChanged"]
         fn library_id_changed(self: Pin<&mut LibraryRemoveQuery>);
@@ -267,13 +281,13 @@ pub mod qobject {
         #[cxx_name = "setForwardError"]
         fn set_forward_error(self: Pin<&mut LibraryAddQuery>, value: bool);
 
-        fn status(self: &LibraryRenameQuery) -> i32;
-        fn error(self: &LibraryRenameQuery) -> QString;
-        fn querying(self: &LibraryRenameQuery) -> bool;
+        fn status(self: &LibraryEditQuery) -> i32;
+        fn error(self: &LibraryEditQuery) -> QString;
+        fn querying(self: &LibraryEditQuery) -> bool;
         #[cxx_name = "forwardError"]
-        fn forward_error(self: &LibraryRenameQuery) -> bool;
+        fn forward_error(self: &LibraryEditQuery) -> bool;
         #[cxx_name = "setForwardError"]
-        fn set_forward_error(self: Pin<&mut LibraryRenameQuery>, value: bool);
+        fn set_forward_error(self: Pin<&mut LibraryEditQuery>, value: bool);
 
         fn status(self: &LibraryRemoveQuery) -> i32;
         fn error(self: &LibraryRemoveQuery) -> QString;
@@ -302,17 +316,23 @@ pub mod qobject {
         fn plugin_name(self: &LibraryAddQuery) -> QString;
         #[cxx_name = "setPluginName"]
         fn set_plugin_name(self: Pin<&mut LibraryAddQuery>, value: QString);
+        fn settings(self: &LibraryAddQuery) -> QVariant;
+        #[cxx_name = "setSettings"]
+        fn set_settings(self: Pin<&mut LibraryAddQuery>, value: QVariant);
+        fn settings(self: &LibraryEditQuery) -> QVariant;
+        #[cxx_name = "setSettings"]
+        fn set_settings(self: Pin<&mut LibraryEditQuery>, value: QVariant);
         #[cxx_name = "libraryId"]
         fn library_id(self: &LibraryRemoveQuery) -> f64;
         #[cxx_name = "setLibraryId"]
         fn set_library_id(self: Pin<&mut LibraryRemoveQuery>, value: f64);
         #[cxx_name = "libraryId"]
-        fn library_id(self: &LibraryRenameQuery) -> f64;
+        fn library_id(self: &LibraryEditQuery) -> f64;
         #[cxx_name = "setLibraryId"]
-        fn set_library_id(self: Pin<&mut LibraryRenameQuery>, value: f64);
-        fn name(self: &LibraryRenameQuery) -> QString;
+        fn set_library_id(self: Pin<&mut LibraryEditQuery>, value: f64);
+        fn name(self: &LibraryEditQuery) -> QString;
         #[cxx_name = "setName"]
-        fn set_name(self: Pin<&mut LibraryRenameQuery>, value: QString);
+        fn set_name(self: Pin<&mut LibraryEditQuery>, value: QString);
         #[cxx_name = "addedCount"]
         fn added_count(self: &LibraryAutoDetectQuery) -> i32;
     }
@@ -331,10 +351,10 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut LibraryAddQuery>, token: i64, frame: &QByteArray);
 
         #[qinvokable]
-        fn reload(self: Pin<&mut LibraryRenameQuery>);
+        fn reload(self: Pin<&mut LibraryEditQuery>);
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
-        fn deliver_response(self: Pin<&mut LibraryRenameQuery>, token: i64, frame: &QByteArray);
+        fn deliver_response(self: Pin<&mut LibraryEditQuery>, token: i64, frame: &QByteArray);
 
         #[qinvokable]
         fn reload(self: Pin<&mut LibraryRemoveQuery>);
@@ -364,7 +384,7 @@ use rexon_core::we_query::{QuerySignal, QueryState};
 
 use crate::impl_query_base;
 use crate::query_base::decode_failed;
-use crate::qvalue::json_to_variant;
+use crate::qvalue::{json_to_variant, variant_to_json};
 
 /// Разослать сигналы «кадр не разобрался» — одинаково у всех пяти.
 macro_rules! on_decode_error {
@@ -436,6 +456,8 @@ pub struct LibraryAddQueryRust {
     path: String,
     name: String,
     plugin_name: String,
+    /// Карта настроек библиотеки, как её выставила страница (JSON).
+    settings: Value,
     pending: std::collections::BTreeSet<i64>,
 }
 
@@ -481,13 +503,29 @@ impl qobject::LibraryAddQuery {
         self.plugin_name_changed();
     }
 
+    pub fn settings(&self) -> QVariant {
+        json_to_variant(&self.settings)
+    }
+
+    pub fn set_settings(mut self: Pin<&mut Self>, value: QVariant) {
+        let next = variant_to_json(&value);
+        if self.settings == next {
+            return;
+        }
+        self.as_mut().rust_mut().settings = next;
+        self.settings_changed();
+    }
+
     /// Оригинал молча выходит, если не заданы ОБА поля. Имя (0.5.0)
-    /// обрезается, пустое не шлётся — решение в ядре
-    /// (`we_client::library_add_request`).
+    /// обрезается, пустое не шлётся; настройки (0.6.0) — строками
+    /// (`QVariant::toString`). Решение в ядре (`we_client::library_add_request`).
     pub fn reload(mut self: Pin<&mut Self>) {
-        let Some(request) =
-            we_client::library_add_request(&self.path, &self.plugin_name, &self.name)
-        else {
+        let Some(request) = we_client::library_add_request(
+            &self.path,
+            &self.plugin_name,
+            &self.name,
+            we_client::library_settings(&self.settings),
+        ) else {
             return;
         };
         let payload = request.encode_to_vec();
@@ -522,20 +560,21 @@ impl qobject::LibraryAddQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LibraryRenameQuery — новое имя библиотеки (waywallen 0.5.0)
+// LibraryEditQuery — имя и настройки библиотеки (waywallen 0.6.0)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
-pub struct LibraryRenameQueryRust {
+pub struct LibraryEditQueryRust {
     base: QueryState,
     library_id: i64,
     name: String,
+    settings: Value,
     pending: std::collections::BTreeSet<i64>,
 }
 
-impl_query_base!(LibraryRenameQuery);
+impl_query_base!(LibraryEditQuery);
 
-impl qobject::LibraryRenameQuery {
+impl qobject::LibraryEditQuery {
     pub fn library_id(&self) -> f64 {
         crate::qvalue::i64_to_qml(self.library_id)
     }
@@ -562,15 +601,31 @@ impl qobject::LibraryRenameQuery {
         self.name_changed();
     }
 
+    pub fn settings(&self) -> QVariant {
+        json_to_variant(&self.settings)
+    }
+
+    pub fn set_settings(mut self: Pin<&mut Self>, value: QVariant) {
+        let next = variant_to_json(&value);
+        if self.settings == next {
+            return;
+        }
+        self.as_mut().rust_mut().settings = next;
+        self.settings_changed();
+    }
+
     /// Номер не положительный или имя пусто после среза пробелов — оригинал
-    /// молча выходит, статус не трогается (`we_client::library_rename_request`).
+    /// молча выходит, статус не трогается (`we_client::library_edit_request`).
     pub fn reload(mut self: Pin<&mut Self>) {
-        let Some(request) = we_client::library_rename_request(self.library_id, &self.name)
-        else {
+        let Some(request) = we_client::library_edit_request(
+            self.library_id,
+            &self.name,
+            we_client::library_settings(&self.settings),
+        ) else {
             return;
         };
         let payload = request.encode_to_vec();
-        if let Some(token) = self.as_mut().send_frame("library_rename", payload) {
+        if let Some(token) = self.as_mut().send_frame("library_edit", payload) {
             self.rust_mut().pending.insert(token);
         }
     }

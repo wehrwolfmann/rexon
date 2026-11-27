@@ -343,7 +343,7 @@ pub const ROLE_BASE: i32 = 256 + 1;
 /// наша роль `authorAvatar` для Мастерской, номер тот же), `authorUrl` —
 /// НАША ПРАВКА (паритет с Wallpaper Engine: переход к остальным работам
 /// автора).
-pub const ROLE_NAMES: [&str; 9] = [
+pub const ROLE_NAMES: [&str; 16] = [
     "itemId",
     "sourceId",
     "title",
@@ -353,7 +353,34 @@ pub const ROLE_NAMES: [&str; 9] = [
     "acquisitionState",
     "authorAvatarUrl",
     "authorUrl",
+    // waywallen 0.6.0 (`remote_model.cppm`): размер самого ресурса (не
+    // обрезанного превью; 0 — источник не знает) и ход скачивания.
+    "width",
+    "height",
+    "downloadTransferActive",
+    "downloadReceivedBytes",
+    "downloadTotalBytes",
+    // waywallen 0.6.0 (`GridListModel`): ключ строки и строка целиком —
+    // их читает `MD.ItemModelSource` сетки (`keyRole: "itemKey"`, роль
+    // `item`). Ключ — «источник␀предмет», как `remoteKey` оригинала.
+    "itemKey",
+    "item",
 ];
+
+/// Сколько ролей знает голден Discover (снят до 0.6.0). Строка в JSON-виде
+/// эталона ([`RemoteRow::to_json`]) — ровно эти роли; новые роли едут в
+/// QML, но в сверку с прежним эталоном не входят.
+pub const GOLDEN_ROLES: usize = 9;
+
+/// Ключ строки выдачи — `remoteKey` оригинала: один предмет может лежать в
+/// выдаче двух источников, поэтому в ключе оба идентификатора.
+pub fn remote_key(source_id: &str, item_id: &str) -> String {
+    let mut key = String::with_capacity(source_id.len() + item_id.len() + 1);
+    key.push_str(source_id);
+    key.push('\0');
+    key.push_str(item_id);
+    key
+}
 
 /// Строка выдачи Discover. Ровно девять полей — столько же кладёт
 /// `_row_from_item` (bridge.py:708) и ветка Мастерской.
@@ -378,6 +405,19 @@ pub struct RemoteRow {
     pub author_avatar_url: String,
     #[serde(default)]
     pub author_url: String,
+    /// waywallen 0.6.0: размер ресурса; 0 — неизвестен.
+    #[serde(default)]
+    pub width: u32,
+    #[serde(default)]
+    pub height: u32,
+    /// waywallen 0.6.0: идёт передача файла (`RemoteDownloadProgress.transfer`).
+    #[serde(default)]
+    pub download_transfer_active: bool,
+    #[serde(default)]
+    pub download_received_bytes: u64,
+    /// 0 — источник не сообщил полный размер.
+    #[serde(default)]
+    pub download_total_bytes: u64,
 }
 
 impl RemoteRow {
@@ -393,29 +433,90 @@ impl RemoteRow {
             "acquisitionState" => RoleValue::Number(self.acquisition_state),
             "authorAvatarUrl" => RoleValue::Text(&self.author_avatar_url),
             "authorUrl" => RoleValue::Text(&self.author_url),
+            "width" => RoleValue::Unsigned(u64::from(self.width)),
+            "height" => RoleValue::Unsigned(u64::from(self.height)),
+            "downloadTransferActive" => RoleValue::Flag(self.download_transfer_active),
+            "downloadReceivedBytes" => RoleValue::Unsigned(self.download_received_bytes),
+            "downloadTotalBytes" => RoleValue::Unsigned(self.download_total_bytes),
+            "itemKey" => RoleValue::Key,
+            "item" => RoleValue::Whole,
             _ => return None,
         })
     }
 
-    /// Строка как JSON-объект — им сверяются get()/item() с голденом.
+    /// Ключ строки (роль `itemKey`).
+    pub fn key(&self) -> String {
+        remote_key(&self.source_id, &self.item_id)
+    }
+
+    /// Строка как JSON-объект в форме голдена: только первые
+    /// [`GOLDEN_ROLES`] ролей (эталон снят до waywallen 0.6.0).
     pub fn to_json(&self) -> Value {
         let mut map = Map::new();
-        for (slot, name) in ROLE_NAMES.iter().enumerate() {
+        for (slot, name) in ROLE_NAMES.iter().enumerate().take(GOLDEN_ROLES) {
             let value = match self.role_slot(slot) {
                 Some(RoleValue::Text(text)) => Value::String(text.to_string()),
                 Some(RoleValue::Number(number)) => Value::from(number),
-                None => Value::Null,
+                _ => Value::Null,
             };
             map.insert((*name).to_string(), value);
         }
         Value::Object(map)
     }
+
+    /// Значение роли для QML. `item` — вся строка картой (без `item` и
+    /// `itemKey` внутри), как гаджет `RemoteRow` у оригинала.
+    fn role_variant(&self, slot: usize) -> QVariant {
+        match self.role_slot(slot) {
+            Some(RoleValue::Text(text)) => QVariant::from(&QString::from(text)),
+            Some(RoleValue::Number(number)) => QVariant::from(&number),
+            // 64-битное целое в QML не выпускаем (`qvalue::u64_to_qml`):
+            // байты и размеры далеки от 2^53.
+            Some(RoleValue::Unsigned(number)) => {
+                QVariant::from(&crate::qvalue::u64_to_qml(number))
+            }
+            Some(RoleValue::Flag(flag)) => QVariant::from(&flag),
+            Some(RoleValue::Key) => QVariant::from(&QString::from(&self.key())),
+            Some(RoleValue::Whole) => {
+                let mut map = QMap::<QMapPair_QString_QVariant>::default();
+                for (slot, name) in ROLE_NAMES.iter().enumerate() {
+                    if matches!(*name, "item" | "itemKey") {
+                        continue;
+                    }
+                    map.insert(QString::from(*name), self.role_variant(slot));
+                }
+                QVariant::from(&map)
+            }
+            None => QVariant::default(),
+        }
+    }
+
+    /// Ход скачивания из склада (см. [`acquisition::Transfer`]).
+    fn set_transfer(&mut self, transfer: acquisition::Transfer) {
+        self.download_transfer_active = transfer.active;
+        self.download_received_bytes = transfer.received;
+        self.download_total_bytes = transfer.total;
+    }
+
+    fn transfer(&self) -> acquisition::Transfer {
+        acquisition::Transfer {
+            active: self.download_transfer_active,
+            received: self.download_received_bytes,
+            total: self.download_total_bytes,
+        }
+    }
 }
 
-/// Тип значения роли: строк восемь, число одно.
+/// Тип значения роли.
 enum RoleValue<'a> {
     Text(&'a str),
     Number(i32),
+    Unsigned(u64),
+    Flag(bool),
+    /// `itemKey`.
+    Key,
+    /// `item` — строка целиком.
+    Whole,
 }
 
 /// Наблюдаемое событие модели. Порядок этих событий — такая же часть
@@ -558,22 +659,52 @@ impl RemoteRows {
         item_id: &str,
         state: i32,
     ) -> Vec<ModelEvent> {
+        self.set_acquisition(source_id, item_id, state, acquisition::Transfer::default())
+    }
+
+    /// Состояние приобретения вместе с ходом передачи (waywallen 0.6.0,
+    /// `setRemoteAcquisitionState` с байтами). На каждую сменившуюся роль —
+    /// свой `dataChanged` с одной ролью.
+    pub fn set_acquisition(
+        &mut self,
+        source_id: &str,
+        item_id: &str,
+        state: i32,
+        transfer: acquisition::Transfer,
+    ) -> Vec<ModelEvent> {
         let mut events = Vec::new();
         for (row, entry) in self.rows.iter_mut().enumerate() {
             if entry.source_id != source_id || entry.item_id != item_id {
                 continue;
             }
-            if entry.acquisition_state == state {
-                // То же значение — сигнала нет: иначе каждая проверка
-                // подписки перерисовывала бы карточку впустую.
+            // То же значение — сигнала нет: иначе каждая проверка
+            // подписки перерисовывала бы карточку впустую.
+            let before = entry.transfer();
+            if entry.acquisition_state != state {
+                entry.acquisition_state = state;
+                events.push(ModelEvent::DataChanged {
+                    first: row,
+                    last: row,
+                    role: ROLE_NAMES[ROLE_ACQUISITION_STATE],
+                });
+            }
+            if before == transfer {
                 continue;
             }
-            entry.acquisition_state = state;
-            events.push(ModelEvent::DataChanged {
-                first: row,
-                last: row,
-                role: ROLE_NAMES[ROLE_ACQUISITION_STATE],
-            });
+            entry.set_transfer(transfer);
+            for (slot, changed) in [
+                (ROLE_TRANSFER_ACTIVE, before.active != transfer.active),
+                (ROLE_TRANSFER_RECEIVED, before.received != transfer.received),
+                (ROLE_TRANSFER_TOTAL, before.total != transfer.total),
+            ] {
+                if changed {
+                    events.push(ModelEvent::DataChanged {
+                        first: row,
+                        last: row,
+                        role: ROLE_NAMES[slot],
+                    });
+                }
+            }
         }
         events
     }
@@ -636,6 +767,9 @@ impl RemoteRows {
 const ROLE_AUTHOR: usize = 4;
 const ROLE_ACQUISITION_STATE: usize = 6;
 const ROLE_AUTHOR_AVATAR: usize = 7;
+const ROLE_TRANSFER_ACTIVE: usize = 11;
+const ROLE_TRANSFER_RECEIVED: usize = 12;
+const ROLE_TRANSFER_TOTAL: usize = 13;
 
 /// Разобрать страницу выдачи из JSON-массива. Битый JSON даёт пустую
 /// страницу — молча, как и разбор оверрайдов в редакторе свойств: ошибка
@@ -664,7 +798,17 @@ pub fn parse_rows(json: &str) -> Vec<RemoteRow> {
 /// к освобождённой памяти. Запись из реестра снимается либо в Drop
 /// Rust-половины, либо при первой же неудачной рассылке.
 pub mod acquisition {
+    use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
+
+    /// Ход передачи файла (waywallen 0.6.0, `RemoteDownloadTransfer`):
+    /// идёт ли она, сколько байт пришло и сколько всего (0 — неизвестно).
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub struct Transfer {
+        pub active: bool,
+        pub received: u64,
+        pub total: u64,
+    }
 
     /// Доставка состояния ОДНОМУ получателю. `Err(())` — объект умер,
     /// запись пора снять.
@@ -674,12 +818,16 @@ pub mod acquisition {
     /// (`RemoteStoreItem`, панель деталей Discover) — у апстрима это ОДНО
     /// хранилище на обоих. Обобщить `CxxQtThread` по типу нельзя: cxx-qt
     /// печатает свой алиас на каждый QObject.
-    pub type Deliver = Box<dyn Fn(&str, &str, i32) -> Result<(), ()> + Send>;
+    pub type Deliver = Box<dyn Fn(&str, &str, i32, Transfer) -> Result<(), ()> + Send>;
 
     #[derive(Default)]
     struct Registry {
         next_id: u64,
         entries: Vec<(u64, Deliver)>,
+        /// Последнее разосланное состояние предмета, пока он «в пути»
+        /// (1 — ждёт, 2 — качается). По нему новая выдача не затирает
+        /// идущее скачивание (`mergeRemoteRow` оригинала).
+        in_flight: HashMap<(String, String), (i32, Transfer)>,
     }
 
     fn registry() -> &'static Mutex<Registry> {
@@ -718,13 +866,24 @@ pub mod acquisition {
     ///
     /// Пустые идентификаторы склад отбрасывает — так же, как оригинал.
     pub fn set(source_id: &str, item_id: &str, state: i32) -> usize {
+        set_progress(source_id, item_id, state, Transfer::default())
+    }
+
+    /// То же, что [`set`], вместе с ходом передачи.
+    pub fn set_progress(source_id: &str, item_id: &str, state: i32, transfer: Transfer) -> usize {
         if source_id.is_empty() || item_id.is_empty() {
             return 0;
         }
         let mut delivered = 0usize;
         let mut reg = registry().lock().expect("реестр склада не отравлен");
+        let key = (source_id.to_string(), item_id.to_string());
+        if state == 1 || state == 2 {
+            reg.in_flight.insert(key, (state, transfer));
+        } else {
+            reg.in_flight.remove(&key);
+        }
         // retain, а не итерация: запись мёртвого получателя снимается здесь.
-        reg.entries.retain(|(_, deliver)| match deliver(source_id, item_id, state) {
+        reg.entries.retain(|(_, deliver)| match deliver(source_id, item_id, state, transfer) {
             Ok(()) => {
                 delivered += 1;
                 true
@@ -732,6 +891,28 @@ pub mod acquisition {
             Err(()) => false,
         });
         delivered
+    }
+
+    /// Забыть, что качается (стенду: каждый сценарий начинается с чистого
+    /// склада — иначе незавершённое скачивание прошлого сценария
+    /// подмешивалось бы в выдачу следующего).
+    pub fn forget_in_flight() {
+        registry().lock().expect("реестр склада не отравлен").in_flight.clear();
+    }
+
+    /// `mergeRemoteRow` оригинала: пока предмет качается, свежая выдача
+    /// (где он ещё «не скачан») не сбрасывает показанный ход скачивания.
+    pub fn merge(row: &mut super::RemoteRow) {
+        if row.acquisition_state == 3 {
+            return;
+        }
+        let reg = registry().lock().expect("реестр склада не отравлен");
+        if let Some((state, transfer)) =
+            reg.in_flight.get(&(row.source_id.clone(), row.item_id.clone()))
+        {
+            row.acquisition_state = *state;
+            row.set_transfer(*transfer);
+        }
     }
 }
 
@@ -773,11 +954,13 @@ impl cxx_qt::Initialize for qobject::RemoteListModel {
         let handle = self.as_ref().get_ref().qt_thread();
         // Ни unwrap(), ни предварительного is_destroyed(): между проверкой
         // и постановкой объект успевает умереть.
-        let id = acquisition::register(Box::new(move |source_id, item_id, state| {
+        let id = acquisition::register(Box::new(move |source_id, item_id, state, transfer| {
             let source = source_id.to_string();
             let item = item_id.to_string();
-            match handle.queue(move |model| {
-                model.set_acquisition_state(&QString::from(&source), &QString::from(&item), state);
+            match handle.queue(move |mut model| {
+                let events =
+                    model.as_mut().rust_mut().rows.set_acquisition(&source, &item, state, transfer);
+                model.emit_events(&events);
             }) {
                 Ok(()) => Ok(()),
                 // Объект умер — запись больше не нужна. Прочие ошибки
@@ -832,11 +1015,7 @@ impl qobject::RemoteListModel {
         let Ok(slot) = usize::try_from(role - ROLE_BASE) else {
             return QVariant::default();
         };
-        match entry.role_slot(slot) {
-            Some(RoleValue::Text(text)) => QVariant::from(&QString::from(text)),
-            Some(RoleValue::Number(number)) => QVariant::from(&number),
-            None => QVariant::default(),
-        }
+        entry.role_variant(slot)
     }
 
     fn can_fetch_more(&self, parent: &QModelIndex) -> bool {
@@ -860,12 +1039,10 @@ impl qobject::RemoteListModel {
             return map;
         };
         for (slot, name) in ROLE_NAMES.iter().enumerate() {
-            let value = match entry.role_slot(slot) {
-                Some(RoleValue::Text(text)) => QVariant::from(&QString::from(text)),
-                Some(RoleValue::Number(number)) => QVariant::from(&number),
-                None => QVariant::default(),
-            };
-            map.insert(QString::from(*name), value);
+            if matches!(*name, "item" | "itemKey") {
+                continue;
+            }
+            map.insert(QString::from(*name), entry.role_variant(slot));
         }
         map
     }
@@ -1277,7 +1454,7 @@ pub mod selftest {
     use super::qobject::{
         rexon_delete_object, rexon_new_remote_list_model, rexon_process_events, RemoteListModel,
     };
-    use super::{acquisition, ModelEvent, RemoteRow, ROLE_BASE, ROLE_NAMES};
+    use super::{acquisition, ModelEvent, RemoteRow, GOLDEN_ROLES, ROLE_BASE, ROLE_NAMES};
     use core::pin::Pin;
     use cxx_qt::{Threading, ThreadingQueueError};
     use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QModelIndex, QString, QVariant};
@@ -1399,6 +1576,9 @@ pub mod selftest {
         let mut object = serde_json::Map::new();
         for (key, value) in map.iter() {
             let name = key.to_string();
+            if !ROLE_NAMES[..GOLDEN_ROLES].contains(&name.as_str()) {
+                continue;
+            }
             let json = if name == "acquisitionState" {
                 serde_json::Value::from(value.value::<i32>().unwrap_or_default())
             } else {
@@ -1536,7 +1716,9 @@ pub mod selftest {
             }
             for (row, row_want) in want.rows.iter().enumerate() {
                 let at = format!("{at} · строка {row} ({})", row_want.item_id);
-                for name in ROLE_NAMES {
+                // Голден снят до waywallen 0.6.0: новые роли сверяет
+                // `new_roles_reach_qml` ниже.
+                for name in &ROLE_NAMES[..GOLDEN_ROLES] {
                     let actual = role_text(&model, row as i32, name);
                     let expected = expected_role_text(row_want, name);
                     report.check(actual == expected, || {
@@ -1831,6 +2013,37 @@ mod tests {
                 .unwrap_or_else(|| panic!("роли {name} нет"));
             assert_eq!(ROLE_BASE + slot as i32, number, "номер роли {name}");
         }
+    }
+
+    /// waywallen 0.6.0: размер ресурса и ход скачивания — точечно, по
+    /// одной роли на событие; ключ строки — «источник␀предмет».
+    #[test]
+    fn transfer_progress_updates_role_by_role() {
+        let mut rows = RemoteRows::default();
+        rows.reset_rows(
+            vec![RemoteRow {
+                item_id: "1".into(),
+                source_id: "we".into(),
+                width: 1920,
+                ..RemoteRow::default()
+            }],
+            false,
+        );
+        let t = acquisition::Transfer { active: true, received: 10, total: 0 };
+        let events = rows.set_acquisition("we", "1", 2, t);
+        let roles: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ModelEvent::DataChanged { role, .. } => Some(*role),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(roles, ["acquisitionState", "downloadTransferActive", "downloadReceivedBytes"]);
+        assert!(rows.set_acquisition("we", "1", 2, t).is_empty(), "то же — без событий");
+        let row = rows.row(0).expect("строка");
+        assert_eq!((row.width, row.download_received_bytes), (1920, 10));
+        assert_eq!(row.key(), "we\u{0}1");
+        assert_eq!(row.to_json().as_object().map(|m| m.len()), Some(GOLDEN_ROLES));
     }
 
     #[test]

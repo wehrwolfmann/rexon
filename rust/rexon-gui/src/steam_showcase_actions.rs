@@ -201,7 +201,7 @@ fn pictures() -> PathBuf {
 
 /// Путь → адрес для `Image.source` (спецсимволы — процентами, как в
 /// `steam_page.rs`: `#` в имени иначе обрывает путь).
-fn file_url(path: &str) -> String {
+pub(crate) fn file_url(path: &str) -> String {
     if path.is_empty() {
         return String::new();
     }
@@ -438,6 +438,7 @@ impl qobject::SteamShowcaseActions {
         };
         QString::from(&match (page, folder) {
             (true, true) => String::new(),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             (false, _) => tr("Could not open the Steam page. Open it by hand: Profile → Artwork → Upload."),
             (true, false) => tr("The Steam page is open, but the folder with the parts could not be shown."),
         })
@@ -448,6 +449,7 @@ impl qobject::SteamShowcaseActions {
         QString::from(&if open_steam_page(&url) {
             String::new()
         } else {
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             tr("Could not open the Steam page. Open it by hand: your profile → Edit Profile → Featured Showcase.")
         })
     }

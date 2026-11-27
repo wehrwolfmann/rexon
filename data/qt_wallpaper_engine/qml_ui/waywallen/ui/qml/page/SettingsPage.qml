@@ -94,17 +94,6 @@ MD.Page {
         }
     }
 
-    function formatBytes(bytes) {
-        let value = Math.max(0, Number(bytes ?? 0));
-        const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-        let index = 0;
-        while (value >= 1024 && index < units.length - 1) {
-            value /= 1024;
-            ++index;
-        }
-        return value.toFixed(index === 0 ? 0 : 1) + " " + units[index];
-    }
-
     W.SettingsGetQuery {
         id: getQ
         onGlobalChanged: root._maybeClearSubmittedGlobal()
@@ -1619,8 +1608,8 @@ MD.Page {
                 showDivider: false
                 text: qsTr("Network image cache")
                 supportText: qsTr("%1 of %2 used")
-                    .arg(root.formatBytes(W.App.networkCacheSize))
-                    .arg(root.formatBytes(W.App.networkCacheMaximumSize))
+                    .arg(W.I18n.formatBytes(W.App.networkCacheSize))
+                    .arg(W.I18n.formatBytes(W.App.networkCacheMaximumSize))
                 corners: MD.Util.listCorners(index, count, 16)
                 mdState.backgroundColor: MD.Token.color.surface_container
 
@@ -1654,8 +1643,8 @@ MD.Page {
                     snapMode: MD.Slider.SnapAlways
                     maxVisibleStops: 8
                     live: false
-                    valueText: root.formatBytes(Math.round(previewValue) * 1024 * 1024)
-                    valueMaxText: root.formatBytes(to * 1024 * 1024)
+                    valueText: W.I18n.formatBytes(Math.round(previewValue) * 1024 * 1024)
+                    valueMaxText: W.I18n.formatBytes(to * 1024 * 1024)
                     onValueChangeRequested: value => W.Global.networkCacheMaximumMiB = Math.round(value)
 
                     Binding {

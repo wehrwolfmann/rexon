@@ -1,4 +1,4 @@
-English | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md)
+English | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md) | [Français](README.fr.md)
 
 # Rexon
 
@@ -29,7 +29,7 @@ and test platform is Arch Linux / CachyOS.
 ## User guide
 
 A step-by-step guide to every tab — Desktops, Appearance, Extensions,
-Wallpaper Engine, Steam and Settings — in English, Russian and German:
+Wallpaper Engine, Steam and Settings — in English, Russian, German, Chinese and French:
 [guide/](guide/README.md).
 
 ## Features
@@ -57,7 +57,7 @@ Wallpaper Engine, Steam and Settings — in English, Russian and German:
   part by part, and "Save Current Appearance…" to keep your current look as a theme),
   colour schemes with a scheme editor, accent colour, light and dark switching on a
   schedule, application style, window decorations and title-bar buttons, fonts and a
-  font manager with font groups.
+  font manager with font groups, wallpaper blur, event sounds and ambient sounds.
 - GTK themes are carried over to GTK 4 / libadwaita apps when the theme ships a
   GTK 4 version, and theme tiles show real widgets drawn in that theme.
 - Themes for GTK, Qt / Kvantum, icons, cursors, fonts, window buttons, animations,
@@ -68,7 +68,8 @@ Wallpaper Engine, Steam and Settings — in English, Russian and German:
 - Login screen (SDDM) and boot splash (Plymouth) themes.
 - Conky widgets with previews.
 - Screen effects (scanlines, CRT, VHS, film and others) with live previews. Rexon applies
-  them to the whole screen on Hyprland, GNOME and Cinnamon; on other desktops the section
+  them to the whole screen on Hyprland, GNOME and Cinnamon and turns on the built-in black and
+  white filter on KDE Plasma, Pantheon and COSMIC; on other desktops the section
   says honestly what the compositor allows there.
 - Backups of desktop settings and an emergency "Recover desktop appearance" menu
   entry (KDE) for when a theme breaks the desktop.
@@ -101,8 +102,7 @@ Wallpaper Engine, Steam and Settings — in English, Russian and German:
 
 **Settings**
 
-- Interface language and skin, tray icon, a wallpaper library with blur and
-  ambient sounds, event sounds and system fonts.
+- Interface language and skin, tray icon, a wallpaper library.
 - Saved copies of the KDE Plasma panel, the default-app protection switch and
   import of Windows themes.
 
@@ -343,7 +343,7 @@ Removing the Rexon package removes its helpers, policies and the login-rescue un
 The interface is translated with GNU gettext: one catalog for both the Rust code and
 the QML pages. The template is [`po/rexon.pot`](po/rexon.pot), and each language is
 one file in [`po/`](po/). English is the base language, and translations are
-available in Russian and German. See [`po/README.md`](po/README.md) to add a
+available in Russian, German, Simplified Chinese and French. See [`po/README.md`](po/README.md) to add a
 language — no code changes are needed.
 
 ## Credits

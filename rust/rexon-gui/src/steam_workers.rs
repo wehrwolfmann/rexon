@@ -957,9 +957,13 @@ async fn video_duration(path: &str) -> f64 {
 /// стандартный вывод. `None` — не запустилось либо не уложилось в таймаут.
 async fn run_argv(argv: &[String], timeout: f64) -> Option<(i32, String)> {
     let (exe, args) = argv.split_first()?;
+    // `kill_on_drop`: заказ кадров гасится при каждом обновлении витрины, а
+    // таймаут бросает будущее — без этого ffmpeg оставался жить сиротой и
+    // писал во ВРЕМЕННЫЙ файл, который уже пишет следующий заказ.
     let fut = tokio::process::Command::new(exe)
         .args(args)
         .stdin(std::process::Stdio::null())
+        .kill_on_drop(true)
         .output();
     let out = tokio::time::timeout(std::time::Duration::from_secs_f64(timeout), fut)
         .await

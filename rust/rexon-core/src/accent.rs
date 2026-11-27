@@ -809,6 +809,13 @@ impl AccentCtx {
         AccentCtx { scheme: SchemeCtx::live(&de), de }
     }
 
+    /// Для раздела «Акцент» вкладки «Оформление»: стол — выбранный в
+    /// «Текущее окружение» ([`crate::animations::LookCtx::for_look`]).
+    pub fn for_look() -> AccentCtx {
+        let de = crate::animations::LookCtx::for_look().de;
+        AccentCtx { scheme: SchemeCtx::live(&de), de }
+    }
+
     fn kdeglobals(&self) -> PathBuf {
         self.scheme.home.kdeglobals()
     }
@@ -1563,14 +1570,14 @@ fn live_wallpaper() -> Option<String> {
 }
 
 pub fn live_state() -> AccentState {
-    read_state(&crate::animations::SystemIo, &AccentCtx::live())
+    read_state(&crate::animations::SystemIo, &AccentCtx::for_look())
 }
 
 pub fn live_apply(change: &str) -> (bool, String) {
     let Some(change) = Change::parse(change) else {
         return (false, tr("Couldn't apply the accent color: unknown color."));
     };
-    let ctx = AccentCtx::live();
+    let ctx = AccentCtx::for_look();
     let (ok, mut msg) = apply(&crate::animations::SystemIo, &ctx, change, &live_wallpaper);
     // Акцент меняет цвета темы: терминалы, берущие их, — на читаемую пару
     // (под запись раздела цветов: её «Вернуть как было» вернёт и терминал).
@@ -1584,7 +1591,7 @@ pub fn live_apply(change: &str) -> (bool, String) {
 }
 
 pub fn live_revert() -> (bool, String) {
-    revert(&crate::animations::SystemIo, &AccentCtx::live())
+    revert(&crate::animations::SystemIo, &AccentCtx::for_look())
 }
 
 /// Rexon поставил обоями картинку `picture` — см. [`follow_wallpaper`].
@@ -1596,7 +1603,7 @@ pub fn live_follow_wallpaper(picture: &str) {
 }
 
 pub fn live_open_native() -> bool {
-    open_native(&crate::animations::SystemIo, &AccentCtx::live())
+    open_native(&crate::animations::SystemIo, &AccentCtx::for_look())
 }
 
 #[cfg(test)]

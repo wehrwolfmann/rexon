@@ -1,4 +1,4 @@
-[English](../en/extensions.md) | [Русский](../ru/extensions.md) | Deutsch
+[English](../en/extensions.md) | [Русский](../ru/extensions.md) | Deutsch | [简体中文](../zh-CN/extensions.md) | [Français](../fr/extensions.md)
 
 # Erweiterungen
 
