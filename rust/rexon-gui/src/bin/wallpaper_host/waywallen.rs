@@ -78,6 +78,11 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     let args = parse(argv)?;
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     if !args.windowed && wb::rexon_host_should_idle(&env("XDG_SESSION_TYPE"), &env("WAYLAND_DISPLAY"), &env("DISPLAY")) {
+        if wb::is_wayland_session(&env("XDG_SESSION_TYPE"), &env("WAYLAND_DISPLAY")) {
+            if let wb::WaylandHostRole::Delegate(client) = wayland_role(&args.socket) {
+                supervise_layer_shell_client(client);
+            }
+        }
         rexon_core::log_info!(
             "wallpaper-host",
             "{TAG} сеанс не X11 (XDG_SESSION_TYPE={}, DISPLAY={}) — вывод здесь не мой, жду",
@@ -87,9 +92,21 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
         idle_forever();
     }
 
-    // Один экземпляр на сеанс. Блокировка держится до конца процесса.
-    let runtime = env("XDG_RUNTIME_DIR");
-    if !runtime.is_empty() && !args.windowed {
+    if !args.windowed {
+        take_display_lock();
+    }
+
+    let Some(item) = find_display_item() else {
+        return Err("нет элемента вывода waywallen (пакет org.waywallen.kde в данных Rexon) — выводить нечем".to_string());
+    };
+    plan_display(&args, item)
+}
+
+/// Один экземпляр на сеанс: блокировка держится до конца процесса. Занята
+/// — ждать, пока прежний экземпляр уйдёт, и подхватить вывод.
+fn take_display_lock() {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
+    if !runtime.is_empty() {
         let path = wb::rexon_host_lock_path(&runtime);
         match std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path) {
             Ok(file) => {
@@ -105,10 +122,10 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
             Err(e) => rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN блокировка {path} не открылась: {e}"),
         }
     }
+}
 
-    let Some(item) = find_display_item() else {
-        return Err("нет элемента вывода waywallen (пакет org.waywallen.kde в данных Rexon) — выводить нечем".to_string());
-    };
+/// План окна X11 с элементом вывода `item`.
+fn plan_display(args: &Args, item: String) -> Result<QmlPlan, String> {
     let mut properties = QMap::<QMapPair_QString_QVariant>::default();
     properties.insert(
         QString::from("displayItemUrl"),
@@ -131,6 +148,110 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
         selftest: false,
         before_app,
     })
+}
+
+/// Что делать хосту на Wayland: глобалы композитора и штатный клиент вывода
+/// (рядом с демоном, который нас запустил, рядом с демоном пакета, в `PATH`).
+fn wayland_role(socket: &str) -> wb::WaylandHostRole {
+    let globals = rexon_gui::screensaver_bridge::wayland_idle::probe().map(|f| f.globals).unwrap_or_default();
+    let parent = std::fs::read_link(format!("/proc/{}/exe", std::os::unix::process::parent_id()))
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned());
+    let bin = wb::layer_shell_client_candidates(parent.as_deref(), &[])
+        .into_iter()
+        .find(|p| Path::new(p).is_file())
+        .or_else(|| which(wb::LAYER_SHELL_CLIENT_BIN));
+    wb::wayland_host_role(&globals, bin.as_deref(), socket)
+}
+
+/// Исполняемый файл по `PATH`.
+fn which(name: &str) -> Option<String> {
+    std::env::var("PATH")
+        .ok()?
+        .split(':')
+        .filter(|d| !d.is_empty())
+        .map(|d| format!("{}/{name}", d.trim_end_matches('/')))
+        .find(|p| Path::new(p).is_file())
+}
+
+/// Поднимать и сторожить штатный клиент вывода, пока жив сам хост. Метка
+/// «вывод отпущен» (`wallpaper_backend::display_off_marker_path`: человек
+/// поставил свои обои) — клиент снят и не поднимается, пока Rexon её не
+/// уберёт (применение сцены). Клиент умирает вместе с хостом
+/// (`PR_SET_PDEATHSIG`): демон, останавливая хост, снимает и его.
+fn supervise_layer_shell_client(client: Vec<String>) -> ! {
+    use std::time::{Duration, Instant};
+    take_display_lock();
+    rexon_core::log_info!("wallpaper-host", "{TAG}-LAYER композитор умеет layer-shell — вывод сцен: {}", client.join(" "));
+    let marker = wb::display_off_marker_live();
+    let mut child: Option<(std::process::Child, Instant)> = None;
+    let mut crashes: u32 = 0;
+    let mut next_start = Instant::now();
+    let mut released = false;
+    loop {
+        if Path::new(&marker).exists() {
+            if let Some((mut c, _)) = child.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            if !released {
+                rexon_core::log_info!("wallpaper-host", "{TAG}-LAYER вывод сцен отпущен ради своих обоев");
+                released = true;
+            }
+            crashes = 0;
+            next_start = Instant::now();
+        } else {
+            released = false;
+            if let Some((c, started)) = child.as_mut() {
+                if let Ok(Some(status)) = c.try_wait() {
+                    if started.elapsed() > Duration::from_secs(60) {
+                        crashes = 0;
+                    }
+                    let delay = wb::layer_shell_restart_delay_ms(crashes);
+                    crashes = crashes.saturating_add(1);
+                    rexon_core::log_warn!(
+                        "wallpaper-host",
+                        "{TAG}-LAYER клиент вывода завершился ({status}) — подниму через {} с",
+                        delay / 1000
+                    );
+                    next_start = Instant::now() + Duration::from_millis(delay);
+                    child = None;
+                }
+            } else if Instant::now() >= next_start {
+                match spawn_tied_to_us(&client) {
+                    Ok(c) => {
+                        rexon_core::log_info!("wallpaper-host", "{TAG}-LAYER клиент вывода поднят: pid {}", c.id());
+                        child = Some((c, Instant::now()));
+                        // Поверхность клиента новее службы фона Cinnamon и
+                        // легла под неё — уложить службу под нас.
+                        rexon_gui::wallpaper_host::cinnamon_layer::surface_up("вывод сцен Wallpaper Engine");
+                    }
+                    Err(e) => {
+                        let delay = wb::layer_shell_restart_delay_ms(crashes);
+                        crashes = crashes.saturating_add(1);
+                        rexon_core::log_warn!("wallpaper-host", "{TAG}-LAYER клиент вывода не запустился: {e}");
+                        next_start = Instant::now() + Duration::from_millis(delay);
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+/// Запустить процесс, который получит SIGTERM, когда хост умрёт.
+fn spawn_tied_to_us(argv: &[String]) -> std::io::Result<std::process::Child> {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..]).stdin(std::process::Stdio::null());
+    // SAFETY: в дочернем процессе до exec — только prctl (async-signal-safe).
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        });
+    }
+    cmd.spawn()
 }
 
 /// Элементу вывода нужен EGL: кадры демона приходят буферами DMA-BUF, а их

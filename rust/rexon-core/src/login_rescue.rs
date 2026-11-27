@@ -446,8 +446,15 @@ pub fn decide(f: &BootFacts) -> Verdict {
 // ⛔ Над экраном входа — никаких действий; консоль для приглашения
 // выбирается так, чтобы `getty@` не попал в его `Conflicts=` ([`pick_vt`]).
 
-/// Экраны входа, у которых сторож что-то понимает (журнал помощника).
-pub const WATCHED_DMS: &[&str] = &["sddm", "plasmalogin"];
+/// Экраны входа, у которых сторож что-то понимает (журнал помощника, у
+/// DDM — служба окна входа [`DDM_GREETER_UNITS`]).
+pub const WATCHED_DMS: &[&str] = &["sddm", "plasmalogin", crate::system_plan::DDM_UNIT];
+/// Системные юниты окна входа DDM: окно входа рисует сам Treeland
+/// (`treeland.service` от имени `dde`, `StartLimitBurst=2`). Упал до
+/// `failed`, а `ddm.service` жив и человека на seat0 нет — окна входа нет.
+/// На стенде не проверено (DDM с другими столами не включали): сторож
+/// опирается на устройство юнитов пакета ddm 0.4 / treeland 0.11.
+pub const DDM_GREETER_UNITS: &[&str] = &["treeland.service"];
 /// Пользователь приветствия Plasma Login Manager.
 pub const PLASMALOGIN_GREETER_USER: &str = "plasmalogin";
 /// Юниты systemd пользователя приветствия Plasma Login Manager: окно входа и
@@ -649,6 +656,15 @@ pub fn decide_greeter(f: &WatchFacts) -> Verdict {
     if f.sessions.iter().any(SessionInfo::is_person) {
         return Verdict::Skip("someone is logged in on seat0");
     }
+    // DDM: журнала помощника в духе SDDM нет, улика одна — упавшая служба
+    // окна входа (Treeland), с сеансом приветствия или без него.
+    if f.dm.short() == crate::system_plan::DDM_UNIT {
+        return if f.greeter_units_failed.is_empty() {
+            Verdict::Skip("the login window service is running")
+        } else {
+            Verdict::Rescue
+        };
+    }
     if f.sessions.iter().any(SessionInfo::is_greeter) {
         return if f.greeter_units_failed.is_empty() {
             Verdict::Skip("the login window is there")
@@ -710,9 +726,16 @@ pub fn pick_vt(cmdline: &str, active_vt: Option<u32>, conflicts: &[String]) -> O
     (first..=last).find(|vt| Some(*vt) != active_vt && !conflicts.contains(&getty_unit(*vt)))
 }
 
-/// Упавшие службы окна входа Plasma Login Manager (`systemctl --user -M
-/// plasmalogin@`); у других экранов входа — пусто.
+/// Упавшие службы окна входа: Plasma Login Manager — службы пользователя
+/// приветствия (`systemctl --user -M plasmalogin@`), DDM — системный
+/// [`DDM_GREETER_UNITS`]; у других экранов входа — пусто.
 fn greeter_units_failed_live<IO: SystemIo + ?Sized>(io: &IO, dm: &UnitState) -> Vec<String> {
+    if dm.short() == crate::system_plan::DDM_UNIT {
+        let mut a = argv(&["systemctl", "show"]);
+        a.extend(DDM_GREETER_UNITS.iter().map(|u| u.to_string()));
+        a.extend(argv(&["-p", "Id", "-p", "ActiveState"]));
+        return failed_units(&io.run(&a, Some(10), true).stdout);
+    }
     if dm.short() != "plasmalogin" {
         return Vec::new();
     }
@@ -729,7 +752,19 @@ fn use_greeter_journal<IO: SystemIo + ?Sized>(io: &IO, observed: &mut Observed, 
     if units.is_empty() {
         return;
     }
-    observed.journal = io.run(&greeter_journal_argv(units), Some(20), true).stdout;
+    // Окно входа DDM — системная служба: её журнал по `-u`, а не по полям
+    // служб пользователя.
+    let a = if observed.dm.short() == crate::system_plan::DDM_UNIT {
+        let mut a = argv(&["journalctl", "-b", "-n", "200", "-o", "json", "--no-pager"]);
+        for u in units {
+            a.push("-u".into());
+            a.push(u.clone());
+        }
+        a
+    } else {
+        greeter_journal_argv(units)
+    };
+    observed.journal = io.run(&a, Some(20), true).stdout;
     observed.greeter_units = units.to_vec();
 }
 
@@ -758,7 +793,7 @@ pub fn watch_facts<IO: SystemIo + ?Sized>(io: &IO, stamp: Option<&str>) -> Watch
     if f.sessions.iter().any(SessionInfo::is_person) {
         return f;
     }
-    if f.sessions.iter().any(SessionInfo::is_greeter) {
+    if f.dm.short() == crate::system_plan::DDM_UNIT || f.sessions.iter().any(SessionInfo::is_greeter) {
         f.greeter_units_failed = greeter_units_failed_live(io, &f.dm);
         return f;
     }
@@ -2698,6 +2733,32 @@ mod tests {
         let files: Vec<String> = vec!["/usr/bin/plasmalogin".into(), "/usr/bin/startplasma-login-wayland".into(), "/usr/lib/plasma-login-greeter".into()];
         assert_eq!(greeter_programs("plasmalogin", &files), vec!["/usr/bin/startplasma-login-wayland", "/usr/lib/plasma-login-greeter"]);
         assert!(greeter_programs("sddm", &files).is_empty());
+    }
+
+    /// DDM: окно входа — системная служба Treeland; она дошла до `failed`,
+    /// а `ddm.service` жив и человека нет — показать текст. Журнал помощника
+    /// SDDM у DDM не ищется.
+    #[test]
+    fn ddm_failed_treeland_is_shown() {
+        let mut io = watch_io("ddm.service", &[], &[]);
+        io.runs.push((
+            "systemctl show treeland.service".into(),
+            "Id=treeland.service\nActiveState=failed\n".into(),
+        ));
+        let f = watch_facts(&io, None);
+        assert_eq!(f.greeter_units_failed, vec!["treeland.service"]);
+        assert_eq!(decide_greeter(&f), Verdict::Rescue);
+        assert!(!io.calls.borrow().iter().any(|c| c.starts_with("journalctl")));
+        // Treeland жив — ничего, даже без сеанса приветствия.
+        let mut io = watch_io("ddm.service", &[], &[]);
+        io.runs.push(("systemctl show treeland.service".into(), "Id=treeland.service\nActiveState=active\n".into()));
+        assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
+        // Человек в сеансе — ничего, Treeland не спрашиваем.
+        let io = watch_io("ddm.service", &[("2", "user", "active")], &[]);
+        assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
+        assert!(!io.calls.borrow().iter().any(|c| c.contains("treeland")));
+        // Drop-in спасателя у ddm.service есть (он в таблице экранов входа).
+        assert!(dropin_units().contains(&"ddm.service".to_string()));
     }
 
     #[test]

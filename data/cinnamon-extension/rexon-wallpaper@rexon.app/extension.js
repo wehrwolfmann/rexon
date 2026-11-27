@@ -1,9 +1,10 @@
 // Rexon Wallpaper Engine — Cinnamon extension wrapper.
 //
 // Wehrwolfmann: аналог GNOME-extension. Cinnamon использует Muffin (fork
-// Mutter), wlr-layer-shell не поддерживает. На Cinnamon-X11 работает
+// Mutter), wlr-layer-shell до 6.8 не поддерживал. На Cinnamon-X11 работает
 // xprop fallback (`rexon-gui::wallpaper_host::apply_x11_desktop_layer`); на
-// Cinnamon-Wayland (experimental с 6.0) — нужен этот extension.
+// Cinnamon-Wayland до 6.8 — нужен этот extension. С 6.8 (layer-shell) обои
+// кладёт Rexon слоем стола, а отсюда — только эффект экрана.
 //
 // Архитектура:
 // 1. Хост обоев рендерит каждый кадр в /run/user/$UID/rexon-wp-frame.rgba
@@ -71,7 +72,13 @@ function enable() {
                 Meta.disable_unredirect_for_display(global.display);
         },
     });
-    _reload();
+    // Обои не должны уносить с собой эффект экрана и подписку на настройки:
+    // ошибка в них — только в журнал.
+    try {
+        _reload();
+    } catch (e) {
+        global.logError('[rexon-wp] обои не поднялись: ' + e);
+    }
     // Rexon меняет обои и эффект экрана, записывая настройки расширения.
     // Без подписки новое появлялось бы только после перезахода в сеанс.
     // Ключ эффекта обои НЕ перезапускает: иначе смена эффекта гасила бы и
@@ -81,7 +88,11 @@ function enable() {
             if (key === EFFECT_KEY) {
                 if (_effect) _effect.queue(function() { return effectShaderPath(_gio_settings); });
             } else {
-                _reload();
+                try {
+                    _reload();
+                } catch (e) {
+                    global.logError('[rexon-wp] обои не поднялись: ' + e);
+                }
             }
         });
     }
@@ -100,6 +111,22 @@ function _reload() {
     _settings = _loadSettings();
     if (!_settings || !_settings.engine || !_settings.source) {
         global.log('[rexon-wp] обои не заданы — рабочий стол не трогаем');
+        return;
+    }
+
+    // Cinnamon 6.8+: фон рисует служба cinnamon-background-daemon
+    // поверхностью wlr-layer-shell, Muffin умеет этот протокол сам, а
+    // Meta.BackgroundGroup из привязок убран. Обои Rexon кладёт там своим
+    // окном слоя фона, без расширения: здесь ни актёров, ни хоста. Хост,
+    // поднятый отсюда, шёл бы ВТОРЫМ рядом с хостом Rexon (живьём
+    // 15.11.2026 — по старым ключам, другим видео), поэтому решает признак
+    // сеанса — тот же, что у Rexon, — а не то, нашлось ли куда положить кадр.
+    if (_layerShellSession()) {
+        global.log('[rexon-wp] Cinnamon с layer-shell — обои показывает Rexon слоем стола, расширение их не рисует и хост не запускает');
+        return;
+    }
+    if (_csdBackgrounds().length === 0 && !_canBuildBackgroundGroup()) {
+        global.log('[rexon-wp] своей группы фона в этой версии Cinnamon нет — обои показывает Rexon слоем стола, расширение их не рисует');
         return;
     }
 
@@ -341,6 +368,23 @@ const EFFECT_TICK_MS = 33;
 const EFFECT_TIME_WRAP = 3600;
 // Rexon пишет файл и ключ отдельными командами — ждём, пока уляжется.
 const EFFECT_SETTLE_MS = 150;
+// Ответ Rexon: что вышло с последним применением (`shell_status_path` ядра).
+// Rexon говорит «применено» только по этому ответу — без него окно писало
+// «применено», когда расширение вовсе не работало (15.11.2026).
+const EFFECT_STATUS_PATH = GLib.build_filenamev([
+    GLib.get_user_config_dir(), 'rexon', 'screen-effects', 'shell.status']);
+
+// state: 'on' | 'off' | 'error'; path — файл шейдера, о котором ответ.
+function writeEffectStatus(state, path, detail) {
+    try {
+        GLib.mkdir_with_parents(GLib.path_get_dirname(EFFECT_STATUS_PATH), 0o755);
+        GLib.file_set_contents(EFFECT_STATUS_PATH,
+            'state=' + state + '\npath=' + (path || '') +
+            '\ndetail=' + String(detail || '').replace(/\n/g, ' ') + '\n');
+    } catch (e) {
+        // Ответ — подсказка окну Rexon, не повод ронять оболочку.
+    }
+}
 
 // Путь из настроек. Наличие ключа спрашиваем У СХЕМЫ: чтение ключа,
 // которого в схеме нет, гасит саму оболочку (см. `daemon-argv`).
@@ -422,6 +466,7 @@ class ScreenEffect {
             if (this._effect)
                 this._host.log('[rexon-fx] эффект экрана выключен');
             this._remove();
+            writeEffectStatus('off', '', '');
             return;
         }
         let shader;
@@ -431,10 +476,13 @@ class ScreenEffect {
             // Без шейдера экран остаётся как есть — ничего не накладываем.
             this._host.logError('[rexon-fx] шейдер не прочитан: ' + e.message);
             this._remove();
+            writeEffectStatus('error', path, e.message);
             return;
         }
-        if (this._effect && shader.text === this._text)
+        if (this._effect && shader.text === this._text) {
+            writeEffectStatus('on', path, '');
             return;
+        }
         this._remove();
         try {
             const Klass = effectClassFor(this._host.base, this._host.hook, shader);
@@ -464,9 +512,11 @@ class ScreenEffect {
             }
             this._host.log('[rexon-fx] эффект экрана включён: ' + path +
                 (this._tickId ? ' (движущийся)' : ''));
+            writeEffectStatus('on', path, '');
         } catch (e) {
             this._host.logError('[rexon-fx] эффект не наложен: ' + e.message);
             this._remove();
+            writeEffectStatus('error', path, e.message);
         }
     }
 
@@ -724,8 +774,31 @@ function _csdBackgrounds() {
     return found;
 }
 
+// Cinnamon с layer-shell: Wayland и служба фона Cinnamon (её файл
+// активации D-Bus в каталогах данных: на Wayland она живёт только поверх
+// layer-shell). Тот же признак, что у Rexon, когда композитор спросить нечем
+// (`rexon-core::wallpaper_backend::cinnamon_layer_shell`,
+// `cinnamon_bg_service_files`): у оболочки своего вопроса к протоколам нет.
+const CINNAMON_BG_SERVICE = 'org.Cinnamon.Background';
+
+function _layerShellSession() {
+    if (!Meta.is_wayland_compositor()) return false;
+    const dirs = [GLib.get_user_data_dir()].concat(GLib.get_system_data_dirs());
+    for (let i = 0; i < dirs.length; i++) {
+        const file = dirs[i] + '/dbus-1/services/' + CINNAMON_BG_SERVICE + '.service';
+        if (GLib.file_test(file, GLib.FileTest.EXISTS)) return true;
+    }
+    return false;
+}
+
+// Есть ли в привязках Muffin группа фона (до Cinnamon 6.8 — да).
+function _canBuildBackgroundGroup() {
+    return typeof Meta.BackgroundGroup === 'function';
+}
+
 function _installFallback() {
     _removeFallback();
+    if (!_canBuildBackgroundGroup()) return;
     const group = new Meta.BackgroundGroup();
     const monitors = Main.layoutManager.monitors;
     for (let i = 0; i < monitors.length; i++) {

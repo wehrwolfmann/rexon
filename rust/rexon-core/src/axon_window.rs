@@ -435,6 +435,12 @@ pub fn search_placeholder() -> String {
     trc("Razer Axon", "Search wallpapers")
 }
 
+/// Подпись выбора «где искать» (названия или теги) в «Фильтре»: сама
+/// строка поиска — общая строка шапки страницы, как у соседних магазинов.
+pub fn search_in_label() -> String {
+    trc("Razer Axon", "Search in")
+}
+
 /// Подсказка кнопки сортировки.
 pub fn sort_tooltip() -> String {
     trc("Razer Axon", "Sort")
@@ -906,8 +912,8 @@ mod tests {
         assert_eq!(downloaded_section_title(), "RECENTLY ADDED");
         assert_eq!(available_section_title(), "AVAILABLE FOR SYNC");
         assert_eq!(
-            [search_placeholder(), sort_tooltip(), type_label(), no_items_text(), not_found_text(), clear_filter_text()],
-            ["Search wallpapers", "Sort", "Type", "No items", "No wallpapers found.", "Clear filter"]
+            [search_placeholder(), search_in_label(), sort_tooltip(), type_label(), no_items_text(), not_found_text(), clear_filter_text()],
+            ["Search wallpapers", "Search in", "Sort", "Type", "No items", "No wallpapers found.", "Clear filter"]
         );
     }
 

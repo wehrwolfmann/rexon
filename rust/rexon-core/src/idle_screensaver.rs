@@ -236,11 +236,11 @@ pub struct RouteFacts<'a> {
 pub const OVERLAY_GLOBALS_NEEDED: [&str; 2] = ["zwlr_layer_shell_v1", "ext_idle_notifier_v1"];
 
 /// Расширение оболочки для окружения — по той же таблице, что у обоев
-/// ([`crate::wallpaper_engine::needs_shell_extension`]): нужно ровно там,
+/// ([`crate::wallpaper_engine::mutter_family_wayland`]): нужно ровно там,
 /// где Mutter/Muffin на Wayland.
 fn shell_extension_for(de: &str, session: SessionKind) -> Option<ShellExtension> {
     let session_type = if session == SessionKind::Wayland { "wayland" } else { "x11" };
-    if !crate::wallpaper_engine::needs_shell_extension(de, session_type) {
+    if !crate::wallpaper_engine::mutter_family_wayland(de, session_type) {
         return None;
     }
     Some(if de == "gnome" { ShellExtension::Gnome } else { ShellExtension::Cinnamon })

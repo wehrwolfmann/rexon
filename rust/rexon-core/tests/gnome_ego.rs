@@ -6,6 +6,8 @@
 //! кладутся. Поменяет сайт форму ответа — краснеть должно здесь, а не на
 //! витрине у покупателя.
 
+mod i18n_pin;
+
 use std::collections::HashSet;
 
 use rexon_core::gnome_ego::*;
@@ -80,6 +82,8 @@ fn shell(raw: &str) -> ShellVersion {
 
 #[test]
 fn listing_sample_parses_into_cards() {
+    // Подписи строки каталога — на английском, а не на языке машины.
+    let _lang = i18n_pin::en();
     let page = parse_listing(LISTING.as_bytes()).expect("листинг разбирается");
     assert_eq!((page.total, page.has_more, page.items.len()), (620, true, 2));
 
@@ -110,7 +114,7 @@ fn listing_sample_parses_into_cards() {
         assert!(row.get(key).is_some(), "в строке каталога нет {key}");
     }
     assert_eq!(row["egoPage"], "https://extensions.gnome.org/extension/101/sample-dock/");
-    // Десятичный разделитель — по языку системы (`human_count`).
+    // Десятичный разделитель — по языку (`human_count`), здесь английскому.
     let dl = rexon_core::appearance_page::human_count(1_234_567);
     assert_eq!(row["siteStats"], format!("★ {} (40) · ⬇ {dl}", rexon_core::i18n::format_decimal(4.3, 1)).as_str());
 
@@ -134,6 +138,10 @@ fn detail_sample_is_a_listing_record() {
 
 #[test]
 fn versions_sample_gives_release_for_you() {
+    // Ожидание «Supports GNOME 47–51» — английская подпись: язык закреплён,
+    // иначе при `LANG=ru_RU` и каталоге в /usr/share/locale сверка получала
+    // «Поддерживает GNOME 47–51».
+    let _lang = i18n_pin::en();
     let vs = parse_versions(VERSIONS.as_bytes()).expect("выпуски разбираются");
     assert!(!vs.has_more);
     let rs = vs.items;

@@ -103,6 +103,15 @@ fn shot_is_laid_over_the_common_backdrop() {
     );
 }
 
+/// Метод ввода процессу снимка не передаётся: 16.11.2026 IBus сеанса
+/// (Cinnamon 6.8 Wayland) держал снимок Breeze до таймаута.
+#[test]
+fn shot_process_gets_no_input_method() {
+    for k in ["QT_IM_MODULE", "QT_IM_MODULES"] {
+        assert!(kd::SHOT_ENV_REMOVE.contains(&k), "{k} уходит в процесс снимка");
+    }
+}
+
 #[test]
 fn live_breeze_shot_or_not_checked() {
     let Some(runner) = kd::shot_runner(&|p| std::path::Path::new(p).is_file()) else {
@@ -116,6 +125,14 @@ fn live_breeze_shot_or_not_checked() {
     }
     let dir = std::env::temp_dir().join(format!("rexon-kdeco-shot-{}", std::process::id()));
     let dir_s = dir.to_string_lossy().into_owned();
+    // Снимок — на своих настройках, а не на живых настройках человека
+    // (`kdeglobals`, адрес IBus в `~/.config/ibus`): иначе исход сверки
+    // зависел бы от сеанса, в котором её запустили. Соседние сверки файла
+    // HOME не читают.
+    let home = dir.join("home");
+    std::fs::create_dir_all(home.join(".config")).unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
     let out = format!("{dir_s}/breeze.png");
     let req = kd::shot_request("local:aurorae:org.kde.breeze/Breeze", "Breeze", kd::AURORAE_V2, kd::BORDER_NORMAL).unwrap();
     assert!(kd::take_shot(&runner, &dir_s, &req, &out), "Breeze не снялся");

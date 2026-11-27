@@ -363,14 +363,14 @@ fn cancelled_io() -> ureq::Error {
 }
 
 /// Звено цепочки соединений: заворачивает уже собранный транспорт (вместе с
-/// TLS) в [`CancelTransport`]. Ставится ПОСЛЕ `DefaultConnector`, поэтому
-/// проверка отмены работает и поверх шифрования.
+/// TLS) в [`CancelTransport`]. Стоит МЕЖДУ TCP и TLS (см. `UreqNet::agent`):
+/// ломоть ожидания истекает у сокета, шифрование его не видит.
 #[derive(Debug)]
 struct CancelConnector {
     token: CancelToken,
 }
 
-impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transport::Transport>>
+impl<In: ureq::unversioned::transport::Transport> ureq::unversioned::transport::Connector<In>
     for CancelConnector
 {
     type Out = CancelTransport;
@@ -378,7 +378,7 @@ impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transpor
     fn connect(
         &self,
         _details: &ureq::unversioned::transport::ConnectionDetails,
-        chained: Option<Box<dyn ureq::unversioned::transport::Transport>>,
+        chained: Option<In>,
     ) -> Result<Option<Self::Out>, ureq::Error> {
         let Some(inner) = chained else {
             return Ok(None);
@@ -387,7 +387,7 @@ impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transpor
             return Err(cancelled_io());
         }
         Ok(Some(CancelTransport {
-            inner,
+            inner: inner.boxed(),
             token: self.token.clone(),
         }))
     }
@@ -527,13 +527,15 @@ fn fix_bad_content_length(head: &[u8]) -> Option<Vec<u8>> {
 #[derive(Debug)]
 struct HeadFixConnector;
 
-impl ureq::unversioned::transport::Connector<CancelTransport> for HeadFixConnector {
-    type Out = HeadFixTransport<CancelTransport>;
+impl<In: ureq::unversioned::transport::Transport> ureq::unversioned::transport::Connector<In>
+    for HeadFixConnector
+{
+    type Out = HeadFixTransport<In>;
 
     fn connect(
         &self,
         details: &ureq::unversioned::transport::ConnectionDetails,
-        chained: Option<CancelTransport>,
+        chained: Option<In>,
     ) -> Result<Option<Self::Out>, ureq::Error> {
         let Some(inner) = chained else {
             return Ok(None);
@@ -864,13 +866,24 @@ impl UreqNet {
                 // Свои звенья в цепочке соединений: одно делает запрос
                 // отменяемым (CancelConnector), второе — терпимым к кривой
                 // шапке ответа (HeadFixConnector).
-                let connector = ureq::unversioned::transport::Connector::chain(
-                    ureq::unversioned::transport::Connector::chain(
-                        ureq::unversioned::transport::DefaultConnector::new(),
-                        CancelConnector { token },
-                    ),
-                    HeadFixConnector,
-                );
+                //
+                // ⛔ Отмена — ПОД шифрованием, на голом сокете, а не поверх
+                // TLS. Нарезка ожидания ломтями CANCEL_POLL поверх native-tls
+                // рвала соединение: истёкший ломоть посреди чтения OpenSSL
+                // считает фатальной ошибкой, и следующее чтение даёт «OpenSSL
+                // error». Сайты, отвечающие быстрее 200 мс, этого не замечали,
+                // а Wallhaven за Cloudflare (~0,4–1 с) не открылся ни разу
+                // (16.11.2026; зонд: наш клиент 0 из 3, ureq без звена — 3 из 3).
+                // Под TLS ломоть истекает у сокета, шифрование его не видит.
+                // Порядок звеньев — как у ureq::DefaultConnector (без socks:
+                // фича выключена), с нашим звеном между TCP и TLS.
+                use ureq::unversioned::transport::Connector as _;
+                let connector = ()
+                    .chain(ureq::unversioned::transport::ConnectProxyConnector::default())
+                    .chain(ureq::unversioned::transport::TcpConnector::default())
+                    .chain(CancelConnector { token })
+                    .chain(ureq::unversioned::transport::NativeTlsConnector::default())
+                    .chain(HeadFixConnector);
                 ureq::Agent::with_parts(
                     config,
                     connector,
@@ -1042,6 +1055,15 @@ impl NetIo for UreqNet {
     fn log(&mut self, level: LogLevel, message: &str) {
         if let Some(cb) = self.sink.as_mut() {
             cb(level, message);
+        }
+        // Общий журнал Rexon — ВСЕГДА, и с приёмником, и без: приёмник
+        // показывает человеку, журнал хранит для разбора. Без этой строки
+        // причина сбоя терялась: «Не удалось скачать архив» без единой
+        // строки о том, что сказала сеть (16.11.2026, обои KDE Store 135 МиБ).
+        match level {
+            LogLevel::Info => crate::log_info!("net", "{message}"),
+            LogLevel::Warning => crate::log_warn!("net", "{message}"),
+            LogLevel::Error => crate::log_error!("net", "{message}"),
         }
     }
 

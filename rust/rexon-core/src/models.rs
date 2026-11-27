@@ -94,7 +94,17 @@ impl ThemeItem {
     /// форматирование с обратным парсингом даёт байт-в-байт те же числа —
     /// сверено на всех 101 значениях (golden-тест).
     pub fn rating_stars(&self) -> f64 {
-        format!("{:.1}", self.rating as f64 / 20.0)
+        Self::stars_of(self.rating)
+    }
+
+    /// Звёзды, если у товара есть оценка; `None` — голосов нет
+    /// ([`crate::ocs::UNRATED_SCORE`]).
+    pub fn rated_stars(&self) -> Option<f64> {
+        (self.rating != crate::ocs::UNRATED_SCORE).then(|| self.rating_stars())
+    }
+
+    fn stars_of(rating: i64) -> f64 {
+        format!("{:.1}", rating as f64 / 20.0)
             .parse()
             .expect("формат {:.1} всегда парсится обратно в f64")
     }

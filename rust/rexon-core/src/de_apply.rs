@@ -699,9 +699,15 @@ fn with_ext_env<R>(io: &dyn LookIo, ctx: &Ctx, body: impl FnOnce(&crate::ext_man
     let tmp = TmpAlloc::new("/tmp/rexon-de-apply");
     let which = |name: &str| io.have(name).then(|| name.to_string());
     let run_ok = |_: &[String]| false;
-    // Запущенный стол — из контекста (его и проверяют сверки); переменная
-    // процесса — только если стол не опознан.
-    let xdg = if ctx.de.is_empty() { std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default() } else { ctx.de.clone() };
+    // Запущенный стол — ТОЛЬКО из контекста, как и род сеанса ниже: оба
+    // берутся из одного источника. Прежде при неопознанном столе (`ctx.de`
+    // пуст) подмешивался `XDG_CURRENT_DESKTOP` процесса, а род сеанса
+    // оставался из контекста — на чужом доме (`Ctx::for_home`) из сеанса
+    // Cinnamon выходило «Cinnamon X11» и план получал лишний
+    // `cinnamon --replace` (сверка краснела от стола, на котором её гоняли).
+    // Живой путь от этого не теряет: `Ctx::live` уже опознал стол по той же
+    // переменной; пусто — значит стол не опознан и перезапускать нечего.
+    let xdg = ctx.de.clone();
     // Род сеанса — тоже из контекста: `Ctx::live` уже учёл и
     // `WAYLAND_DISPLAY`, и `XDG_SESSION_TYPE`. Переменная процесса здесь
     // делала план зависимым от стола, на котором его строят: сверка для
@@ -1147,6 +1153,15 @@ pub fn conky_running_ids(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     }
     // Найденные на диске (`~/.conky`, `~/.conkyrc`…) — по пути.
     let extra = crate::conky_scan::extra_dirs_for(ctx);
+    // Окна темы со сценарием — по метке: файл окна бывает и вне её папки.
+    for p in crate::conky_procs::all(io) {
+        if let Some(dir) = p.widget.as_deref() {
+            let id = crate::conky_theme::widget_of_dir(ctx, &extra, dir);
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
     for owner in crate::conky_scan::running_found(io, ctx, &extra) {
         if !ids.contains(&owner) {
             ids.push(owner);
@@ -1298,8 +1313,10 @@ pub fn conky_repair_text(
 }
 
 /// Починить пути во всех текстовых файлах папки виджета `widget` (см.
-/// [`conky_repair_text`]). Возвращает изменённые файлы. Ссылки не
-/// проходятся, двоичные и большие файлы не читаются.
+/// [`conky_repair_text`]), а сценариям Lua под прежний conky — подключить
+/// модуль X11-рисования ([`crate::conky_safety::lua_xlib_compat`]).
+/// Возвращает изменённые файлы. Ссылки не проходятся, двоичные и большие
+/// файлы не читаются, файлы вне папки виджета не трогаются.
 pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
     const MAX_FILES: usize = 4000;
     const MAX_SIZE: u64 = 1 << 20;
@@ -1336,7 +1353,10 @@ pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
                 continue;
             }
             let Ok(text) = String::from_utf8(bytes) else { continue };
-            if let Some(fixed) = conky_repair_text(&text, home, widget, &exists, &is_dir) {
+            let paths = conky_repair_text(&text, home, widget, &exists, &is_dir);
+            // Сценарий Lua под прежний conky: X11-рисование — отдельным модулем.
+            let lua = name.ends_with(".lua").then(|| crate::conky_safety::lua_xlib_compat(paths.as_deref().unwrap_or(&text))).flatten();
+            if let Some(fixed) = lua.or(paths) {
                 if std::fs::write(&path, fixed).is_ok() {
                     changed.push(path);
                 }
@@ -1376,11 +1396,15 @@ pub fn conky_start_command(conf: &str) -> (Vec<String>, String) {
 ///
 /// Знака `%` в сценарии нет намеренно: в `Exec=` он служебный, и
 /// запускальщики по-разному разбирают `%%` внутри кавычек.
-pub const CONKY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$0")" && exec conky -c "$0""#;
+///
+/// Переход на XWayland в начале сценария может задать
+/// [`crate::conky_overlay::XWAYLAND_LAUNCH_VAR`] — тогда conky идёт с файлом
+/// запуска через XWayland (окно под окнами), рабочий каталог тот же.
+pub const CONKY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$0")" && exec conky -c "${rexon_xw:-$0}""#;
 
 /// То же для виджета с накладкой Rexon: `$0` — накладка (с ней conky
 /// запускается), `$1` — файл автора (его папка — рабочий каталог).
-pub const CONKY_OVERLAY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$1")" && exec conky -c "$0""#;
+pub const CONKY_OVERLAY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$1")" && exec conky -c "${rexon_xw:-$0}""#;
 
 fn conky_start(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
     let Some(conf) = conky_conf(io, ctx, id) else {
@@ -1412,9 +1436,17 @@ fn conky_start(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
 /// при первом запуске). Найденный на диске виджет и так лежит там, куда
 /// смотрят его пути, — его файлы не трогаются. Интерфейс зовёт её и ДО
 /// вопроса о командах виджета: разрешение помнит файлы уже починенными.
+/// Виджет, разрешённый ДО починки, остаётся разрешённым: правка — своя,
+/// Rexon, и второй раз спрашивать о тех же командах незачем.
 pub fn conky_prepare(ctx: &Ctx, id: &str) {
-    if !crate::conky_scan::is_found_name(id) {
-        conky_repair_paths(&ctx.home, &format!("{}/{id}", conky_root(ctx)));
+    if crate::conky_scan::is_found_name(id) {
+        return;
+    }
+    let io = crate::animations::SystemIo;
+    let trusted = crate::conky_safety::trusted_as_is(&io, ctx, id);
+    let changed = conky_repair_paths(&ctx.home, &format!("{}/{id}", conky_root(ctx)));
+    if trusted && !changed.is_empty() {
+        crate::conky_safety::remember(&io, ctx, id);
     }
 }
 
@@ -1609,12 +1641,18 @@ fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
             .map(|(pid, _)| pid)
             .collect()
     };
+    // Тема со сценарием запуска — целиком: циклы сценария и группа
+    // (`conky_theme`), даже если сам conky уже упал.
+    let mut pids = crate::conky_theme::with_companions(io, pids);
+    for p in crate::conky_theme::widget_companions(io, &crate::conky_scan::widget_path(ctx, id)) {
+        if !pids.contains(&p) {
+            pids.push(p);
+        }
+    }
     if pids.is_empty() {
         return (true, trf("⏹️ Stopped: %1", &[&title]));
     }
-    let mut cmd = vec!["kill".to_string()];
-    cmd.extend(pids);
-    let (ok, out) = io.run(&cmd);
+    let (ok, out) = crate::conky_theme::kill_targets(io, &pids);
     if !ok {
         return (false, trf("Couldn't stop “%1”: %2", &[&title, &out.trim().to_string()]));
     }
@@ -1654,11 +1692,19 @@ pub fn conky_autostart_path(ctx: &Ctx, id: &str) -> String {
 /// Запись автозапуска виджета `id` для файла `conf` с настройками `opts`
 /// (строки композиторов ставятся тут же, [`crate::conky_autostart::build`]).
 fn conky_autostart_built(io: &dyn LookIo, ctx: &Ctx, id: &str, conf: &str, opts: &crate::conky_autostart::Options) -> crate::conky_autostart::Built {
+    // Тема со своим `start.sh` и при входе запускается им (`conky_theme`).
+    if let Some(plan) = crate::conky_theme::script_launch(io, ctx, id) {
+        let env = crate::conky_autostart::session_env(ctx);
+        let key = crate::conky_scan::autostart_key(id);
+        return crate::conky_autostart::build_script(&env, &key, &crate::conky_scan::widget_title(id), &plan, Some(conf), opts);
+    }
     let p = crate::conky_overlay::live_paths(ctx, conf);
     let launch = crate::conky_overlay::autostart_launch(io, &p);
+    let xwayland = crate::conky_overlay::autostart_xwayland(io, ctx, &p, conf);
     let env = crate::conky_autostart::session_env(ctx);
     let key = crate::conky_scan::autostart_key(id);
-    crate::conky_autostart::build(&env, &key, &crate::conky_scan::widget_title(id), conf, launch.as_deref(), opts)
+    let title = crate::conky_scan::widget_title(id);
+    crate::conky_autostart::build(&env, &key, &title, conf, launch.as_deref(), xwayland.as_deref(), opts)
 }
 
 /// Убрать автозапуск виджета: запись и строки композиторов.
@@ -1670,13 +1716,21 @@ pub fn conky_autostart_forget(ctx: &Ctx, id: &str) {
 /// Включён ли автозапуск виджета.
 ///
 /// Запись прежнего вида (без перехода в папку виджета, без
-/// `X-KDE-autostart-after`) заодно переписывается на нынешнюю с теми же
+/// `X-KDE-autostart-after`, без перехода на XWayland) заодно переписывается на нынешнюю с теми же
 /// задержкой и окружением: включённый раньше виджет иначе так и запускался
 /// бы при входе по-старому. Нынешняя запись не трогается.
 pub fn conky_autostart(io: &dyn LookIo, ctx: &Ctx, id: &str) -> bool {
     let path = conky_autostart_path(ctx, id);
     let Some(text) = io.read(&path) else { return false };
-    if text.contains("\nExec=conky -c ") || !text.contains("\nX-KDE-autostart-after=") {
+    // Запись без перехода на XWayland (до 15.11.2026) или без файла запуска
+    // через него (окно поверх окон) — тоже прежнего вида.
+    let script = crate::conky_theme::start_script(io, ctx, id).is_some();
+    let old_session = !text.contains(crate::conky_overlay::XWAYLAND_SESSION_TYPE)
+        || (!script && !text.contains(crate::conky_overlay::XWAYLAND_LAUNCH_VAR));
+    // Тема получила (или потеряла) свой `start.sh` — запись под другой путь
+    // запуска.
+    let wrong_path = script != text.contains(crate::conky_theme::MARKER_ENV);
+    if text.contains("\nExec=conky -c ") || !text.contains("\nX-KDE-autostart-after=") || old_session || wrong_path {
         if let Some(conf) = conky_conf(io, ctx, id) {
             let opts = crate::conky_autostart::options_of(&text);
             io.write(&path, &conky_autostart_built(io, ctx, id, &conf, &opts).desktop);
@@ -1720,9 +1774,7 @@ pub fn set_conky_autostart_options(io: &dyn LookIo, ctx: &Ctx, id: &str, opts: &
         );
     };
     // При входе виджет запустится без Rexon — пути чинятся заранее.
-    if !crate::conky_scan::is_found_name(id) {
-        conky_repair_paths(&ctx.home, &format!("{}/{id}", conky_root(ctx)));
-    }
+    conky_prepare(ctx, id);
     let built = conky_autostart_built(io, ctx, id, &conf, opts);
     if !io.write(&path, &built.desktop) {
         return (false, trf("Couldn't change autostart of “%1”", &[&id]));
@@ -1914,7 +1966,8 @@ mod tests {
                 .to_string()
         };
         let argv = crate::compositor_autostart::exec_argv(&value("Exec=")).expect("строка Exec разбирается");
-        assert_eq!(argv, ["sh", "-c", CONKY_AUTOSTART_SCRIPT, conf]);
+        let script = format!("{}{CONKY_AUTOSTART_SCRIPT}", crate::conky_overlay::xwayland_shell(false, None));
+        assert_eq!(argv, ["sh", "-c", script.as_str(), conf]);
         assert_eq!(value("Path="), "/h/.config/conky/It's \"my\" $w");
     }
 
@@ -2075,6 +2128,9 @@ mod tests {
         std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::write(w.join("bg.png"), b"\x89PNG\0~/.conky/nordcore/x").unwrap();
         std::fs::write(w.join("install.sh"), "cp -r nordcore ~/.conky/nordcore\n").unwrap();
+        // Сценарий под прежний conky: и путь, и модуль X11-рисования.
+        let viz = w.join("viz.lua");
+        std::fs::write(&viz, "require 'cairo'\ndofile('~/.conky/nordcore/clock01_rings.lua')\ncs = cairo_xlib_surface_create(d)\n").unwrap();
         let wd = w.to_string_lossy().into_owned();
         let mut changed = conky_repair_paths(&home, &wd);
         changed.sort();
@@ -2084,8 +2140,11 @@ mod tests {
         let conky_dir = tmp.join(".conky").exists();
         let again = conky_repair_paths(&home, &wd);
         let png = std::fs::read(w.join("bg.png")).unwrap();
+        let viz = std::fs::read_to_string(&viz).unwrap();
         let _ = std::fs::remove_dir_all(&tmp);
-        assert_eq!(changed.len(), 2, "{changed:?}");
+        assert_eq!(changed.len(), 3, "{changed:?}");
+        assert!(viz.starts_with(crate::conky_safety::LUA_COMPAT_MARK), "{viz}");
+        assert!(viz.contains("pcall(require, 'cairo_xlib')\nrequire 'cairo'\ndofile('~/.config/conky/nord/nordcore/clock01_rings.lua')"), "{viz}");
         assert_eq!(rc, format!("lua_load = '~/.config/conky/nord/nordcore/clock01_rings.lua',\n"));
         assert_eq!(start, "#!/bin/sh\nconky -c ~/.config/conky/nord/nordcore/conkyrc2core &\n");
         assert_eq!(mode, 0o755);
@@ -2130,7 +2189,7 @@ mod tests {
         let ctx = Ctx { home: "/h".into(), xdg_config_home: Some(cfg), wayland: false, de: String::new() };
         let io = Fake { kills: RefCell::new(Vec::new()) };
         assert_eq!(conky_forget_widget(&io, &ctx, "/h/.config/conky/w/").as_deref(), Some("w"));
-        assert_eq!(*io.kills.borrow(), vec![vec!["kill".to_string(), "42".to_string()]]);
+        assert_eq!(*io.kills.borrow(), vec![vec!["kill".to_string(), "--".to_string(), "42".to_string()]]);
         let gone = !tmp.join("autostart/rexon-conky-w.desktop").exists();
         let kept = tmp.join("autostart/rexon-conky-other.desktop").exists();
         assert_eq!(conky_forget_widget(&io, &ctx, "/h/.local/share/fonts/rexon-conky-w"), None);

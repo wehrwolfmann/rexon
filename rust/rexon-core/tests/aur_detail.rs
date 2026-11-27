@@ -190,13 +190,8 @@ fn page_urls_and_pause() {
 #[test]
 fn image_sources_by_host() {
     let gh = detail_image_sources("https://github.com/aeroshell-desktop/aerothemeplasma");
-    assert_eq!(
-        gh,
-        vec![
-            "https://opengraph.githubassets.com/0/aeroshell-desktop/aerothemeplasma".to_string(),
-            "github-readme:aeroshell-desktop/aerothemeplasma".to_string(),
-        ]
-    );
+    // OpenGraph-карточки репозитория (имя и звёзды) нет: это не снимок.
+    assert_eq!(gh, vec!["github-readme:aeroshell-desktop/aerothemeplasma".to_string()]);
     // Первая картинка карточки — та же, что у плитки.
     let tile = info("aerothemeplasma-desktop-git").as_package().preview_url();
     assert_eq!(gh[0], tile);

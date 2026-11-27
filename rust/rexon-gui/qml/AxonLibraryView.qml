@@ -3,6 +3,11 @@
 // названиям или тегам, сортировка, панель фильтров с числом включённых,
 // разделы «Недавно добавленные» и «Можно синхронизировать».
 //
+// Строки поиска здесь НЕТ: слово набирают в общей строке шапки страницы,
+// той же, что у KDE Store и Wallhaven (`query` приходит со страницы), —
+// своя строка уезжала влево вниз и теряла слово при смене магазина (живая
+// проверка 16.11.2026). Где искать — в названиях или в тегах — в «Фильтре».
+//
 // Только разметка: что в сетке, в каком порядке и все подписи — ядро
 // (`rexon_core::axon_window`) через `AxonActions`
 // (rust/rexon-gui/src/axon_actions.rs). Библиотека читается сама при
@@ -33,8 +38,13 @@ Item {
     readonly property int gridMarginH: view.layout ? view.layout.gridMarginH : 16
     readonly property int previewHeight: view.layout ? view.layout.cardPreviewHeight : 170
 
+    /// Слово общей строки поиска шапки страницы (`AppearanceModel.query`).
+    property string query: ""
+
     /// Строка для строки состояния страницы.
     signal message(string text)
+    /// «Очистить фильтр» сбросил и поиск — очистить строку шапки.
+    signal searchCleared()
 
     readonly property color colCard: view.pal.bg_card || "#1e2d3d"
     readonly property color colCardHover: view.pal.bg_card_hover || "#263d52"
@@ -65,6 +75,9 @@ Item {
 
     function reload() {
         axon.reload();
+        // Слово набрали в другом магазине до захода сюда: применить сразу.
+        searchDebounce.stop();
+        axon.setSearch(view.query);
         view.refresh();
     }
 
@@ -109,10 +122,11 @@ Item {
         id: searchDebounce
         interval: 300
         onTriggered: {
-            axon.setSearch(searchField.text);
+            axon.setSearch(view.query);
             view.refresh();
         }
     }
+    onQueryChanged: searchDebounce.restart()
 
     FolderDialog {
         id: folderDialog
@@ -128,47 +142,13 @@ Item {
         anchors.fill: parent
         spacing: 8
 
-        // ── Поиск, сортировка, фильтр ─────────────────────────────────
+        // ── Сортировка, фильтр ────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 16
             Layout.rightMargin: 16
             spacing: 8
             visible: view.v.screen !== "note"
-
-            RexonTextField {
-                id: searchField
-                objectName: "axonSearch"
-                Layout.preferredWidth: 260
-                Layout.minimumWidth: 140
-                pal: view.pal
-                borderTone: view.colBorder
-                placeholderText: view.t.searchPlaceholder || ""
-                onTextEdited: searchDebounce.restart()
-                onAccepted: {
-                    searchDebounce.stop();
-                    axon.setSearch(searchField.text);
-                    view.refresh();
-                }
-            }
-
-            // «Названия обоев | Теги».
-            Repeater {
-                model: view.t.modes || []
-                delegate: RexonButton {
-                    required property var modelData
-                    objectName: "axonMode_" + modelData.key
-                    pal: view.pal
-                    text: modelData.label
-                    checkable: true
-                    checked: view.v.query.mode === modelData.key
-                    highlighted: checked
-                    onClicked: {
-                        axon.setSearchMode(modelData.key);
-                        view.refresh();
-                    }
-                }
-            }
 
             Item { Layout.fillWidth: true }
 
@@ -181,7 +161,7 @@ Item {
                 model: view.t.sorts || []
                 selectedValue: view.v.query.sort
                 ToolTip.text: view.t.sortTooltip || ""
-                ToolTip.visible: hovered
+                ToolTip.visible: hintVisible
                 ToolTip.delay: 600
                 onActivated: {
                     axon.setSort(sortBox.currentValue);
@@ -331,7 +311,11 @@ Item {
                                     }
 
                                     ToolTip.text: view.t.tileTooltip || ""
+                                    // Пока открыто меню плитки (правый щелчок),
+                                    // подсказки нет: курсор остаётся над плиткой,
+                                    // и она висела бы поверх пунктов меню.
                                     ToolTip.visible: tileMouse.containsMouse
+                                                     && !tileMenu.visible
                                     ToolTip.delay: 1200
                                 }
                             }
@@ -370,7 +354,7 @@ Item {
                 text: view.t.clearFilter || ""
                 onClicked: {
                     axon.clearFilter();
-                    searchField.text = "";
+                    view.searchCleared();
                     view.refresh();
                 }
             }
@@ -409,6 +393,35 @@ Item {
 
         ColumnLayout {
             spacing: 4
+
+            // «Искать в: Названия обоев | Теги» — режим общей строки поиска.
+            RexonText {
+                text: view.t.searchIn || ""
+                color: view.colTextSecondary
+                font.bold: true
+            }
+
+            RowLayout {
+                spacing: 6
+                Repeater {
+                    model: view.t.modes || []
+                    delegate: RexonButton {
+                        required property var modelData
+                        objectName: "axonMode_" + modelData.key
+                        pal: view.pal
+                        text: modelData.label
+                        checkable: true
+                        checked: view.v.query.mode === modelData.key
+                        highlighted: checked
+                        onClicked: {
+                            axon.setSearchMode(modelData.key);
+                            view.refresh();
+                        }
+                    }
+                }
+            }
+
+            Item { implicitHeight: 6 }
 
             Repeater {
                 model: view.t.flags || []
@@ -484,6 +497,21 @@ Item {
     Menu {
         id: tileMenu
         objectName: "axonTileMenu"
+        // Ширина — по самому широкому пункту: у `Menu` стилей Basic и
+        // Fusion она за подписями не следует, и длинная подпись на другом
+        // языке обрезалась («Перейти к расположению фай…»). Тот же счёт,
+        // что у меню окна (`WindowMenu.qml`).
+        implicitWidth: {
+            let widest = 0;
+            for (let i = 0; i < tileMenu.count; ++i) {
+                const entry = tileMenu.itemAt(i) as MenuItem;
+                if (entry && entry.contentItem)
+                    widest = Math.max(widest, entry.contentItem.implicitWidth
+                                      + entry.leftPadding + entry.rightPadding + 16);
+            }
+            return Math.max(tileMenu.implicitBackgroundWidth + tileMenu.leftInset + tileMenu.rightInset,
+                            widest + tileMenu.leftPadding + tileMenu.rightPadding);
+        }
         background: Rectangle {
             implicitWidth: 240
             color: view.colCard

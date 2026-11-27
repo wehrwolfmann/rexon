@@ -917,11 +917,19 @@ fn parse_gvariant_str(out: &str) -> String {
 /// `gsettings` со схемой из каталога самого расширения, если она там
 /// собрана (в общем каталоге схем её может не быть — то же, что у обоев,
 /// [`crate::wallpaper_engine::shell_ext_schema_dirs`]).
+///
+/// Каталог брошенной копии ([`orphan_user_copy`]) пропускается: её схема от
+/// прежней версии, а сама копия будет снята.
 fn shell_gsettings(io: &dyn LookIo, ctx: &LookCtx) -> Option<(Vec<String>, &'static str)> {
     let schema = crate::wallpaper_engine::shell_ext_schema(&ctx.de)?;
     let dirs = crate::wallpaper_engine::shell_ext_schema_dirs(&ctx.de, &ctx.home, &ctx.data_home, &ctx.data_dirs.join(":"));
+    let orphan = orphan_user_copy(io, ctx);
     let mut cmd = vec!["gsettings".to_string()];
-    if let Some(dir) = dirs.into_iter().find(|d| io.list_dir(d).iter().any(|n| n == "gschemas.compiled")) {
+    if let Some(dir) = dirs
+        .into_iter()
+        .filter(|d| orphan.as_deref().is_none_or(|o| !d.starts_with(&format!("{o}/"))))
+        .find(|d| io.list_dir(d).iter().any(|n| n == "gschemas.compiled"))
+    {
         cmd.push("--schemadir".to_string());
         cmd.push(dir);
     }
@@ -986,29 +994,13 @@ fn shell_enable_steps(io: &dyn LookIo, ctx: &LookCtx) -> Result<Vec<LookStep>, S
         None
     };
     match wpe::parse_shell_ext_state(&ctx.de, out.as_deref()) {
+        ShellExtState::Enabled if ctx.de != "gnome" => Ok(cinnamon_repair_steps(io, ctx)),
         ShellExtState::Enabled | ShellExtState::Unknown => Ok(Vec::new()),
-        ShellExtState::Disabled if ctx.de == "gnome" => {
-            Ok(vec![LookStep::Cmd(argv(&["gnome-extensions", "enable", wpe::SHELL_EXT_ID]))])
-        }
+        // GNOME — `gnome-extensions enable`; Cinnamon — дописать себя в
+        // список включённых (оболочка подхватывает сразу), общее решение с
+        // обоями (`shell_ext_enable_argv`).
         ShellExtState::Disabled => {
-            // Cinnamon: дописать себя в список включённых — оболочка
-            // подхватывает расширение сразу, без перезапуска.
-            let mut list: Vec<String> = out
-                .as_deref()
-                .unwrap_or_default()
-                .split('\'')
-                .skip(1)
-                .step_by(2)
-                .map(str::to_string)
-                .collect();
-            list.push(wpe::SHELL_EXT_ID.to_string());
-            Ok(vec![LookStep::Cmd(vec![
-                "gsettings".to_string(),
-                "set".to_string(),
-                "org.cinnamon".to_string(),
-                "enabled-extensions".to_string(),
-                wpe::gvariant_string_array(&list),
-            ])])
+            Ok(wpe::shell_ext_enable_argv(&ctx.de, out.as_deref()).map(LookStep::Cmd).into_iter().collect())
         }
         ShellExtState::NotLoaded | ShellExtState::Error | ShellExtState::OutOfDate => {
             Err(trf(MSG_SHELL_EXT_NOT_RUNNING, &[&wpe::shell_ext_place(&ctx.de)]))
@@ -1016,17 +1008,165 @@ fn shell_enable_steps(io: &dyn LookIo, ctx: &LookCtx) -> Result<Vec<LookStep>, S
     }
 }
 
+// ── Cinnamon: расширение в списке включённых, но не работает ──────────────
+//
+// Cinnamon считает расширение «включённым» по списку `enabled-extensions`,
+// даже если его `enable()` упал. Так было вживую 15.11.2026 (Cinnamon 6.8
+// Wayland, пакет r2290): в `~/.local/share/cinnamon/extensions` осталась
+// копия расширения от прежней версии Rexon (Cinnamon берёт копию из
+// домашнего каталога раньше системной), её `enable()` падал на
+// `Meta.BackgroundGroup is not a constructor`, и эффект экрана не
+// показывался ни разу, а окно писало «применено». Поэтому для Cinnamon
+// список включённых — не ответ: спрашиваем саму оболочку, что у неё
+// РАБОТАЕТ (`GetRunningXletUUIDs`), и если нашего там нет — снимаем
+// брошенную копию и просим оболочку перечитать расширение (`ReloadXlet` —
+// то же, что делает «Расширения» Cinnamon при обновлении; оболочка не
+// перезапускается).
+
+fn cinnamon_dbus_argv(method: &str, args: &[&str]) -> Vec<String> {
+    let mut cmd = argv(&["gdbus", "call", "--session", "--dest", "org.Cinnamon", "--object-path", "/org/Cinnamon", "--method"]);
+    cmd.push(format!("org.Cinnamon.{method}"));
+    cmd.extend(args.iter().map(|a| a.to_string()));
+    cmd
+}
+
+/// Спросить у Cinnamon, какие расширения у неё работают.
+pub fn cinnamon_running_argv() -> Vec<String> {
+    cinnamon_dbus_argv("GetRunningXletUUIDs", &["extension"])
+}
+
+/// Попросить Cinnamon перечитать наше расширение с диска.
+pub fn cinnamon_reload_argv() -> Vec<String> {
+    cinnamon_dbus_argv("ReloadXlet", &[crate::wallpaper_engine::SHELL_EXT_ID, "EXTENSION"])
+}
+
+/// Ответ `GetRunningXletUUIDs`: `Some(true)` — наше работает, `Some(false)` —
+/// нет, `None` — ответ непонятен (оболочка не та или не ответила).
+pub fn parse_cinnamon_running(out: &str) -> Option<bool> {
+    let t = out.trim();
+    if !t.starts_with('(') {
+        return None;
+    }
+    Some(t.contains(&format!("'{}'", crate::wallpaper_engine::SHELL_EXT_ID)))
+}
+
+/// Брошенная копия нашего расширения Cinnamon в домашнем каталоге: она
+/// заслоняет системную из пакета, а сам Rexon в домашний каталог не
+/// поставлен (`~/.local/lib/rexon` нет), то есть копию никто больше не
+/// обновит. Только при отличии от системной — одинаковая ничему не мешает.
+pub fn orphan_user_copy(io: &dyn LookIo, ctx: &LookCtx) -> Option<String> {
+    if ctx.de == "gnome" || crate::wallpaper_engine::shell_ext_schema(&ctx.de).is_none() {
+        return None;
+    }
+    let id = crate::wallpaper_engine::SHELL_EXT_ID;
+    let user = format!("{}/cinnamon/extensions/{id}", ctx.data_home.trim_end_matches('/'));
+    let user_js = io.read(&format!("{user}/extension.js"))?;
+    if !io.list_dir(&format!("{}/.local/lib/rexon", ctx.home.trim_end_matches('/'))).is_empty() {
+        return None;
+    }
+    let dirs = if ctx.data_dirs.is_empty() { crate::plugin_journal::data_dirs("") } else { ctx.data_dirs.clone() };
+    let system_js = dirs
+        .iter()
+        .map(|d| format!("{}/cinnamon/extensions/{id}/extension.js", d.trim_end_matches('/')))
+        .find_map(|p| io.read(&p))?;
+    (system_js != user_js).then_some(user)
+}
+
+/// Строка журнала о снятии брошенной копии — одна на оба пути (эффекты
+/// экрана и обои).
+fn log_orphan_removal(path: &str) {
+    crate::log_info!("screen-effects", "снимаю брошенную копию расширения, заслонявшую системную: {path}");
+}
+
+/// Снять брошенную копию нашего расширения Cinnamon ([`orphan_user_copy`]),
+/// если она есть. Общая точка для эффектов экрана (шаг починки) и обоев
+/// (Cinnamon с layer-shell, `wallpaper_exec`): копия от прежней версии
+/// поднимала там второй хост видео. `Some` — путь снятой копии; после
+/// снятия работающее расширение надо перечитать ([`cinnamon_reload_argv`]).
+pub fn remove_orphan_user_copy(io: &dyn LookIo, ctx: &LookCtx) -> Option<String> {
+    let path = orphan_user_copy(io, ctx)?;
+    log_orphan_removal(&path);
+    io.remove_tree(&path).then_some(path)
+}
+
+/// Шаги починки, если оболочка наше расширение не запустила (иначе пусто).
+fn cinnamon_repair_steps(io: &dyn LookIo, ctx: &LookCtx) -> Vec<LookStep> {
+    let probe = cinnamon_running_argv();
+    if !io.have(&probe[0]) {
+        return Vec::new();
+    }
+    let (ok, out) = io.run(&probe);
+    if !ok || parse_cinnamon_running(&out) != Some(false) {
+        return Vec::new();
+    }
+    let mut steps = Vec::new();
+    if let Some(path) = orphan_user_copy(io, ctx) {
+        steps.push(LookStep::RemoveTree { path });
+    }
+    steps.push(LookStep::Cmd(cinnamon_reload_argv()));
+    steps
+}
+
+// ── Подтверждение от расширения ───────────────────────────────────────────
+//
+// «Применено» говорим, только если расширение само сказало, что эффект
+// лёг на экран. Договор с общим блоком `[rexon-wp:screen-effect]`: на
+// каждое применение расширение пишет файл [`shell_status_path`] строками
+// `state=on|off|error`, `path=<файл шейдера>`, `detail=<причина>`. Перед
+// сменой ключа Rexon пишет туда `state=pending` с новым путём — так
+// прежний ответ не сойдёт за новый.
+
+/// Файл ответа расширения.
+pub fn shell_status_path(ctx: &LookCtx) -> String {
+    ctx.cfg("rexon/screen-effects/shell.status")
+}
+
+/// Сколько ждать ответа расширения: оно применяет через 150 мс после смены
+/// ключа, сборка шейдера — доли секунды.
+pub const CONFIRM_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+/// Как часто заглядывать в файл ответа.
+pub const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Ответ расширения на включение эффекта.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Confirm {
+    /// Эффект на экране.
+    Shown,
+    /// Расширение не смогло (причина — его словами).
+    Failed(String),
+}
+
+fn status_field<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+}
+
+/// Что расширение ответило про шейдер `expected`. `None` — ещё не ответило.
+pub fn shell_confirmation(io: &dyn LookIo, ctx: &LookCtx, expected: &str) -> Option<Confirm> {
+    let text = io.read(&shell_status_path(ctx))?;
+    if status_field(&text, "path") != Some(expected) {
+        return None;
+    }
+    match status_field(&text, "state")? {
+        "on" => Some(Confirm::Shown),
+        "error" => Some(Confirm::Failed(status_field(&text, "detail").unwrap_or_default().to_string())),
+        _ => None,
+    }
+}
+
+/// Шаг «ключ эффекта = `value`» через схему расширения.
+fn shell_set_key_step(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> Option<LookStep> {
+    let (mut cmd, schema) = shell_gsettings(io, ctx)?;
+    cmd.extend(argv(&["set", schema, SHELL_EFFECT_KEY]));
+    cmd.push(gvariant_str(value));
+    Some(LookStep::Cmd(cmd))
+}
+
 /// План записи для GNOME или Cinnamon. `Err` — готовая фраза, почему нельзя.
 pub fn plan_gnome_cinnamon(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
-    let Some((gsettings, schema)) = shell_gsettings(io, ctx) else {
+    if shell_gsettings(io, ctx).is_none() {
         return Err(support(&ctx.de, ctx.wayland).note);
-    };
-    let set_key = |value: &str| {
-        let mut cmd = gsettings.clone();
-        cmd.extend(argv(&["set", schema, SHELL_EFFECT_KEY]));
-        cmd.push(gvariant_str(value));
-        LookStep::Cmd(cmd)
-    };
+    }
+    let set_key = |value: &str| shell_set_key_step(io, ctx, value).expect("схема проверена выше");
     let params = new.params.clamped();
     let state_path = shell_state_path(ctx);
     let current = shell_current_path(io, ctx);
@@ -1054,11 +1194,21 @@ pub fn plan_gnome_cinnamon(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings)
     let state = shell_state_content(Some(preset), params);
     let state_same = io.read(&state_path).as_deref() == Some(state.as_str());
     let mut steps = Vec::new();
-    // Тот же шейдер уже показан — файл и ключ не трогаем.
-    if current.is_empty() || io.read(&current).as_deref() != Some(content.as_str()) {
+    // Тот же шейдер уже показан (и расширение это подтвердило) — файл и
+    // ключ не трогаем. Без подтверждения ключ переводится на другой файл:
+    // расширение замечает только СМЕНУ ключа, а прежний раз оно могло
+    // эффект и не наложить (не работало, шейдер не собрался).
+    let shown = !current.is_empty()
+        && io.read(&current).as_deref() == Some(content.as_str())
+        && shell_confirmation(io, ctx, &current) == Some(Confirm::Shown);
+    if !shown {
         let [a, b] = shell_shader_slots(ctx);
         let slot = if current == a { b } else { a };
         steps.push(LookStep::WriteFile { path: slot.clone(), content });
+        steps.push(LookStep::WriteFile {
+            path: shell_status_path(ctx),
+            content: format!("state=pending\npath={slot}\n"),
+        });
         steps.push(set_key(&slot));
     }
     if !state_same {
@@ -1415,11 +1565,137 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ScreenEffectsState {
     }
 }
 
+/// Итог «Применить» для окна.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ApplyOutcome {
+    /// Фраза для всплывающего сообщения (пусто — менять было нечего).
+    pub text: String,
+    /// Что-то записано (иначе пробный показ заново не заводится).
+    pub changed: bool,
+    /// Эффект включён и (у своих расширений GNOME/Cinnamon) подтверждён
+    /// самим расширением: только тогда окно заводит пробный показ.
+    pub shown: bool,
+}
+
+const MSG_SHELL_NO_ANSWER: &str = n_(
+    // TRANSLATORS: Screen effects on GNOME/Cinnamon: the shell extension never answered after "Apply". %1 is the place in Rexon, e.g. “Appearance → Cinnamon Extensions”.
+    "Rexon's shell extension didn't confirm the effect, so the screen was left as it was. \
+     Log out and back in; if that doesn't help, reinstall the extension in “%1”.",
+);
+// TRANSLATORS: Screen effects on GNOME/Cinnamon: the shell couldn't build the shader. %1 is the reason as the shell reported it (may be in English).
+const MSG_SHELL_EFFECT_FAILED: &str = n_("The desktop couldn't show this effect (%1), so the screen was left as it was.");
+
+/// «Применить» с ответом расширения: у GNOME и Cinnamon «применено» — только
+/// если расширение подтвердило, что эффект на экране; не подтвердило за
+/// [`CONFIRM_WAIT`] или не смогло — ключ сбрасывается (эффект не всплывёт
+/// сам при следующем входе без пробного показа), и фраза говорит, почему.
+/// `sleep` — пауза между заглядываниями в файл ответа (в тестах — пустая).
+///
+/// ⚠️ Ждёт до [`CONFIRM_WAIT`]: звать ТОЛЬКО из рабочего потока, не из
+/// главного (зависание окна 15.11.2026).
+pub fn apply_confirmed(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings, sleep: &dyn Fn(std::time::Duration)) -> ApplyOutcome {
+    let fail = |text: String| ApplyOutcome { text, changed: false, shown: false };
+    let steps = match plan_settings(io, ctx, new) {
+        Ok(s) => s,
+        Err(e) => return fail(e),
+    };
+    if steps.is_empty() {
+        return ApplyOutcome { text: String::new(), changed: false, shown: new.preset.is_some() };
+    }
+    if let Some(LookStep::RemoveTree { path }) = steps.iter().find(|s| matches!(s, LookStep::RemoveTree { .. })) {
+        log_orphan_removal(path);
+    }
+    if let Err(e) = run_steps(io, ctx, &steps) {
+        return fail(e);
+    }
+    let shell = matches!(ctx.de.as_str(), "gnome" | "cinnamon-mint");
+    let applied = || match ctx.de.as_str() {
+        // COSMIC читает фильтр только при входе — «применено» было бы неправдой.
+        "cosmic" => tr(MSG_COSMIC_NEXT_LOGIN),
+        _ => tr(MSG_APPLIED),
+    };
+    if !shell || new.preset.is_none() {
+        return ApplyOutcome { text: applied(), changed: true, shown: new.preset.is_some() };
+    }
+    let expected = shell_current_path(io, ctx).unwrap_or_default();
+    let mut answer = None;
+    let mut waited = std::time::Duration::ZERO;
+    while !expected.is_empty() {
+        answer = shell_confirmation(io, ctx, &expected);
+        if answer.is_some() || waited >= CONFIRM_WAIT {
+            break;
+        }
+        sleep(CONFIRM_POLL);
+        waited += CONFIRM_POLL;
+    }
+    let text = match answer {
+        Some(Confirm::Shown) => return ApplyOutcome { text: applied(), changed: true, shown: true },
+        Some(Confirm::Failed(detail)) => trf(MSG_SHELL_EFFECT_FAILED, &[&detail]),
+        None => trf(MSG_SHELL_NO_ANSWER, &[&crate::wallpaper_engine::shell_ext_place(&ctx.de)]),
+    };
+    crate::log_info!("screen-effects", "эффект не подтверждён расширением ({expected}): {text}");
+    if let Some(step) = shell_set_key_step(io, ctx, "") {
+        let _ = run_steps(io, ctx, &[step]);
+    }
+    ApplyOutcome { text, changed: true, shown: false }
+}
+
+/// Очередь действий окна «последний выигрывает»: пока идёт одно действие,
+/// новые не копятся — каждое следующее ЗАМЕНЯЕТ ждущее, и после текущего
+/// выполняется только самое свежее. Нужна рабочему потоку раздела
+/// (`rexon-gui::screen_effects_actions`): быстрые щелчки по «Применить»,
+/// «Вернуть как было» и откат пробного показа не встают в хвост.
+pub struct LatestQueue<T> {
+    inner: std::sync::Mutex<(bool, Option<T>)>,
+}
+
+impl<T> Default for LatestQueue<T> {
+    fn default() -> Self {
+        LatestQueue { inner: std::sync::Mutex::new((false, None)) }
+    }
+}
+
+impl<T> LatestQueue<T> {
+    /// Положить действие. `true` — рабочего потока нет, его надо завести
+    /// (и он заберёт это действие [`LatestQueue::take`]); `false` — поток
+    /// уже идёт и возьмёт действие сам, когда закончит текущее.
+    pub fn push(&self, item: T) -> bool {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.1 = Some(item);
+        if g.0 {
+            false
+        } else {
+            g.0 = true;
+            true
+        }
+    }
+
+    /// Для рабочего потока: следующее действие или `None` — работы нет,
+    /// поток заканчивается (и очередь это помнит).
+    pub fn take(&self) -> Option<T> {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let next = g.1.take();
+        if next.is_none() {
+            g.0 = false;
+        }
+        next
+    }
+
+    /// Идёт ли действие (или ждёт).
+    pub fn busy(&self) -> bool {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).0
+    }
+}
+
+/// Пресет по имени (`""` — выключить), сила и скорость → настройка.
+pub fn settings_from_ui(preset: &str, strength: f64, speed: f64) -> EffectSettings {
+    EffectSettings { preset: Preset::from_id(preset), params: EffectParams { strength, speed } }
+}
+
 /// «Применить» из окна: пресет по имени (`""` — выключить), сила и скорость.
 /// Ответ — готовая фраза для всплывающего сообщения.
 pub fn apply_from_ui(io: &dyn LookIo, ctx: &LookCtx, preset: &str, strength: f64, speed: f64) -> String {
-    let new = EffectSettings { preset: Preset::from_id(preset), params: EffectParams { strength, speed } };
-    apply(io, ctx, &new)
+    apply(io, ctx, &settings_from_ui(preset, strength, speed))
 }
 
 /// Шейдер предпросмотра для окна (QML `ShaderEffect`): все пресеты в одном
@@ -1914,6 +2190,12 @@ mod shell_ext_tests {
         tools: HashSet<&'static str>,
         /// Ответ `gdbus call … GetExtensionInfo` (GNOME).
         gdbus: Option<String>,
+        /// Ответ Cinnamon `GetRunningXletUUIDs` (`None` — не отвечает).
+        running: Option<String>,
+        /// Как отвечает расширение на смену ключа эффекта: `state=` в файле
+        /// ответа (`None` — молчит, как неработающее).
+        answer: Option<&'static str>,
+        removed: RefCell<Vec<String>>,
         ran: RefCell<Vec<Vec<String>>>,
     }
 
@@ -1928,12 +2210,25 @@ mod shell_ext_tests {
                     match (a[0].as_str(), gs.get(&k).cloned()) {
                         ("get", Some(v)) => (true, v),
                         ("set", Some(_)) => {
-                            gs.insert(k, a[3].clone());
+                            gs.insert(k.clone(), a[3].clone());
+                            // Расширение отвечает на смену ключа эффекта.
+                            let path = parse_gvariant_str(a[3]);
+                            if let (true, Some(state), false) = (k.ends_with(SHELL_EFFECT_KEY), self.answer, path.is_empty()) {
+                                let ctx = LookCtx::new("gnome", "/home/u", None);
+                                self.files
+                                    .borrow_mut()
+                                    .insert(shell_status_path(&ctx), format!("state={state}\npath={path}\ndetail=compile\n"));
+                            }
                             (true, String::new())
                         }
                         _ => (false, "No such key".to_string()),
                     }
                 }
+                "gdbus" if a.iter().any(|x| x == "org.Cinnamon.ReloadXlet") => (true, "()".to_string()),
+                "gdbus" if a.iter().any(|x| x == "org.Cinnamon.GetRunningXletUUIDs") => match &self.running {
+                    Some(out) => (true, out.clone()),
+                    None => (false, String::new()),
+                },
                 "gdbus" => match &self.gdbus {
                     Some(out) => (true, out.clone()),
                     None => (false, String::new()),
@@ -1953,6 +2248,11 @@ mod shell_ext_tests {
         }
         fn list_dir(&self, path: &str) -> Vec<String> {
             self.dirs.get(path).cloned().unwrap_or_default()
+        }
+        fn remove_tree(&self, path: &str) -> bool {
+            self.removed.borrow_mut().push(path.to_string());
+            self.files.borrow_mut().retain(|k, _| !k.starts_with(&format!("{path}/")));
+            true
         }
     }
 
@@ -1977,6 +2277,7 @@ mod shell_ext_tests {
             dirs: HashMap::from([(dir, vec!["gschemas.compiled".to_string()])]),
             tools: HashSet::from(["gsettings", "gdbus", "gnome-extensions"]),
             gdbus: gdbus.map(str::to_string),
+            answer: Some("on"),
             ..Default::default()
         };
         io.gs.borrow_mut().insert(format!("{schema} {SHELL_EFFECT_KEY}"), "''".to_string());
@@ -2094,6 +2395,175 @@ mod shell_ext_tests {
         assert_eq!(io.gs.borrow()["org.cinnamon enabled-extensions"], "[\"other@x\",\"rexon-wallpaper@rexon.app\"]");
         assert_eq!(key(&io, CINNAMON_SCHEMA_ID), shell_shader_slots(&c)[0]);
         assert_eq!(read_settings(&io, &c).preset, Some(Preset::Film));
+    }
+
+    /// 15.11.2026, Cinnamon 6.8 Wayland: расширение в списке включённых, но
+    /// не работает (заслонила брошенная копия из домашнего каталога) —
+    /// копия снимается, оболочка перечитывает расширение, ключ пишется
+    /// через схему СИСТЕМНОЙ копии.
+    #[test]
+    fn cinnamon_stale_user_copy_is_removed_and_reloaded() {
+        let c = ctx("cinnamon-mint");
+        let mut io = machine("cinnamon-mint", None);
+        let id = crate::wallpaper_engine::SHELL_EXT_ID;
+        let user = format!("{}/cinnamon/extensions/{id}", c.data_home);
+        let system_schemas = format!("/usr/share/cinnamon/extensions/{id}/schemas");
+        io.dirs.insert(system_schemas.clone(), vec!["gschemas.compiled".to_string()]);
+        io.files.borrow_mut().insert(format!("{user}/extension.js"), "old".into());
+        io.files.borrow_mut().insert(format!("/usr/share/cinnamon/extensions/{id}/extension.js"), "new".into());
+        io.running = Some("(@as [],)".to_string());
+
+        assert_eq!(orphan_user_copy(&io, &c).as_deref(), Some(user.as_str()));
+        let steps = plan_settings(&io, &c, &on(Preset::Crt)).unwrap();
+        assert!(steps.contains(&LookStep::RemoveTree { path: user.clone() }), "{steps:?}");
+        assert!(steps.contains(&LookStep::Cmd(cinnamon_reload_argv())), "{steps:?}");
+        let set = steps
+            .iter()
+            .find_map(|s| match s {
+                LookStep::Cmd(a) if a.contains(&"set".to_string()) && a.contains(&SHELL_EFFECT_KEY.to_string()) => Some(a.clone()),
+                _ => None,
+            })
+            .expect("ключ эффекта пишется");
+        assert_eq!(set[2], system_schemas, "схема брошенной копии не годится: {set:?}");
+
+        let out = apply_confirmed(&io, &c, &on(Preset::Crt), &|_| {});
+        assert!(out.shown && out.changed, "{out:?}");
+        assert_eq!(io.removed.borrow().as_slice(), [user.clone()]);
+
+        // Работающее расширение не трогаем, даже если копия отличается.
+        let mut io = machine("cinnamon-mint", None);
+        io.files.borrow_mut().insert(format!("{user}/extension.js"), "old".into());
+        io.files.borrow_mut().insert(format!("/usr/share/cinnamon/extensions/{id}/extension.js"), "new".into());
+        io.running = Some(format!("(['{id}'],)"));
+        let steps = plan_settings(&io, &c, &on(Preset::Crt)).unwrap();
+        assert!(!steps.iter().any(|s| matches!(s, LookStep::RemoveTree { .. }) || *s == LookStep::Cmd(cinnamon_reload_argv())));
+
+        // Rexon стоит в домашнем каталоге — копия его, не брошенная.
+        let mut io = machine("cinnamon-mint", None);
+        io.files.borrow_mut().insert(format!("{user}/extension.js"), "old".into());
+        io.files.borrow_mut().insert(format!("/usr/share/cinnamon/extensions/{id}/extension.js"), "new".into());
+        io.dirs.insert("/home/u/.local/lib/rexon".into(), vec!["rexon".into()]);
+        assert_eq!(orphan_user_copy(&io, &c), None);
+        assert_eq!(remove_orphan_user_copy(&io, &c), None);
+        assert!(io.removed.borrow().is_empty(), "не брошенную не снимаем");
+
+        // Общая точка для обоев (Cinnamon с layer-shell): та же копия
+        // снимается без плана эффекта.
+        let io = machine("cinnamon-mint", None);
+        io.files.borrow_mut().insert(format!("{user}/extension.js"), "old".into());
+        io.files.borrow_mut().insert(format!("/usr/share/cinnamon/extensions/{id}/extension.js"), "new".into());
+        assert_eq!(remove_orphan_user_copy(&io, &c).as_deref(), Some(user.as_str()));
+        assert_eq!(io.removed.borrow().as_slice(), [user.clone()]);
+    }
+
+    #[test]
+    fn cinnamon_running_answer_parses() {
+        let id = crate::wallpaper_engine::SHELL_EXT_ID;
+        assert_eq!(parse_cinnamon_running("(@as [],)\n"), Some(false));
+        assert_eq!(parse_cinnamon_running(&format!("(['a@b', '{id}'],)")), Some(true));
+        assert_eq!(parse_cinnamon_running("Error: no such method"), None);
+    }
+
+    /// «Применено» — только по ответу расширения; молчит или не смогло —
+    /// ключ сброшен (эффект не всплывёт сам при следующем входе), фраза
+    /// говорит почему.
+    #[test]
+    fn apply_needs_extension_confirmation() {
+        crate::i18n::set_language(Some("en"));
+        let c = ctx("cinnamon-mint");
+        let io = machine("cinnamon-mint", None);
+        let out = apply_confirmed(&io, &c, &on(Preset::Crt), &|_| {});
+        assert_eq!((out.text.as_str(), out.shown), ("Screen effects applied.", true));
+        assert_eq!(key(&io, CINNAMON_SCHEMA_ID), shell_shader_slots(&c)[0]);
+
+        // Молчит: ждали не дольше CONFIRM_WAIT и сбросили ключ.
+        let mut io = machine("cinnamon-mint", None);
+        io.answer = None;
+        let slept = std::cell::Cell::new(std::time::Duration::ZERO);
+        let out = apply_confirmed(&io, &c, &on(Preset::Crt), &|d| slept.set(slept.get() + d));
+        assert!(!out.shown && out.text.contains("didn't confirm"), "{out:?}");
+        assert!(slept.get() >= CONFIRM_WAIT && slept.get() <= CONFIRM_WAIT + CONFIRM_POLL, "{:?}", slept.get());
+        assert_eq!(key(&io, CINNAMON_SCHEMA_ID), "");
+        assert_eq!(read_settings(&io, &c).preset, None, "окно не покажет эффект «текущим»");
+
+        // Не смогло наложить — причина его словами.
+        let mut io = machine("gnome", Some(GNOME_ON));
+        io.answer = Some("error");
+        let g = ctx("gnome");
+        let out = apply_confirmed(&io, &g, &on(Preset::Vhs), &|_| {});
+        assert!(!out.shown && out.text.contains("(compile)"), "{out:?}");
+        assert_eq!(key(&io, GNOME_SCHEMA_ID), "");
+
+        // Прежний «включено» в файле ответа не сходит за новый: перед сменой
+        // ключа там «pending» с новым путём.
+        let mut io = machine("cinnamon-mint", None);
+        let [a, b] = shell_shader_slots(&c);
+        io.files.borrow_mut().insert(shell_status_path(&c), format!("state=on\npath={a}\n"));
+        io.answer = None;
+        let out = apply_confirmed(&io, &c, &on(Preset::Film), &|_| {});
+        assert!(!out.shown, "{out:?}");
+
+        // Тот же шейдер, но расширение его не подтверждало — ключ всё равно
+        // переводится, чтобы расширение заметило смену.
+        let io = machine("cinnamon-mint", None);
+        apply_ok(&io, &c, &on(Preset::Crt));
+        io.files.borrow_mut().insert(shell_status_path(&c), "state=error\npath=x\n".into());
+        let steps = plan_settings(&io, &c, &on(Preset::Crt)).unwrap();
+        assert!(steps.iter().any(|s| matches!(s, LookStep::WriteFile { path, .. } if *path == b)), "{steps:?}");
+    }
+
+    /// Очередь окна: положить действие — мгновенно, пока идёт текущее;
+    /// пять быстрых нажатий во время действия дают ОДНО следующее — самое
+    /// свежее, а не пять в хвосте.
+    #[test]
+    fn latest_queue_never_blocks_and_keeps_only_last() {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+        let q: Arc<LatestQueue<u32>> = Arc::default();
+        let done: Arc<Mutex<Vec<u32>>> = Arc::default();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let worker = |q: Arc<LatestQueue<u32>>, done: Arc<Mutex<Vec<u32>>>| {
+            std::thread::spawn(move || {
+                while let Some(n) = q.take() {
+                    let _ = started_tx.send(n);
+                    std::thread::sleep(Duration::from_millis(200));
+                    done.lock().unwrap().push(n);
+                }
+            })
+        };
+        assert!(q.push(1), "первое действие заводит поток");
+        let h = worker(q.clone(), done.clone());
+        // Нажатия — пока «1» уже выполняется (иначе «6» честно заменит
+        // ещё не взятую «1»).
+        assert_eq!(started_rx.recv_timeout(Duration::from_secs(5)), Ok(1));
+        let t = Instant::now();
+        for n in 2..=6 {
+            assert!(!q.push(n), "поток уже идёт");
+        }
+        assert!(t.elapsed() < Duration::from_millis(50), "нажатие ждало действие: {:?}", t.elapsed());
+        assert!(q.busy());
+        h.join().unwrap();
+        assert_eq!(*done.lock().unwrap(), vec![1, 6]);
+        assert!(!q.busy());
+        assert!(q.push(7), "после конца — снова новый поток");
+    }
+
+    /// Разметка окна: «Применить», «Вернуть как было» и откат пробного
+    /// показа идут через очередь рабочего потока, а не синхронным вызовом
+    /// (окно зависало 15.11.2026), и на время действия кнопки неактивны.
+    #[test]
+    fn window_actions_go_through_worker() {
+        const QML: &str = include_str!("../../rexon-gui/qml/ScreenEffectsSection.qml");
+        const ACTIONS: &str = include_str!("../../rexon-gui/src/screen_effects_actions.rs");
+        assert!(!QML.contains("actions.apply("), "синхронный вызов записи из QML");
+        assert!(QML.matches("actions.request(").count() >= 3, "Применить, Вернуть как было, откат пробы");
+        for button in ["screenEffectsApply", "screenEffectsRestore", "screenEffectsKeep", "screenEffectsRevert"] {
+            let at = QML.find(&format!("objectName: \"{button}\"")).unwrap_or_else(|| panic!("нет кнопки {button}"));
+            let body = &QML[at..at + QML[at..].find("onClicked").unwrap()];
+            assert!(body.contains("!section.busy"), "{button} активна во время действия");
+        }
+        assert!(ACTIONS.contains("std::thread::spawn") && ACTIONS.contains("apply_confirmed"));
+        assert!(ACTIONS.contains("LatestQueue"));
     }
 
     #[test]

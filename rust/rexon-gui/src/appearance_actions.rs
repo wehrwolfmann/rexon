@@ -162,6 +162,13 @@ pub mod qobject {
         #[cxx_name = "suggestReady"]
         fn suggest_ready(self: Pin<&mut AppearanceActions>, payload: QString);
 
+        /// Товар по ссылке из чужого текста собран (`openLinkedCard`):
+        /// строка JSON `{item}` (товар), `{aur}` (имя пакета) либо
+        /// `{failed, url, status}`.
+        #[qsignal]
+        #[cxx_name = "linkedCardReady"]
+        fn linked_card_ready(self: Pin<&mut AppearanceActions>, payload: QString);
+
         /// Картинка заявки записана в кеш по пути `path`.
         #[qsignal]
         #[cxx_name = "previewDone"]
@@ -523,6 +530,13 @@ pub mod qobject {
         #[cxx_name = "openUrl"]
         fn open_url(self: &AppearanceActions, url: &QString) -> bool;
 
+        /// Ссылка на товар магазина из чужого текста (`{card, url}`, `card` —
+        /// `link_policy::StoreRef`): собрать товар в фоне, ответ сигналом
+        /// `linkedCardReady`.
+        #[qinvokable]
+        #[cxx_name = "openLinkedCard"]
+        fn open_linked_card(self: Pin<&mut AppearanceActions>, request: &QString);
+
         /// «Продемонстрировать» заставку KDE: `ksplashqml <тема> --test`, как
         /// у модуля KDE. Отдаёт ошибку для человека (пусто — показ пошёл);
         /// неудачу самой программы сообщает `statusMessage`.
@@ -580,6 +594,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openConkyFolder"]
         fn open_conky_folder(self: &AppearanceActions, item_id: &QString) -> bool;
+
+        /// Тема плитки сделана в Conky Studio и он есть на машине — в
+        /// карточке кнопка «Редактировать в Conky Studio».
+        #[qinvokable]
+        #[cxx_name = "conkyStudioEditable"]
+        fn conky_studio_editable(self: &AppearanceActions, item_id: &QString) -> bool;
+
+        /// «Редактировать в Conky Studio»: открыть тему в нём. Итог —
+        /// сигналом `actionDone`.
+        #[qinvokable]
+        #[cxx_name = "editConkyInStudio"]
+        fn edit_conky_in_studio(self: Pin<&mut AppearanceActions>, item_id: &QString);
 
         /// «Открыть файл настроек» — часть `conf` виджета в редакторе по
         /// умолчанию; чужой путь (не часть виджета) не открывается.
@@ -1254,6 +1280,19 @@ impl qobject::AppearanceActions {
         }
     }
 
+    fn conky_studio_editable(&self, item_id: &QString) -> bool {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        rexon_core::conky_theme::studio_edit_argv(&rexon_core::animations::SystemIo, &rexon_core::de_apply::Ctx::live(), &name)
+            .is_some()
+    }
+
+    fn edit_conky_in_studio(mut self: Pin<&mut Self>, item_id: &QString) {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let (ok, msg) =
+            rexon_core::conky_theme::edit_in_studio(&rexon_core::animations::SystemIo, &rexon_core::de_apply::Ctx::live(), &name);
+        self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+    }
+
     fn open_conky_file(&self, item_id: &QString, conf: &QString) -> bool {
         let name = ap::local_theme_name(&item_id.to_string(), "");
         let io = rexon_core::animations::SystemIo;
@@ -1555,6 +1594,33 @@ impl qobject::AppearanceActions {
         qobject::open_url_external(url)
     }
 
+    fn open_linked_card(mut self: Pin<&mut Self>, request: &QString) {
+        let Ok(req) = serde_json::from_str::<Value>(&request.to_string()) else {
+            return;
+        };
+        let state = self.as_ref().get_ref().rust().state.clone();
+        let handle = self.as_mut().qt_thread();
+        std::thread::spawn(move || {
+            let url = s(&req, "url").to_string();
+            let card = req.get("card").cloned().unwrap_or(Value::Null);
+            let payload = match resolve_linked_card(&state, &card) {
+                Ok(v) => v,
+                Err(why) => {
+                    rexon_core::log_warn!("link", "карточка по ссылке {url}: {why}");
+                    json!({
+                        "failed": true,
+                        "url": url,
+                        "status": rexon_core::link_policy::card_failed_status(),
+                    })
+                }
+            }
+            .to_string();
+            post(&handle, move |mut object| {
+                object.as_mut().linked_card_ready(QString::from(&payload));
+            });
+        });
+    }
+
     fn demo_splash(mut self: Pin<&mut Self>, theme: &QString) -> QString {
         use std::sync::atomic::{AtomicBool, Ordering};
         use rexon_core::appearance_installer as ainst;
@@ -1728,12 +1794,16 @@ impl qobject::AppearanceActions {
             // и `PREVIEW_MAX_INFLIGHT_LOW` — два разных потолка), а
             // приоритет внутри уже отобранной пачки её решения не меняет.
             let _ = low;
+            // Плитка пакета AUR несёт метку, а не адрес: первая картинка
+            // README, образец шрифта Google Fonts (`aur::preview_url`).
+            // Разрешается один раз за сессию (`aur_image_url`).
+            let real = aur_image_url(&state, &url);
             let net = UreqNet::new().with_cancel(token.clone());
             let io = LiveOcsIo::with_net(net, &home());
             let preview_dir = io.preview_dir();
             let mut client = OcsClient::new(io, &preview_dir);
-            let outcome = client
-                .get_preview_image(&url)
+            let outcome = real
+                .and_then(|real| client.get_preview_image(&real))
                 .filter(|p| usable_preview(p, &preview_dir));
             if let Ok(mut jobs) = state.preview_cancels.lock() {
                 jobs.remove(&job);
@@ -2269,7 +2339,11 @@ impl qobject::AppearanceActions {
         }
         let home = home();
         let installed = ap::live_logged_theme_name(&home, &item.id);
-        let can_apply = ap::store_item_can_apply(std::path::Path::new(&home), &item);
+        let path = std::path::Path::new(&home);
+        // Поставленный виджет Conky или дополнение — запуск/остановка или
+        // включение/выключение тем же путём, что у плитки установленного
+        // (окно разрешения команд виджета, недостающие программы).
+        let can_apply = ap::store_item_can_apply(path, &item) || ap::store_item_switch(path, &item).is_some();
         match (ap::store_card_action(installed.is_some(), can_apply), installed) {
             (ap::StoreCardAction::ApplyInstalled, Some(name)) => self.apply_item(item, name),
             _ => self.install_by_id(item_id, false, &QString::default()),
@@ -3342,7 +3416,7 @@ fn fetch_ego(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
 /// Установленное раздела «Расширения GNOME» в сеансе GNOME — со слов
 /// оболочки: к плиткам с диска добавляется то, что знает только она, у
 /// каждой — пометки («Ошибка», «Не поддерживает GNOME N», «Обновление —
-/// после перезахода», «Системное») и что можно сделать. Оболочки нет —
+/// после перезахода») и что можно сделать. Оболочки нет —
 /// остаётся обзор диска, как прежде. Заодно — число скачанных обновлений
 /// (`gnomeUpdates` в ответе).
 fn stamp_gnome_installed(state: &Arc<State>, req: &Value, items: &mut Vec<Value>, answer: &mut Map<String, Value>) {
@@ -3411,7 +3485,9 @@ fn aur_packages(state: &Arc<State>, req: &Value) -> Result<Vec<AurPackage>, Stri
     let mut pkgs = if query.is_empty() {
         aur::fetch_category_with_curated(&mut net, s(req, "categoryKey"))
     } else {
-        aur::search_aur(&mut net, query, None)
+        // Поиск — только то, что подходит к разделу: на «girl» в «Обоях HD»
+        // иначе приходили словари fcitx и шрифты (`aur::search_in_category`).
+        aur::search_in_category(&mut net, query, s(req, "categoryKey"))
     }
     .map_err(|e| e.to_string())?;
     let installed = installed_packages();
@@ -3729,6 +3805,59 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
     post(handle, move |mut object| {
         object.as_mut().gallery_finished(QString::from(&count));
     });
+}
+
+/// Товар магазина по ссылке из чужого текста — тем же путём, каким его
+/// собирает раздел этого магазина: KDE Store — по номеру, Wallhaven и GNOME
+/// Extensions — запросом к сайту, Cinnamon Spices — из индекса сайта, AUR —
+/// по имени (паспорт карточка запросит сама).
+fn resolve_linked_card(state: &Arc<State>, card: &Value) -> Result<Value, String> {
+    let token = CancelToken::new();
+    let mut item = match s(card, "source") {
+        "aur" => {
+            let name = s(card, "name");
+            if name.is_empty() {
+                return Err("нет имени пакета".to_string());
+            }
+            return Ok(json!({ "aur": name }));
+        }
+        "ocs" => {
+            let io = LiveOcsIo::new(&home());
+            let preview_dir = io.preview_dir();
+            let mut client = OcsClient::new(io, &preview_dir);
+            client
+                .get_item_cached(s(card, "id"), rexon_core::ocs::DETAIL_TTL_SECS)
+                .map(|c| c.item)
+                .ok_or_else(|| "магазин не отдал товар".to_string())?
+        }
+        "wallhaven" => wh::live_detail(s(card, "id"), &token)
+            .map(|w| wh::theme_item(&w))
+            .map_err(|e| format!("{e:?}"))?,
+        "ego" => {
+            let pk = card.get("pk").and_then(Value::as_u64).unwrap_or(0);
+            let uuid = ego::live_uuid_by_pk(pk, &token).map_err(|e| format!("{e:?}"))?;
+            ego::live_detail(&uuid, &token)
+                .map(|e| ego::theme_item(&e))
+                .map_err(|e| format!("{e:?}"))?
+        }
+        "spices" => {
+            let t = cs::type_for_key(s(card, "kind")).ok_or_else(|| "неизвестный тип спайса".to_string())?;
+            let wanted = cs::page_url(t, &Value::from(s(card, "spices_id")));
+            let refresh = cs::live_refresh(t, false);
+            let sp = refresh
+                .spices
+                .iter()
+                .find(|sp| cs::page_url(t, &sp.spices_id) == wanted)
+                .ok_or_else(|| "спайса нет в индексе".to_string())?;
+            let mut it = cs::theme_item(t, sp, &i18n::current_language());
+            it.installed = cs::installed_state(&cs::SpiceEnv::live(), t, &sp.key).is_some();
+            it
+        }
+        other => return Err(format!("незнакомый магазин «{other}»")),
+    };
+    ap::stamp_installed_live(&home(), std::slice::from_mut(&mut item));
+    remember_items(state, std::slice::from_ref(&item));
+    Ok(json!({ "item": item }))
 }
 
 /// Перевести описание своим потоком: окну не нужно ждать ни галерею, ни
@@ -4863,7 +4992,8 @@ pub(crate) fn usable_preview(path: &str, cache_dir: &str) -> bool {
     let n = std::fs::File::open(path)
         .and_then(|mut f| f.read(&mut head))
         .unwrap_or(0);
-    if ap::looks_like_image(&head[..n]) {
+    // Файл шрифта — тоже годная «картинка»: им плитка шрифта рисует образец.
+    if ap::looks_like_image(&head[..n]) || (ap::is_font_file(path) && ap::looks_like_font(&head[..n])) {
         return true;
     }
     let _ = std::fs::remove_file(path);
@@ -5218,8 +5348,9 @@ fn aur_page_cached(state: &Arc<State>, name: &str, page: i64) -> Option<aur::Aur
 /// Прямой адрес картинки карточки: метки README и `og:image` разрешаются
 /// (один раз за сессию), обычный адрес — как есть.
 fn aur_image_url(state: &Arc<State>, src: &str) -> Option<String> {
-    let is_marker =
-        src.starts_with(aur::README_PREVIEW_SCHEME) || src.starts_with(aur::OG_IMAGE_SCHEME);
+    let is_marker = src.starts_with(aur::README_PREVIEW_SCHEME)
+        || src.starts_with(aur::OG_IMAGE_SCHEME)
+        || src.starts_with(aur::GOOGLE_FONT_SCHEME);
     if !is_marker {
         return Some(src.to_string());
     }
@@ -5229,6 +5360,8 @@ fn aur_image_url(state: &Arc<State>, src: &str) -> Option<String> {
     let mut net = UreqNet::new();
     let found = if src.starts_with(aur::README_PREVIEW_SCHEME) {
         aur::resolve_readme_preview(&mut net, src)
+    } else if src.starts_with(aur::GOOGLE_FONT_SCHEME) {
+        aur::resolve_google_font(&mut net, src)
     } else {
         aur::resolve_og_image(&mut net, src)
     };

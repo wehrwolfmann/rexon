@@ -102,6 +102,28 @@ pub mod qobject {
         #[cxx_name = "notPortedNotice"]
         fn not_ported_notice(self: &MainWindowModel, section_id: &QString) -> QString;
 
+        /// Режим обхода (`--tour`): ответ на прошлую команду (JSON, пусто —
+        /// первый вызов) → следующая команда (JSON). Решает ядро
+        /// (`rexon_core::main_window_tour`).
+        #[qinvokable]
+        #[cxx_name = "tourNext"]
+        fn tour_next(self: &MainWindowModel, report: &QString) -> QString;
+
+        /// Режим обхода: можно ли позвать метод страницы. Исполнитель
+        /// спрашивает перед КАЖДЫМ вызовом.
+        #[qinvokable]
+        #[cxx_name = "tourCallAllowed"]
+        fn tour_call_allowed(self: &MainWindowModel, method: &QString) -> bool;
+
+        /// Режим обхода: замер ожидания (JSON) → `wait`/`ready`/`timeout`.
+        #[qinvokable]
+        #[cxx_name = "tourWaitVerdict"]
+        fn tour_wait_verdict(self: &MainWindowModel, sample: &QString) -> QString;
+
+        /// Режим обхода: снять окно целиком в PNG `path`.
+        #[qinvokable]
+        #[cxx_name = "tourGrab"]
+        fn tour_grab(self: &MainWindowModel, path: &QString) -> bool;
     }
 
     // Объявления трейтов обязаны быть В МОСТЕ: cxx-qt печатает по ним и
@@ -282,6 +304,92 @@ impl qobject::MainWindowModel {
     fn not_ported_notice(&self, section_id: &QString) -> QString {
         QString::from(qt_main::not_ported_notice(&section_id.to_string()))
     }
+
+    fn tour_next(&self, report: &QString) -> QString {
+        QString::from(&tour_step(&report.to_string()))
+    }
+
+    fn tour_call_allowed(&self, method: &QString) -> bool {
+        tour::call_allowed(&method.to_string())
+    }
+
+    fn tour_wait_verdict(&self, sample: &QString) -> QString {
+        let sample: tour::WaitSample = serde_json::from_str(&sample.to_string()).unwrap_or_default();
+        QString::from(tour::wait_verdict(&sample).as_str())
+    }
+
+    fn tour_grab(&self, path: &QString) -> bool {
+        crate::tray::grab_main_window(&path.to_string())
+    }
+}
+
+// ============================================================================
+// Режим обхода: состояние живёт здесь, решения — в ядре
+// ============================================================================
+
+use rexon_core::main_window_tour as tour;
+
+/// Обход этого процесса. Под замком, а не в объекте окна: общий тайм-аут
+/// пишет отчёт из своего потока (`tour_abort`).
+static TOUR: std::sync::Mutex<Option<tour::Tour>> = std::sync::Mutex::new(None);
+
+/// Завести обход (зовёт бинарь до загрузки QML).
+pub fn tour_install(cfg: tour::TourConfig) {
+    if let Ok(mut t) = TOUR.lock() {
+        *t = Some(tour::Tour::new(cfg));
+    }
+}
+
+fn journal_of(cfg: &tour::TourConfig) -> String {
+    std::fs::read(cfg.out_dir.join(tour::JOURNAL_FILE))
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default()
+}
+
+fn write_report(cfg: &tour::TourConfig, text: &str) {
+    let path = cfg.out_dir.join(tour::REPORT_FILE);
+    match std::fs::write(&path, text) {
+        Ok(()) => println!("обход: отчёт {}", path.display()),
+        Err(e) => println!("обход: отчёт {} не записан: {e}", path.display()),
+    }
+}
+
+/// Один шаг обхода: принять ответ, выдать команду. Конец — отчёт на диск.
+fn tour_step(report: &str) -> String {
+    let Ok(mut guard) = TOUR.lock() else {
+        return tour::Command::Finish { exit_code: tour::EXIT_BAD_ARGS, report: String::new() }.to_json();
+    };
+    let Some(t) = guard.as_mut() else {
+        return tour::Command::Finish { exit_code: tour::EXIT_BAD_ARGS, report: String::new() }.to_json();
+    };
+    let journal = journal_of(&t.cfg);
+    let report = (!report.trim().is_empty()).then(|| {
+        let mut r = tour::Report::from_json(report);
+        r.log_offset = journal.len() as u64;
+        r
+    });
+    let cmd = t.next(report, &journal);
+    match &cmd {
+        tour::Command::Finish { exit_code, report } => {
+            write_report(&t.cfg, report);
+            println!("обход окончен: снимков {}, код {exit_code}", t.screens().len());
+        }
+        other => println!("обход: {}", other.to_json()),
+    }
+    cmd.to_json()
+}
+
+/// Общий тайм-аут: отчёт о том, что успели, и код возврата. Зовётся из
+/// потока сторожа; обход уже окончен — `None`.
+pub fn tour_abort(reason: &str) -> Option<i32> {
+    let guard = TOUR.lock().ok()?;
+    let t = guard.as_ref()?;
+    if t.is_finished() {
+        return None;
+    }
+    let (text, code) = t.report(&journal_of(&t.cfg), Some(reason));
+    write_report(&t.cfg, &text);
+    Some(code)
 }
 
 impl cxx_qt::Initialize for qobject::MainWindowModel {

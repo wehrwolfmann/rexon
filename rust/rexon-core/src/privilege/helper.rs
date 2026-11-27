@@ -2438,12 +2438,18 @@ fn sddm_clock(ctx: &Ctx<'_>, theme: &str, show: bool) -> Outcome {
 /// Учётная запись `sddm`: uid, gid и домашний каталог (по `getent`; дом
 /// должен быть каталогом с нормальным абсолютным путём).
 fn sddm_account(io: &dyn RootIo) -> Option<(u32, u32, String)> {
-    let got = io.capture(&strings(&["getent", "passwd", plan::SDDM_USER]));
+    greeter_account(io, plan::SDDM_USER)
+}
+
+/// Учётка пользователя приветствия: `(uid, gid, дом)`; дом обязан быть
+/// настоящим каталогом, а пользователь — не root.
+fn greeter_account(io: &dyn RootIo, user: &str) -> Option<(u32, u32, String)> {
+    let got = io.capture(&strings(&["getent", "passwd", user]));
     if got.code != Some(0) {
         return None;
     }
     let f: Vec<&str> = got.stdout.lines().next()?.split(':').collect();
-    if f.len() < 7 || f[0] != plan::SDDM_USER {
+    if f.len() < 7 || f[0] != user {
         return None;
     }
     let (uid, gid) = (f[2].parse::<u32>().ok()?, f[3].parse::<u32>().ok()?);
@@ -2936,6 +2942,166 @@ fn login_session_wayland(ctx: &Ctx<'_>, s: &plan::SessionSuccessor) -> Outcome {
     }
 }
 
+/// Перенос автовхода `old` → `new` по решению ядра
+/// ([`crate::dm_autologin::plan_transfer`]); `None` — записывать нечего.
+/// Пользователь автовхода сверяется с системой: такого нет (или это root) —
+/// не переносим и говорим об этом.
+fn autologin_transfer(ctx: &Ctx<'_>, old: &str, new: &str) -> Option<crate::dm_autologin::Transfer> {
+    use crate::dm_autologin as al;
+    let io = ctx.io;
+    let pam = al::autologin_spec(new).and_then(|s| {
+        [format!("/etc/pam.d/{}", s.pam), format!("/usr/lib/pam.d/{}", s.pam)].iter().find_map(|p| io.read_text(p))
+    });
+    let group_members = pam.as_deref().and_then(al::pam_autologin_group).and_then(|g| {
+        let got = io.capture(&strings(&["getent", "group", &g]));
+        if got.code != Some(0) || got.stdout.trim().is_empty() {
+            return None;
+        }
+        let line = got.stdout.lines().next().unwrap_or("").to_string();
+        let members = line.split(':').nth(3).unwrap_or("");
+        Some(members.split(',').map(str::trim).filter(|m| !m.is_empty()).map(str::to_string).collect())
+    });
+    let facts = al::TargetFacts {
+        pam_autologin: pam,
+        group_members,
+        greeter_user: plan::login_manager_spec(new).and_then(|s| s.user).map(str::to_string),
+    };
+    let t = al::plan_transfer(old, new, &|p| io.read_text(p), &|d| io.list_dir(d), &facts);
+    for n in &t.notes {
+        match n {
+            al::Note::Moved { user } if !login_user_ok(io, user) => {
+                ctx.say("dm_autologin_bad_user", &[user]);
+                return None;
+            }
+            al::Note::LostCommand { user }
+            | al::Note::LostUnknown { user }
+            | al::Note::LostElsewhere { user }
+            | al::Note::LostGreeterUser { user } => ctx.say("dm_autologin_not_moved", &[user, new]),
+            _ => {}
+        }
+    }
+    (!t.edits.is_empty() || t.group.is_some()).then_some(t)
+}
+
+/// Пользователь для автовхода есть в системе и это не root.
+fn login_user_ok(io: &dyn RootIo, user: &str) -> bool {
+    if !plain_name(user) {
+        return false;
+    }
+    let got = io.capture(&strings(&["getent", "passwd", user]));
+    let line = got.stdout.lines().next().unwrap_or("").to_string();
+    let f: Vec<&str> = line.split(':').collect();
+    got.code == Some(0) && f.len() >= 7 && f[0] == user && f[2].parse::<u32>().is_ok_and(|uid| uid != 0)
+}
+
+/// Записать автовход у нового экрана входа: файлы (прежние тексты — в
+/// `saved` для отката), затем группа PAM. Ошибка — текст для человека.
+fn apply_autologin(
+    ctx: &Ctx<'_>,
+    t: &crate::dm_autologin::Transfer,
+    saved: &std::cell::RefCell<Vec<(String, Option<String>, u32)>>,
+    group_done: &std::cell::RefCell<Option<(String, String, bool)>>,
+) -> Result<(), String> {
+    let io = ctx.io;
+    // Ссылку на месте файла не пишем (как у сеанса по умолчанию).
+    if let Some(e) = t.edits.iter().find(|e| io.is_symlink(&e.path)) {
+        io.log(&format!("autologin: {} — ссылка, не пишу", e.path));
+        return Err(ctx.say_text("dm_autologin_write_failed", &[]));
+    }
+    *saved.borrow_mut() =
+        t.edits.iter().map(|e| (e.path.clone(), io.read_text(&e.path), io.mode_of(&e.path).unwrap_or(0o644))).collect();
+    if write_edits(ctx, &t.edits, "autologin").is_err() {
+        // Частично записанное write_edits уже вернул сам.
+        saved.borrow_mut().clear();
+        return Err(ctx.say_text("dm_autologin_write_failed", &[]));
+    }
+    if let Some((user, group, create)) = &t.group {
+        if *create {
+            let (rc, out) = ctx.run_quiet(&strings(&["groupadd", "-r", group]), &RunExtra::default());
+            if rc != Some(0) {
+                return Err(out);
+            }
+            *group_done.borrow_mut() = Some((String::new(), group.clone(), true));
+        }
+        let (rc, out) = ctx.run_quiet(&strings(&["gpasswd", "-a", user, group]), &RunExtra::default());
+        if rc != Some(0) {
+            return Err(out);
+        }
+        *group_done.borrow_mut() = Some((user.clone(), group.clone(), *create));
+    }
+    Ok(())
+}
+
+/// Сказать человеку, что сделано с автовходом.
+fn autologin_said(ctx: &Ctx<'_>, t: &crate::dm_autologin::Transfer, new: &str) {
+    use crate::dm_autologin::Note;
+    for n in &t.notes {
+        match n {
+            Note::Moved { user } => ctx.say("dm_autologin_moved", &[user, new]),
+            Note::TurnedOff { user } => ctx.say("dm_autologin_off", &[user, new]),
+            Note::Group { user, group } => ctx.say("dm_autologin_group", &[user, group]),
+            _ => {}
+        }
+    }
+}
+
+/// Звук экрана входа: у пользователя приветствия прежнего экрана входа
+/// звуковые юниты замаскированы (обход «громкость падает до 40 % после
+/// входа») — те же маски ставятся пользователю приветствия нового. Пишется
+/// от имени этого пользователя (`setpriv`): в его доме — ни одного файла
+/// root. Сбой не отменяет переключения (экран входа уже сменён): говорим и
+/// идём дальше.
+fn move_greeter_sound_masks(ctx: &Ctx<'_>, old: &str, new: &str) {
+    use crate::dm_autologin as al;
+    let io = ctx.io;
+    let user_of = |u: &str| plan::login_manager_spec(u).and_then(|s| s.user);
+    let (Some(old_user), Some(new_user)) = (user_of(old), user_of(new)) else { return };
+    if old_user == new_user {
+        return;
+    }
+    let Some((_, _, old_home)) = greeter_account(io, old_user) else { return };
+    let old_dir = al::greeter_user_unit_dir(&old_home);
+    let masked: Vec<&str> = al::GREETER_AUDIO_UNITS
+        .iter()
+        .copied()
+        .filter(|u| {
+            let p = format!("{old_dir}/{u}");
+            let link = if io.is_symlink(&p) { io.canonicalize(&p) } else { None };
+            let text = if !io.is_symlink(&p) && io.is_file(&p) { io.read_text(&p) } else { None };
+            al::unit_masked(link.as_deref(), text.as_deref())
+        })
+        .collect();
+    if masked.is_empty() {
+        return;
+    }
+    let Some((uid, gid, new_home)) = greeter_account(io, new_user) else {
+        io.log(&format!("greeter-sound: у {new_user} нет дома — маски не ставлю"));
+        return;
+    };
+    let new_dir = al::greeter_user_unit_dir(&new_home);
+    let add = al::audio_masks_to_add(&masked, &|u| {
+        let p = format!("{new_dir}/{u}");
+        io.exists(&p) || io.is_symlink(&p)
+    });
+    if add.is_empty() {
+        return;
+    }
+    if io.which("setpriv").is_none() {
+        ctx.say("dm_greeter_sound_failed", &[new]);
+        return;
+    }
+    let mut cmds = vec![strings(&["mkdir", "-p", &new_dir])];
+    cmds.extend(add.iter().map(|u| strings(&["ln", "-s", "/dev/null", &format!("{new_dir}/{u}")])));
+    for cmd in cmds {
+        let (rc, _) = ctx.run_quiet(&as_user_argv(uid, gid, &cmd), &RunExtra::default());
+        if rc != Some(0) {
+            ctx.say("dm_greeter_sound_failed", &[new]);
+            return;
+        }
+    }
+    ctx.say("dm_greeter_sound_off", &[new, old]);
+}
+
 fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>) -> Outcome {
     let io = ctx.io;
     if io.which("systemctl").is_none() {
@@ -2984,6 +3150,20 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         let pam = spec.pam;
         if !pam.is_empty() && !io.is_file(&format!("/etc/pam.d/{pam}")) && !io.is_file(&format!("/usr/lib/pam.d/{pam}")) {
             return ctx.fail("dm_no_pam", &[pam]);
+        }
+    }
+
+    // Обязательные службы юнита (`Requires=`; у DDM — dde-seatd): без них
+    // systemd экран входа не запустит.
+    let unit_text = io.read_text(&unit_real).unwrap_or_default();
+    for need in plan::unit_values(&unit_text, "Unit", "Requires") {
+        if !need.ends_with(".service") || need.contains('@') {
+            continue;
+        }
+        let found = UNIT_DIRS.iter().map(|d| format!("{d}/{need}")).find(|p| io.exists(p) || io.is_symlink(p));
+        let ok = found.and_then(|p| io.canonicalize(&p)).is_some_and(|r| r != "/dev/null");
+        if !ok {
+            return ctx.fail("dm_needs_unit", &[new, &need]);
         }
     }
 
@@ -3047,6 +3227,10 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     }
 
+    // Автовход прежнего — у нового (решение ядра, `dm_autologin`); пока
+    // только чтение.
+    let autologin = if old.is_empty() { None } else { autologin_transfer(ctx, &old, new) };
+
     // ── дальше система меняется ─────────────────────────────────────
     if let Err(o) = ctx.touch() {
         return o;
@@ -3079,7 +3263,25 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     };
     let greeter_written = std::cell::Cell::new(false);
+    // Прежние тексты файлов автовхода и сделанное с группой — для отката.
+    let autologin_saved: std::cell::RefCell<Vec<(String, Option<String>, u32)>> = Default::default();
+    let group_done: std::cell::RefCell<Option<(String, String, bool)>> = Default::default();
     let rollback = || {
+        for (path, text, mode) in autologin_saved.borrow().iter().rev() {
+            io.log(&format!("autologin: откат {path}"));
+            let _ = match text {
+                Some(t) => io.write_file(path, t, *mode),
+                None => io.remove_file(path),
+            };
+        }
+        if let Some((user, group, created)) = group_done.borrow().as_ref() {
+            if !user.is_empty() {
+                let _ = ctx.run_quiet(&strings(&["gpasswd", "-d", user, group]), &RunExtra::default());
+            }
+            if *created {
+                let _ = ctx.run_quiet(&strings(&["groupdel", group]), &RunExtra::default());
+            }
+        }
         if !old.is_empty() {
             let _ = ctx.run_quiet(&strings(&["systemctl", "enable", "--force", &format!("{old}.service")]), &RunExtra::default());
         }
@@ -3113,6 +3315,12 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
             io.write_file(plan::LIGHTDM_GREETER_CONF, &format!("[Seat:*]\ngreeter-session={g}\n"), 0o644)
         })();
         if let Err(e) = step {
+            return broke(e);
+        }
+    }
+
+    if let Some(t) = &autologin {
+        if let Err(e) = apply_autologin(ctx, t, &autologin_saved, &group_done) {
             return broke(e);
         }
     }
@@ -3154,6 +3362,13 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         && io.read_text(&old_real).unwrap_or_default().lines().any(|l| l.trim_start().starts_with("WantedBy="))
     {
         let _ = ctx.run_quiet(&strings(&["systemctl", "disable", &format!("{old}.service")]), &RunExtra::default());
+    }
+
+    if let Some(t) = &autologin {
+        autologin_said(ctx, t, new);
+    }
+    if !old.is_empty() {
+        move_greeter_sound_masks(ctx, &old, new);
     }
 
     if old.is_empty() {
@@ -4583,12 +4798,16 @@ mod tests {
     }
 
     fn run_switch(io: &FakeIo) -> (Outcome, Vec<String>) {
+        run_switch_to(io, "sddm")
+    }
+
+    fn run_switch_to(io: &FakeIo, unit: &str) -> (Outcome, Vec<String>) {
         let rebuilt = Mutex::new(Vec::new());
         let state = Mutex::new(OpState::default());
         let lines = Mutex::new(Vec::new());
         let progress = |l: &str| lines.lock().unwrap().push(l.to_string());
         let ctx = Ctx { io, progress: &progress, state: &state, lang: None, rebuilt: &rebuilt };
-        let plan_ = Plan::SwitchDm { family: PkgFamily::Arch, unit: "sddm".into(), greeter: None };
+        let plan_ = Plan::SwitchDm { family: PkgFamily::Arch, unit: unit.into(), greeter: None };
         let out = execute(&plan_, &ctx, Vec::new());
         let lines = lines.into_inner().unwrap();
         (out, lines)
@@ -4641,6 +4860,183 @@ mod tests {
         io.st().links.insert(plan::DM_SYMLINK.into(), "/usr/lib/systemd/system/sddm.service".into());
         let (out, _) = run_switch(&io);
         assert_eq!(out, Outcome::ok(Some("dm_already_default")));
+        assert!(io.touched_nothing());
+    }
+
+    /// Plasma Login с автовходом alice → SDDM (как у Wehrwolfmann).
+    fn plm_machine() -> Arc<FakeIo> {
+        let io = dm_machine();
+        {
+            let mut s = io.st();
+            s.files.insert(
+                "/usr/lib/systemd/system/plasmalogin.service".into(),
+                "[Service]\nExecStart=/usr/bin/plasmalogin\n".into(),
+            );
+            s.links.insert(plan::DM_SYMLINK.into(), "/usr/lib/systemd/system/plasmalogin.service".into());
+            s.files.insert("/etc/plasmalogin.conf".into(), "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n".into());
+            s.files.insert("/etc/sddm.conf".into(), "[Autologin]\nSession=plasmax11\n".into());
+            s.answers.push(("getent passwd alice".into(), 0, "alice:x:1000:1000::/home/alice:/usr/bin/fish\n".into()));
+        }
+        io
+    }
+
+    #[test]
+    fn switch_dm_переносит_автовход() {
+        let io = plm_machine();
+        let (out, lines) = run_switch(&io);
+        assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
+        let s = io.st();
+        assert_eq!(s.files["/etc/sddm.conf"], "[Autologin]\nSession=plasma.desktop\n");
+        let own = &s.files["/etc/sddm.conf.d/zz-rexon-autologin.conf"];
+        assert!(own.contains("User=alice") && own.contains("Relogin=true"), "{own}");
+        assert_eq!(s.files["/etc/plasmalogin.conf"], "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n", "прежний не тронут");
+        assert!(lines.iter().any(|l| l == "automatic sign-in for alice moved to sddm"), "{lines:?}");
+        // Записано ДО включения — откат его вернёт.
+        let write = s.mutations.iter().position(|m| m == "write /etc/sddm.conf").unwrap();
+        assert!(s.mutations[..write].iter().all(|m| !m.contains("dm-fallback")));
+    }
+
+    #[test]
+    fn switch_dm_сбой_enable_возвращает_автовход() {
+        let io = plm_machine();
+        io.st().enable_fails = true;
+        let (out, _) = run_switch(&io);
+        assert_eq!(out, Outcome::fail("dm_switch_failed"));
+        let s = io.st();
+        assert_eq!(s.files["/etc/sddm.conf"], "[Autologin]\nSession=plasmax11\n", "чужая строка вернулась");
+        assert!(!s.files.contains_key("/etc/sddm.conf.d/zz-rexon-autologin.conf"), "свой файл снят");
+        assert!(s.runs.contains(&strings(&["systemctl", "enable", "--force", "plasmalogin.service"])));
+    }
+
+    #[test]
+    fn switch_dm_группа_pam_автовхода_и_её_откат() {
+        let io = plm_machine();
+        io.st().files.insert(
+            "/etc/pam.d/sddm-autologin".into(),
+            "auth [success=1 default=ignore] pam_succeed_if.so user ingroup autologin\n".into(),
+        );
+        let (out, lines) = run_switch(&io);
+        assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
+        {
+            let s = io.st();
+            assert!(s.runs.contains(&strings(&["groupadd", "-r", "autologin"])));
+            assert!(s.runs.contains(&strings(&["gpasswd", "-a", "alice", "autologin"])));
+        }
+        // Сбой включения — группа снимается вместе с файлами.
+        let io = plm_machine();
+        io.st().files.insert(
+            "/etc/pam.d/sddm-autologin".into(),
+            "auth [success=1 default=ignore] pam_succeed_if.so user ingroup autologin\n".into(),
+        );
+        io.st().fail_runs.push("systemctl enable --force sddm".into());
+        let (out, _) = run_switch(&io);
+        assert_eq!(out, Outcome::fail("dm_switch_failed"));
+        let s = io.st();
+        assert!(s.runs.contains(&strings(&["gpasswd", "-d", "alice", "autologin"])));
+        assert!(s.runs.contains(&strings(&["groupdel", "autologin"])));
+    }
+
+    #[test]
+    fn switch_dm_неизвестный_пользователь_автовхода_не_переносится() {
+        let io = plm_machine();
+        io.st().answers.clear();
+        let (out, lines) = run_switch(&io);
+        assert_eq!(out, Outcome::ok(Some("dm_switched")));
+        assert!(!io.st().files.contains_key("/etc/sddm.conf.d/zz-rexon-autologin.conf"));
+        assert!(lines.iter().any(|l| l.contains("alice") && l.contains("isn't on this system")), "{lines:?}");
+    }
+
+    #[test]
+    fn switch_dm_переносит_маски_звука_приветствия() {
+        let io = plm_machine();
+        {
+            let mut s = io.st();
+            s.exe.insert("/usr/bin/setpriv".into());
+            s.dirs.insert("/var/lib/plasmalogin".into());
+            s.dirs.insert("/var/lib/sddm".into());
+            s.links.insert("/var/lib/plasmalogin/.config/systemd/user/wireplumber.service".into(), "/dev/null".into());
+            s.answers.push(("getent passwd plasmalogin".into(), 0, "plasmalogin:x:957:957::/var/lib/plasmalogin:/usr/bin/nologin\n".into()));
+            s.answers.push(("getent passwd sddm".into(), 0, "sddm:x:964:964::/var/lib/sddm:/usr/bin/nologin\n".into()));
+        }
+        let (out, lines) = run_switch(&io);
+        assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
+        let s = io.st();
+        let dir = "/var/lib/sddm/.config/systemd/user";
+        let as_sddm = |cmd: &[&str]| {
+            let mut v = strings(&["setpriv", "--reuid=964", "--regid=964", "--clear-groups", "--"]);
+            v.extend(strings(cmd));
+            v
+        };
+        assert!(s.runs.contains(&as_sddm(&["mkdir", "-p", dir])), "{:?}", s.runs);
+        for u in crate::dm_autologin::GREETER_AUDIO_UNITS {
+            assert!(s.runs.contains(&as_sddm(&["ln", "-s", "/dev/null", &format!("{dir}/{u}")])), "{u}");
+        }
+        assert!(lines.iter().any(|l| l == "login screen sound turned off for sddm too, as it was for plasmalogin"));
+        // Масок у прежнего нет — ничего.
+        let io = plm_machine();
+        io.st().exe.insert("/usr/bin/setpriv".into());
+        let _ = run_switch(&io);
+        assert!(!io.st().runs.iter().any(|r| r.first().map(String::as_str) == Some("setpriv")));
+    }
+
+    /// Plasma Login (автовход alice, звук приветствия погашен) → DDM:
+    /// автовход ложится в свой файл `ddm.conf.d` без `Relogin=`, маски
+    /// звука — пользователю `dde` (дом `/var/lib/ddm`, как в sysusers ddm).
+    #[test]
+    fn switch_dm_в_ddm_переносит_автовход_и_маски_звука() {
+        let io = plm_machine();
+        {
+            let mut s = io.st();
+            s.files.insert(
+                "/usr/lib/systemd/system/ddm.service".into(),
+                "[Unit]\nRequires=dde-seatd.service\n[Service]\nExecStart=/usr/bin/ddm\n".into(),
+            );
+            s.files.insert("/usr/lib/systemd/system/dde-seatd.service".into(), "[Service]\nExecStart=/usr/bin/dde-seatd\n".into());
+            s.exe.insert("/usr/bin/ddm".into());
+            s.exe.insert("/usr/bin/setpriv".into());
+            s.files.insert("/usr/lib/pam.d/ddm".into(), String::new());
+            s.dirs.insert("/var/lib/plasmalogin".into());
+            s.dirs.insert("/var/lib/ddm".into());
+            s.links.insert("/var/lib/plasmalogin/.config/systemd/user/wireplumber.service".into(), "/dev/null".into());
+            s.answers.push(("getent passwd plasmalogin".into(), 0, "plasmalogin:x:957:957::/var/lib/plasmalogin:/usr/bin/nologin\n".into()));
+            s.answers.push(("getent passwd dde".into(), 0, "dde:x:955:955:DDM Greeter Account:/var/lib/ddm:/usr/bin/nologin\n".into()));
+        }
+        let (out, lines) = run_switch_to(&io, "ddm");
+        assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
+        let s = io.st();
+        assert!(s.runs.contains(&strings(&["systemctl", "enable", "--force", "ddm.service"])), "{:?}", s.runs);
+        let own = &s.files["/etc/ddm.conf.d/zz-rexon-autologin.conf"];
+        assert!(own.contains("User=alice") && own.contains("Session=plasma.desktop"), "{own}");
+        assert!(!own.contains("Relogin"), "у DDM нет Relogin: {own}");
+        assert!(lines.iter().any(|l| l == "automatic sign-in for alice moved to ddm"), "{lines:?}");
+        let dir = "/var/lib/ddm/.config/systemd/user";
+        let as_dde = |cmd: &[&str]| {
+            let mut v = strings(&["setpriv", "--reuid=955", "--regid=955", "--clear-groups", "--"]);
+            v.extend(strings(cmd));
+            v
+        };
+        for u in crate::dm_autologin::GREETER_AUDIO_UNITS {
+            assert!(s.runs.contains(&as_dde(&["ln", "-s", "/dev/null", &format!("{dir}/{u}")])), "{u}: {:?}", s.runs);
+        }
+        assert!(lines.iter().any(|l| l == "login screen sound turned off for ddm too, as it was for plasmalogin"), "{lines:?}");
+    }
+
+    /// Без `dde-seatd` DDM не стартует — отказ до любой записи, автовход
+    /// не тронут.
+    #[test]
+    fn switch_dm_в_ddm_без_dde_seatd_отказ_до_касания() {
+        let io = plm_machine();
+        {
+            let mut s = io.st();
+            s.files.insert(
+                "/usr/lib/systemd/system/ddm.service".into(),
+                "[Unit]\nRequires=dde-seatd.service\n[Service]\nExecStart=/usr/bin/ddm\n".into(),
+            );
+            s.exe.insert("/usr/bin/ddm".into());
+            s.files.insert("/usr/lib/pam.d/ddm".into(), String::new());
+        }
+        let (out, _) = run_switch_to(&io, "ddm");
+        assert_eq!(out, Outcome::fail("dm_needs_unit"));
         assert!(io.touched_nothing());
     }
 

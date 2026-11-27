@@ -105,6 +105,18 @@ pub mod qobject {
         /// # Safety
         /// `socket` — живой QWebSocket либо nullptr.
         #[allow(clippy::missing_safety_doc)]
+        #[rust_name = "sock_shutdown"]
+        unsafe fn rexon_we_sock_shutdown(socket: *mut QWebSocket);
+
+        /// # Safety
+        /// `socket` — живой QWebSocket либо nullptr.
+        #[allow(clippy::missing_safety_doc)]
+        #[rust_name = "sock_quit_loop_on_error"]
+        unsafe fn rexon_we_sock_quit_loop_on_error(socket: *mut QWebSocket);
+
+        /// # Safety
+        /// `socket` — живой QWebSocket либо nullptr.
+        #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_is_open"]
         unsafe fn rexon_we_sock_is_open(socket: *mut QWebSocket) -> bool;
 
@@ -535,6 +547,13 @@ pub fn send_request_frame(field: &str, frame: &[u8]) {
         if display_setup() == rexon_core::wallpaper_backend::DisplaySetup::RexonHost {
             start_desktop_icons_prepare();
         }
+        if rexon_core::wallpaper_backend::cinnamon_layer_shell_fact() {
+            // Cinnamon с layer-shell: вывод сцен снова нужен (свои обои его
+            // отпускали), а поверхность сцены получает первый кадр, когда
+            // демон поднял рендерер, — уложить службу фона под неё позже.
+            rexon_core::wallpaper_backend::set_layer_shell_display_off_live(false);
+            rexon_core::wallpaper_backend::restack_cinnamon_background_after("сцена Wallpaper Engine", CINNAMON_SCENE_RESTACK_MS);
+        }
     }
     match gate {
         ApplyGate::Send => {
@@ -567,6 +586,9 @@ pub fn send_request_frame(field: &str, frame: &[u8]) {
         }
     }
 }
+
+/// Через сколько после применения сцены переставлять фон Cinnamon.
+const CINNAMON_SCENE_RESTACK_MS: u64 = 5000;
 
 /// Состояние назначения плагина ради придержанных кадров.
 static KDE_SELECT_STATE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(KDE_SELECT_IDLE);
@@ -1562,6 +1584,7 @@ fn query_active_plugins(port: i64, timeout_ms: i32) -> Option<Vec<we_client::Plu
         qobject::sock_quit_loop();
     });
     let on_disconnected = sock.as_mut().on_disconnected(|_sock| qobject::sock_quit_loop());
+    unsafe { qobject::sock_quit_loop_on_error(socket) };
     sock.as_mut().open_url(&QUrl::from(format!("ws://127.0.0.1:{port}/").as_str()));
     qobject::sock_run_loop(timeout_ms);
     // Стражи снимаются РАНЬШЕ сокета, иначе они дёрнут мёртвый объект.
@@ -1569,7 +1592,7 @@ fn query_active_plugins(port: i64, timeout_ms: i32) -> Option<Vec<we_client::Plu
     drop(on_message);
     drop(on_disconnected);
     unsafe {
-        qobject::sock_close(socket);
+        qobject::sock_shutdown(socket);
         qobject::sock_destroy(socket.cast());
     }
     PLUGIN_QUERY.with(|q| std::mem::take(&mut *q.borrow_mut()).answer)
@@ -1785,7 +1808,7 @@ use rexon_core::waywallen_kde_plugin::EnsurePurpose as KdePurpose;
 static KDE_ENSURE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Кто показывает живые обои в этом сеансе (решение ядра).
-fn session_backend() -> rexon_core::wallpaper_backend::WallpaperBackend {
+pub fn session_backend() -> rexon_core::wallpaper_backend::WallpaperBackend {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     rexon_core::wallpaper_backend::pick(
         &env("XDG_CURRENT_DESKTOP"),
@@ -1802,10 +1825,11 @@ pub fn kde_plugin_backend() -> bool {
 
 /// Как в этом сеансе у демона появляется дисплей (решение ядра).
 pub fn display_setup() -> rexon_core::wallpaper_backend::DisplaySetup {
-    rexon_core::wallpaper_backend::display_setup_for(
+    rexon_core::wallpaper_backend::display_setup_in(
         session_backend(),
         &std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
         rexon_core::wallpaper_backend::waywallen_gnome_ext_installed_live(),
+        rexon_core::wallpaper_backend::cinnamon_layer_shell_fact(),
     )
 }
 
@@ -2511,6 +2535,8 @@ struct StopState {
     list_id: u64,
     /// Сокет прогона — нужен обработчикам, чтобы дослать `renderer_kill`.
     socket: *mut QWebSocket,
+    /// Рукопожатие завершено (`connected`) — для причины в журнале.
+    connected: bool,
 }
 
 /// Порт `client.stop_active_wallpapers` — синхронно снять все активные обои.
@@ -2524,11 +2550,28 @@ pub fn stop_active_wallpapers(timeout_ms: i32) -> (String, i64) {
     if let Some((status, killed)) = gate {
         return (status.to_owned(), killed);
     }
+    stop_active_on_port(st.ws_port, timeout_ms)
+}
 
+/// WS-часть [`stop_active_wallpapers`] на известном порту демона.
+///
+/// Зовётся из любого потока: сокет, цикл событий и состояние прогона — свои
+/// у потока. Кадры уходят только после `connected` (рукопожатие WebSocket
+/// завершено); ошибка сокета или обрыв выводят из цикла сразу, `timeout_ms`
+/// — потолок всего прогона. Открыт для стенда (`we_stop_selftest`), который
+/// поднимает подставной сервер на своём порту.
+pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
+    let fail = || {
+        let (status, killed) = we_client::stop_active_result(false, 0);
+        (status.to_owned(), killed)
+    };
+    if port <= 0 || !qobject::sock_qt_available() {
+        return fail();
+    }
+    // Диспетчер событий потока заводит сама фабрика (`rexon_we_sock_new`).
     let socket = qobject::sock_new();
     if socket.is_null() {
-        let (status, killed) = we_client::stop_active_result(false, 0);
-        return (status.to_owned(), killed);
+        return fail();
     }
     STOP.with(|s| *s.borrow_mut() = StopState { socket, ..StopState::default() });
 
@@ -2540,25 +2583,30 @@ pub fn stop_active_wallpapers(timeout_ms: i32) -> (String, i64) {
     });
     // Обрыв до завершения — выходим: это ветка `("error", 0)` оригинала.
     let on_disconnected = sock.as_mut().on_disconnected(|_sock| qobject::sock_quit_loop());
+    unsafe { qobject::sock_quit_loop_on_error(socket) };
 
-    sock.as_mut().open_url(&QUrl::from(
-        format!("ws://127.0.0.1:{}/", st.ws_port).as_str(),
-    ));
-    qobject::sock_run_loop(timeout_ms);
+    sock.as_mut().open_url(&QUrl::from(format!("ws://127.0.0.1:{port}/").as_str()));
+    let by_guard = qobject::sock_run_loop(timeout_ms) != 0;
+
+    let (ok, killed, connected) = STOP.with(|s| {
+        let st = s.borrow();
+        (st.ok, st.killed, st.connected)
+    });
+    if !ok {
+        let why = unsafe { qobject::sock_error_string(socket) }.to_string();
+        let stage = if connected { "ответ демона не дошёл" } else { "рукопожатие WebSocket не завершилось" };
+        let cause = if by_guard { format!("за {timeout_ms} мс") } else { why };
+        rexon_core::log_warn!("we", "снятие живых обоев: {stage} ({cause})");
+    }
 
     // Стражи снимаются РАНЬШЕ сокета, иначе они дёрнут мёртвый объект.
     drop(on_connected);
     drop(on_message);
     drop(on_disconnected);
     unsafe {
-        qobject::sock_close(socket);
+        qobject::sock_shutdown(socket);
         qobject::sock_destroy(socket.cast());
     }
-
-    let (ok, killed) = STOP.with(|s| {
-        let st = s.borrow();
-        (st.ok, st.killed)
-    });
     STOP.with(|s| *s.borrow_mut() = StopState::default());
     let (status, killed) = we_client::stop_active_result(ok, killed);
     (status.to_owned(), killed)
@@ -2585,9 +2633,12 @@ fn stop_on_connected() {
     let socket = STOP.with(|s| {
         let mut st = s.borrow_mut();
         st.list_id = request_id;
+        st.connected = true;
         st.socket
     });
-    stop_send(socket, &we_client::renderer_list(request_id));
+    if !stop_send(socket, &we_client::renderer_list(request_id)) {
+        qobject::sock_quit_loop();
+    }
 }
 
 fn stop_on_frame(bytes: &[u8]) {

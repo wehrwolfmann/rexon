@@ -162,7 +162,7 @@ makedepends=(git glib2 rust
              # computer». Нужна только на сборке, в пакет Java не едет.
              java-runtime-headless
              gettext)    # msgfmt: po/*.po → .mo переводов интерфейса (build.rs
-                         # rexon-gui); его же читает QML — отдельного .qm нет
+                         # rexon-gui и package()); его же читает QML — .qm нет
 # Вшитому движку на сборке нужен patchelf: снять с рисовальщиков OWE
 # сборочный RUNPATH апстрима (_owe_fix_runpath).
 if [[ $_bundled_engine == 1 ]]; then makedepends+=(patchelf); fi
@@ -954,14 +954,18 @@ LAUNCHER
   find "$data" -name '*.py' -delete
 
   # ── Переводы интерфейса → /usr/share/locale ──────────────────────
-  # Каталоги собрал build.rs крейта rexon-gui (`scripts/i18n-update.sh
-  # --build`) рядом с бинарями: <язык>/LC_MESSAGES/rexon.mo из
-  # po/<язык>.po — один каталог и для строк Rust, и для строк QML (их
-  # переводчик окна спрашивает то же ядро). Ядро ищет его в
-  # `i18n::SYSTEM_LOCALEDIR` — ровно этот путь. Новый язык = новый .po в
-  # po/LINGUAS, рецепт при этом не меняется.
+  # <язык>/LC_MESSAGES/rexon.mo из po/<язык>.po — один каталог и для строк
+  # Rust, и для строк QML (их переводчик окна спрашивает то же ядро). Ядро
+  # ищет его в `i18n::SYSTEM_LOCALEDIR` — ровно этот путь. Новый язык =
+  # новый .po в po/LINGUAS, рецепт при этом не меняется.
+  # Собираем здесь, прямо из po/ этого коммита, а не копируем
+  # `$rel/locale` из каталога cargo: 15.11.2026 build.rs на cargo 1.100
+  # клал свежие .mo в другой каталог, а cp увёз в пакет оставшиеся от
+  # прошлой сборки (старые строки — подсказки по-английски). --verify
+  # сверяет итог с po/ и валит сборку, если каталог устарел или языка нет.
   install -d "$pkgdir/usr/share/locale"
-  cp -r "$rel/locale/." "$pkgdir/usr/share/locale/"
+  bash scripts/i18n-update.sh --build "$pkgdir/usr/share/locale"
+  bash scripts/i18n-update.sh --verify "$pkgdir/usr/share/locale"
 
   # Значок лотка: `tray::icon_candidates` ищет его по этому пути.
   install -Dm644 rexon_icon.png "$lib/rexon_icon.png"

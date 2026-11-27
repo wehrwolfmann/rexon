@@ -1,0 +1,28 @@
+[Unit]
+Description=Simple Desktop Display Manager
+Documentation=man:ddm(1) man:ddm.conf(5)
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service dde-seatd.service
+PartOf=graphical.target
+StartLimitIntervalSec=30
+StartLimitBurst=2
+
+Requires=dde-seatd.service
+
+[Service]
+ExecStart=/usr/bin/ddm
+Restart=always
+
+CapabilityBoundingSet=CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_AUDIT_WRITE CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL CAP_SETGID CAP_SETUID CAP_SYS_ADMIN CAP_SYS_BOOT CAP_SYS_CHROOT CAP_SYS_TTY_CONFIG CAP_SYS_RESOURCE
+OOMScoreAdjust=-1000
+Nice=-20
+CPUWeight=10000
+IOWeight=10000
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
+PrivateIPC=true
+ProtectClock=true
+ProtectKernelModules=true
+
+[Install]
+Alias=display-manager.service

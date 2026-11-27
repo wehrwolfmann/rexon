@@ -244,4 +244,29 @@ int rexon_drain_thread_pool(int ms);
 /// оставить деструкторам — в `main_window.rs` у вызова.
 int rexon_stop_media_players();
 
+/// Пульс главного потока для сторожа окна (`rexon_core::ui_watch`):
+/// таймер Qt на потоке GUI каждые `ms` миллисекунд зовёт `tick`. Шим, а не
+/// Rust: обёртки QTimer в cxx-qt-lib 0.9 нет. Звать из потока GUI после
+/// создания приложения; повторный вызов ничего не делает. → false —
+/// приложения ещё нет.
+bool rexon_start_ui_heartbeat(int ms, void (*tick)());
+
+/// Имена классов предков объекта из QML — для журнала действий
+/// (`rexon_core::ui_watch::area_from_chain`). `variant` — указатель на
+/// QVariant с объектом (как его передал QML); предки — от ближнего к
+/// дальнему через `/`, по QObject-родителю, а без него — по визуальному.
+/// Пишет в `buf` не больше `len - 1` байт UTF-8 и нуль; → длина записанного.
+/// Решений здесь нет: какие имена значимы, решает ядро.
+int rexon_qml_ancestry(const void* variant, char* buf, int len);
+
+/// Журнал действий: фильтр ввода всего приложения. Щелчок левой кнопкой
+/// (без протяжки), Enter и Пробел на элементе в фокусе → `begin` с
+/// описанием «кто взял нажатие и его предки» (разбор —
+/// `rexon_core::ui_watch::parse_input_chain`) и признаком клавиши; ответ не 0 —
+/// `finish` с ним, когда событие раздано. Шим, а не Rust: фильтр событий —
+/// наследник QObject с виртуальным `eventFilter`. Звать из потока GUI после
+/// создания приложения; повторный вызов ничего не делает.
+bool rexon_install_input_journal(unsigned long long (*begin)(const char*, int, int),
+                                 void (*finish)(unsigned long long));
+
 }  // extern "C"

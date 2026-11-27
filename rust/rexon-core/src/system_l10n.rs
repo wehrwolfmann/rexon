@@ -138,6 +138,8 @@ pub const MESSAGES: &[(&str, &str)] = &[
     ("dm_no_program", n_("the login screen program %1 is missing")),
     // TRANSLATORS: Root helper message. %1 is a PAM service file name.
     ("dm_no_pam", n_("the sign-in settings file (PAM) %1 is missing")),
+    // TRANSLATORS: Root helper message. %1 is a login screen service name, %2 a system service it needs (dde-seatd.service).
+    ("dm_needs_unit", n_("the login screen %1 needs the system service %2, and it's missing or switched off")),
     // TRANSLATORS: Root helper message. greetd is a program name.
     ("dm_text_login", n_("greetd is set up for text sign-in — the desktop won't start")),
     // TRANSLATORS: Root helper message. %1 is a program name.
@@ -160,6 +162,22 @@ pub const MESSAGES: &[(&str, &str)] = &[
     ("dm_switched", n_("%1 is now the login screen (it was %2); it appears after a restart")),
     // TRANSLATORS: Root helper message. %1 is a login screen service name.
     ("dm_switched_first", n_("%1 is now the login screen; it appears after a restart")),
+    // TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+    ("dm_autologin_moved", n_("automatic sign-in for %1 moved to %2")),
+    // TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+    ("dm_autologin_off", n_("automatic sign-in for %1 turned off in %2: it was off before the switch")),
+    // TRANSLATORS: Root helper message. %1 is a user name, %2 a system group name.
+    ("dm_autologin_group", n_("user %1 added to the group %2 for automatic sign-in")),
+    // TRANSLATORS: Root helper message. %1 is a user name.
+    ("dm_autologin_bad_user", n_("automatic sign-in names the user %1, who isn't on this system — not moved")),
+    // TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+    ("dm_autologin_not_moved", n_("automatic sign-in for %1 is not moved: Rexon can't set it for %2")),
+    // TRANSLATORS: Root helper message.
+    ("dm_autologin_write_failed", n_("could not write the automatic sign-in setting")),
+    // TRANSLATORS: Root helper message. %1 and %2 are login screen service names.
+    ("dm_greeter_sound_off", n_("login screen sound turned off for %1 too, as it was for %2")),
+    // TRANSLATORS: Root helper message. %1 is a login screen service name.
+    ("dm_greeter_sound_failed", n_("could not turn off the login screen sound for %1")),
     // TRANSLATORS: Line of a text file read from a text console. %1 and %2 are login screen service names.
     ("prev_dm_header", n_("Rexon changed the login screen from %1 to %2.")),
     // TRANSLATORS: Line of a text file read from a text console. %1 is a login screen service name.

@@ -4,9 +4,32 @@
 
 import QtQuick
 import QtQuick.Controls
+import org.rexon.gui 1.0
 
 TextField {
     id: control
+
+    // ── Журнал действий (`ActionJournal`, ядро — `ui_watch`) ─────────────
+    //
+    // Нажатия кнопок ловит общий фильтр ввода приложения, а что набрано в
+    // поле, ему не видно — поэтому поле сообщает само, в ОДНОМ общем
+    // контроле на все вкладки. Набор — только отметка для сторожа окна (без
+    // строки), конец ввода (Enter, уход фокуса) — одна строка, если значение
+    // сменилось. ⛔ У поля пароля текст в журнал не уходит вовсе: сюда
+    // передаётся пустая строка, ядро строку не пишет.
+    readonly property bool journalSecret: control.echoMode !== TextInput.Normal
+    readonly property string journalField: control.placeholderText !== ""
+                                           ? control.placeholderText : control.objectName
+    onTextEdited: ActionJournal.typing(control, control.journalField,
+                                       control.journalSecret ? "" : control.text,
+                                       control.journalSecret)
+    onEditingFinished: {
+        const journalId = ActionJournal.entered(control, control.journalField,
+                                                control.journalSecret ? "" : control.text,
+                                                control.journalSecret);
+        if (journalId > 0)
+            Qt.callLater(function() { ActionJournal.finish(journalId); });
+    }
 
     /// Палитра скина.
     property var pal: null

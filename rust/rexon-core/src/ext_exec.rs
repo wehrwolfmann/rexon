@@ -2665,7 +2665,9 @@ mod tests {
         // Пакет из нескольких виджетов: автозапуск — у вложенного `my-theme/MyTheme`.
         let new_autostart = std::fs::read_to_string(crate::de_apply::conky_autostart_path(&ctx, "my-theme/MyTheme")).unwrap();
         assert!(new_autostart.contains("/my-theme/MyTheme/conky.conf"), "{new_autostart}");
-        assert!(io.ran.borrow().iter().all(|a| a.first().map(String::as_str) != Some("conky")));
+        // conky не запускается; проба версии (`conky -v`, файл запуска через
+        // XWayland) — не запуск.
+        assert!(io.ran.borrow().iter().all(|a| a.first().map(String::as_str) != Some("conky") || a[1..] == ["-v"]));
 
         // Повтор ничего не делает.
         assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());

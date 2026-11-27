@@ -80,6 +80,12 @@ fn remote_selftest() {
     run_scenario("--remote-selftest");
 }
 
+/// Снятие живых обоев из рабочего потока против подставного демона.
+#[test]
+fn we_stop_selftest() {
+    run_scenario("--we-stop-selftest");
+}
+
 #[test]
 fn discover_selftest() {
     run_scenario("--discover-selftest");

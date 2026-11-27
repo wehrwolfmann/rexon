@@ -1080,7 +1080,7 @@ Item {
                     // тем же текстом, что показывал QTextBrowser виджетной
                     // вкладки, только с экранированными угловыми скобками
                     // (починка #1: оригинал терял на них куски текста).
-                    RexonText {
+                    RexonLinkText {
                         id: bodyText
                         // Ширина якорями, место под полосу — отступом с её
                         // стороны: справа налево полоса уходит влево, и
@@ -1088,11 +1088,12 @@ Item {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.rightMargin: bodyBar.visible ? bodyBar.width : 0
-                        text: detailDialog.view ? detailDialog.view.bodyHtml : ""
-                        textFormat: Text.RichText
+                        // Описание чужого расширения: ссылки — общим путём
+                        // (↗ и вопрос перед внешним сайтом).
+                        html: detailDialog.view ? detailDialog.view.bodyHtml : ""
+                        pal: root.pal
                         wrapMode: Text.WordWrap
                         color: root.colText
-                        onLinkActivated: (link) => Qt.openUrlExternally(link)
                     }
                 }
             }
@@ -1105,17 +1106,16 @@ Item {
                 color: root.colInfo
             }
 
-            RexonText {
+            RexonLinkText {
                 Layout.fillWidth: true
                 Layout.topMargin: root.st.dialog.techPaddingV
                 Layout.bottomMargin: root.st.dialog.techPaddingV
-                text: detailDialog.view ? detailDialog.view.techHtml : ""
-                visible: text !== ""
-                textFormat: Text.RichText
+                html: detailDialog.view ? detailDialog.view.techHtml : ""
+                pal: root.pal
+                visible: html !== ""
                 wrapMode: Text.WordWrap
                 color: root.colTextSecondary
                 font.weight: root.pal.text_secondary_weight
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
             }
 
             RexonText {
@@ -1251,7 +1251,7 @@ Item {
 
                     ScrollBar.vertical: ScrollBar { id: createBar }
 
-                    RexonText {
+                    RexonLinkText {
                         id: createText
                         // Ширина якорями, место под полосу — отступом с её
                         // стороны: справа налево полоса уходит влево, и
@@ -1259,11 +1259,10 @@ Item {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.rightMargin: createBar.visible ? createBar.width : 0
-                        text: page.createBody
-                        textFormat: Text.RichText
+                        html: page.createBody
+                        pal: root.pal
                         wrapMode: Text.WordWrap
                         color: root.colText
-                        onLinkActivated: (link) => Qt.openUrlExternally(link)
                     }
                 }
             }

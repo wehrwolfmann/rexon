@@ -3067,7 +3067,9 @@ pub fn look_steps_as_apply(steps: &[crate::animations::LookStep], config_home: &
                 let dir = std::path::Path::new(path).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
                 out.push(ApplyStep::WriteSetsOk { dir, path: path.clone(), content: content.clone() });
             }
-            LookStep::Wm(_) => return Err(tr("not applied")),
+            // Снятие каталога (брошенная копия расширения у эффектов экрана)
+            // глобальной теме не нужно — плана для него нет.
+            LookStep::Wm(_) | LookStep::RemoveTree { .. } => return Err(tr("not applied")),
         }
     }
     Ok(out)

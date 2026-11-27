@@ -291,8 +291,8 @@ fn card_headers_and_bodies_match_python() {
 /// порта. Факт на 02.11.2026 (пакеты Arch): Plasma 6.8 (`plasma-workspace`
 /// кладёт только `plasma.desktop`, `plasma-x11-session` из репозиториев
 /// убран), GNOME 51 (`gnome-session` — только `gnome.desktop`), Budgie 10.10
-/// (Wayland через labwc) — только Wayland. У Cinnamon, Xfce, LXQt и MATE есть
-/// выбор сеанса при установке, и подпись выводится из таблицы вариантов
+/// (Wayland через labwc) — только Wayland. У Cinnamon, Xfce и LXQt есть
+/// выбор сеанса при установке (MATE с 16.11.2026 — только X11, как в эталоне), и подпись выводится из таблицы вариантов
 /// `system::SESSION_VARIANTS` (`DeMeta::session_text`). Пометку
 /// «экспериментально» подпись берёт из признака зрелости Wayland там же: на
 /// 03.11.2026 зрелый только у LXQt (проект снял пометку в LXQt 2.3.0).
@@ -302,7 +302,6 @@ fn card_headers_and_bodies_match_python() {
 const SESSION_SANCTION: &[(&str, &str, &str)] = &[
     ("cinnamon-mint", "X11", "X11 + Wayland (экспериментально)"),
     ("xfce", "X11", "X11 + Wayland (экспериментально)"),
-    ("mate", "X11", "X11 + Wayland (экспериментально, AUR)"),
     ("lxqt", "X11 (Wayland WIP)", "X11 + Wayland"),
     ("kde", "Wayland + X11", "Wayland"),
     ("gnome", "Wayland + X11", "Wayland"),

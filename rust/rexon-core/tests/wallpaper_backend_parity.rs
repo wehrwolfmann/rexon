@@ -848,3 +848,323 @@ fn gnome_display_setup_needs_installed_waywallen_extension() {
     }
     assert_eq!(wb::display_setup_for(wb::pick("GNOME", "x11", "", ""), "GNOME", true), D::RexonHost);
 }
+
+// ── Cinnamon с layer-shell (Muffin 6.8+) ────────────────────────────────
+
+/// Признак — протокол композитора; без ответа композитора — служба фона.
+/// Номер версии не смотрим; вне Cinnamon на Wayland — всегда нет.
+#[test]
+fn cinnamon_layer_shell_by_protocol_then_service() {
+    let ls = vec!["wl_compositor".to_string(), wb::LAYER_SHELL_GLOBAL.to_string()];
+    let plain = vec!["wl_compositor".to_string()];
+    assert!(wb::cinnamon_layer_shell("X-Cinnamon", "wayland", "wayland-0", Some(&ls), false));
+    assert!(!wb::cinnamon_layer_shell("X-Cinnamon", "wayland", "wayland-0", Some(&plain), true), "протокол главнее службы");
+    assert!(wb::cinnamon_layer_shell("X-Cinnamon", "wayland", "wayland-0", None, true));
+    assert!(!wb::cinnamon_layer_shell("X-Cinnamon", "wayland", "wayland-0", None, false));
+    assert!(!wb::cinnamon_layer_shell("X-Cinnamon", "x11", "", Some(&ls), true), "X11 — прежний путь окном");
+    assert!(!wb::cinnamon_layer_shell("GNOME", "wayland", "wayland-0", Some(&ls), true));
+}
+
+#[test]
+fn cinnamon_bg_service_files_follow_xdg_order() {
+    let files = wb::cinnamon_bg_service_files("", "/home/u", "/usr/local/share:/usr/share/");
+    assert_eq!(
+        files,
+        vec![
+            "/home/u/.local/share/dbus-1/services/org.Cinnamon.Background.service",
+            "/usr/local/share/dbus-1/services/org.Cinnamon.Background.service",
+            "/usr/share/dbus-1/services/org.Cinnamon.Background.service",
+        ]
+    );
+}
+
+/// Cinnamon с layer-shell: сцены выводит хост Rexon (он поднимает штатный
+/// клиент layer-shell), а не расширение оболочки — «Применить» доступна.
+#[test]
+fn cinnamon_layer_shell_display_is_rexon_host() {
+    use wb::{DisplaySetup, WallpaperBackend as B};
+    assert_eq!(wb::display_setup_in(B::ShellExtension, "X-Cinnamon", false, true), DisplaySetup::RexonHost);
+    assert_eq!(wb::display_setup_in(B::ShellExtension, "X-Cinnamon", false, false), DisplaySetup::None);
+    assert_eq!(wb::display_setup_in(B::ShellExtension, "GNOME", true, true), DisplaySetup::GnomeExtension, "GNOME не трогаем");
+    assert_eq!(wb::display_setup_in(B::X11Subprocess, "X-Cinnamon", false, true), DisplaySetup::RexonHost);
+}
+
+/// Хост на Wayland: layer-shell и найденный клиент — поднимать клиента;
+/// иначе ждать. Сокет демона передаётся как есть, пустой — клиент найдёт сам.
+#[test]
+fn wayland_host_delegates_only_with_layer_shell_and_client() {
+    let ls = vec![wb::LAYER_SHELL_GLOBAL.to_string()];
+    assert_eq!(
+        wb::wayland_host_role(&ls, Some("/opt/ww/waywallen-layer-shell"), "/run/user/1/waywallen/display.sock"),
+        wb::WaylandHostRole::Delegate(vec![
+            "/opt/ww/waywallen-layer-shell".to_string(),
+            "--socket".to_string(),
+            "/run/user/1/waywallen/display.sock".to_string(),
+            "--name".to_string(),
+            "rexon".to_string(),
+        ])
+    );
+    assert_eq!(
+        wb::wayland_host_role(&ls, Some("/b/waywallen-layer-shell"), ""),
+        wb::WaylandHostRole::Delegate(vec!["/b/waywallen-layer-shell".into(), "--name".into(), "rexon".into()])
+    );
+    assert_eq!(wb::wayland_host_role(&ls, None, ""), wb::WaylandHostRole::Idle);
+    assert_eq!(wb::wayland_host_role(&[], Some("/b/waywallen-layer-shell"), ""), wb::WaylandHostRole::Idle);
+}
+
+/// Клиент вывода ищется рядом с демоном-родителем (AppImage), потом рядом с
+/// демоном пакета; чужой родитель (не демон) в счёт не идёт.
+#[test]
+fn layer_shell_client_found_next_to_daemon() {
+    let c = wb::layer_shell_client_candidates(Some("/tmp/.mount_ww/usr/bin/waywallen"), &[]);
+    assert_eq!(c[0], "/tmp/.mount_ww/usr/bin/waywallen-layer-shell");
+    let c = wb::layer_shell_client_candidates(Some("/usr/bin/bash"), &[]);
+    assert!(!c.iter().any(|p| p.starts_with("/usr/bin/bash")), "{c:?}");
+    assert!(c.iter().all(|p| p.ends_with("/waywallen-layer-shell")));
+}
+
+#[test]
+fn layer_shell_restart_backs_off_with_ceiling() {
+    assert_eq!(wb::layer_shell_restart_delay_ms(0), 2000);
+    assert_eq!(wb::layer_shell_restart_delay_ms(1), 4000);
+    assert_eq!(wb::layer_shell_restart_delay_ms(3), 16_000);
+    assert_eq!(wb::layer_shell_restart_delay_ms(9), 30_000);
+}
+
+#[test]
+fn display_off_marker_lives_in_state_dir() {
+    assert_eq!(wb::display_off_marker_path("", "/home/u"), "/home/u/.local/state/rexon/waywallen-display.off");
+    assert_eq!(wb::display_off_marker_path("/s/", "/home/u"), "/s/rexon/waywallen-display.off");
+}
+
+#[test]
+fn gdbus_answers_are_parsed() {
+    assert!(wb::parse_gdbus_bool("(true,)\n"));
+    assert!(!wb::parse_gdbus_bool("(false,)\n"));
+    assert_eq!(wb::parse_gdbus_uint("(uint32 4321,)\n"), Some(4321));
+    assert_eq!(wb::parse_gdbus_uint("()"), None);
+}
+
+/// Подставная шина и systemd для перестановки фона.
+struct BgIo {
+    owner: std::cell::RefCell<Vec<bool>>,
+    unit_active: bool,
+    restart_ok: bool,
+    ran: std::cell::RefCell<Vec<String>>,
+}
+
+impl BgIo {
+    fn new(owner: &[bool], unit_active: bool, restart_ok: bool) -> Self {
+        BgIo { owner: std::cell::RefCell::new(owner.to_vec()), unit_active, restart_ok, ran: Default::default() }
+    }
+}
+
+impl wb::CinnamonBgIo for BgIo {
+    fn run(&self, argv: &[String]) -> Option<String> {
+        let line = argv.join(" ");
+        self.ran.borrow_mut().push(line.clone());
+        if line.contains("NameHasOwner") {
+            let mut o = self.owner.borrow_mut();
+            let v = if o.len() > 1 { o.remove(0) } else { o[0] };
+            return Some(format!("({v},)\n"));
+        }
+        if line.contains("is-active") {
+            return self.unit_active.then(|| "active\n".to_string());
+        }
+        if line.contains("systemctl --user restart") {
+            return self.restart_ok.then(String::new);
+        }
+        if line.contains("GetConnectionUnixProcessID") {
+            return Some("(uint32 777,)\n".to_string());
+        }
+        Some(String::new())
+    }
+    fn sleep_ms(&self, _ms: u64) {}
+}
+
+/// Службы нет — ничего не трогаем; есть юнит systemd — `restart` (лимит
+/// менеджера фона Cinnamon нам не мешает); без systemd — сигнал владельцу
+/// имени и свой `Start()` (активация D-Bus), ждём возвращения имени.
+#[test]
+fn restack_restarts_background_service_safely() {
+    let io = BgIo::new(&[false], true, true);
+    assert_eq!(wb::restack_cinnamon_background(&io), wb::BgRestack::NotRunning);
+    assert!(!io.ran.borrow().iter().any(|l| l.contains("restart") || l.contains("kill")));
+
+    let io = BgIo::new(&[true], true, true);
+    assert_eq!(wb::restack_cinnamon_background(&io), wb::BgRestack::Restarted);
+    assert!(io.ran.borrow().iter().any(|l| l == "systemctl --user restart cinnamon-background-daemon.service"));
+    assert!(!io.ran.borrow().iter().any(|l| l.starts_with("kill")));
+
+    let io = BgIo::new(&[true], true, false);
+    assert_eq!(wb::restack_cinnamon_background(&io), wb::BgRestack::Failed);
+
+    let io = BgIo::new(&[true, false, true], false, false);
+    assert_eq!(wb::restack_cinnamon_background(&io), wb::BgRestack::Restarted);
+    let ran = io.ran.borrow();
+    let kill = ran.iter().position(|l| l == "kill -TERM 777").expect("сигнал владельцу имени");
+    let start = ran.iter().position(|l| l.contains("org.Cinnamon.Background.Start")).expect("свой Start()");
+    assert!(kill < start);
+}
+
+/// Защита от круга перезапусков: не чаще лимита за окно; наш же перезапуск
+/// (свежая метка) наблюдатель шины падением службы не считает; перестановку,
+/// которую уже сделал другой процесс Rexon, не повторяем.
+#[test]
+fn restack_guards_against_loops() {
+    let now = 1_000_000;
+    assert!(wb::bg_restack_allowed(&[], now));
+    let full: Vec<u64> = (0..wb::BG_RESTACK_LIMIT as u64).map(|i| now - 1000 * i).collect();
+    assert!(!wb::bg_restack_allowed(&full, now));
+    let old: Vec<u64> = full.iter().map(|t| t - wb::BG_RESTACK_WINDOW_MS).collect();
+    assert!(wb::bg_restack_allowed(&old, now), "старые перезапуски не в счёт");
+
+    assert!(wb::bg_owner_change_is_ours(Some(now - 1000), now));
+    assert!(!wb::bg_owner_change_is_ours(Some(now - wb::BG_OWN_RESTART_WINDOW_MS - 1), now));
+    assert!(!wb::bg_owner_change_is_ours(None, now));
+
+    assert!(wb::bg_restack_done_by_other(Some(now + 3000), now, 2500));
+    assert!(!wb::bg_restack_done_by_other(Some(now + 1000), now, 2500), "раньше нашей поверхности — не в счёт");
+    assert!(!wb::bg_restack_done_by_other(None, now, 2500));
+    assert_eq!(wb::bg_restack_stamp_path("/run/user/1/"), "/run/user/1/rexon-cinnamon-bg-restack.stamp");
+    assert_eq!(wb::bg_restack_lock_path("/run/user/1"), "/run/user/1/rexon-cinnamon-bg-restack.stamp.lock");
+}
+
+/// Метка помнит начало и конец перезапуска: «уже сделано другим» судится по
+/// НАЧАЛУ (перезапуск, начатый до показа нашей поверхности, её не покрыл,
+/// даже если кончился после), «наш ли перезапуск» для наблюдателя шины — по
+/// последнему моменту. Метка прежнего вида (одно число) читается как начало.
+#[test]
+fn restack_stamp_keeps_start_and_end() {
+    let s = wb::BgRestackStamp { started: 100, finished: Some(250) };
+    assert_eq!(wb::parse_bg_restack_stamp(&s.to_text()), Some(s));
+    assert_eq!(s.latest(), 250);
+    let running = wb::BgRestackStamp { started: 100, finished: None };
+    assert_eq!(wb::parse_bg_restack_stamp("100\n"), Some(running));
+    assert_eq!(running.latest(), 100);
+    assert_eq!(wb::parse_bg_restack_stamp(""), None);
+    assert_eq!(wb::parse_bg_restack_stamp("мусор"), None);
+    // Показ в 200: перезапуск 100→250 его не покрыл, 210→300 — покрыл.
+    assert!(!wb::bg_restack_done_by_other(Some(100), 200, 0));
+    assert!(wb::bg_restack_done_by_other(Some(210), 200, 0));
+}
+
+/// Заказы сливаются: просьбы по сроку только отодвигают исполнение и
+/// помнят первый заказ; весть «первый кадр на экране» подтягивает срок к
+/// почти-сейчас и сама становится точкой отсчёта — без запаса.
+#[test]
+fn restack_orders_merge_and_first_frame_pulls_in() {
+    let fallback = wb::merge_bg_restack_order(None, 1000, wb::BG_RESTACK_FALLBACK_MS, false);
+    assert_eq!(fallback, wb::BgRestackOrder { due: 1000 + wb::BG_RESTACK_FALLBACK_MS, requested: 1000, slack: wb::BG_RESTACK_FALLBACK_MS });
+    let later = wb::merge_bg_restack_order(Some(fallback), 1500, wb::BG_RESTACK_FALLBACK_MS, false);
+    assert_eq!(later.due, 1500 + wb::BG_RESTACK_FALLBACK_MS, "вторая просьба отодвинула срок");
+    assert_eq!(later.requested, 1000, "точка отсчёта — первая просьба");
+    let shorter = wb::merge_bg_restack_order(Some(later), 1600, 100, false);
+    assert_eq!(shorter.due, later.due, "короткая просьба по сроку не подтягивает");
+
+    let shown = wb::merge_bg_restack_order(Some(later), 1700, 0, true);
+    assert_eq!(shown, wb::BgRestackOrder { due: 1700 + wb::BG_RESTACK_SHOWN_MS, requested: 1700, slack: 0 });
+    assert!(shown.due < later.due, "первый кадр не ждёт запасного срока");
+    assert!(wb::BG_RESTACK_SHOWN_MS < 500 && wb::BG_RESTACK_FALLBACK_MS > wb::BG_RESTACK_DELAY_MS);
+}
+
+/// Когда ставить подложку — по путям вывода: после показа там, где смена
+/// картинки стола нашу поверхность не перекрывает (X11-окно, расширение
+/// GNOME/Cinnamon, Cinnamon 6.8 с layer-shell, KDE, Treeland); ДО показа там,
+/// где картинку держит отдельная поверхность слоя фона (wlroots, COSMIC,
+/// нераспознанный Wayland). Не ставить — нигде: на Cinnamon с layer-shell
+/// без подложки экран блокировки показывал устаревшую картинку (16.11.2026).
+#[test]
+fn backdrop_timing_follows_the_output_path() {
+    use rexon_core::wallpaper_engine::{self as wpe, BackdropTiming::*};
+    for de in ["mate", "xfce", "cinnamon", "cinnamon-mint", "budgie", "gnome", "lxqt", "kde", "deepin", "generic"] {
+        assert_eq!(wpe::backdrop_timing(de, "x11"), AfterShow, "{de} x11");
+    }
+    for de in ["gnome", "cinnamon", "cinnamon-mint"] {
+        assert_eq!(
+            wpe::backdrop_timing(de, "wayland"),
+            AfterShow,
+            "{de}: расширение оболочки или (Cinnamon 6.8) слой под перезапущенной службой фона"
+        );
+    }
+    assert_eq!(wpe::backdrop_timing("kde", "wayland"), AfterShow);
+    assert_eq!(wpe::backdrop_timing("deepin", "wayland"), AfterShow, "Treeland");
+    for de in ["sway", "hyprland", "niri", "river", "labwc", "wayfire", "cosmic", "budgie", "lxqt", "generic"] {
+        assert_eq!(wpe::backdrop_timing(de, "wayland"), BeforeShow, "{de}: своя поверхность фона");
+    }
+}
+
+/// Кеш кадра подложки: тот же ролик и тот же экран — тот же файл (повторное
+/// применение не зовёт ffmpeg); другой экран, правка файла или другой файл —
+/// другой кадр. Кадр масштабируется под самый большой выход.
+#[test]
+fn video_still_cache_key_and_scaling() {
+    use rexon_core::wallpaper_engine as wpe;
+    let screen = Some((2560, 1440));
+    let key = wpe::video_still_key("/home/u/волны.mp4", 4096, 100, screen);
+    assert_eq!(key, wpe::video_still_key("/home/u/волны.mp4", 4096, 100, screen));
+    assert_ne!(key, wpe::video_still_key("/home/u/волны.mp4", 4096, 100, Some((1920, 1080))));
+    assert_ne!(key, wpe::video_still_key("/home/u/волны.mp4", 4096, 101, screen));
+    assert_ne!(key, wpe::video_still_key("/home/u/волны.mp4", 4097, 100, screen));
+    assert_ne!(key, wpe::video_still_key("/home/u/лес.mp4", 4096, 100, screen));
+    assert_ne!(key, wpe::video_still_key("/home/u/волны.mp4", 4096, 100, None));
+    assert_eq!(
+        wpe::video_still_path("/home/u/.cache/", &key),
+        format!("/home/u/.cache/rexon/video-stills/{key}.jpg")
+    );
+    assert_eq!(wpe::still_screen_size(&[(1920, 1080), (2560, 1440), (1080, 1920)]), Some((2560, 1440)));
+    assert_eq!(wpe::still_screen_size(&[]), None);
+    let scaled = wpe::video_still_argv("/v.mp4", "/o.jpg", 3.0, screen).join(" ");
+    assert!(scaled.contains("scale=2560:1440:force_original_aspect_ratio=increase"), "{scaled}");
+    assert!(scaled.ends_with("/o.jpg") && scaled.contains("-frames:v 1"), "{scaled}");
+    let native = wpe::video_still_argv("/v.mp4", "/o.jpg", 3.0, None).join(" ");
+    assert!(!native.contains("scale="), "{native}");
+    assert_eq!(wpe::backdrop_ready_log_line(420), "подложка готова через 420 мс после видео");
+}
+
+/// Предел кеша кадров: в пределах — ничего не трогается; сверх числа или
+/// байт — уходят старейшие, ставящийся кадр — никогда; недописанные
+/// `*.part.jpg` — всегда.
+#[test]
+fn video_stills_cache_is_bounded() {
+    use rexon_core::wallpaper_engine as wpe;
+    let f = |i: usize, mtime: i64, bytes: u64| (format!("/c/{i:02}.jpg"), mtime, bytes);
+    let small: Vec<_> = (0..5).map(|i| f(i, i as i64, 1000)).collect();
+    assert!(wpe::video_still_evictions(&small, "/c/04.jpg").is_empty());
+
+    let n = wpe::VIDEO_STILLS_MAX_FILES + 3;
+    let many: Vec<_> = (0..n).map(|i| f(i, 100 - i as i64, 1000)).collect();
+    let keep = format!("/c/{:02}.jpg", n - 1); // самый старый — но он ставится
+    let gone = wpe::video_still_evictions(&many, &keep);
+    assert_eq!(gone.len(), 3, "{gone:?}");
+    assert!(!gone.contains(&keep));
+    assert_eq!(gone[0], format!("/c/{:02}.jpg", n - 2), "старейшие — первыми: {gone:?}");
+
+    let big = wpe::VIDEO_STILLS_MAX_BYTES / 4 + 1;
+    let heavy: Vec<_> = (0..5).map(|i| f(i, i as i64, big)).collect();
+    let gone = wpe::video_still_evictions(&heavy, "/c/04.jpg");
+    assert_eq!(gone, vec!["/c/00.jpg".to_string(), "/c/01.jpg".to_string()]);
+
+    let mut part = small.clone();
+    part.push(("/c/x.jpg.part.jpg".to_string(), 50, 10));
+    assert_eq!(wpe::video_still_evictions(&part, "/c/04.jpg"), vec!["/c/x.jpg.part.jpg".to_string()]);
+}
+
+/// Строка замера «первый кадр на экране»: от «применяю» и от запуска хоста;
+/// без момента применения — только от запуска. Мусор и время из будущего в
+/// переменной — не замер.
+#[test]
+fn first_frame_measure_line() {
+    use rexon_core::wallpaper_engine as wpe;
+    assert_eq!(wpe::since_apply_ms("1000", 2500), Some(1500));
+    assert_eq!(wpe::since_apply_ms(" 1000\n", 1000), Some(0));
+    assert_eq!(wpe::since_apply_ms("", 2500), None);
+    assert_eq!(wpe::since_apply_ms("abc", 2500), None);
+    assert_eq!(wpe::since_apply_ms("3000", 2500), None);
+    assert_eq!(wpe::since_apply_ms("0", 2500), None);
+    assert_eq!(
+        wpe::first_frame_log_line("видео", Some(1500), 900),
+        "первый кадр (видео) на экране через 1500 мс после «применяю» (хост — 900 мс от запуска)"
+    );
+    assert_eq!(wpe::first_frame_log_line("Flash", None, 700), "первый кадр (Flash) на экране через 700 мс от запуска хоста");
+}

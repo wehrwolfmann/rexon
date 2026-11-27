@@ -1840,6 +1840,8 @@ const TEXT_FIXES: &[(&str, &str)] = &[
 /// закрытый — новая строка обязана попасть сюда осознанно, а не проехать
 /// мимо сверки.
 const TEXT_ADDITIONS: &[&str] = &[
+    // Сброс сайтов «без вопроса» (`link_policy`, 16.11.2026).
+    "links.reset",
     // Защита цветов терминала от тем (`terminal_guard`, 06.11.2026).
     "prot.terminal_colors",
     "prot.terminal_colors_tip",
@@ -1861,6 +1863,9 @@ const TEXT_ADDITIONS: &[&str] = &[
     // вкладки таких условий не было вовсе.
     "wp.pause_battery",
     "wp.pause_game",
+    // Итог применения обоев с оговоркой (15.11.2026): значок предупреждения
+    // вместо зелёной галочки — у оригинала вкладки такого итога не было.
+    "wp.applied_warn",
     // Раздел «Значок в системном лотке»: у оригинала вкладки значка не было
     // вовсе, поэтому и подписей к нему быть не могло.
     "tray.autostart",
@@ -1918,10 +1923,16 @@ const TEXT_ADDITIONS: &[&str] = &[
 /// (`golden/qt_settings_ru_before.json`): «как было» у них нет, их русский
 /// сверяется отдельно ([`language_section_russian`]).
 const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
+    // Сброс сайтов «без вопроса» (16.11.2026) — русский сверяется в
+    // `links_texts_russian`.
+    "links.reset",
     // Батарея и игра в общей модели паузы обоев (15.11.2026) — русский
     // сверяется в `wallpaper_pause_texts_russian`.
     "wp.pause_battery",
     "wp.pause_game",
+    // Итог с оговоркой (15.11.2026) — русский сверяется в
+    // `wallpaper_done_with_warning_is_not_a_green_check`.
+    "wp.applied_warn",
     "prot.terminal_colors",
     "prot.terminal_colors_tip",
     "snd.theme_missing",
@@ -1958,7 +1969,7 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
 ];
 
 /// Разделы, появившиеся после снимка русских текстов.
-const AFTER_RU_SNAPSHOT_SECTIONS: &[&str] = &["langGroup"];
+const AFTER_RU_SNAPSHOT_SECTIONS: &[&str] = &["langGroup", "linksGroup"];
 
 /// Разделы оригинала, СНЯТЫЕ с вкладки осознанно, и их подписи. Эталоны
 /// заморожены и их помнят; здесь сказано, что пропажа — решение, а не порча.
@@ -1976,6 +1987,13 @@ const TEXT_REMOVALS: &[&str] = &[
     "mate.caja_restarted",
     "mate.icons_failed",
     "mate.caja_failed",
+    // Звук обоев меняется на ходу (15.11.2026): «применится к следующему
+    // видео» и «⏳ Включаю звук видео-обоев…» были неправдой и нигде не
+    // показывались.
+    "wp.audio_next",
+    "wp.audio_reapply",
+    "wp.audio_enabling",
+    "wp.audio_disabling",
 ];
 
 /// Снятые раздел и подписи действительно сняты: ни в таблицах ядра, ни в
@@ -2009,6 +2027,9 @@ const AFTER_RU_SNAPSHOT_REWORDED: &[(&str, &str)] = &[(
 /// причине, что и [`TEXT_ADDITIONS`]: новый раздел обязан попасть сюда
 /// осознанно, а не проехать мимо сверки.
 const SECTION_ADDITIONS: &[&str] = &[
+    // Вопрос перед внешней ссылкой из чужого текста (16.11.2026): его не
+    // было вовсе — ссылки открывались молча.
+    "linksGroup",
     // Значка в лотке у Rexon не было ни в одной версии вкладки.
     "trayGroup",
     // Выбора языка интерфейса тоже: Rexon был только русским.
@@ -2217,6 +2238,30 @@ fn clip_counts_letters_not_bytes() {
     assert_eq!(qs::wallpaper_done(true, &"я".repeat(200)).chars().count(), 160 + "✅ Обои применены: ".chars().count());
 }
 
+/// Обои встали, но есть оговорка: значок предупреждения вместо зелёной
+/// галочки, и сама оговорка не обрезается вместе с длинным названием.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn wallpaper_done_with_warning_is_not_a_green_check() {
+    let _lang = i18n_pin::ru();
+    let warning = "Остановите их во вкладке «Wallpaper Engine». ".repeat(6);
+    let line = qs::wallpaper_done_warned(true, &"я".repeat(200), Some(&warning));
+    assert!(line.starts_with("⚠️ Обои применены: "), "{line}");
+    assert!(!line.contains('✅'), "{line}");
+    assert!(line.ends_with(warning.trim()), "оговорка обрезана: {line}");
+    assert!(qs::status_is_warning(&line));
+    // Без оговорки и при отказе — прежние строки.
+    assert_eq!(qs::wallpaper_done_warned(true, "лес", None), qs::wallpaper_done(true, "лес"));
+    assert_eq!(qs::wallpaper_done_warned(true, "лес", Some("  ")), qs::wallpaper_done(true, "лес"));
+    assert_eq!(qs::wallpaper_done_warned(false, "нет", Some("x")), qs::wallpaper_done(false, "нет"));
+    assert!(!qs::status_is_warning(&qs::wallpaper_done(true, "лес")));
+    assert!(qs::status_is_warning(&qs::wallpaper_done(false, "нет")));
+    // YouTube и веб — та же развилка.
+    let yt = qs::done_or_warned(true, "ролик", Some("оговорка"), qs::youtube_done);
+    assert!(yt.starts_with("⚠️ ") && yt.ends_with("оговорка"), "{yt}");
+    assert_eq!(qs::done_or_warned(true, "ролик", None, qs::youtube_done), qs::youtube_done(true, "ролик"));
+}
+
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ytdlp_button_follows_system() {
@@ -2235,20 +2280,6 @@ fn ytdlp_button_follows_system() {
     assert!(btn.contains("Обновляю") && status.contains("пароль"));
     let (btn, _) = qs::ytdlp_working("install");
     assert!(btn.contains("Устанавливаю"));
-}
-
-#[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
-fn video_audio_reapplies_only_for_running_video() {
-    let _lang = i18n_pin::ru();
-    assert!(qs::wallpaper_audio_reapply(true, "video", true));
-    assert!(!qs::wallpaper_audio_reapply(false, "video", true));
-    assert!(!qs::wallpaper_audio_reapply(true, "static", true));
-    // Файла нет — переприменять нечего, только сообщение «к следующему».
-    assert!(!qs::wallpaper_audio_reapply(true, "video", false));
-    assert!(qs::wallpaper_audio_status(true, false).contains("к следующему видео"));
-    assert!(qs::wallpaper_audio_status(true, true).contains("Включаю"));
-    assert!(qs::wallpaper_audio_status(false, true).contains("Выключаю"));
 }
 
 #[test]
@@ -3054,6 +3085,16 @@ fn wallpaper_pause_texts_russian() {
     let get = |k: &str| qs::text(k, &[]).unwrap();
     assert_eq!(get("wp.pause_battery"), "Ставить обои на паузу при работе от батареи");
     assert_eq!(get("wp.pause_game"), "Ставить обои на паузу во время игры (игровой режим)");
+}
+
+/// Раздел «Ссылки на сайты» (вопрос перед внешней ссылкой, 16.11.2026).
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn links_texts_russian() {
+    let _lang = i18n_pin::ru();
+    assert_eq!(qs::text("links.reset", &[]).unwrap(), "Снова спрашивать для всех сайтов");
+    let (_, title, _) = qs::SECTIONS.iter().find(|(id, _, _)| *id == "linksGroup").unwrap();
+    assert_eq!(i18n::tr(title), "🔗 Ссылки на сайты");
 }
 
 /// Снимок русских текстов вкладки до переноса строк в каталог.

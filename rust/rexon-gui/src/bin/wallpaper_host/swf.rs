@@ -325,7 +325,7 @@ mod imp {
             // Экранов офскрин-режим не знает — с чужими окнами ядро сравнит
             // размер кадра, ровно как это делает видео (`audioProbeSize`).
             let audio = live((env.mmap_w, env.mmap_h));
-            return verdict(drive(wallpaper, selftest, audio, |_| true));
+            return verdict(drive(wallpaper, selftest, audio, false, |_| true));
         }
 
         settings.max_fps = 60.0;
@@ -368,6 +368,9 @@ mod imp {
             if env.placement == PLACEMENT_LAYER && !cli.windowed {
                 // SAFETY: окно живо и ещё не показано — слой ставится до показа.
                 let ok = unsafe { apply_spec(window.cast(), &LayerSpec::WALLPAPER, &QString::from(LAYER_SCOPE)) };
+                if ok {
+                    rexon_gui::wallpaper_host::cinnamon_layer::surface_up("Flash-обои слоем стола");
+                }
                 if !ok {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN слой обоев не поставился: композитор без wlr-layer-shell?");
                 }
@@ -458,7 +461,7 @@ mod imp {
         // Перезапускаться ли при смене набора мониторов. На прогоне
         // самопроверки — нет: она меряет то, что застала.
         let may_restart = selftest.is_none() && !cli.windowed;
-        verdict(drive(wallpaper, selftest, audio, move |wp| {
+        verdict(drive(wallpaper, selftest, audio, !cli.windowed, move |wp| {
             swf_window::process_events();
             // ⚠️ ДО отрисовки, сразу после разбора событий. Когда монитор
             // отключают, композитор снимает поверхность слоя, и первый же
@@ -541,6 +544,7 @@ mod imp {
         wallpaper: Result<Wallpaper, Error>,
         selftest: Option<Duration>,
         mut audio: Option<AudioLive>,
+        on_screen: bool,
         mut between: impl FnMut(&mut Wallpaper) -> bool,
     ) -> i32 {
         let mut wallpaper = match wallpaper {
@@ -569,7 +573,18 @@ mod imp {
         // встала и метка.
         let beat_every = Duration::from_millis(rexon_core::renderer_watch::HEARTBEAT_INTERVAL_MS);
         let mut last_beat: Option<Instant> = None;
+        // `between` зовётся перед каждым тактом: второй вызов — первый кадр
+        // ролика уже отрисован в окна. Тогда — замер ожидания и, на Cinnamon
+        // с layer-shell, перестановка службы фона под нас (по событию, а не
+        // выдержкой). В режиме потока кадров окна на экране нет — не мерим.
+        let mut calls: u32 = 0;
         let between = move |wp: &mut Wallpaper| {
+            if on_screen && calls < 2 {
+                calls += 1;
+                if calls == 2 {
+                    rexon_gui::wallpaper_host::first_frame_shown("Flash");
+                }
+            }
             if let Some(live) = audio.as_mut() {
                 live.apply(wp);
             }

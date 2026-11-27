@@ -245,9 +245,59 @@ pub fn safe_zip_extract(archive_path: &Path, dest: &Path) -> Result<(), ArchiveE
             // BadZipFile («Bad CRC-32…»), а не OSError.
             std::io::copy(&mut entry, &mut out)
                 .map_err(|e| entry_read_error(e, &member))?;
+            // Бит исполнения из архива (`external_attr >> 16`): без него
+            // скрипты виджета или темы, которые зовут друг друга напрямую,
+            // получают «Отказано в доступе». Переносятся ТОЛЬКО x-биты —
+            // см. [`safe_extracted_mode`].
+            if let Some(archived) = entry.unix_mode().filter(|m| m & 0o111 != 0) {
+                use std::os::unix::fs::PermissionsExt;
+                let disk = out.metadata()?.permissions().mode();
+                let mode = safe_extracted_mode(disk | (archived & 0o111), false);
+                out.set_permissions(std::fs::Permissions::from_mode(mode))?;
+            }
         }
     }
     Ok(())
+}
+
+/// Права распакованного из архива файла или каталога — общее правило для
+/// zip, tar и 7z: биты исполнения (владельцу, группе, прочим) остаются,
+/// setuid/setgid/sticky и запись для группы и прочих снимаются, владельцу
+/// чтение и запись (у каталога — и вход) оставляются всегда, чтобы Rexon
+/// мог потом обновить и удалить установленное.
+///
+/// Права запуска не обходят окно разрешения виджета Conky: Rexon запускает
+/// виджет только после «Да» ([`crate::conky_safety`]), а отпечаток
+/// разрешения считается по содержимому файлов, не по их правам.
+pub fn safe_extracted_mode(mode: u32, is_dir: bool) -> u32 {
+    (mode & 0o755) | if is_dir { 0o700 } else { 0o600 }
+}
+
+/// Привести права всего распакованного дерева `root` к
+/// [`safe_extracted_mode`]: системный `tar` и 7-Zip кладут права из архива
+/// как есть (в пределах umask), в том числе setuid. Ссылки не трогаются и
+/// не разыменовываются — обход не выходит за `root`.
+pub fn clamp_extracted_modes(root: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fn walk(dir: &Path, depth: u32) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            let Ok(md) = std::fs::symlink_metadata(&path) else { continue };
+            if md.file_type().is_symlink() || !(md.is_file() || md.is_dir()) {
+                continue;
+            }
+            let mode = md.permissions().mode() & 0o7777;
+            let safe = safe_extracted_mode(mode, md.is_dir());
+            if safe != mode {
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(safe));
+            }
+            if md.is_dir() && depth < 64 {
+                walk(&path, depth + 1);
+            }
+        }
+    }
+    walk(root, 0);
 }
 
 /// Упаковать каталог в `.rxn` (ZIP, DEFLATE) — порт `_pack_rxn`. Обходит

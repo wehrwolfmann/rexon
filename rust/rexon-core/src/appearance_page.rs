@@ -859,9 +859,15 @@ pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
         it.installed = true;
         it.applied = false;
         let Some(rec) = rec.as_object() else { continue };
-        let kind = log_apply_kind(home, rec, it.category_id);
+        let mut kind = log_apply_kind(home, rec, it.category_id);
+        // Виджет Conky и дополнение: «применён» — запущен или включён (их в
+        // карте активных сколько угодно, через перевод строки).
+        let switch = kind.is_empty();
+        if switch {
+            kind = log_switch_kind(home, rec, it.category_id);
+        }
         if kind.is_empty() {
-            continue; // вид без понятия «применён» (шрифты, виджеты, плагины)
+            continue; // вид без понятия «применён» (шрифты, плагины)
         }
         let cur = active
             .get()
@@ -882,10 +888,24 @@ pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
                     .collect()
             })
             .unwrap_or_default();
+        let on: Vec<&str> = if switch { cur.split('\n').map(str::trim).collect() } else { vec![cur.as_str()] };
         it.applied = log_theme_names(&paths)
             .iter()
-            .any(|n| n.trim().to_lowercase() == cur);
+            .any(|n| on.contains(&n.trim().to_lowercase().as_str()));
     }
+}
+
+/// Вид раздела товара из записи журнала, если он включается запуском или
+/// переключателем ([`store_item_switch`]); иначе пусто.
+fn log_switch_kind(home: &Path, rec: &Map<String, Value>, item_category_id: i64) -> String {
+    let mut cid = rec.get("category_id").and_then(Value::as_i64).unwrap_or(0);
+    if cid == 0 {
+        cid = item_category_id;
+    }
+    categories::category_by_id(home, cid)
+        .map(|c| c.apply_kind.trim().to_string())
+        .filter(|k| switch_of_apply_kind(k).is_some())
+        .unwrap_or_default()
 }
 
 /// Та же штамповка, но журнал читается с диска по пути `log_path`.
@@ -1800,13 +1820,14 @@ impl CatalogView {
     }
 
     /// Ключ сессионного кеша AUR: список категории — по её ключу, поиск — по
-    /// запросу. Тот же ключ несёт ответ воркера, и по нему отбрасываются
-    /// ответы категорий, с которых человек уже ушёл.
+    /// разделу и запросу (выдача поиска отобрана под раздел,
+    /// `aur::search_in_category`). Тот же ключ несёт ответ воркера, и по нему
+    /// отбрасываются ответы категорий, с которых человек уже ушёл.
     pub fn aur_cache_key(&self) -> String {
         if self.query.is_empty() {
             format!("cat:{}", self.category.key)
         } else {
-            format!("search:{}", self.query)
+            format!("search:{}:{}", self.category.key, self.query)
         }
     }
 
@@ -1831,11 +1852,21 @@ impl CatalogView {
         // Под фильтром «только установленное» магазина нет — и его
         // переключателя, сортировки и страниц тоже (`installed_only`).
         let store = !self.installed_only();
-        // У источника «Razer Axon» поиск, сортировка и фильтры — свои, как у
-        // самого Axon, на его экране; листать нечего (библиотека целиком),
-        // ставить из файла — не сюда.
+        // У источника «Razer Axon» сортировка и фильтры — свои, как у самого
+        // Axon, на его экране; листать нечего (библиотека целиком), ставить
+        // из файла — не сюда. А строка поиска — ТА ЖЕ, что у соседних
+        // магазинов, на том же месте шапки и с тем же словом: своя строка
+        // на экране Axon уезжала влево вниз, и набранное слово при смене
+        // магазина пропадало (живая проверка 16.11.2026, Cinnamon 6.8).
+        // Где искать — в названиях или в тегах — выбирается в «Фильтре».
         if self.axon_mode() {
-            return Chrome { source_bar: store, caveat: self.caveat(), ..Chrome::default() };
+            return Chrome {
+                search: true,
+                search_placeholder: self.search_placeholder(),
+                source_bar: store,
+                caveat: self.caveat(),
+                ..Chrome::default()
+            };
         }
         Chrome {
             search: true,
@@ -3280,6 +3311,37 @@ pub fn store_item_can_apply(home: &Path, item: &ThemeItem) -> bool {
         .is_some_and(|c| appearance_installer::kind_has_active_state(c.apply_kind.trim()))
 }
 
+/// Включается ли товар раздела не «Применить», а запуском (Conky) или
+/// переключателем (дополнения): `Some(кнопка)`; `None` — тема или вид без
+/// включения. Решает тот же вид раздела, что у местной плитки
+/// ([`crate::de_apply::button_for_apply_kind`]).
+pub fn store_item_switch(home: &Path, item: &ThemeItem) -> Option<crate::de_apply::Button> {
+    let c = categories::category_by_id(home, item.category_id)?;
+    switch_of_apply_kind(c.apply_kind.trim())
+}
+
+fn switch_of_apply_kind(apply_kind: &str) -> Option<crate::de_apply::Button> {
+    use crate::de_apply::Button;
+    if apply_kind.is_empty() {
+        return None;
+    }
+    match crate::de_apply::button_for_apply_kind(apply_kind) {
+        Button::Apply => None,
+        b => Some(b),
+    }
+}
+
+/// Номер плитки установленного (`local:<вид>:<имя>`) для поставленного
+/// товара магазина `item` с именем на диске `name` — по нему панель деталей
+/// товара показывает то же, что плитка установленного: «Запускать при
+/// входе», части и настройки виджета Conky. `None` — товар не включается
+/// запуском или переключателем.
+pub fn store_local_id(home: &Path, item: &ThemeItem, name: &str) -> Option<String> {
+    let c = categories::category_by_id(home, item.category_id)?;
+    let kind = c.apply_kind.trim();
+    (switch_of_apply_kind(kind).is_some() && !name.is_empty()).then(|| format!("local:{kind}:{name}"))
+}
+
 /// Имя, под которым товар `content_id` стоит на диске, — по журналу
 /// установок: первый путь записи, который ещё есть (`exists`). `None` —
 /// записи нет или файлы темы сняты руками.
@@ -3451,9 +3513,29 @@ pub fn link_copied_status(url: &str) -> String {
     trf("Link copied: %1", &[&url])
 }
 
-/// Подпись со звёздами рейтинга.
-pub fn detail_stars_label(rating_stars: f64) -> String {
-    format!("⭐ {}", format_decimal(rating_stars, 1))
+/// Подпись «голосов нет» — на плитке вместо числа звёзд и в карточке
+/// товара (`ThemeItem::rated_stars` = `None`).
+pub fn no_ratings_label() -> String {
+    // TRANSLATORS: store item that nobody has rated yet (shown instead of stars).
+    tr("No ratings yet")
+}
+
+/// Подпись со звёздами рейтинга; `None` — голосов нет, звезды нет.
+pub fn detail_stars_label(rating_stars: Option<f64>) -> String {
+    match rating_stars {
+        Some(stars) => format!("⭐ {}", format_decimal(stars, 1)),
+        None => no_ratings_label(),
+    }
+}
+
+/// Значок оценки на плитке магазина: без голосов — пусто, звезда без
+/// числа читалась бы как оценка.
+pub fn card_star_glyph(rating_stars: Option<f64>) -> &'static str {
+    if rating_stars.is_some() {
+        "⭐"
+    } else {
+        ""
+    }
 }
 
 /// Подпись со счётчиком скачиваний.
@@ -4181,18 +4263,20 @@ pub fn showcase_author(home: &Path, item: &ThemeItem, showcase: bool) -> String 
 ///
 /// Набор слотов ЕДИНЫЙ с плиткой AUR (★/⬇/📅 против 👍/📈/📅) — разнобой
 /// магазинов в одной сетке недопустим.
-pub fn card_stats_line(rating_stars: f64, downloads: i64, updated: &str) -> String {
+pub fn card_stats_line(rating_stars: Option<f64>, downloads: i64, updated: &str) -> String {
     let day: String = updated.chars().take(10).collect();
     let upd = if day.is_empty() {
         String::new()
     } else {
         format!("{NBSP}{NBSP}📅 {day}")
     };
-    format!(
-        "{NBSP}{}{NBSP}{NBSP}⬇️ {}{upd}",
-        format_decimal(rating_stars, 1),
-        human_count(downloads)
-    )
+    // Без голосов звезды нет (`card_star_glyph`), и строка начинается с
+    // подписи без отступа под значок.
+    let rating = match rating_stars {
+        Some(stars) => format!("{NBSP}{}", format_decimal(stars, 1)),
+        None => no_ratings_label(),
+    };
+    format!("{rating}{NBSP}{NBSP}⬇️ {}{upd}", human_count(downloads))
 }
 
 /// Подсказка стат-строки плитки магазина (`None` — даты у товара нет).
@@ -4272,12 +4356,48 @@ pub fn card_local_button_for(local_kind: &str, item_id: &str) -> CardButton {
     let on = local_kind == "active";
     match button {
         Button::Apply => card_local_button(local_kind),
-        // Включённое — контурная кнопка состояния, выключенное — залитая
-        // кнопка-действие, как у остальных плиток.
+        _ => switch_button(button, on),
+    }
+}
+
+/// Кнопка дополнения или виджета: включённое — контурная кнопка состояния
+/// с обратным действием, выключенное — залитая кнопка-действие, как у
+/// остальных плиток. Одна на местную плитку ([`card_local_button_for`]) и
+/// поставленный товар магазина ([`card_store_button`]).
+pub fn switch_button(button: crate::de_apply::Button, on: bool) -> CardButton {
+    use crate::de_apply::Button;
+    match button {
         Button::Toggle if on => CardButton { text: tr("⏸️ Disable"), state: "true", enabled: true },
         Button::Toggle => CardButton { text: tr("▶️ Enable"), state: "false", enabled: true },
         Button::Run if on => CardButton { text: tr("⏹️ Stop"), state: "true", enabled: true },
         Button::Run => CardButton { text: tr("▶️ Start"), state: "false", enabled: true },
+        Button::Apply => card_install_button(true, on, true),
+    }
+}
+
+/// Кнопка плитки товара магазина. Поставленный виджет Conky или дополнение
+/// (`switch` — [`store_item_switch`]) включается прямо с плитки каталога,
+/// тем же нажатием, что у плитки установленного: «▶️ Запустить» /
+/// «⏹️ Остановить», «▶️ Включить» / «⏸️ Выключить» (`on` — запущен или
+/// включён сейчас). Раньше такая плитка после установки застывала на
+/// «✅ Установлено», и где включить виджет, было не понять (живая проверка
+/// 15.11.2026). Остальное — [`card_install_button`].
+pub fn card_store_button(installed: bool, on: bool, can_apply: bool, switch: Option<crate::de_apply::Button>) -> CardButton {
+    match switch {
+        Some(button) if installed => switch_button(button, on),
+        _ => card_install_button(installed, on, can_apply),
+    }
+}
+
+/// Главная кнопка деталей товара магазина — те же состояния, что у плитки
+/// ([`card_store_button`]).
+pub fn store_detail_button(installed: bool, on: bool, can_apply: bool, switch: Option<crate::de_apply::Button>) -> InstallButton {
+    match switch {
+        Some(button) if installed => {
+            let card = switch_button(button, on);
+            InstallButton { text: card.text, tooltip: String::new(), state: if on { "true" } else { "installed" } }
+        }
+        _ => install_button(installed, on, can_apply),
     }
 }
 
@@ -4491,6 +4611,45 @@ pub fn aur_meta_line(version: &str, out_of_date: bool) -> String {
     let ver = if version.is_empty() { "—" } else { version };
     let ood = if out_of_date { aur_out_of_date() } else { String::new() };
     format!("🛠️ AUR · {ver}{ood}")
+}
+
+/// Пометка плитки AUR там, где пакеты идут ВПЕРЕМЕШКУ с одиночными товарами
+/// магазина (источник «Все»): чем пакет отличается от соседа — он ставится
+/// системным пакетом и просит пароль, а у обоев это целый набор картинок,
+/// а не одна. Пусто — пометка не нужна (источник «AUR»: там все такие).
+/// Размер пакета AUR не сообщает (ни поиск, ни `info`), поэтому его в
+/// пометке нет.
+pub fn aur_mix_badge(view: &CatalogView, pkg_category: &str) -> String {
+    if !view.both_mode() {
+        return String::new();
+    }
+    if pkg_category == "wallpapers" || view.category.key == "wallpapers" {
+        tr("📦 Set · system package · password")
+    } else {
+        tr("📦 System package · password")
+    }
+}
+
+/// Подсказка к пометке [`aur_mix_badge`].
+pub fn aur_mix_badge_tooltip() -> String {
+    tr("Installed as a system package from AUR: it asks for the administrator password and is removed the same way.")
+}
+
+/// Файл шрифта (по расширению) — картинка плитки шрифта: плитка рисует им
+/// образец текста, а не показывает файл картинкой.
+pub fn is_font_file(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    [".ttf", ".otf", ".woff", ".woff2", ".ttc"].iter().any(|e| p.ends_with(e))
+}
+
+/// Начало файла — шрифт (TrueType, OpenType, коллекция, WOFF).
+pub fn looks_like_font(head: &[u8]) -> bool {
+    head.starts_with(&[0, 1, 0, 0])
+        || head.starts_with(b"OTTO")
+        || head.starts_with(b"true")
+        || head.starts_with(b"ttcf")
+        || head.starts_with(b"wOFF")
+        || head.starts_with(b"wOF2")
 }
 
 /// Сколько ширины остаётся версии в строке источника: полная ширина подписи

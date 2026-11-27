@@ -42,6 +42,9 @@ use crate::i18n::{tr, trf};
 pub const OVERLAY_SEGMENT: &str = "/rexon/conky/overlay/";
 /// Окончание имени накладки.
 pub const OVERLAY_SUFFIX: &str = ".rexon.conf";
+/// Метка файла запуска через XWayland: `<ключ>+x.rexon.conf`. Ключ
+/// ([`key`]) пишет `+` только как `+s`/`+p` — с накладкой не спутать.
+pub const XWAYLAND_KEY_TAG: &str = "+x";
 /// Окончание имени файла с выбранными настройками.
 pub const SETTINGS_SUFFIX: &str = ".json";
 /// Окончание имени копии, переведённой из синтаксиса 1.9.
@@ -125,6 +128,7 @@ pub fn original_of_launch(launch: &str) -> Option<String> {
     let at = launch.rfind(OVERLAY_SEGMENT)?;
     let name = &launch[at + OVERLAY_SEGMENT.len()..];
     let key = name.strip_suffix(OVERLAY_SUFFIX)?;
+    let key = key.strip_suffix(XWAYLAND_KEY_TAG).unwrap_or(key);
     (!key.is_empty() && !key.contains('/')).then(|| conf_of_key(key))
 }
 
@@ -906,6 +910,191 @@ pub fn preset_note(de_id: &str, wayland: bool) -> Option<String> {
     })
 }
 
+// ── Вывод X11 через XWayland ────────────────────────────────────────────
+//
+// В сеансе Wayland conky может рисовать своим выводом Wayland или выводом
+// X11 через XWayland. Вывод X11 берётся там, где Wayland-вывод не годится
+// (замеры 15.11.2026, Cinnamon 6.8 Wayland):
+// * GNOME, Cinnamon, Pantheon: слоя стола для conky нет — окно Wayland
+//   обычное, перекрывается окнами и видно в Alt+Tab; через XWayland окно
+//   X11 с подсказками «под всеми, на всех столах» стол держит как надо
+//   (проверено вживую: прозрачный виджет поверх живых обоев);
+// * conky 1.25.0–1.25.2 на любом столе: вывод Wayland падает сразу при
+//   старте (`display-wayland.cc … set_font: Assertion f < pango_fonts.size()`,
+//   исправлено в 1.25.3);
+// * виджет рисует сценарием Lua через `cairo_xlib_*` — это только X11.
+// Без XWayland (`DISPLAY` пуст) остаётся вывод Wayland — других нет.
+// Переход делают два изменения окружения conky: без `WAYLAND_DISPLAY` и с
+// `XDG_SESSION_TYPE=x11` (так conky сам выбирает вывод X11, а ветка окна
+// накладки Rexon, [`window_lines`], — подсказки X11).
+
+/// Версия conky `(старшая, младшая, выпуск)` из вывода `conky -v`.
+pub fn parse_version_full(out: &str) -> Option<(u32, u32, u32)> {
+    let first = out.lines().find(|l| l.trim_start().starts_with("conky "))?;
+    let ver = first.trim_start().strip_prefix("conky ")?.split_whitespace().next()?;
+    let mut it = ver.split(|c: char| !c.is_ascii_digit());
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next()?.parse().ok()?;
+    Some((major, minor, it.next().and_then(|p| p.parse().ok()).unwrap_or(0)))
+}
+
+/// Выпуск conky, у которого вывод Wayland падает при старте.
+pub fn wayland_output_aborts(v: (u32, u32, u32)) -> bool {
+    v.0 == 1 && v.1 == 25 && v.2 <= 2
+}
+
+/// Идёт ли conky в этом сеансе через XWayland (вывод X11). `display` —
+/// XWayland есть (`DISPLAY` задан); `needs_x11` — виджет рисует через X11.
+pub fn via_xwayland(de_id: &str, wayland: bool, display: bool, version: Option<(u32, u32, u32)>, needs_x11: bool) -> bool {
+    wayland && display && (needs_x11 || wayland_without_layers(de_id) || version.is_some_and(wayland_output_aborts))
+}
+
+/// Есть ли у сеанса сервер X (`DISPLAY`; в сеансе Wayland — XWayland).
+pub fn live_display() -> bool {
+    std::env::var("DISPLAY").is_ok_and(|d| !d.is_empty())
+}
+
+/// [`via_xwayland`] для этого сеанса и установленного conky (без учёта
+/// виджета).
+pub fn live_via_xwayland(io: &dyn LookIo, ctx: &Ctx, needs_x11: bool) -> bool {
+    if !ctx.wayland || !live_display() {
+        return false;
+    }
+    let version = io.run(&["conky".to_string(), "-v".to_string()]).1;
+    via_xwayland(&ctx.de, ctx.wayland, true, parse_version_full(&version), needs_x11)
+}
+
+/// Сеанс глазами conky: идёт он через XWayland — для раскладки, экранов
+/// и оговорок это сеанс X11.
+pub fn conky_ctx(io: &dyn LookIo, ctx: &Ctx) -> Ctx {
+    let mut c = ctx.clone();
+    if live_via_xwayland(io, ctx, false) {
+        c.wayland = false;
+    }
+    c
+}
+
+/// Рисует ли виджет с файлом `conf` через X11: сценарий Lua в папке файла
+/// (и её подпапках до второго уровня) зовёт `cairo_xlib_*`.
+pub fn widget_needs_x11(conf: &str) -> bool {
+    fn walk(dir: &std::path::Path, depth: usize, budget: &mut usize) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else { return false };
+        for e in entries.flatten() {
+            if *budget == 0 {
+                return false;
+            }
+            *budget -= 1;
+            let path = e.path();
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() && depth < 2 {
+                if walk(&path, depth + 1, budget) {
+                    return true;
+                }
+            } else if ft.is_file() && path.extension().is_some_and(|x| x == "lua") {
+                let small = e.metadata().is_ok_and(|m| m.len() < (1 << 20));
+                if small && std::fs::read_to_string(&path).is_ok_and(|t| t.contains("cairo_xlib_surface_create")) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    let dir = crate::de_apply::conky_work_dir(conf);
+    let mut budget = 400;
+    dir != "/" && dir != "." && walk(std::path::Path::new(dir), 0, &mut budget)
+}
+
+/// Имена `XDG_CURRENT_DESKTOP` столов без слоя для conky
+/// ([`wayland_without_layers`]) — для сценария автозапуска.
+pub const XWAYLAND_DESKTOP_NAMES: &[&str] = &["GNOME", "X-Cinnamon", "Cinnamon", "Pantheon"];
+
+/// Что меняет в окружении переход на XWayland (метка его же в записи
+/// автозапуска).
+pub const XWAYLAND_SESSION_TYPE: &str = "XDG_SESSION_TYPE=x11";
+
+/// Переменная сценария автозапуска с файлом запуска через XWayland
+/// ([`xwayland_path`]); пуста — conky идёт с файлом из аргументов.
+pub const XWAYLAND_LAUNCH_VAR: &str = "rexon_xw";
+
+/// Начало сценария `sh` автозапуска: то же решение, что [`via_xwayland`],
+/// но при входе — сеанс и версия conky узнаются там. `needs_x11` — виджет
+/// рисует через X11 (решено при записи). `xwayland_conf` — файл запуска
+/// через XWayland: при переходе он (если есть) попадает в
+/// [`XWAYLAND_LAUNCH_VAR`], окно виджета — под окнами. Знаков `%` сам
+/// сценарий не добавляет (служебный в `Exec=`; путь экранирует запись).
+pub fn xwayland_shell(needs_x11: bool, xwayland_conf: Option<&str>) -> String {
+    let desks = if needs_x11 {
+        "x=1; ".to_string()
+    } else {
+        let cases: Vec<String> = XWAYLAND_DESKTOP_NAMES.iter().map(|n| format!("*:{n}:*")).collect();
+        format!("x=; case \":$XDG_CURRENT_DESKTOP:\" in {}) x=1;; esac; ", cases.join("|"))
+    };
+    let launch = match xwayland_conf {
+        Some(f) => {
+            let q = crate::compositor_autostart::shell_quote(f);
+            format!(" [ -r {q} ] && {XWAYLAND_LAUNCH_VAR}={q};")
+        }
+        None => String::new(),
+    };
+    format!(
+        "{desks}case \"$(conky -v 2>/dev/null)\" in *\"conky 1.25.\"[012][!0-9]*) x=1;; esac; \
+         [ -n \"$x\" ] && [ -n \"$WAYLAND_DISPLAY\" ] && [ -n \"$DISPLAY\" ] && \
+         {{ unset WAYLAND_DISPLAY; export {XWAYLAND_SESSION_TYPE};{launch} }}; "
+    )
+}
+
+/// Применить переход на XWayland к запуску conky.
+pub fn apply_xwayland(cmd: &mut std::process::Command) {
+    cmd.env_remove("WAYLAND_DISPLAY");
+    cmd.env("XDG_SESSION_TYPE", "x11");
+}
+
+// ── Окно на столе через XWayland ────────────────────────────────────────
+//
+// Окно X11 conky под Muffin/Mutter в сеансе Wayland (исходники Muffin 6.8,
+// `compositor.c: get_window_group_for_window`, `window-x11.c:
+// get_standalone_layer`; conky 1.25 `output/x11.cc`):
+// * `override` — окно без управления (override-redirect): слой
+//   META_LAYER_OVERRIDE_REDIRECT, группа top_window_group — ПОВЕРХ всех
+//   окон и панелей; `XLowerWindow` conky там ничего не значит. `utility`
+//   conky тоже создаёт override-redirect;
+// * `desktop` — группа bottom_window_group вместе с окном значков стола
+//   (nemo-desktop): щелчок по столу поднимает значки над виджетом;
+// * `normal` с подсказками «без рамки, под всеми, на всех столах, не в
+//   панели задач» (`_NET_WM_STATE_BELOW` → META_LAYER_BOTTOM): под обычными
+//   окнами, над значками и обоями, фокус не берёт (`input = False` у окна
+//   без рамки), в Alt+Tab не попадает.
+// Поэтому через XWayland conky идёт с файлом, где окно — как советует
+// Rexon для X11 ([`window_preset`]): поверх файла автора и выбора человека
+// ([`load`]). Выбор человека он не трогает; в сеансе X11 не участвует.
+
+/// Файл запуска через XWayland для накладки `p`.
+pub fn xwayland_path(p: &Paths) -> String {
+    let base = p.overlay.strip_suffix(OVERLAY_SUFFIX).unwrap_or(&p.overlay);
+    format!("{base}{XWAYLAND_KEY_TAG}{OVERLAY_SUFFIX}")
+}
+
+/// Текст файла запуска через XWayland: выбор человека `ov` и окно «на
+/// столе» по совету Rexon.
+pub fn render_xwayland(source: &str, cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env) -> String {
+    let ov = Overrides { window_preset: Some(true), ..ov.clone() };
+    render(source, cfg, &ov, env)
+}
+
+/// Записать файл запуска через XWayland для `conf` ([`xwayland_path`]).
+/// `None` — файл автора не прочитать или не записать.
+pub fn write_xwayland(io: &dyn LookIo, p: &Paths, conf: &str, env: &Env) -> Option<String> {
+    write_xwayland_with(io, p, conf, &load(io, p), env)
+}
+
+/// [`write_xwayland`] с выбором человека `ov` (только что сохранённым —
+/// не перечитывая его с диска).
+fn write_xwayland_with(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &Env) -> Option<String> {
+    let (source, cfg) = source_of(io, conf, p)?;
+    let path = xwayland_path(p);
+    io.write(&path, &render_xwayland(&source, &cfg, ov, env)).then_some(path)
+}
+
 fn preset_lines(p: &WindowPreset, version: Option<(u32, u32)>, indent: &str, out: &mut Vec<String>) {
     out.push(format!("{indent}c.own_window_type = {}", lua_str(p.own_window_type)));
     match p.hints {
@@ -1287,6 +1476,16 @@ pub fn source_of(io: &dyn LookIo, conf: &str, p: &Paths) -> Option<(String, BTre
 
 /// Записать выбор и накладку (пустой выбор — убрать обе). `Err` — причина.
 pub fn save(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &Env) -> Result<(), String> {
+    let saved = save_overlay(io, p, conf, ov, env);
+    // Файл запуска через XWayland — вслед за выбором: запущенный с ним conky
+    // перечитает его сам, автозапуск при входе возьмёт новый.
+    if io.read(&xwayland_path(p)).is_some() {
+        let _ = write_xwayland_with(io, p, conf, ov, env);
+    }
+    saved
+}
+
+fn save_overlay(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &Env) -> Result<(), String> {
     if ov.is_empty() {
         remove(p);
         return Ok(());
@@ -1391,9 +1590,21 @@ pub fn refresh_autostart(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, con
         }
         let launch = use_overlay.then_some(p.overlay.as_str());
         let opts = crate::conky_autostart::options_of(&text);
-        let built = crate::conky_autostart::build(&env, key, title, conf, launch, &opts);
+        // Файл запуска через XWayland уже переписан вслед за выбором
+        // ([`save`]); нет его — пишется здесь.
+        let ready = xwayland_path(p);
+        let xwayland = if io.read(&ready).is_some() { Some(ready) } else { autostart_xwayland(io, ctx, p, conf) };
+        let built = crate::conky_autostart::build(&env, key, title, conf, launch, xwayland.as_deref(), &opts);
         io.write(&path, &built.desktop);
     }
+}
+
+/// Файл запуска через XWayland для записи автозапуска `conf`: пишется
+/// заново (вход в сеанс Wayland GNOME/Cinnamon/Pantheon возьмёт его, сеанс
+/// X11 — нет). `None` — файл автора не прочитать.
+pub fn autostart_xwayland(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str) -> Option<String> {
+    let env = Env { version: conky_version(io), de: ctx.de.clone() };
+    write_xwayland(io, p, conf, &env)
 }
 
 /// С чем запускать `conf` при входе: накладка, если она есть.
@@ -1781,7 +1992,8 @@ pub fn live_x11_compositor() -> Option<bool> {
 /// Живой блок настроек.
 pub fn live_settings_view(name: &str, conf: &str) -> SettingsView {
     let io = crate::animations::SystemIo;
-    let ctx = Ctx::live();
+    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    let ctx = conky_ctx(&io, &Ctx::live());
     let p = live_paths(&ctx, conf);
     let m = Machine {
         monitors: monitors(&io, ctx.wayland),
@@ -1876,5 +2088,76 @@ mod tests {
         assert_eq!(parse_version("conky 1.25.2-pre-6caddca3 compiled for Linux x86_64\n"), Some((1, 25)));
         assert_eq!(parse_version("conky 1.9.0 compiled Tue\n"), Some((1, 9)));
         assert_eq!(parse_version("garbage"), None);
+    }
+
+    #[test]
+    fn xwayland_choice() {
+        assert_eq!(parse_version_full("conky 1.25.2-pre-6caddca3 compiled\n"), Some((1, 25, 2)));
+        assert_eq!(parse_version_full("conky 1.26.0\n"), Some((1, 26, 0)));
+        assert_eq!(parse_version_full("conky 1.9\n"), Some((1, 9, 0)));
+        let v = |s: &str| parse_version_full(s);
+        // Столы без слоя — через XWayland, если он есть.
+        for de in ["gnome", "cinnamon", "pantheon"] {
+            assert!(via_xwayland(de, true, true, v("conky 1.26.0"), false), "{de}");
+            assert!(!via_xwayland(de, true, false, v("conky 1.26.0"), false), "{de}: без XWayland");
+            assert!(!via_xwayland(de, false, true, v("conky 1.26.0"), false), "{de}: сеанс X11");
+        }
+        // Столы со слоями — свой вывод Wayland, кроме 1.25.0–1.25.2 и виджетов на X11.
+        for de in ["kde", "sway", "hyprland", "niri"] {
+            assert!(!via_xwayland(de, true, true, v("conky 1.25.3"), false), "{de}");
+            assert!(!via_xwayland(de, true, true, None, false), "{de}: версия неизвестна");
+            assert!(via_xwayland(de, true, true, v("conky 1.25.2-pre-6caddca3"), false), "{de}: 1.25.2");
+            assert!(via_xwayland(de, true, true, v("conky 1.25.0"), false), "{de}: 1.25.0");
+            assert!(via_xwayland(de, true, true, v("conky 1.26.0"), true), "{de}: виджет на X11");
+        }
+        // Имена сценария автозапуска — ровно столы без слоя.
+        for name in XWAYLAND_DESKTOP_NAMES {
+            let de = crate::system::detect_current_de(name, "", true).unwrap_or_default();
+            assert!(wayland_without_layers(&de), "{name} → {de}");
+        }
+    }
+
+    /// Сценарий автозапуска на деле: подставной conky печатает версию и
+    /// окружение, с которым его запустили.
+    #[test]
+    fn xwayland_shell_really_switches() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = std::env::temp_dir().join(format!("rexon-conky-xw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let run = |version: &str, desk: &str, wl: &str, x11: bool| -> String {
+            let fake = tmp.join("conky");
+            std::fs::write(
+                &fake,
+                format!("#!/bin/sh\n[ \"$1\" = -v ] && {{ echo 'conky {version} compiled'; exit 0; }}\necho \"wl=$WAYLAND_DISPLAY type=$XDG_SESSION_TYPE\"\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let script = format!("{}exec conky -c x", xwayland_shell(x11, None));
+            let out = std::process::Command::new("sh")
+                .args(["-c", &script])
+                .env("PATH", format!("{}:/usr/bin:/bin", tmp.display()))
+                .env("XDG_CURRENT_DESKTOP", desk)
+                .env("WAYLAND_DISPLAY", wl)
+                .env("DISPLAY", ":7")
+                .env("XDG_SESSION_TYPE", "wayland")
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let x = "wl= type=x11";
+        let w = "wl=wayland-0 type=wayland";
+        let got = [
+            run("1.26.0", "X-Cinnamon", "wayland-0", false),
+            run("1.26.0", "ubuntu:GNOME", "wayland-0", false),
+            run("1.26.0", "KDE", "wayland-0", false),
+            run("1.25.2-pre-6caddca3", "KDE", "wayland-0", false),
+            run("1.25.20", "KDE", "wayland-0", false),
+            run("1.26.0", "KDE", "wayland-0", true),
+            run("1.26.0", "X-Cinnamon", "", false),
+        ];
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(got, [x, x, w, x, w, x, "wl= type=wayland"], "{got:?}");
+        assert!(!xwayland_shell(false, None).contains('%') && !xwayland_shell(true, None).contains('%'));
     }
 }

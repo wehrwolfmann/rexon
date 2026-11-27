@@ -488,6 +488,11 @@ msgid "Could not change the setting: %1 failed."
 msgstr "Die Einstellung konnte nicht geändert werden: %1 ist fehlgeschlagen."
 
 #: rust/rexon-core/src/animations.rs
+#: rust/rexon-core/src/appearance_installer.rs
+msgid "Couldn't remove %1."
+msgstr "%1 konnte nicht entfernt werden."
+
+#: rust/rexon-core/src/animations.rs
 msgid "%1 is too old for this (version %2.%3 or newer is needed)."
 msgstr "%1 ist dafür zu alt (Version %2.%3 oder neuer wird benötigt)."
 
@@ -1909,10 +1914,6 @@ msgid "🖼️ Picture chosen from the pack: %1"
 msgstr "🖼️ Bild aus dem Paket gewählt: %1"
 
 #: rust/rexon-core/src/appearance_installer.rs
-msgid "Couldn't remove %1."
-msgstr "%1 konnte nicht entfernt werden."
-
-#: rust/rexon-core/src/appearance_installer.rs
 msgid "🔐 Removing “%1” (an administrator password may be requested)…"
 msgstr ""
 "🔐 „%1“ wird entfernt (eventuell wird das Administratorpasswort abgefragt)…"
@@ -2274,6 +2275,11 @@ msgstr "Adresse der Store-Seite dieses Eintrags kopieren"
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Link copied: %1"
 msgstr "Link kopiert: %1"
+
+#. TRANSLATORS: store item that nobody has rated yet (shown instead of stars).
+#: rust/rexon-core/src/appearance_page.rs
+msgid "No ratings yet"
+msgstr "Noch keine Bewertungen"
 
 #: rust/rexon-core/src/appearance_page.rs
 msgid "⬇️ %1 downloads"
@@ -4352,24 +4358,12 @@ msgstr ""
 
 #: rust/rexon-core/src/categories.rs
 msgid ""
-"Desklets are Cinnamon's own widgets and stay on the desktop in any session. "
-"Conky widgets come from a separate program; in the Wayland session they are "
-"regular windows."
+"Desklets are Cinnamon's own widgets. Conky widgets — clocks, weather and "
+"sensors — come from a separate program and also work on other desktops."
 msgstr ""
-"Desklets sind die eigenen Widgets von Cinnamon und bleiben in jeder Sitzung "
-"auf der Arbeitsfläche. Conky-Widgets kommen von einem eigenen Programm; in "
-"der Wayland-Sitzung sind sie gewöhnliche Fenster."
-
-#: rust/rexon-core/src/categories.rs
-msgid ""
-"Clocks, weather and system sensors on the desktop, drawn by the Conky "
-"program. In the Wayland session of this desktop they are regular windows; "
-"they stay on the desktop itself in the X11 session."
-msgstr ""
-"Uhr, Wetter und Systemsensoren auf der Arbeitsfläche – gezeichnet vom "
-"Programm Conky. In der Wayland-Sitzung dieser Arbeitsumgebung sind es "
-"gewöhnliche Fenster; auf der Arbeitsfläche selbst bleiben die Widgets in der "
-"X11-Sitzung."
+"Desklets sind Cinnamons eigene Widgets. Conky-Widgets – Uhren, Wetter und "
+"Sensoren – stammen von einem eigenen Programm und funktionieren auch auf "
+"anderen Arbeitsflächen."
 
 #: rust/rexon-core/src/categories.rs
 msgid ""
@@ -4962,9 +4956,9 @@ msgid "Save"
 msgstr "Speichern"
 
 #. TRANSLATORS: button that cancels a running desktop operation.
-#: rust/rexon-core/src/color_scheme_edit.rs rust/rexon-core/src/qt_settings.rs
-#: rust/rexon-core/src/system_de_exec.rs rust/rexon-core/src/widget_shot.rs
-#: rust/rexon-gui/src/axon_actions.rs
+#: rust/rexon-core/src/color_scheme_edit.rs rust/rexon-core/src/link_policy.rs
+#: rust/rexon-core/src/qt_settings.rs rust/rexon-core/src/system_de_exec.rs
+#: rust/rexon-core/src/widget_shot.rs rust/rexon-gui/src/axon_actions.rs
 #: rust/rexon-gui/qml/SteamShowcaseSection.qml
 msgid "Cancel"
 msgstr "Abbrechen"
@@ -5997,11 +5991,15 @@ msgstr "„%1“ konnte nicht beendet werden: %2"
 msgid "⏹️ Stopped: %1"
 msgstr "⏹️ Gestoppt: %1"
 
-#: rust/rexon-core/src/conky_procs.rs
+#: rust/rexon-core/src/conky_procs.rs rust/rexon-core/src/conky_theme.rs
+msgid "▶️ Started: %1"
+msgstr "▶️ Gestartet: %1"
+
+#: rust/rexon-core/src/conky_procs.rs rust/rexon-core/src/conky_theme.rs
 msgid "Couldn't start “%1”: %2"
 msgstr "„%1“ konnte nicht gestartet werden: %2"
 
-#: rust/rexon-core/src/conky_procs.rs
+#: rust/rexon-core/src/conky_procs.rs rust/rexon-core/src/conky_theme.rs
 msgid "conky closed right after starting: %1"
 msgstr "conky wurde direkt nach dem Start beendet: %1"
 
@@ -6011,10 +6009,6 @@ msgid ""
 msgstr ""
 "conky wurde direkt nach dem Start beendet – die Einstellungsdatei des "
 "Widgets ist möglicherweise beschädigt"
-
-#: rust/rexon-core/src/conky_procs.rs
-msgid "▶️ Started: %1"
-msgstr "▶️ Gestartet: %1"
 
 #: rust/rexon-core/src/conky_procs.rs
 msgid "▶️ Running"
@@ -6070,6 +6064,19 @@ msgid ""
 msgstr ""
 "Die Einstellungsdatei des Widgets im Texteditor öffnen. Um die Änderungen zu "
 "sehen, starten Sie das Widget neu."
+
+#: rust/rexon-core/src/conky_procs.rs
+msgid "✏️ Edit in Conky Studio"
+msgstr "✏️ In Conky Studio bearbeiten"
+
+#: rust/rexon-core/src/conky_procs.rs
+msgid ""
+"This theme was made in Conky Studio, a visual editor for Conky widgets. Open "
+"it there; restart the widget to see your changes."
+msgstr ""
+"Dieses Design wurde in Conky Studio erstellt, einem visuellen Editor für "
+"Conky-Widgets. Öffnen Sie es dort; um die Änderungen zu sehen, starten Sie "
+"das Widget neu."
 
 #: rust/rexon-core/src/conky_safety.rs rust/rexon-core/src/plugin_journal.rs
 msgid "…and %n more."
@@ -6536,6 +6543,33 @@ msgstr ""
 msgid "Fonts the widgets use that aren't installed: %1"
 msgstr "Schriften der Widgets, die im System fehlen: %1"
 
+#: rust/rexon-core/src/conky_theme.rs
+msgid "Couldn't start “%1”: its start script is gone."
+msgstr ""
+"„%1“ konnte nicht gestartet werden: Sein Startskript ist nicht mehr da."
+
+#: rust/rexon-core/src/conky_theme.rs
+msgid ""
+"the widget's start script didn't bring up Conky — see what it reported in "
+"the card"
+msgstr ""
+"das Startskript des Widgets hat Conky nicht gestartet – was es gemeldet hat, "
+"steht in der Karte"
+
+#: rust/rexon-core/src/conky_theme.rs
+msgid "Conky Studio isn't found on this computer."
+msgstr "Conky Studio wurde auf diesem Computer nicht gefunden."
+
+#: rust/rexon-core/src/conky_theme.rs
+msgid "Couldn't open Conky Studio: %1"
+msgstr "Conky Studio konnte nicht geöffnet werden: %1"
+
+#: rust/rexon-core/src/conky_theme.rs
+msgid "✏️ Opening “%1” in Conky Studio. Restart the widget to see your changes."
+msgstr ""
+"✏️ „%1“ wird in Conky Studio geöffnet. Um die Änderungen zu sehen, starten "
+"Sie das Widget neu."
+
 #: rust/rexon-core/src/constants.rs
 msgid "GTK Theme"
 msgstr "GTK-Design"
@@ -6937,14 +6971,16 @@ msgstr ""
 "Kontrollzentrum → Personalisierung."
 
 #. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#. Вход в Treeland — только через DDM (treeland#1656), см. `deepin_treeland`.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → "
-"Deepin → “Switch to Deepin on Treeland”, then log in with “Treeland User”."
+"Deepin → “Switch to Deepin on Treeland”, then make DDM the login screen and "
+"choose Treeland there."
 msgstr ""
 "Rexon unterstützt Deepin nur auf Treeland. Zum Wechseln öffnen Sie Rexon → "
-"„Desktops“ → Deepin → „Deepin auf Treeland umstellen“ und melden sich dann "
-"mit „Treeland User“ an."
+"„Desktops“ → Deepin → „Deepin auf Treeland umstellen“, machen dann DDM zum "
+"Anmeldebildschirm und wählen dort Treeland."
 
 #: rust/rexon-core/src/dde.rs
 msgid ""
@@ -7598,6 +7634,7 @@ msgstr ""
 msgid "Deepin on Treeland (experimental)"
 msgstr "Deepin auf Treeland (experimentell)"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/deepin_treeland.rs
 msgid ""
 "Deepin is installed on Treeland, its own Wayland session.\n"
@@ -7612,9 +7649,11 @@ msgid ""
 "• System updates don't touch this build. When Arch releases a new deepin-"
 "session, the update log and the Deepin card in Rexon say so, and the build "
 "is redone with one button.\n"
-"• Deepin's own login screen (ddm) is installed because Treeland needs it, "
-"but it isn't turned on: you keep your login screen. To log in, choose "
-"“Treeland User” there.\n"
+"• Deepin's own login screen (DDM) is installed because Treeland needs it, "
+"but it isn't turned on: you keep your login screen. Deepin starts only from "
+"DDM — under another login screen the “Treeland User” entry shows just the "
+"wallpaper, without the panel. To use Deepin, make DDM the default in "
+"Appearance → Login Screen → Login manager and restart.\n"
 "\n"
 "The password is asked once. If the build takes longer than a few minutes, it "
 "may be asked once more before installing. Removing Deepin later removes all "
@@ -7634,10 +7673,13 @@ msgstr ""
 "deepin-session veröffentlicht, melden das das Aktualisierungsprotokoll und "
 "die Deepin-Karte in Rexon, und der Build lässt sich mit einem Klick "
 "erneuern.\n"
-"• Der eigene Anmeldebildschirm von Deepin (ddm) wird installiert, weil "
+"• Der eigene Anmeldebildschirm von Deepin (DDM) wird installiert, weil "
 "Treeland ohne ihn nicht installiert werden kann, aber er wird nicht "
-"eingeschaltet: Ihr Anmeldebildschirm bleibt. Zum Anmelden wählen Sie dort "
-"„Treeland User“.\n"
+"eingeschaltet: Ihr Anmeldebildschirm bleibt. Deepin startet nur über DDM – "
+"unter einem anderen Anmeldebildschirm zeigt der Eintrag „Treeland User“ nur "
+"das Hintergrundbild, ohne Leiste. Um Deepin zu nutzen, machen Sie DDM unter "
+"„Erscheinungsbild“ → „Anmeldebildschirm“ → „Anmeldemanager“ zum Standard und "
+"starten neu.\n"
 "\n"
 "Das Passwort wird einmal abgefragt; dauert der Bau länger als ein paar "
 "Minuten, kann es vor der Installation noch einmal abgefragt werden. Wenn Sie "
@@ -7652,19 +7694,20 @@ msgid ""
 "This is the usual Deepin with the X11 session. Rexon supports Deepin only on "
 "Treeland, its Wayland session: Rexon builds its own deepin-session without "
 "deepin-kwin, puts it in place of the installed one and removes the X11 "
-"session. Treeland is unstable. To log in, choose “Treeland User” on the "
-"login screen."
+"session. Treeland is unstable. Deepin on Treeland starts only from its own "
+"login screen, DDM."
 msgstr ""
 "Das ist das übliche Deepin mit der X11-Sitzung. Rexon unterstützt Deepin nur "
 "auf Treeland, seiner Wayland-Sitzung: Rexon baut eine eigene Kopie von "
 "deepin-session ohne deepin-kwin, setzt sie an die Stelle der installierten "
-"und entfernt die X11-Sitzung. Treeland ist instabil. Zum Anmelden wählen Sie "
-"auf dem Anmeldebildschirm „Treeland User“."
+"und entfernt die X11-Sitzung. Treeland ist instabil. Deepin auf Treeland "
+"startet nur über seinen eigenen Anmeldebildschirm, DDM."
 
 #: rust/rexon-core/src/deepin_treeland.rs
 msgid "Switching to Deepin on Treeland (experimental)"
 msgstr "Deepin wird auf Treeland umgestellt (experimentell)"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/deepin_treeland.rs
 msgid ""
 "The usual Deepin will be moved to Treeland, its own Wayland session.\n"
@@ -7680,7 +7723,10 @@ msgid ""
 "• System updates don't touch this build. When Arch releases a new deepin-"
 "session, the update log and the Deepin card in Rexon say so, and the build "
 "is redone with one button.\n"
-"• To log in, choose “Treeland User” on the login screen.\n"
+"• Deepin on Treeland starts only from its own login screen, DDM: under "
+"another one the “Treeland User” entry shows just the wallpaper. To use "
+"Deepin, make DDM the default in Appearance → Login Screen → Login manager "
+"and restart.\n"
 "\n"
 "The password is asked once. If the build takes longer than a few minutes, it "
 "may be asked once more before installing."
@@ -7701,16 +7747,25 @@ msgstr ""
 "deepin-session veröffentlicht, melden das das Aktualisierungsprotokoll und "
 "die Deepin-Karte in Rexon, und der Build lässt sich mit einem Klick "
 "erneuern.\n"
-"• Zum Anmelden wählen Sie auf dem Anmeldebildschirm „Treeland User“.\n"
+"• Deepin auf Treeland startet nur über seinen eigenen Anmeldebildschirm, "
+"DDM: unter einem anderen zeigt der Eintrag „Treeland User“ nur das "
+"Hintergrundbild. Um Deepin zu nutzen, machen Sie DDM unter "
+"„Erscheinungsbild“ → „Anmeldebildschirm“ → „Anmeldemanager“ zum Standard und "
+"starten neu.\n"
 "\n"
 "Das Passwort wird einmal abgefragt; dauert der Bau länger als ein paar "
 "Minuten, kann es vor der Installation noch einmal abgefragt werden."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/deepin_treeland.rs
-msgid "To try Deepin, log out and choose “Treeland User” on the login screen."
+msgid ""
+"Deepin starts only from its own login screen, DDM. To try it, make DDM the "
+"default in Appearance → Login Screen → Login manager, restart and choose "
+"Treeland there."
 msgstr ""
-"Um Deepin auszuprobieren, melden Sie sich ab und wählen Sie auf dem "
-"Anmeldebildschirm „Treeland User“."
+"Deepin startet nur über seinen eigenen Anmeldebildschirm, DDM. Zum "
+"Ausprobieren machen Sie DDM unter „Erscheinungsbild“ → „Anmeldebildschirm“ → "
+"„Anmeldemanager“ zum Standard, starten neu und wählen dort Treeland."
 
 #: rust/rexon-core/src/deepin_treeland.rs
 msgid "🛠 Update the Treeland build"
@@ -8632,6 +8687,100 @@ msgstr "GNOME-Erweiterung %1 wird installiert …"
 msgid "Applying “%1”…"
 msgstr "Wende „%1“ an…"
 
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid "Automatic sign-in for %1 moves to %2 as well."
+msgstr "Die automatische Anmeldung für %1 überträgt Rexon auch auf %2."
+
+#. TRANSLATORS: %1 is a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid "%1 will open the desktop chosen at the last sign-in."
+msgstr ""
+"%1 öffnet die Arbeitsumgebung, die bei der letzten Anmeldung gewählt wurde."
+
+#. TRANSLATORS: %1 is a login screen name (GDM).
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"%1 can't be told which desktop to open on automatic sign-in: it opens the "
+"one chosen at the last sign-in through %1."
+msgstr ""
+"%1 kann für die automatische Anmeldung keine Arbeitsumgebung festlegen: Es "
+"öffnet die, die bei der letzten Anmeldung über %1 gewählt wurde."
+
+#. TRANSLATORS: %1 is a login screen name. Game mode is Rexon's "like Steam Machine" mode.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"%1 can't sign you back in by itself after you sign out, and game mode relies "
+"on that."
+msgstr ""
+"%1 kann Sie nach dem Abmelden nicht selbst wieder anmelden – darauf beruht "
+"aber der Spielmodus."
+
+#. TRANSLATORS: %1 is a login screen name, %2 a user name, %3 a system group name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid "To let %1 sign in without a password, Rexon adds %2 to the group %3."
+msgstr "Damit %1 ohne Passwort anmeldet, fügt Rexon %2 der Gruppe %3 hinzu."
+
+#. TRANSLATORS: %1 is a login screen name, %2 a user name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"%1 has automatic sign-in for %2 turned on. You don't sign in automatically "
+"now, so Rexon turns it off there too."
+msgstr ""
+"In %1 ist die automatische Anmeldung für %2 eingeschaltet. Sie melden sich "
+"derzeit nicht automatisch an – Rexon schaltet sie dort ebenfalls aus."
+
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"Automatic sign-in for %1 will be lost: %2 sets it as the desktop's start "
+"command in its own settings, and Rexon doesn't write that. Turn it on in the "
+"settings of %2 after the restart."
+msgstr ""
+"Die automatische Anmeldung für %1 geht verloren: Bei %2 wird sie als "
+"Startbefehl der Arbeitsumgebung in den eigenen Einstellungen festgelegt, und "
+"den schreibt Rexon nicht. Schalten Sie sie nach dem Neustart in den "
+"Einstellungen von %2 ein."
+
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"Automatic sign-in for %1 will be lost: Rexon doesn't know where %2 keeps "
+"this setting."
+msgstr ""
+"Die automatische Anmeldung für %1 geht verloren: Rexon weiß nicht, wo %2 "
+"diese Einstellung speichert."
+
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"Automatic sign-in for %1 will be lost: %2 takes this setting from a file of "
+"its package, which Rexon doesn't change."
+msgstr ""
+"Die automatische Anmeldung für %1 geht verloren: %2 nimmt diese Einstellung "
+"aus einer Datei seines Pakets, und die ändert Rexon nicht."
+
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"Automatic sign-in for %1 will be lost: %2 runs its own screen as this user."
+msgstr ""
+"Die automatische Anmeldung für %1 geht verloren: %2 zeigt unter diesem "
+"Benutzer seinen eigenen Bildschirm."
+
+#. TRANSLATORS: %1 is a user name, %2 a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid "Automatic sign-in for %1 moved to %2."
+msgstr "Die automatische Anmeldung für %1 wurde auf %2 übertragen."
+
+#. TRANSLATORS: %1 is a login screen name.
+#: rust/rexon-core/src/dm_autologin.rs
+msgid ""
+"Automatic sign-in wasn't moved to %1 — turn it on in the settings of %1."
+msgstr ""
+"Die automatische Anmeldung ließ sich nicht auf %1 übertragen – schalten Sie "
+"sie in den Einstellungen von %1 ein."
+
 #: rust/rexon-core/src/engine_update.rs
 msgid "waywallen (interface app)"
 msgstr "waywallen (Oberflächen-App)"
@@ -9495,11 +9644,6 @@ msgstr ""
 #: rust/rexon-core/src/gnome_ext_section.rs
 msgid "Update — after you log in again"
 msgstr "Update – nach erneuter Anmeldung"
-
-#. TRANSLATORS: a GNOME extension installed for the whole system.
-#: rust/rexon-core/src/gnome_ext_section.rs
-msgid "System"
-msgstr "System"
 
 #: rust/rexon-core/src/gnome_ext_section.rs
 msgid "Starts after you log in again"
@@ -11028,6 +11172,66 @@ msgstr[1] "%n Sekunden"
 #: rust/rexon-core/src/launch_feedback.rs
 msgid "Launch feedback applied."
 msgstr "Startrückmeldung übernommen."
+
+#. TRANSLATORS: title of the question shown before a link from a store description opens in the browser.
+#: rust/rexon-core/src/link_policy.rs
+msgid "External website"
+msgstr "Externe Website"
+
+#. TRANSLATORS: %1 is a link that is not a website (a file or an e-mail address).
+#: rust/rexon-core/src/link_policy.rs
+msgid "Open “%1” in another program?"
+msgstr "„%1“ in einem anderen Programm öffnen?"
+
+#. TRANSLATORS: %1 is a domain name, e.g. ko-fi.com.
+#: rust/rexon-core/src/link_policy.rs
+msgid "Open the external website %1 in your browser?"
+msgstr "Die externe Website %1 im Browser öffnen?"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid ""
+"The link leads outside Rexon. The page will open in your browser, not in "
+"Rexon."
+msgstr "Der Link führt aus Rexon hinaus. Die Seite öffnet sich in Ihrem Browser, nicht in Rexon."
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "Don't ask again for this website"
+msgstr "Für diese Website nicht mehr fragen"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "Open"
+msgstr "Öffnen"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "Open in Browser"
+msgstr "Im Browser öffnen"
+
+#. TRANSLATORS: %1 is a link with an unsupported scheme (javascript:, data:…).
+#: rust/rexon-core/src/link_policy.rs
+msgid "⚠️ Rexon does not open links like this: %1"
+msgstr "⚠️ Solche Links öffnet Rexon nicht: %1"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "⚠️ Could not open this item in Rexon"
+msgstr "⚠️ Dieser Eintrag konnte in Rexon nicht geöffnet werden"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "No websites yet: Rexon asks before every external link."
+msgstr "Noch keine Websites: Rexon fragt vor jedem externen Link."
+
+#. TRANSLATORS: %1 is a comma-separated list of domain names.
+#: rust/rexon-core/src/link_policy.rs
+msgid "Opened without asking: %1"
+msgstr "Ohne Nachfrage geöffnet: %1"
+
+#: rust/rexon-core/src/link_policy.rs
+msgid "🔗 Rexon will ask again before opening any external website"
+msgstr "🔗 Rexon fragt wieder, bevor eine externe Website geöffnet wird"
+
+#. TRANSLATORS: %1 is the reason the settings file could not be written.
+#: rust/rexon-core/src/link_policy.rs
+msgid "⚠️ Could not save the settings: %1"
+msgstr "⚠️ Die Einstellungen konnten nicht gespeichert werden: %1"
 
 #. TRANSLATORS: file dialog filter; %1 is the list of file masks.
 #: rust/rexon-core/src/local_install.rs
@@ -16633,6 +16837,16 @@ msgstr ""
 "beenden."
 
 #: rust/rexon-core/src/qt_settings.rs
+msgid "🔗 Links to Websites"
+msgstr "🔗 Links zu Websites"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Links in item descriptions and comments open in your browser only after "
+"Rexon asks. Here are the websites you chose to open without asking."
+msgstr "Links aus Beschreibungen und Kommentaren von Einträgen öffnen sich im Browser erst, nachdem Rexon nachgefragt hat. Hier stehen die Websites, die Sie ohne Nachfrage öffnen lassen."
+
+#: rust/rexon-core/src/qt_settings.rs
 msgid ""
 "The program that opens folders — both in Rexon itself and across the whole "
 "system"
@@ -16901,6 +17115,10 @@ msgid "🎓 Tour started"
 msgstr "🎓 Einführung gestartet"
 
 #: rust/rexon-core/src/qt_settings.rs
+msgid "Ask again for all websites"
+msgstr "Für alle Websites wieder fragen"
+
+#: rust/rexon-core/src/qt_settings.rs
 msgid "✅ installed"
 msgstr "✅ installiert"
 
@@ -17001,8 +17219,8 @@ msgstr ""
 "SWF."
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "🔊 Wallpaper sound (video and Flash)"
-msgstr "🔊 Hintergrundton (Video und Flash)"
+msgid "🔊 Wallpaper sound"
+msgstr "🔊 Hintergrundton"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🖼️ Image…"
@@ -17025,14 +17243,15 @@ msgstr "⏳ Wird angewendet: %1 (%2) …"
 msgid "✅ Wallpaper applied: %1"
 msgstr "✅ Hintergrundbild angewendet: %1"
 
+#. TRANSLATORS: %1 is the wallpaper result ("Video wallpaper set: Forest"),
+#. %2 is a whole sentence explaining what is still wrong.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "⚠️ Wallpaper applied: %1. %2"
+msgstr "⚠️ Hintergrundbild angewendet: %1. %2"
+
 #: rust/rexon-core/src/qt_settings.rs
 msgid "⏹️ Live wallpaper stopped"
 msgstr "⏹️ Live-Hintergrund gestoppt"
-
-#. TRANSLATORS: %1 is “on” or “off”.
-#: rust/rexon-core/src/qt_settings.rs
-msgid "🔊 Video sound: %1 (takes effect with the next video)"
-msgstr "🔊 Videoton: %1 (gilt ab dem nächsten Video)"
 
 #. TRANSLATORS: %1 is “on” or “off”.
 #: rust/rexon-core/src/qt_settings.rs
@@ -17063,16 +17282,14 @@ msgstr "Hintergrund während eines Spiels anhalten (Spielmodus)"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Wallpaper sound changes on the fly — no need to reapply the wallpaper. Video "
-"and Flash wallpapers share one volume."
+"Wallpaper sound changes on the fly — no need to reapply the wallpaper. One "
+"volume for all live wallpapers except those from the Wallpaper Engine tab: "
+"they have their own, in that tab's settings."
 msgstr ""
 "Der Hintergrundton ändert sich sofort – das Hintergrundbild muss nicht neu "
-"gesetzt werden. Video- und Flash-Hintergründe teilen sich eine Lautstärke."
-
-#. TRANSLATORS: %1 is “Turning on” or “Turning off”.
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⏳ %1 video wallpaper sound…"
-msgstr "⏳ %1 des Tons von Video-Hintergründen …"
+"gesetzt werden. Eine Lautstärke für alle Live-Hintergründe außer denen aus "
+"dem Tab Wallpaper Engine: Sie haben eine eigene, in den Einstellungen dieses "
+"Tabs."
 
 #. TRANSLATORS: Sound state, shown as “Wallpaper sound: on”.
 #: rust/rexon-core/src/qt_settings.rs
@@ -17083,14 +17300,6 @@ msgstr "an"
 #: rust/rexon-core/src/qt_settings.rs
 msgid "off"
 msgstr "aus"
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "Turning on"
-msgstr "Einschalten"
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "Turning off"
-msgstr "Ausschalten"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Link:"
@@ -18682,8 +18891,8 @@ msgid ""
 "apply it once more."
 msgstr ""
 "Ihr Live-Hintergrund wurde mehrmals hintereinander unerwartet beendet, daher "
-"hat Rexon Ihr vorheriges Desktopbild wiederhergestellt. Um den "
-"Live-Hintergrund wieder einzuschalten, wenden Sie ihn erneut an."
+"hat Rexon Ihr vorheriges Desktopbild wiederhergestellt. Um den Live-"
+"Hintergrund wieder einzuschalten, wenden Sie ihn erneut an."
 
 #: rust/rexon-core/src/renderer_watch.rs
 msgid "Open Wallpaper Engine"
@@ -19588,6 +19797,25 @@ msgstr "COSMIC übernimmt das bei der nächsten Anmeldung."
 msgid "Screen effects applied."
 msgstr "Bildschirmeffekte übernommen."
 
+#. TRANSLATORS: Screen effects on GNOME/Cinnamon: the shell extension never answered after "Apply". %1 is the place in Rexon, e.g. “Appearance → Cinnamon Extensions”.
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"Rexon's shell extension didn't confirm the effect, so the screen was left as "
+"it was. Log out and back in; if that doesn't help, reinstall the extension "
+"in “%1”."
+msgstr ""
+"Die Rexon-Shell-Erweiterung hat den Effekt nicht bestätigt, daher bleibt der "
+"Bildschirm, wie er war. Melden Sie sich ab und wieder an; falls das nicht "
+"hilft, installieren Sie die Erweiterung unter „%1“ neu."
+
+#. TRANSLATORS: Screen effects on GNOME/Cinnamon: the shell couldn't build the shader. %1 is the reason as the shell reported it (may be in English).
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"The desktop couldn't show this effect (%1), so the screen was left as it was."
+msgstr ""
+"Die Arbeitsumgebung konnte diesen Effekt nicht anzeigen (%1), daher bleibt "
+"der Bildschirm, wie er war."
+
 #: rust/rexon-core/src/screenshots.rs
 msgid "YOUR DESKTOP"
 msgstr "IHR DESKTOP"
@@ -19761,10 +19989,22 @@ msgstr "Inventar · %1"
 msgid "Your own movie"
 msgstr "Eigenes Video"
 
+#. TRANSLATORS: where a startup movie comes from: built into the Steam client.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Built into Steam"
+msgstr "In Steam eingebaut"
+
+#. TRANSLATORS: where a startup movie comes from: a video file the user picked.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Your own file"
+msgstr "Eigene Datei"
+
 #. TRANSLATORS: a startup movie the user picked can't be used: ffprobe couldn't read it.
 #: rust/rexon-core/src/session_splash.rs
 msgid "Couldn't read this file — it may be damaged or not a video."
-msgstr "Die Datei lässt sich nicht lesen – vielleicht ist sie beschädigt oder gar kein Video."
+msgstr ""
+"Die Datei lässt sich nicht lesen – vielleicht ist sie beschädigt oder gar "
+"kein Video."
 
 #. TRANSLATORS: a startup movie the user picked can't be used: the file has no video picture (e.g. it is music).
 #: rust/rexon-core/src/session_splash.rs
@@ -19776,45 +20016,45 @@ msgstr "In dieser Datei gibt es kein Bild – wählen Sie eine Videodatei."
 msgid ""
 "The video is shorter than a second — it would flash by unnoticed. Choose a "
 "longer one."
-msgstr "Das Video ist kürzer als eine Sekunde – es würde unbemerkt vorbeihuschen. Wählen Sie ein längeres."
+msgstr ""
+"Das Video ist kürzer als eine Sekunde – es würde unbemerkt vorbeihuschen. "
+"Wählen Sie ein längeres."
 
 #. TRANSLATORS: a startup movie the user picked can't be used: it is longer than one minute.
 #: rust/rexon-core/src/session_splash.rs
 msgid ""
 "The video is longer than a minute — a startup movie should be short. Trim it "
 "or choose another one."
-msgstr "Das Video ist länger als eine Minute – ein Startvideo sollte kurz sein. Kürzen Sie es oder wählen Sie ein anderes."
+msgstr ""
+"Das Video ist länger als eine Minute – ein Startvideo sollte kurz sein. "
+"Kürzen Sie es oder wählen Sie ein anderes."
 
 #. TRANSLATORS: a startup movie the user picked can't be used: its picture is too small; %1 and %2 are its width and height in pixels.
 #: rust/rexon-core/src/session_splash.rs
 msgid ""
 "The picture is too small (%1×%2) — it would look blurry on screen. Choose a "
 "video of at least 640×360."
-msgstr "Das Bild ist zu klein (%1×%2) – auf dem Bildschirm wirkt es verschwommen. Wählen Sie ein Video mit mindestens 640×360."
+msgstr ""
+"Das Bild ist zu klein (%1×%2) – auf dem Bildschirm wirkt es verschwommen. "
+"Wählen Sie ein Video mit mindestens 640×360."
 
 #. TRANSLATORS: warning when adding a startup movie longer than 30 seconds; it is still accepted.
 #: rust/rexon-core/src/session_splash.rs
 msgid ""
 "The video is longer than 30 seconds — it's a startup movie, not a film: "
 "you'll wait for it at every login."
-msgstr "Das Video ist länger als 30 Sekunden – es ist ein Startvideo, kein Film: Darauf warten Sie bei jeder Anmeldung."
+msgstr ""
+"Das Video ist länger als 30 Sekunden – es ist ein Startvideo, kein Film: "
+"Darauf warten Sie bei jeder Anmeldung."
 
 #. TRANSLATORS: shown when adding a startup movie that Steam can't play as is; the original file stays untouched.
 #: rust/rexon-core/src/session_splash.rs
 msgid ""
 "The video will be converted to WebM so Steam can play it. The original file "
 "stays as it is."
-msgstr "Das Video wird in WebM umgewandelt, damit Steam es abspielen kann. Die Originaldatei bleibt, wie sie ist."
-
-#. TRANSLATORS: where a startup movie comes from: built into the Steam client.
-#: rust/rexon-core/src/session_splash.rs
-msgid "Built into Steam"
-msgstr "In Steam eingebaut"
-
-#. TRANSLATORS: where a startup movie comes from: a video file the user picked.
-#: rust/rexon-core/src/session_splash.rs
-msgid "Your own file"
-msgstr "Eigene Datei"
+msgstr ""
+"Das Video wird in WebM umgewandelt, damit Steam es abspielen kann. Die "
+"Originaldatei bleibt, wie sie ist."
 
 #. TRANSLATORS: Description of Rexon's splash theme in KDE System Settings (Splash Screen). KSplash and mpv are program names.
 #: rust/rexon-core/src/session_splash.rs
@@ -22190,6 +22430,15 @@ msgstr "das Programm des Anmeldebildschirms %1 fehlt"
 msgid "the sign-in settings file (PAM) %1 is missing"
 msgstr "die Datei mit den Anmeldeeinstellungen (PAM) %1 fehlt"
 
+#. TRANSLATORS: Root helper message. %1 is a login screen service name, %2 a system service it needs (dde-seatd.service).
+#: rust/rexon-core/src/system_l10n.rs
+msgid ""
+"the login screen %1 needs the system service %2, and it's missing or "
+"switched off"
+msgstr ""
+"der Anmeldebildschirm %1 braucht den Systemdienst %2, und der fehlt oder ist "
+"abgeschaltet"
+
 #. TRANSLATORS: Root helper message. greetd is a program name.
 #: rust/rexon-core/src/system_l10n.rs
 msgid "greetd is set up for text sign-in — the desktop won't start"
@@ -22253,6 +22502,53 @@ msgstr ""
 #: rust/rexon-core/src/system_l10n.rs
 msgid "%1 is now the login screen; it appears after a restart"
 msgstr "der Anmeldebildschirm ist jetzt %1; er erscheint nach einem Neustart"
+
+#. TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "automatic sign-in for %1 moved to %2"
+msgstr "automatische Anmeldung für %1 auf %2 übertragen"
+
+#. TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "automatic sign-in for %1 turned off in %2: it was off before the switch"
+msgstr ""
+"automatische Anmeldung für %1 in %2 ausgeschaltet: vor dem Wechsel gab es "
+"sie nicht"
+
+#. TRANSLATORS: Root helper message. %1 is a user name, %2 a system group name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "user %1 added to the group %2 for automatic sign-in"
+msgstr "Benutzer %1 für die automatische Anmeldung zur Gruppe %2 hinzugefügt"
+
+#. TRANSLATORS: Root helper message. %1 is a user name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid ""
+"automatic sign-in names the user %1, who isn't on this system — not moved"
+msgstr ""
+"die automatische Anmeldung nennt den Benutzer %1, den es auf diesem System "
+"nicht gibt – nicht übertragen"
+
+#. TRANSLATORS: Root helper message. %1 is a user name, %2 a login screen service name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "automatic sign-in for %1 is not moved: Rexon can't set it for %2"
+msgstr ""
+"automatische Anmeldung für %1 nicht übertragen: Rexon kann sie für %2 nicht "
+"festlegen"
+
+#. TRANSLATORS: Root helper message.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "could not write the automatic sign-in setting"
+msgstr "die Einstellung der automatischen Anmeldung ließ sich nicht schreiben"
+
+#. TRANSLATORS: Root helper message. %1 and %2 are login screen service names.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "login screen sound turned off for %1 too, as it was for %2"
+msgstr "Ton des Anmeldebildschirms auch für %1 ausgeschaltet, wie bei %2"
+
+#. TRANSLATORS: Root helper message. %1 is a login screen service name.
+#: rust/rexon-core/src/system_l10n.rs
+msgid "could not turn off the login screen sound for %1"
+msgstr "der Ton des Anmeldebildschirms für %1 ließ sich nicht ausschalten"
 
 #. TRANSLATORS: Line of a text file read from a text console. %1 and %2 are login screen service names.
 #: rust/rexon-core/src/system_l10n.rs
@@ -23046,6 +23342,15 @@ msgstr ""
 msgid "Rexon can replace a conflicting package only with pacman."
 msgstr "Ein kollidierendes Paket kann Rexon nur über pacman ersetzen."
 
+#. TRANSLATORS: %1 and %2 are two packages of the set being installed.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"⛔ Installation won't work: the set needs both %1 and %2, and the two can't "
+"be installed at once."
+msgstr ""
+"⛔ Die Installation klappt nicht: Das Paketset braucht sowohl %1 als auch "
+"%2, und beide können nicht gleichzeitig installiert sein."
+
 #. TRANSLATORS: %1 is the desktop being installed, %2 the installed
 #. desktop, %3 a program both need (e.g. mutter), %4 the version %1
 #. needs, %5 the package of that version, %6 the version %2 needs.
@@ -23091,6 +23396,53 @@ msgid ""
 msgstr ""
 "⛔ Die Installation wird nicht gelingen: %1 kollidiert mit dem installierten "
 "Paket %2. pacman müsste %2 entfernen, und das tut Rexon nicht von sich aus."
+
+#. TRANSLATORS: %1 is a desktop (e.g. Pantheon). The phrase is %1 of
+#. “Not installing %1: …” and its sister lines — write it in the case
+#. and capitalization that fits the start of those lines in your
+#. language (Russian: “Экран входа %1”).
+#: rust/rexon-core/src/system_plan.rs
+msgid "the %1 login screen"
+msgstr "Der Anmeldebildschirm von %1"
+
+#. TRANSLATORS: %1 is what is not installed (e.g. “the Pantheon
+#. login screen”), %2 a program (e.g. Mutter), %3 the version %1
+#. needs, %4 the installed desktops, %5 the version they need.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"⚠️ Not installing %1: it needs %2 %3, and %4 needs %2 %5 — the two can't be "
+"installed at once."
+msgstr ""
+"⚠️ %1 wird nicht installiert: Es braucht %2 %3, %4 braucht aber %2 %5 – beide "
+"können nicht gleichzeitig installiert sein."
+
+#. TRANSLATORS: %1 is what is not installed, %2 a package the rest
+#. of the set needs.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"⚠️ Not installing %1: it conflicts with %2, which the rest of the set needs."
+msgstr ""
+"⚠️ %1 wird nicht installiert: Es kollidiert mit %2, das der Rest des Pakets "
+"braucht."
+
+#. TRANSLATORS: %1 is what is not installed, %2 an installed package.
+#: rust/rexon-core/src/system_plan.rs
+msgid "⚠️ Not installing %1: it conflicts with the installed package %2."
+msgstr ""
+"⚠️ %1 wird nicht installiert: Es kollidiert mit dem installierten Paket %2."
+
+#. TRANSLATORS: %1 is the desktop being installed.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"You can sign in to %1 from the regular login screen; everything else will be "
+"installed."
+msgstr ""
+"In %1 meldest du dich über den gewohnten Anmeldebildschirm an; alles andere "
+"wird installiert."
+
+#: rust/rexon-core/src/system_plan.rs
+msgid "Everything else will be installed without it."
+msgstr "Alles andere wird ohne es installiert."
 
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
@@ -23479,6 +23831,68 @@ msgstr ""
 "Sie können das von Hand im Terminal erledigen:\n"
 "%1"
 
+#. TRANSLATORS: %1 is a login screen name (SDDM, Plasma Login Manager, …). Super+L is a key combination.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"With %1 as the login screen, GNOME can't lock the screen: Super+L, locking "
+"when idle and before sleep do nothing. GNOME needs GDM."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, kann GNOME den Bildschirm nicht "
+"sperren: Super+L, die Sperre bei Inaktivität und vor dem Ruhezustand greifen "
+"nicht. GNOME braucht GDM."
+
+#. TRANSLATORS: %1 is a login screen name. Treeland and DDM are program names.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"With %1 as the login screen, Deepin doesn't start: Treeland shows only the "
+"wallpaper, without the panel. Deepin needs its own login screen, DDM."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, startet Deepin nicht: Treeland zeigt "
+"nur das Hintergrundbild, ohne Leiste. Deepin braucht seinen eigenen "
+"Anmeldebildschirm, DDM."
+
+#. TRANSLATORS: %1 is a login screen name (GDM). KWallet is a program name.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"With %1 as the login screen, KDE Plasma asks for the KWallet password "
+"separately after sign-in, and “Switch User” may not work."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, fragt KDE Plasma nach der Anmeldung "
+"gesondert nach dem KWallet-Passwort, und „Benutzer wechseln“ funktioniert "
+"eventuell nicht."
+
+#. TRANSLATORS: %1 is a login screen name (GDM).
+#: rust/rexon-core/src/system_plan.rs
+msgid "With %1 as the login screen, “Switch User” doesn't work in Cinnamon."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, funktioniert „Benutzer wechseln“ in "
+"Cinnamon nicht."
+
+#. TRANSLATORS: %1 is a login screen name (GDM).
+#: rust/rexon-core/src/system_plan.rs
+msgid "With %1 as the login screen, “Switch User” doesn't work in MATE."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, funktioniert „Benutzer wechseln“ in "
+"MATE nicht."
+
+#. TRANSLATORS: %1 is a login screen name (GDM).
+#: rust/rexon-core/src/system_plan.rs
+msgid "With %1 as the login screen, “Switch User” doesn't work in Xfce."
+msgstr ""
+"Solange %1 der Anmeldebildschirm ist, funktioniert „Benutzer wechseln“ in "
+"Xfce nicht."
+
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"DDM is Deepin's own login screen. Rexon hasn't checked yet whether it starts "
+"other desktops. If yours doesn't start, sign in to Deepin and make the "
+"previous login screen the default here again."
+msgstr ""
+"DDM ist der eigene Anmeldebildschirm von Deepin. Ob er andere Desktops "
+"startet, hat Rexon noch nicht geprüft. Startet Ihrer nicht, melden Sie sich "
+"bei Deepin an und machen Sie hier wieder den vorherigen Anmeldebildschirm "
+"zum Standard."
+
 #: rust/rexon-core/src/system_plan.rs
 msgid "LightDM has no greeter installed, so it can't show a login screen."
 msgstr ""
@@ -23496,6 +23910,15 @@ msgstr ""
 #: rust/rexon-core/src/system_plan.rs
 msgid "The login screen program %1 is missing."
 msgstr "Das Programm des Anmeldebildschirms %1 fehlt."
+
+#. TRANSLATORS: %1 is a system service name, e.g. dde-seatd.service.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"The login screen needs the system service %1, and it's missing or switched "
+"off."
+msgstr ""
+"Der Anmeldebildschirm braucht den Systemdienst %1, und der fehlt oder ist "
+"abgeschaltet."
 
 #. TRANSLATORS: %1 is a PAM service file name, e.g. sddm.
 #: rust/rexon-core/src/system_plan.rs
@@ -24033,6 +24456,10 @@ msgstr "Yaru-MATE-Design + Ubuntu-Schriftarten + Ayatana"
 msgid "MATE post-install complete"
 msgstr "MATE-Nachinstallation abgeschlossen"
 
+#: rust/rexon-core/src/system_plan.rs
+msgid "🔒 Lock screen: shows your desktop wallpaper"
+msgstr "🔒 Sperrbildschirm: zeigt Ihr Desktop-Hintergrundbild"
+
 #. TRANSLATORS: %1 is a file path.
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
@@ -24055,6 +24482,22 @@ msgid ""
 msgstr ""
 "⚠️ River: Die Starteinstellungen konnten nicht geschrieben werden (%1): %2. "
 "Ohne sie startet River ohne Tastenkürzel."
+
+#. TRANSLATORS: %1 is a desktop (Wayfire, LXQt…), %2 a key combination,
+#. %3 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid "🔒 %1: screen lock set up (%3) — lock it with %2"
+msgstr "🔒 %1: Bildschirmsperre eingerichtet (%3) — sperren mit %2"
+
+#. TRANSLATORS: %1 is a desktop, %2 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid "ℹ️ %1: the screen lock is already set up in your settings (%2) — left as is"
+msgstr "ℹ️ %1: Die Bildschirmsperre ist in Ihren Einstellungen schon eingerichtet (%2) — bleibt unverändert"
+
+#. TRANSLATORS: %1 is a desktop, %2 a file path, %3 the reason.
+#: rust/rexon-core/src/system_plan.rs
+msgid "⚠️ %1: couldn't set up the screen lock in %2: %3. Locking the screen may not work."
+msgstr "⚠️ %1: Die Bildschirmsperre ließ sich in %2 nicht einrichten: %3. Der Bildschirm wird sich womöglich nicht sperren."
 
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
@@ -25601,14 +26044,16 @@ msgstr ""
 "wie das Hintergrundbild gestartet wird. Installieren Sie sie unter „%1“ neu "
 "und versuchen Sie es erneut."
 
+#. TRANSLATORS: %1 is the place in Rexon, e.g. “Appearance → Cinnamon Extensions”.
 #: rust/rexon-core/src/wallpaper_engine.rs
 msgid ""
-"The wallpaper was handed to the shell extension, but the extension itself is "
-"turned off — turn on “Rexon Wallpaper Engine” in the extension list."
+"The wallpaper wasn't shown: the Rexon shell extension is turned off and "
+"Rexon couldn't turn it on. Turn on “Rexon Wallpaper Engine” in “%1” and try "
+"again."
 msgstr ""
-"Das Hintergrundbild wurde an die Shell-Erweiterung übergeben, aber die "
-"Erweiterung selbst ist ausgeschaltet – aktivieren Sie „Rexon Wallpaper "
-"Engine“ in der Erweiterungsliste."
+"Das Hintergrundbild wird nicht angezeigt: Die Rexon-Shell-Erweiterung ist "
+"ausgeschaltet, und Rexon konnte sie nicht einschalten. Schalten Sie „Rexon "
+"Wallpaper Engine“ unter „%1“ ein und versuchen Sie es erneut."
 
 #: rust/rexon-core/src/wallpaper_engine.rs
 msgid ""
@@ -25871,11 +26316,12 @@ msgstr "diese Art von Live-Hintergrund zeigt noch die alte Engine an"
 
 #: rust/rexon-core/src/wallpaper_exec.rs
 msgid ""
-"⚠ The live Wallpaper Engine wallpaper could not be stopped — stop it in the "
-"Wallpaper Engine tab to see this one."
+"Rexon could not reach Wallpaper Engine to stop its live wallpaper. If you "
+"still see the old wallpaper, stop it on the Wallpaper Engine tab."
 msgstr ""
-"⚠ Das Live-Hintergrundbild von Wallpaper Engine ließ sich nicht beenden — "
-"beenden Sie es im Reiter „Wallpaper Engine“, um das neue zu sehen."
+"Rexon konnte Wallpaper Engine nicht erreichen, um dessen Live-Hintergrund zu "
+"beenden. Wenn Sie noch den alten Hintergrund sehen, beenden Sie ihn im "
+"Reiter „Wallpaper Engine“."
 
 #: rust/rexon-core/src/wallpaper_exec.rs
 msgid "Could not apply the wallpaper"
@@ -26113,6 +26559,27 @@ msgstr ""
 "Sie einen Hintergrund oder eine Wiedergabeliste und klicken Sie auf "
 "„Anwenden“ oder „Wiedergabeliste abspielen“ — Rexon legt sie selbst auf die "
 "Arbeitsfläche."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Wallpaper Engine wallpapers can't be shown on this desktop: the shell "
+"doesn't let programs draw on the wallpaper layer, so there is no monitor to "
+"show them on and “Apply” stays unavailable. Video, web and Flash wallpapers "
+"from Rexon still work."
+msgstr ""
+"Wallpaper-Engine-Hintergründe lassen sich auf dieser Arbeitsumgebung nicht "
+"anzeigen: Die Shell lässt Programme nicht in der Hintergrundebene zeichnen, "
+"es gibt dafür keine Bildschirme, daher ist „Anwenden“ nicht verfügbar. "
+"Video-, Web- und Flash-Hintergründe von Rexon funktionieren."
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Wallpaper Engine wallpapers can't be shown in this session: its window "
+"manager doesn't support live wallpapers, so “Apply” stays unavailable."
+msgstr ""
+"Wallpaper-Engine-Hintergründe lassen sich in dieser Sitzung nicht anzeigen: "
+"Ihr Fenstermanager unterstützt keine Live-Hintergründe, daher ist „Anwenden“ "
+"nicht verfügbar."
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
@@ -28006,6 +28473,11 @@ msgctxt "screen effect"
 msgid "Revert"
 msgstr "Zurücksetzen"
 
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Applying…"
+msgstr "Wird angewendet…"
+
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid ""
 "Rexon makes a screensaver for Steam Big Picture: Steam shows it when you "
@@ -28371,6 +28843,31 @@ msgstr ""
 #: rust/rexon-gui/qml/WindowButtonsSection.qml
 msgid "Window border size:"
 msgstr "Größe der Fensterumrandung:"
+
+#~ msgid ""
+#~ "To try Deepin, log out and choose “Treeland User” on the login screen."
+#~ msgstr ""
+#~ "Um Deepin auszuprobieren, melden Sie sich ab und wählen Sie auf dem "
+#~ "Anmeldebildschirm „Treeland User“."
+
+#~ msgid ""
+#~ "Desklets are Cinnamon's own widgets and stay on the desktop in any "
+#~ "session. Conky widgets come from a separate program; in the Wayland "
+#~ "session they are regular windows."
+#~ msgstr ""
+#~ "Desklets sind die eigenen Widgets von Cinnamon und bleiben in jeder "
+#~ "Sitzung auf der Arbeitsfläche. Conky-Widgets kommen von einem eigenen "
+#~ "Programm; in der Wayland-Sitzung sind sie gewöhnliche Fenster."
+
+#~ msgid ""
+#~ "Clocks, weather and system sensors on the desktop, drawn by the Conky "
+#~ "program. In the Wayland session of this desktop they are regular windows; "
+#~ "they stay on the desktop itself in the X11 session."
+#~ msgstr ""
+#~ "Uhr, Wetter und Systemsensoren auf der Arbeitsfläche – gezeichnet vom "
+#~ "Programm Conky. In der Wayland-Sitzung dieser Arbeitsumgebung sind es "
+#~ "gewöhnliche Fenster; auf der Arbeitsfläche selbst bleiben die Widgets in "
+#~ "der X11-Sitzung."
 
 #~ msgid "Razer Axon (test)"
 #~ msgstr "Razer Axon (Test)"
@@ -28780,9 +29277,6 @@ msgstr "Größe der Fensterumrandung:"
 #~ msgctxt "program"
 #~ msgid "✅ Installed"
 #~ msgstr "✅ Installiert"
-
-#~ msgid "Open"
-#~ msgstr "Öffnen"
 
 #~ msgid "Install the program"
 #~ msgstr "Programm installieren"
@@ -29258,3 +29752,38 @@ msgstr "Größe der Fensterumrandung:"
 
 #~ msgid "About waywallen"
 #~ msgstr "Über waywallen"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "📦 Set · system package · password"
+msgstr "📦 Set · Systempaket · Passwort"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "📦 System package · password"
+msgstr "📦 Systempaket · Passwort"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Installed as a system package from AUR: it asks for the administrator "
+"password and is removed the same way."
+msgstr "Wird als Systempaket aus dem AUR installiert: Es fragt nach dem Administratorpasswort und wird genauso entfernt."
+
+#: rust/rexon-core/src/aur.rs
+msgid "Font sample — after installation"
+msgstr "Schriftprobe – nach der Installation"
+
+#: rust/rexon-core/src/aur.rs
+msgid "Wallpaper set — the pictures come inside the package"
+msgstr "Hintergrundbild-Set – die Bilder sind im Paket"
+
+#: rust/rexon-core/src/aur.rs
+msgid "The author gave no picture"
+msgstr "Kein Bild vom Autor"
+
+#: rust/rexon-core/src/aur.rs
+msgid "Aa Bb Cc 123"
+msgstr "Aa Bb Ää 123"
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Search in"
+msgstr "Suchen in"

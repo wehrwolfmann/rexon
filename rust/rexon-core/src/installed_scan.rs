@@ -3346,8 +3346,17 @@ impl LiveScan {
         }
         let (schema, key) = crate::wallpaper_engine::gsettings_schema(de)?;
         let argv = crate::wallpaper_engine::gsettings_get_argv(schema, key);
-        match run_default(&argv) {
-            Some((0, out, _)) if !out.is_empty() => Some(out),
+        let plain = match run_default(&argv) {
+            Some((0, out, _)) if !crate::wallpaper_engine::gsettings_path_value(&out).is_empty() => Some(out),
+            _ => None,
+        };
+        if plain.is_some() || schema != crate::wallpaper_engine::CINNAMON_BG_SCHEMA {
+            return plain;
+        }
+        // Cinnamon 6.8+: `picture-uri` пуст, картинка — в списке.
+        let list = crate::wallpaper_engine::gsettings_get_argv(schema, crate::wallpaper_engine::CINNAMON_BG_LIST_KEY);
+        match run_default(&list) {
+            Some((0, out, _)) => crate::wallpaper_engine::cinnamon_list_first_path(&out),
             _ => None,
         }
     }

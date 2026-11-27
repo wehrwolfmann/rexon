@@ -3085,28 +3085,6 @@ fn zip_names(archive: &Path) -> Option<Vec<String>> {
     (0..zf.len()).map(|i| zf.by_index(i).ok().map(|f| f.name().to_string())).collect()
 }
 
-/// Права записей архива (как их хранит zip: `external_attr >> 16`) — на
-/// распакованные файлы и каталоги: общий распаковщик их не переносит, а
-/// скрипты спайсов (действия Nemo, десклеты) без бита исполнения не
-/// запустятся. Ссылки не трогаются; биты сверх `0o777` отбрасываются,
-/// владельцу чтение и запись оставляются всегда.
-fn apply_zip_modes(archive: &Path, out: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let Some(mut zf) = std::fs::File::open(archive).ok().and_then(|f| zip::ZipArchive::new(f).ok()) else {
-        return;
-    };
-    for i in 0..zf.len() {
-        let Ok(e) = zf.by_index(i) else { continue };
-        let (Some(mode), Some(rel)) = (e.unix_mode(), e.enclosed_name()) else { continue };
-        let path = out.join(rel);
-        let Ok(md) = std::fs::symlink_metadata(&path) else { continue };
-        if md.is_file() || md.is_dir() {
-            let mode = (mode & 0o777) | if md.is_dir() { 0o700 } else { 0o600 };
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode));
-        }
-    }
-}
-
 /// Что поставил план (для журнала): каталог спайса и у действия — файл.
 fn planned_paths(steps: &[SpiceStep]) -> Vec<String> {
     steps
@@ -3192,7 +3170,6 @@ pub fn install_archive_in(
     if let Err(e) = crate::appearance_installer::live_safe_extract(&archive.to_string_lossy(), &out_s) {
         return (false, trf("Couldn't unpack the archive of %1: %2", &[&name, &e]));
     }
-    apply_zip_modes(archive, &out);
     let snap = live_snapshot(&out);
     if let Some(sec) = section.filter(|_| t.is_theme()) {
         let dir = snap_join(&out_s, &s.key);

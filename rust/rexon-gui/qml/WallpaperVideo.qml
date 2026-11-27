@@ -356,6 +356,31 @@ QtObject {
                 fillMode: VideoOutput.PreserveAspectCrop
             }
 
+            // ── Первый кадр ролика на экране ──────────────────────────
+            // Замер ожидания и, на Cinnamon с layer-shell, перестановка
+            // службы фона под нас — по событию, а не выдержкой: до первого
+            // кадра ролика окно чёрное, и показывать его раньше незачем.
+            // Кадр ролика пришёл в приёмник — следующий показанный кадр окна
+            // уже с ним. В офскрин-режиме окно на экран не выходит, мерить
+            // нечего.
+            property bool videoFrameSeen: false
+            property bool firstFrameReported: false
+
+            Connections {
+                target: vout.videoSink
+                enabled: root.placement !== "offscreen" && !surface.videoFrameSeen
+                function onVideoFrameChanged() { surface.videoFrameSeen = true; }
+            }
+
+            Connections {
+                target: surface
+                enabled: surface.videoFrameSeen && !surface.firstFrameReported
+                function onFrameSwapped() {
+                    surface.firstFrameReported = true;
+                    root.placer.firstFrameShown("video");
+                }
+            }
+
             // Esc / Q — выход. Полезно в отладочном окне; на слое обоев
             // клавиатуры у окна нет вовсе, так что здесь это ни на что не
             // влияет.

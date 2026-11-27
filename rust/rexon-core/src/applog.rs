@@ -258,6 +258,12 @@ pub fn log_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(crate::utils::log_file_env()))
 }
 
+/// Заведён ли файл журнала ([`init`]). Нет — процесс служебный или стенд
+/// (самопроверка окна), и строки для человека ему не нужны.
+pub fn is_active() -> bool {
+    SINK.lock().map(|g| g.is_some()).unwrap_or(false)
+}
+
 /// Записать строку уровня `level` в области `area`.
 pub fn write(level: Level, area: &str, msg: &str) {
     write_opts(level, area, msg, true);
@@ -523,6 +529,199 @@ extern "C" fn on_fatal_signal(sig: libc::c_int) {
 }
 
 // ============================================================================
+// Сигнал завершения (SIGTERM, SIGINT, SIGHUP)
+// ============================================================================
+//
+// ЗАЧЕМ. Процесс, которому стол или человек прислал «заверши работу»,
+// прежде уходил молча: в журнале обрыв, и не понять, упал Rexon, завис или
+// его закрыли. Теперь — строка «завершение по сигналу X от процесса N
+// (имя)», и дальше всё как было: действие по умолчанию (выход) либо
+// прежний обработчик. SIGKILL не перехватить — для него улики оставляют
+// журнал действий и сторож окна (`ui_watch`).
+
+const EXIT_SIGNALS: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+static mut OLD_EXIT_ACTIONS: [Option<libc::sigaction>; 3] = [None; 3];
+/// Сдвиг местного времени от UTC, секунд, — считается при установке:
+/// внутри обработчика `localtime_r` звать нельзя.
+static UTC_OFFSET: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// Ставить строку журнала на сигналы завершения. Сигнал, который процессу
+/// велено пропускать (`nohup` → SIGHUP), так и остаётся пропущенным.
+pub fn install_exit_signal_logger() {
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if !libc::localtime_r(&now, &mut tm).is_null() {
+            UTC_OFFSET.store(tm.tm_gmtoff as i64, Ordering::SeqCst);
+        }
+    }
+    for (i, sig) in EXIT_SIGNALS.iter().enumerate() {
+        unsafe {
+            let mut old: libc::sigaction = std::mem::zeroed();
+            if libc::sigaction(*sig, std::ptr::null(), &mut old) != 0 || old.sa_sigaction == libc::SIG_IGN {
+                continue;
+            }
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_sigaction =
+                on_exit_signal as extern "C" fn(libc::c_int, *mut libc::siginfo_t, *mut libc::c_void) as usize;
+            act.sa_flags = libc::SA_SIGINFO;
+            libc::sigemptyset(&mut act.sa_mask);
+            if libc::sigaction(*sig, &act, &mut old) == 0 {
+                (*std::ptr::addr_of_mut!(OLD_EXIT_ACTIONS))[i] = Some(old);
+            }
+        }
+    }
+}
+
+fn exit_signal_name(sig: libc::c_int) -> &'static [u8] {
+    match sig {
+        libc::SIGTERM => b"SIGTERM",
+        libc::SIGINT => b"SIGINT",
+        libc::SIGHUP => b"SIGHUP",
+        _ => b"?",
+    }
+}
+
+/// Число с ведущими нулями до `width` знаков.
+fn push_pad(buf: &mut [u8], at: &mut usize, v: u64, width: usize) {
+    let mut digits = 1;
+    let mut t = v;
+    while t >= 10 {
+        t /= 10;
+        digits += 1;
+    }
+    for _ in digits..width {
+        push_bytes(buf, at, b"0");
+    }
+    push_num(buf, at, v);
+}
+
+/// Дни от 1970-01-01 → (год, месяц, день) по григорианскому календарю.
+fn civil_from_days(z: i64) -> (i64, u64, u64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u64;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u64;
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    (y, m, d)
+}
+
+/// Строка о сигнале завершения — того же вида, что все строки журнала.
+/// Без выделения памяти: собирается в обработчике сигнала. `sender` 0 —
+/// отправитель неизвестен (ядро, терминал); `comm` — имя отправителя.
+pub fn exit_signal_line(
+    buf: &mut [u8],
+    local_secs: i64,
+    millis: u64,
+    pid: u64,
+    sig: libc::c_int,
+    sender: u64,
+    comm: &[u8],
+) -> usize {
+    let mut at = 0;
+    let (y, mo, d) = civil_from_days(local_secs.div_euclid(86_400));
+    let sod = local_secs.rem_euclid(86_400) as u64;
+    push_pad(buf, &mut at, y.max(0) as u64, 4);
+    push_bytes(buf, &mut at, b"-");
+    push_pad(buf, &mut at, mo, 2);
+    push_bytes(buf, &mut at, b"-");
+    push_pad(buf, &mut at, d, 2);
+    push_bytes(buf, &mut at, b" ");
+    push_pad(buf, &mut at, sod / 3600, 2);
+    push_bytes(buf, &mut at, b":");
+    push_pad(buf, &mut at, sod / 60 % 60, 2);
+    push_bytes(buf, &mut at, b":");
+    push_pad(buf, &mut at, sod % 60, 2);
+    push_bytes(buf, &mut at, b".");
+    push_pad(buf, &mut at, millis, 3);
+    push_bytes(buf, &mut at, b" [");
+    push_num(buf, &mut at, pid);
+    push_bytes(buf, &mut at, b"] WARN  exit: ");
+    push_bytes(buf, &mut at, "завершение по сигналу ".as_bytes());
+    push_bytes(buf, &mut at, exit_signal_name(sig));
+    push_bytes(buf, &mut at, b" (");
+    push_num(buf, &mut at, sig as u64);
+    push_bytes(buf, &mut at, b")");
+    if sender != 0 {
+        push_bytes(buf, &mut at, " от процесса ".as_bytes());
+        push_num(buf, &mut at, sender);
+        if !comm.is_empty() {
+            push_bytes(buf, &mut at, b" (");
+            push_bytes(buf, &mut at, comm);
+            push_bytes(buf, &mut at, b")");
+        }
+    }
+    push_bytes(buf, &mut at, b"\n");
+    at
+}
+
+/// Имя процесса `pid` из `/proc/<pid>/comm` — только `open`/`read`/`close`.
+fn read_comm(pid: u64, out: &mut [u8; 32]) -> usize {
+    let mut path = [0u8; 40];
+    let mut at = 0;
+    push_bytes(&mut path, &mut at, b"/proc/");
+    push_num(&mut path, &mut at, pid);
+    push_bytes(&mut path, &mut at, b"/comm\0");
+    let fd = unsafe { libc::open(path.as_ptr().cast(), libc::O_RDONLY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return 0;
+    }
+    let n = unsafe { libc::read(fd, out.as_mut_ptr().cast(), out.len()) };
+    unsafe { libc::close(fd) };
+    let mut n = n.max(0) as usize;
+    while n > 0 && (out[n - 1] == b'\n' || out[n - 1] == 0) {
+        n -= 1;
+    }
+    n
+}
+
+extern "C" fn on_exit_signal(sig: libc::c_int, info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe { libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts) };
+    let sender = if info.is_null() { 0 } else { unsafe { (*info).si_pid() }.max(0) as u64 };
+    let mut comm = [0u8; 32];
+    let comm_len = if sender != 0 { read_comm(sender, &mut comm) } else { 0 };
+    let mut buf = [0u8; 256];
+    let n = exit_signal_line(
+        &mut buf,
+        ts.tv_sec as i64 + UTC_OFFSET.load(Ordering::Relaxed),
+        (ts.tv_nsec / 1_000_000) as u64,
+        unsafe { libc::getpid() } as u64,
+        sig,
+        sender,
+        &comm[..comm_len],
+    );
+    let line = &buf[..n];
+    let log = RAW_LOG_FD.load(Ordering::SeqCst);
+    if log >= 0 {
+        raw_write(log, line);
+    }
+    let echo = ECHO_FD.load(Ordering::SeqCst);
+    if echo >= 0 && echo != log {
+        raw_write(echo, line);
+    }
+    // Дальше — как без нас: вернуть прежнее действие и повторить сигнал.
+    // Пока обработчик идёт, сигнал заблокирован: повтор доставится сразу
+    // после возврата — уже прежнему обработчику либо действию по умолчанию.
+    let idx = EXIT_SIGNALS.iter().position(|s| *s == sig);
+    unsafe {
+        match idx.and_then(|i| (*std::ptr::addr_of!(OLD_EXIT_ACTIONS))[i]) {
+            Some(old) => {
+                libc::sigaction(sig, &old, std::ptr::null_mut());
+            }
+            None => {
+                libc::signal(sig, libc::SIG_DFL);
+            }
+        }
+        libc::raise(sig);
+    }
+}
+
+// ============================================================================
 // Макросы
 // ============================================================================
 
@@ -701,6 +900,56 @@ mod tests {
         std::fs::write(&p, "первая\nвторая\nтретья\n").unwrap();
         let t = read_tail(&p, 15);
         assert_eq!(t, "третья\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn строка_сигнала_завершения_как_у_журнала() {
+        let mut buf = [0u8; 256];
+        // 2026-11-15 13:05:09 местного времени.
+        let secs = 1_763_211_909 + 365 * 86_400;
+        let n = exit_signal_line(&mut buf, secs, 7, 4242, libc::SIGTERM, 1234, b"cinnamon");
+        assert_eq!(
+            std::str::from_utf8(&buf[..n]).unwrap(),
+            "2026-11-15 13:05:09.007 [4242] WARN  exit: завершение по сигналу SIGTERM (15) от процесса 1234 (cinnamon)\n"
+        );
+        let n = exit_signal_line(&mut buf, 0, 0, 1, libc::SIGINT, 0, b"");
+        assert_eq!(
+            std::str::from_utf8(&buf[..n]).unwrap(),
+            "1970-01-01 00:00:00.000 [1] WARN  exit: завершение по сигналу SIGINT (2)\n"
+        );
+        assert_eq!(civil_from_days(-1), (1969, 12, 31));
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
+    }
+
+    /// Живой прогон: тот же тестовый бинарь, запущенный ребёнком, заводит
+    /// журнал, ставит обработчик и получает SIGTERM. Строка обязана лечь в
+    /// файл, а процесс — умереть от того же сигнала, как без обработчика.
+    #[test]
+    fn sigterm_оставляет_строку_и_убивает_как_раньше() {
+        const CHILD: &str = "REXON_APPLOG_SIGTERM_CHILD";
+        if let Ok(path) = std::env::var(CHILD) {
+            init_at(PathBuf::from(path));
+            install_exit_signal_logger();
+            unsafe { libc::raise(libc::SIGTERM) };
+            // Сюда дойти нельзя: SIGTERM обязан завершить процесс.
+            std::process::exit(0);
+        }
+        let dir = std::env::temp_dir().join(format!("rexon-applog-sigterm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("rexon.log");
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "applog::tests::sigterm_оставляет_строку_и_убивает_как_раньше", "--nocapture"])
+            .env(CHILD, &log)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(status.signal(), Some(libc::SIGTERM), "{status:?}");
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert!(text.contains("] WARN  exit: завершение по сигналу SIGTERM (15) от процесса "), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -369,7 +369,8 @@ pub fn save(io: &dyn LookIo, ctx: &Ctx, name: &str, wallpaper: Option<String>) -
     let Some(name) = clean_name(name) else {
         return (false, tr("Give the set a name."));
     };
-    let widgets = crate::conky_procs::running_confs(io, ctx);
+    // Многооконная тема со сценарием — одна строка набора.
+    let widgets = crate::conky_procs::running_widget_confs(io, ctx);
     if widgets.is_empty() {
         return (false, tr("No widget is running now: start the widgets for the set first."));
     }
@@ -434,10 +435,17 @@ pub fn find(io: &dyn LookIo, ctx: &Ctx, extra: &[String], name: &str, exists: &d
     sets.into_iter().map(|(s, _)| s).find(|s| s.name == name)
 }
 
-pub fn plan(io: &dyn LookIo, ctx: &Ctx, extra: &[String], set: ConkySet) -> Plan {
+pub fn plan(io: &dyn LookIo, ctx: &Ctx, extra: &[String], mut set: ConkySet) -> Plan {
     let st = load(io, ctx);
-    let running = crate::conky_procs::running_confs(io, ctx);
-    let prev: Vec<String> = if st.applied.is_some() { st.applied_widgets.clone() } else { Vec::new() };
+    // Окна одной темы со сценарием (набор сохранён до 16.11.2026 или из
+    // файла) — одна строка: тема поднимается и гасится один раз.
+    set.widgets = crate::conky_theme::unit_confs(io, ctx, extra, &set.widgets);
+    let running = crate::conky_procs::running_widget_confs(io, ctx);
+    let prev: Vec<String> = if st.applied.is_some() {
+        crate::conky_theme::unit_confs(io, ctx, extra, &st.applied_widgets)
+    } else {
+        Vec::new()
+    };
     let stop: Vec<String> = prev.into_iter().filter(|w| running.contains(w) && !set.widgets.contains(w)).collect();
     let start: Vec<String> = set.widgets.iter().filter(|w| !running.contains(w)).cloned().collect();
     let mut needs_trust: Vec<String> = Vec::new();
@@ -519,7 +527,8 @@ pub fn apply(io: &dyn LookIo, ctx: &Ctx, extra: &[String], p: &Plan, trusted: bo
     let mut lines: Vec<String> = Vec::new();
     let mut ok = true;
     if !p.stop.is_empty() {
-        let pids = crate::conky_procs::pids_where(io, ctx, &|c| p.stop.iter().any(|s| s == c));
+        // Тема со сценарием — по любому её окну, не только по главному файлу.
+        let pids = crate::conky_procs::pids_of_units(io, ctx, &p.stop);
         let title = titles(ctx, extra, &p.stop).join(", ");
         let (stopped, msg) = crate::conky_procs::stop_pids(io, &title, pids);
         ok &= stopped;
@@ -579,7 +588,7 @@ pub fn apply(io: &dyn LookIo, ctx: &Ctx, extra: &[String], p: &Plan, trusted: bo
     }
     let mut st = load(io, ctx);
     st.applied = Some(p.set.name.clone());
-    let running = crate::conky_procs::running_confs(io, ctx);
+    let running = crate::conky_procs::running_widget_confs(io, ctx);
     st.applied_widgets = p.set.widgets.iter().filter(|w| running.contains(w) || started.contains(w)).cloned().collect();
     store(io, ctx, &st);
     if p.start.is_empty() && p.stop.is_empty() {
@@ -1453,7 +1462,7 @@ mod tests {
         let done = apply(&io, &c, &[], &p, false, &all_ready, &starter);
         assert_eq!(*started.borrow(), [net]);
         let kills: Vec<Vec<String>> = io.runs.borrow().iter().filter(|a| a[0] == "kill").cloned().collect();
-        assert_eq!(kills, [vec!["kill".to_string(), "11".to_string()]], "{}", done.message);
+        assert_eq!(kills, [vec!["kill".to_string(), "--".to_string(), "11".to_string()]], "{}", done.message);
         assert_eq!(load(&io, &c).applied.as_deref(), Some("Home"));
     }
 
@@ -1674,7 +1683,7 @@ mod tests {
         put(Path::new(&pa.settings), serde_json::to_string(&ov).unwrap().as_bytes());
         put(
             Path::new(&crate::de_apply::conky_autostart_path(&ctx_a, "Clock")),
-            crate::ext_manager::conky_desktop_entry_with("Clock", &clock_s, None, 25, &[]).as_bytes(),
+            crate::ext_manager::conky_desktop_entry_with("Clock", &clock_s, None, None, 25, &[]).as_bytes(),
         );
         let env = ExportEnv { user: "nobody-special".into(), host: String::new(), state_home: Some(state_a.clone()) };
         let set = ConkySet {

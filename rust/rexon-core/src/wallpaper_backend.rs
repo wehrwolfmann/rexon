@@ -346,6 +346,718 @@ pub fn display_setup_for(
     backend.display_setup()
 }
 
+/// То же, что [`display_setup_for`], с поправкой на Cinnamon с
+/// layer-shell ([`cinnamon_layer_shell`]): там вывод сцен — штатный
+/// `waywallen-layer-shell`, а поднимает его наш хост-клиент вывода
+/// ([`DisplaySetup::RexonHost`], раздел «Cinnamon с layer-shell» ниже).
+pub fn display_setup_in(
+    backend: WallpaperBackend,
+    xdg_current_desktop: &str,
+    waywallen_gnome_ext_installed: bool,
+    cinnamon_layer_shell: bool,
+) -> DisplaySetup {
+    if backend == WallpaperBackend::ShellExtension && cinnamon_layer_shell && is_cinnamon_desktop(xdg_current_desktop) {
+        return DisplaySetup::RexonHost;
+    }
+    display_setup_for(backend, xdg_current_desktop, waywallen_gnome_ext_installed)
+}
+
+// ── Cinnamon с layer-shell (Muffin 6.8+) ────────────────────────────────
+//
+// Живая проверка 15.11.2026 (Cinnamon 6.8.0, Muffin 6.8.1, Wayland): Muffin
+// объявляет `zwlr_layer_shell_v1` v5, а фон стола рисует служба
+// `cinnamon-background-daemon` (D-Bus `org.Cinnamon.Background`, юнит
+// systemd `cinnamon-background-daemon.service`) поверхностью того же слоя
+// background. Отсюда:
+//
+// * Обои идут тем же путём, что на wlr-композиторах: сцены — штатный
+//   `waywallen-layer-shell` (его поднимает наш хост-клиент вывода, демон уже
+//   запускает его для `x-cinnamon` по нашему определению вывода), видео, веб
+//   и Flash — наш хост окном слоя. Расширение оболочки для обоев не нужно.
+//   Признак — протокол (глобал композитора), а если спросить композитор
+//   нечем — наличие службы фона (на Wayland она без layer-shell не живёт).
+//   Номер версии не смотрим.
+// * В слое background Muffin кладёт поверхность, созданную ПОЗЖЕ, НИЖЕ
+//   прежних. Служба фона поднимается вместе с оболочкой, раньше нас, и
+//   закрывает наши обои. Выключить её рисование штатно нечем: в схеме
+//   `org.cinnamon.desktop.background` такого ключа нет, у службы на шине
+//   только `Start()` и свойства `State`/`RenderedLayout`, а
+//   `disableRestart()` менеджера фона (`js/ui/backgroundManager.js`) —
+//   внутренний вызов оболочки. Остаётся перезапустить службу ПОСЛЕ появления
+//   нашей поверхности: новая поверхность службы ляжет под нашу.
+//   [`restack_cinnamon_background`]: через systemd (`systemctl --user
+//   restart` — systemd поднимает её сам, лимит перезапусков менеджера фона
+//   «1 за 60 с» нам не мешает), без systemd — сигнал процессу владельца
+//   имени и `Start()` по шине (активация D-Bus). Повторяется на каждую новую
+//   нашу поверхность: смена мониторов, перезапуск вывода.
+// * Остановка живых обоев ничего возвращать не требует: наша поверхность
+//   уходит, под ней всё та же картинка службы фона.
+
+/// Глобал Wayland протокола wlr-layer-shell.
+pub const LAYER_SHELL_GLOBAL: &str = "zwlr_layer_shell_v1";
+
+/// Имя службы фона Cinnamon на сессионной шине.
+pub const CINNAMON_BG_BUS: &str = "org.Cinnamon.Background";
+/// Путь объекта службы фона.
+pub const CINNAMON_BG_PATH: &str = "/org/Cinnamon/Background";
+/// Юнит systemd службы фона.
+pub const CINNAMON_BG_UNIT: &str = "cinnamon-background-daemon.service";
+
+/// Стол Cinnamon по `XDG_CURRENT_DESKTOP` (`X-Cinnamon`, `Cinnamon`).
+pub fn is_cinnamon_desktop(xdg_current_desktop: &str) -> bool {
+    has_desktop(xdg_current_desktop, &["x-cinnamon", "cinnamon"])
+}
+
+/// Объявил ли композитор layer-shell.
+pub fn globals_have_layer_shell(globals: &[String]) -> bool {
+    globals.iter().any(|g| g == LAYER_SHELL_GLOBAL)
+}
+
+/// Cinnamon на Wayland с layer-shell: обои кладутся слоем, а не расширением.
+///
+/// `globals` — глобалы композитора (`None` — спросить было нечем);
+/// `bg_service_present` — есть ли служба фона Cinnamon (файл активации
+/// D-Bus): на Wayland она рисует только через layer-shell, так что без
+/// ответа композитора это тот же признак.
+pub fn cinnamon_layer_shell(
+    xdg_current_desktop: &str,
+    session_type: &str,
+    wayland_display: &str,
+    globals: Option<&[String]>,
+    bg_service_present: bool,
+) -> bool {
+    if !is_cinnamon_desktop(xdg_current_desktop) || !is_wayland_session(session_type, wayland_display) {
+        return false;
+    }
+    match globals {
+        Some(g) => globals_have_layer_shell(g),
+        None => bg_service_present,
+    }
+}
+
+/// Файлы активации службы фона Cinnamon в каталогах `dbus-1/services`
+/// (`$XDG_DATA_HOME`, затем `$XDG_DATA_DIRS`, пусто —
+/// `/usr/local/share:/usr/share`).
+pub fn cinnamon_bg_service_files(xdg_data_home: &str, home: &str, xdg_data_dirs: &str) -> Vec<String> {
+    let user = if xdg_data_home.trim().is_empty() {
+        format!("{}/.local/share", home.trim_end_matches('/'))
+    } else {
+        xdg_data_home.trim_end_matches('/').to_string()
+    };
+    let system = if xdg_data_dirs.trim().is_empty() { "/usr/local/share:/usr/share" } else { xdg_data_dirs };
+    std::iter::once(user.as_str())
+        .chain(system.split(':').map(|d| d.trim_end_matches('/')).filter(|d| !d.is_empty()))
+        .map(|base| format!("{base}/dbus-1/services/{CINNAMON_BG_BUS}.service"))
+        .collect()
+}
+
+/// Факт сеанса «Cinnamon с layer-shell», выставленный живым процессом
+/// ([`set_cinnamon_layer_shell`]). 0 — не выставлен (считаем «нет»: так
+/// ведут себя сверки и процессы, которые композитор не спрашивали),
+/// 1 — нет, 2 — да.
+static CINNAMON_LAYER_SHELL_FACT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Запомнить на процесс, есть ли в этом сеансе Cinnamon с layer-shell.
+/// Зовут живые процессы (окно Rexon, хост обоев) при старте.
+pub fn set_cinnamon_layer_shell(on: bool) {
+    CINNAMON_LAYER_SHELL_FACT.store(if on { 2 } else { 1 }, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Факт сеанса «Cinnamon с layer-shell»; не выставлен — `false`.
+pub fn cinnamon_layer_shell_fact() -> bool {
+    CINNAMON_LAYER_SHELL_FACT.load(std::sync::atomic::Ordering::SeqCst) == 2
+}
+
+/// Выяснить факт на живом сеансе и запомнить его. `globals` — ответ
+/// композитора (у ядра своего клиента Wayland нет — спрашивает вызывающий).
+pub fn init_cinnamon_layer_shell_live(globals: Option<&[String]>) -> bool {
+    let env = |n: &str| std::env::var(n).unwrap_or_default();
+    let service = || {
+        cinnamon_bg_service_files(&env("XDG_DATA_HOME"), &env("HOME"), &env("XDG_DATA_DIRS"))
+            .iter()
+            .any(|p| std::path::Path::new(p).is_file())
+    };
+    let on = cinnamon_layer_shell(
+        &env("XDG_CURRENT_DESKTOP"),
+        &env("XDG_SESSION_TYPE"),
+        &env("WAYLAND_DISPLAY"),
+        globals,
+        is_cinnamon_desktop(&env("XDG_CURRENT_DESKTOP")) && service(),
+    );
+    set_cinnamon_layer_shell(on);
+    if on {
+        crate::log_info!("cinnamon-bg", "Cinnamon с layer-shell: живые обои слоем стола, не расширением оболочки");
+    }
+    on
+}
+
+/// Наблюдения и действия для [`restack_cinnamon_background`].
+pub trait CinnamonBgIo {
+    /// Запустить команду: stdout при коде 0, иначе `None`.
+    fn run(&self, argv: &[String]) -> Option<String>;
+    /// Подождать.
+    fn sleep_ms(&self, ms: u64);
+}
+
+/// Что вышло у [`restack_cinnamon_background`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BgRestack {
+    /// Службы фона нет на шине — переставлять нечего.
+    NotRunning,
+    /// Служба перезапущена, её поверхность теперь под нашей.
+    Restarted,
+    /// Перезапустить не вышло.
+    Failed,
+}
+
+fn svec(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|s| s.to_string()).collect()
+}
+
+/// `NameHasOwner` у шины — `(true,)`/`(false,)`.
+pub fn bus_name_has_owner_argv(name: &str) -> Vec<String> {
+    svec(&[
+        "gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+        "--method", "org.freedesktop.DBus.NameHasOwner", name,
+    ])
+}
+
+/// Номер процесса владельца имени — `(uint32 1234,)`.
+pub fn bus_name_pid_argv(name: &str) -> Vec<String> {
+    svec(&[
+        "gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+        "--method", "org.freedesktop.DBus.GetConnectionUnixProcessID", name,
+    ])
+}
+
+/// `Start()` службы фона: на поднятой — без действия, на отсутствующей —
+/// активация D-Bus.
+pub fn cinnamon_bg_start_argv() -> Vec<String> {
+    svec(&[
+        "gdbus", "call", "--session", "--dest", CINNAMON_BG_BUS, "--object-path", CINNAMON_BG_PATH, "--method",
+        "org.Cinnamon.Background.Start",
+    ])
+}
+
+/// Ответ `gdbus` — `(true,)`.
+pub fn parse_gdbus_bool(out: &str) -> bool {
+    out.trim().trim_start_matches('(').starts_with("true")
+}
+
+/// Число из ответа `gdbus` вида `(uint32 1234,)`.
+pub fn parse_gdbus_uint(out: &str) -> Option<u32> {
+    out.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty()).last()?.parse().ok()
+}
+
+/// Сколько ждать ухода и возвращения имени службы (шагами по 100 мс).
+const BG_WAIT_STEPS: u32 = 50;
+
+/// Перезапустить службу фона Cinnamon, чтобы её поверхность легла под нашу.
+pub fn restack_cinnamon_background(io: &dyn CinnamonBgIo) -> BgRestack {
+    let owner = |io: &dyn CinnamonBgIo| io.run(&bus_name_has_owner_argv(CINNAMON_BG_BUS)).is_some_and(|o| parse_gdbus_bool(&o));
+    if !owner(io) {
+        return BgRestack::NotRunning;
+    }
+    let unit_active = io
+        .run(&svec(&["systemctl", "--user", "is-active", CINNAMON_BG_UNIT]))
+        .is_some_and(|o| o.trim() == "active");
+    if unit_active {
+        // Type=dbus: `restart` возвращается, когда служба снова взяла имя.
+        return if io.run(&svec(&["systemctl", "--user", "restart", CINNAMON_BG_UNIT])).is_some() {
+            BgRestack::Restarted
+        } else {
+            BgRestack::Failed
+        };
+    }
+    let Some(pid) = io.run(&bus_name_pid_argv(CINNAMON_BG_BUS)).and_then(|o| parse_gdbus_uint(&o)) else {
+        return BgRestack::Failed;
+    };
+    if io.run(&svec(&["kill", "-TERM", &pid.to_string()])).is_none() {
+        return BgRestack::Failed;
+    }
+    for _ in 0..BG_WAIT_STEPS {
+        if !owner(io) {
+            break;
+        }
+        io.sleep_ms(100);
+    }
+    // Свой `Start()`: менеджер фона после лимита перезапусков сдаётся, а
+    // активация D-Bus поднимет службу и без него.
+    io.run(&cinnamon_bg_start_argv());
+    for _ in 0..BG_WAIT_STEPS {
+        if owner(io) {
+            return BgRestack::Restarted;
+        }
+        io.sleep_ms(100);
+    }
+    BgRestack::Failed
+}
+
+/// Живые наблюдения для [`restack_cinnamon_background`].
+pub struct LiveCinnamonBgIo;
+
+impl CinnamonBgIo for LiveCinnamonBgIo {
+    fn run(&self, argv: &[String]) -> Option<String> {
+        crate::splash_exec::run_capture(argv, 20.0).filter(|o| o.rc == 0).map(|o| o.stdout)
+    }
+    fn sleep_ms(&self, ms: u64) {
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
+}
+
+/// Сеанс Cinnamon на Wayland по окружению процесса.
+pub fn cinnamon_wayland_session_live() -> bool {
+    let env = |n: &str| std::env::var(n).unwrap_or_default();
+    is_cinnamon_desktop(&env("XDG_CURRENT_DESKTOP")) && is_wayland_session(&env("XDG_SESSION_TYPE"), &env("WAYLAND_DISPLAY"))
+}
+
+/// Через сколько после просьбы переставлять фон, когда о показе нашей
+/// поверхности ничего не известно (подключён монитор, служба фона поднялась
+/// заново): поверхности нужно дождаться настройки от композитора и кадра.
+pub const BG_RESTACK_DELAY_MS: u64 = 2500;
+
+/// Запасной срок для своей поверхности, о показе которой хост скажет сам
+/// ([`restack_cinnamon_background_shown`]): пришла весть «первый кадр на
+/// экране» — перестановка сразу, не пришла (ролик не декодируется,
+/// страница молчит) — по этому сроку, чтобы служба фона не закрыла окно
+/// навсегда.
+pub const BG_RESTACK_FALLBACK_MS: u64 = 6000;
+
+/// Выдержка после вести «первый кадр на экране»: композитору — разобрать
+/// коммит кадра, прежде чем служба фона уйдёт и вернётся под нас.
+pub const BG_RESTACK_SHOWN_MS: u64 = 50;
+
+/// Сколько после перезапуска службы фона (любым процессом Rexon) её новое
+/// появление на шине считается нашим, а не её собственным перезапуском.
+pub const BG_OWN_RESTART_WINDOW_MS: u64 = 15_000;
+
+/// Не больше стольких перезапусков службы фона за [`BG_RESTACK_WINDOW_MS`]
+/// на процесс: служба, падающая по кругу, не должна втягивать нас в
+/// бесконечный перезапуск (менеджер фона Cinnamon в таком случае сдаётся
+/// после первого же — `RESTART_LIMIT`).
+pub const BG_RESTACK_LIMIT: usize = 3;
+/// Окно счёта [`BG_RESTACK_LIMIT`].
+pub const BG_RESTACK_WINDOW_MS: u64 = 120_000;
+
+/// Метка «Rexon перезапустил службу фона» — общая на все процессы Rexon
+/// сеанса (окно, хосты обоев, клиент вывода): её время видят наблюдатели
+/// шины, чтобы не принять чужой (наш же) перезапуск за падение службы.
+pub fn bg_restack_stamp_path(xdg_runtime_dir: &str) -> String {
+    format!("{}/rexon-cinnamon-bg-restack.stamp", xdg_runtime_dir.trim_end_matches('/'))
+}
+
+/// Замок перестановки рядом с меткой: перезапуск службы фона идёт в сеансе
+/// одним процессом Rexon за раз.
+///
+/// Живой случай 15.11.2026: окно Rexon и хост видеообоев заказали
+/// перестановку почти одновременно; окно перезапустило службу, а хост в те
+/// же миллисекунды спросил шину, застал имя ушедшим и записал в журнал
+/// «службы фона Cinnamon нет — переставлять нечего». Под замком второй ждёт
+/// конца первого перезапуска и по метке видит, что повторять незачем.
+pub fn bg_restack_lock_path(xdg_runtime_dir: &str) -> String {
+    format!("{}.lock", bg_restack_stamp_path(xdg_runtime_dir))
+}
+
+/// Метка перезапуска: когда он начался и когда кончился (мс от эпохи).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BgRestackStamp {
+    pub started: u64,
+    /// `None` — перезапуск ещё идёт (или метка прежнего вида — одно число).
+    pub finished: Option<u64>,
+}
+
+impl BgRestackStamp {
+    /// Последний известный момент перезапуска.
+    pub fn latest(&self) -> u64 {
+        self.finished.unwrap_or(self.started).max(self.started)
+    }
+
+    /// Текст метки: «начало» или «начало конец».
+    pub fn to_text(&self) -> String {
+        match self.finished {
+            Some(end) => format!("{} {end}", self.started),
+            None => self.started.to_string(),
+        }
+    }
+}
+
+/// Разобрать текст метки ([`BgRestackStamp::to_text`]; одно число — метка
+/// прежнего вида, её момент считается началом).
+pub fn parse_bg_restack_stamp(text: &str) -> Option<BgRestackStamp> {
+    let mut parts = text.split_whitespace();
+    let started = parts.next()?.parse().ok()?;
+    let finished = parts.next().and_then(|s| s.parse().ok());
+    Some(BgRestackStamp { started, finished })
+}
+
+/// Можно ли ещё раз перезапустить службу: `history` — моменты прежних
+/// перезапусков этим процессом (мс), `now` — сейчас.
+pub fn bg_restack_allowed(history: &[u64], now: u64) -> bool {
+    history.iter().filter(|&&t| now.saturating_sub(t) < BG_RESTACK_WINDOW_MS).count() < BG_RESTACK_LIMIT
+}
+
+/// Служба фона снова на шине: перезапуск ли это наш (метка свежее
+/// [`BG_OWN_RESTART_WINDOW_MS`]) — тогда переставлять нечего.
+pub fn bg_owner_change_is_ours(stamp_ms: Option<u64>, now: u64) -> bool {
+    stamp_ms.is_some_and(|t| now.saturating_sub(t) < BG_OWN_RESTART_WINDOW_MS)
+}
+
+/// Перестановка, заказанная в `requested`, уже сделана другим процессом
+/// Rexon, если его перезапуск НАЧАЛСЯ (`started_ms`) не раньше
+/// `requested + slack_ms`: он уложил службу под всё, что было на экране к
+/// тому времени. Для заказа «первый кадр на экране» `slack_ms` — ноль:
+/// поверхность уже показана, годится любой перезапуск после.
+pub fn bg_restack_done_by_other(started_ms: Option<u64>, requested: u64, slack_ms: u64) -> bool {
+    started_ms.is_some_and(|t| t >= requested.saturating_add(slack_ms))
+}
+
+/// Заказ перестановки, ждущий своего срока.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BgRestackOrder {
+    /// Когда исполнять (мс от эпохи).
+    pub due: u64,
+    /// Перезапуск, начатый не раньше `requested + slack` (мс от эпохи), нашу
+    /// поверхность уже покрыл ([`bg_restack_done_by_other`]).
+    pub requested: u64,
+    pub slack: u64,
+}
+
+/// Слить новую просьбу с ждущим заказом.
+///
+/// * Просьба по сроку (`shown == false`, `delay_ms` от `now`) только
+///   отодвигает исполнение: несколько просьб подряд — окно на каждый
+///   монитор, подъём вывода — сливаются в один перезапуск после последней.
+/// * Весть «первый кадр на экране» (`shown == true`) подтягивает срок к
+///   `now + BG_RESTACK_SHOWN_MS` и заменяет запасной: ждать дальше незачем,
+///   поверхность уже показана.
+pub fn merge_bg_restack_order(pending: Option<BgRestackOrder>, now: u64, delay_ms: u64, shown: bool) -> BgRestackOrder {
+    if shown {
+        return BgRestackOrder { due: now + BG_RESTACK_SHOWN_MS, requested: now, slack: 0 };
+    }
+    let due = now + delay_ms;
+    match pending {
+        Some(p) => BgRestackOrder { due: p.due.max(due), ..p },
+        None => BgRestackOrder { due, requested: now, slack: delay_ms },
+    }
+}
+
+fn unix_ms_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn bg_runtime_dir_live() -> Option<String> {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
+    (!runtime.is_empty()).then_some(runtime)
+}
+
+/// Метка перезапуска, `None` — метки нет.
+pub fn bg_restack_stamp_live() -> Option<BgRestackStamp> {
+    let path = bg_restack_stamp_path(&bg_runtime_dir_live()?);
+    parse_bg_restack_stamp(&std::fs::read_to_string(path).ok()?)
+}
+
+/// Последний момент перезапуска (мс от эпохи), `None` — метки нет.
+pub fn bg_restack_stamp_ms_live() -> Option<u64> {
+    bg_restack_stamp_live().map(|s| s.latest())
+}
+
+fn bg_restack_stamp_write_live(stamp: BgRestackStamp) {
+    if let Some(runtime) = bg_runtime_dir_live() {
+        let _ = std::fs::write(bg_restack_stamp_path(&runtime), stamp.to_text());
+    }
+}
+
+/// Взять замок перестановки ([`bg_restack_lock_path`]), дождавшись его.
+/// `None` — замка нет (нет каталога сеанса) — идём без него.
+fn bg_restack_lock_live() -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    let path = bg_restack_lock_path(&bg_runtime_dir_live()?);
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
+    // SAFETY: живой дескриптор файла; замок снимается закрытием файла.
+    (unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(file)
+}
+
+/// Отложить перестановку фона Cinnamon: несколько просьб подряд (окно на
+/// каждый монитор, подъём вывода) сливаются в один перезапуск службы через
+/// [`BG_RESTACK_DELAY_MS`] после последней. Вне Cinnamon на Wayland — ничего.
+pub fn restack_cinnamon_background_soon(reason: &str) {
+    restack_cinnamon_background_after(reason, BG_RESTACK_DELAY_MS);
+}
+
+/// То же с явной задержкой (сцене Wallpaper Engine нужно больше: её
+/// поверхность получает первый кадр, когда демон уже поднял рендерер; своей
+/// поверхности хоста — запасной срок [`BG_RESTACK_FALLBACK_MS`]).
+pub fn restack_cinnamon_background_after(reason: &str, delay_ms: u64) {
+    schedule_bg_restack(reason, delay_ms, false);
+}
+
+/// Наша поверхность показала первый кадр (видео — первый кадр ролика):
+/// уложить службу фона под неё сейчас, не дожидаясь запасного срока.
+pub fn restack_cinnamon_background_shown(reason: &str) {
+    schedule_bg_restack(reason, 0, true);
+}
+
+fn schedule_bg_restack(reason: &str, delay_ms: u64, shown: bool) {
+    use std::sync::Mutex;
+    use std::time::Duration;
+    /// Ждущий заказ.
+    static PENDING: Mutex<Option<BgRestackOrder>> = Mutex::new(None);
+    static HISTORY: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+    /// Поток исполнения жив (заказ мог уже уйти в работу, а поток — ещё нет).
+    static WORKER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    use std::sync::atomic::Ordering;
+    if !cinnamon_wayland_session_live() {
+        return;
+    }
+    {
+        let mut slot = PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = Some(merge_bg_restack_order(*slot, unix_ms_now(), delay_ms, shown));
+    }
+    if shown {
+        crate::log_info!("cinnamon-bg", "фон Cinnamon укладываем под наши обои сейчас: {reason} — первый кадр на экране");
+    } else {
+        crate::log_info!("cinnamon-bg", "фон Cinnamon уложим под наши обои: {reason}");
+    }
+    if WORKER.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let spawned = std::thread::Builder::new().name("rexon-cinnamon-bg".into()).spawn(move || loop {
+        let order = {
+            let mut slot = PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match *slot {
+                Some(o) if o.due > unix_ms_now() => Ok(o.due.saturating_sub(unix_ms_now())),
+                Some(o) => {
+                    *slot = None;
+                    Err(o)
+                }
+                None => {
+                    WORKER.store(false, Ordering::SeqCst);
+                    return;
+                }
+            }
+        };
+        let order = match order {
+            // Шаг сна короткий: весть «первый кадр» может подтянуть срок.
+            Ok(wait) => {
+                std::thread::sleep(Duration::from_millis(wait.min(50)));
+                continue;
+            }
+            Err(order) => order,
+        };
+        run_bg_restack(order, &HISTORY);
+    });
+    if let Err(e) = spawned {
+        crate::log_warn!("cinnamon-bg", "перестановка фона не запущена: {e}");
+        if let Ok(mut slot) = PENDING.lock() {
+            *slot = None;
+        }
+        WORKER.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Исполнить созревший заказ: под замком сеанса, с защитой от круга.
+fn run_bg_restack(order: BgRestackOrder, history: &std::sync::Mutex<Vec<u64>>) {
+    // Под замком: другой процесс Rexon, перезапускающий службу прямо сейчас,
+    // сначала закончит, и его метка будет видна.
+    let _lock = bg_restack_lock_live();
+    if bg_restack_done_by_other(bg_restack_stamp_live().map(|s| s.started), order.requested, order.slack) {
+        crate::log_info!("cinnamon-bg", "службу фона уже перезапустил другой процесс Rexon — повторять незачем");
+        return;
+    }
+    let now = unix_ms_now();
+    {
+        let mut history = history.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !bg_restack_allowed(&history, now) {
+            crate::log_warn!(
+                "cinnamon-bg",
+                "служба фона Cinnamon перезапускается слишком часто — больше не трогаем её ({BG_RESTACK_LIMIT} раза за {} с)",
+                BG_RESTACK_WINDOW_MS / 1000
+            );
+            return;
+        }
+        history.retain(|&t| now.saturating_sub(t) < BG_RESTACK_WINDOW_MS);
+        history.push(now);
+    }
+    bg_restack_stamp_write_live(BgRestackStamp { started: now, finished: None });
+    let res = restack_cinnamon_background(&LiveCinnamonBgIo);
+    bg_restack_stamp_write_live(BgRestackStamp { started: now, finished: Some(unix_ms_now()) });
+    match res {
+        BgRestack::Restarted => {
+            crate::log_info!("cinnamon-bg", "служба фона Cinnamon перезапущена — её картинка под нашими обоями")
+        }
+        BgRestack::NotRunning => crate::log_info!("cinnamon-bg", "службы фона Cinnamon нет — переставлять нечего"),
+        BgRestack::Failed => {
+            crate::log_warn!("cinnamon-bg", "службу фона Cinnamon перезапустить не вышло — её картинка может закрыть обои")
+        }
+    }
+}
+
+/// Наблюдатель шины увидел, что служба фона снова взяла имя. Не наш
+/// перезапуск (служба упала, её поднял менеджер фона или активация D-Bus)
+/// — её новая поверхность легла поверх наших обоев: переставить снова.
+pub fn on_cinnamon_bg_owner_appeared_live() {
+    if bg_owner_change_is_ours(bg_restack_stamp_ms_live(), unix_ms_now()) {
+        return;
+    }
+    restack_cinnamon_background_soon("служба фона Cinnamon поднялась заново");
+}
+
+/// Следить за шиной: служба фона Cinnamon снова взяла имя не нашим
+/// перезапуском (упала и поднялась, её перезапустил менеджер фона) — её
+/// новая поверхность легла поверх наших обоев, переставить
+/// ([`on_cinnamon_bg_owner_appeared_live`]). Один поток на процесс; вне
+/// Cinnamon на Wayland — ничего. Зовут процессы, чья поверхность лежит в
+/// слое фона: хост обоев слоем и клиент вывода сцен.
+pub fn spawn_cinnamon_bg_owner_watch_live() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    if !cinnamon_wayland_session_live() {
+        return;
+    }
+    STARTED.call_once(|| {
+        let spawned = std::thread::Builder::new().name("rexon-cinnamon-bg-watch".into()).spawn(|| {
+            let watch = || -> zbus::Result<()> {
+                let conn = zbus::blocking::Connection::session()?;
+                let proxy = zbus::blocking::fdo::DBusProxy::new(&conn)?;
+                for signal in proxy.receive_name_owner_changed_with_args(&[(0, CINNAMON_BG_BUS)])? {
+                    if signal.args()?.new_owner().is_some() {
+                        on_cinnamon_bg_owner_appeared_live();
+                    }
+                }
+                Ok(())
+            };
+            if let Err(e) = watch() {
+                crate::log_warn!("cinnamon-bg", "слежка за службой фона Cinnamon оборвалась: {e}");
+            }
+        });
+        if let Err(e) = spawned {
+            crate::log_warn!("cinnamon-bg", "слежка за службой фона Cinnamon не запущена: {e}");
+        }
+    });
+}
+
+/// Хост-клиент вывода на Wayland с layer-shell не рисует сам, а поднимает
+/// штатный клиент вывода waywallen — этот бинарь.
+pub const LAYER_SHELL_CLIENT_BIN: &str = "waywallen-layer-shell";
+
+/// Где искать `waywallen-layer-shell`, по порядку: рядом с родителем (демон
+/// запускает хост сам; у AppImage демон живёт в точке монтирования, и
+/// клиент вывода лежит там же), рядом с живыми процессами демона, рядом с
+/// демоном пакета дистрибутива. Последний шанс — поиск по `PATH`
+/// исполнителем ([`LAYER_SHELL_CLIENT_BIN`]).
+pub fn layer_shell_client_candidates(parent_exe: Option<&str>, daemon_exes: &[String]) -> Vec<String> {
+    let sibling = |exe: &str| {
+        std::path::Path::new(exe)
+            .parent()
+            .map(|d| d.join(LAYER_SHELL_CLIENT_BIN).to_string_lossy().into_owned())
+    };
+    let is_daemon = |exe: &str| {
+        std::path::Path::new(exe)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n == "waywallen")
+    };
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |p: Option<String>| {
+        if let Some(p) = p {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    };
+    if let Some(exe) = parent_exe.filter(|e| is_daemon(e)) {
+        push(sibling(exe));
+    }
+    for exe in daemon_exes.iter().filter(|e| is_daemon(e)) {
+        push(sibling(exe));
+    }
+    push(sibling(crate::we_client::SYSTEM_DAEMON));
+    out
+}
+
+/// Строка запуска клиента вывода для сокета демона.
+pub fn layer_shell_client_argv(bin: &str, socket: &str) -> Vec<String> {
+    let mut argv = vec![bin.to_string()];
+    if !socket.is_empty() {
+        argv.push("--socket".to_string());
+        argv.push(socket.to_string());
+    }
+    argv.push("--name".to_string());
+    argv.push("rexon".to_string());
+    argv
+}
+
+/// Метка «Rexon отпустил вывод сцен»: свои обои (картинка, видео…) на
+/// Cinnamon с layer-shell снимают поверхность `waywallen-layer-shell`, иначе
+/// она закрыла бы их; применение сцены метку убирает. Лежит в
+/// `$XDG_STATE_HOME/rexon/` — переживает перезаход: последним выбором
+/// человека остаются его обои, а не сцена.
+pub fn display_off_marker_path(xdg_state_home: &str, home: &str) -> String {
+    let base = if xdg_state_home.trim().is_empty() {
+        format!("{}/.local/state", home.trim_end_matches('/'))
+    } else {
+        xdg_state_home.trim_end_matches('/').to_string()
+    };
+    format!("{base}/rexon/waywallen-display.off")
+}
+
+/// Путь метки на живом сеансе.
+pub fn display_off_marker_live() -> String {
+    let env = |n: &str| std::env::var(n).unwrap_or_default();
+    display_off_marker_path(&env("XDG_STATE_HOME"), &env("HOME"))
+}
+
+/// Отпустить (`off = true`) или вернуть вывод сцен на Cinnamon с
+/// layer-shell. Истина — метку поменяли.
+pub fn set_layer_shell_display_off_live(off: bool) -> bool {
+    let path = display_off_marker_live();
+    let p = std::path::Path::new(&path);
+    if off == p.exists() {
+        return false;
+    }
+    let done = if off {
+        p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(p, b"").is_ok()
+    } else {
+        std::fs::remove_file(p).is_ok()
+    };
+    if done {
+        crate::log_info!(
+            "cinnamon-bg",
+            "вывод сцен Wallpaper Engine {}",
+            if off { "отпущен ради своих обоев" } else { "возвращён" }
+        );
+    }
+    done
+}
+
+/// Что сделать хосту-клиенту вывода на Wayland.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WaylandHostRole {
+    /// Ждать: выводить нечем или не нам.
+    Idle,
+    /// Поднимать и сторожить штатный клиент вывода по этой строке.
+    Delegate(Vec<String>),
+}
+
+/// Решение хоста-клиента вывода на Wayland: композитор с layer-shell и
+/// найденный `waywallen-layer-shell` — поднимать его (на любом столе из
+/// [`REXON_DISPLAY_DESKTOPS`]: Cinnamon 6.8, XFCE/LXQt на labwc); иначе ждать.
+pub fn wayland_host_role(globals: &[String], client_bin: Option<&str>, socket: &str) -> WaylandHostRole {
+    match client_bin {
+        Some(bin) if globals_have_layer_shell(globals) => WaylandHostRole::Delegate(layer_shell_client_argv(bin, socket)),
+        _ => WaylandHostRole::Idle,
+    }
+}
+
+/// Пауза перед новым подъёмом упавшего клиента вывода: 2 с, вдвое за
+/// каждое падение подряд, не больше 30 с (как у демона, только с потолком
+/// повыше — клиент падает обычно от отказа композитора).
+pub fn layer_shell_restart_delay_ms(crashes_in_row: u32) -> u64 {
+    (2000u64 << crashes_in_row.min(4)).min(30_000)
+}
+
 /// Что вышло у [`set_waywallen_gnome_display`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GnomeDisplaySwitch {

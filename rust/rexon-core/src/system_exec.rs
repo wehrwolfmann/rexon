@@ -648,6 +648,7 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
             .as_deref()
             == Some("/dev/null");
         let mut facts = plan::DmFacts {
+            unit: unit.to_string(),
             binary_exists: self.program_exists(&binary),
             masked,
             needs_xorg: spec.is_some_and(|s| s.needs_xorg),
@@ -722,6 +723,29 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
         facts
     }
 
+    /// Службы из `Requires=` юнита экрана входа, которых нет ни в одном
+    /// каталоге юнитов или которые замаскированы. Только чтение файлов.
+    pub fn missing_required_units(&self, unit_text: &str) -> Vec<String> {
+        plan::unit_values(unit_text, "Unit", "Requires")
+            .into_iter()
+            .filter(|u| u.ends_with(".service") && !u.contains('@'))
+            .filter(|u| {
+                let masked = self.io.realpath(&format!("/etc/systemd/system/{u}")).as_deref() == Some("/dev/null");
+                masked || !plan::DM_UNIT_DIRS.iter().any(|d| self.io.is_file(&format!("{d}/{u}")))
+            })
+            .collect()
+    }
+
+    /// Установленные столы, которым не всё равно, какой экран входа
+    /// ([`plan::DESKTOP_DM_RULES`]): ид из базы ядра. Только PATH и файлы.
+    pub fn installed_dm_sensitive_desktops(&self) -> Vec<String> {
+        plan::DESKTOP_DM_RULES
+            .iter()
+            .filter(|r| r.binaries.iter().all(|b| self.program_exists(b)))
+            .map(|r| r.de_id.to_string())
+            .collect()
+    }
+
     /// Экраны входа на этой системе для раздела «Экран входа в систему»:
     /// установленные, какой основной, готов ли каждый стать основным.
     /// Только чтение — ничего не включает и не выключает.
@@ -773,7 +797,8 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
                     .unwrap_or_default();
                 let exec = plan::unit_exec_start(text).unwrap_or_default();
                 let spec = plan::login_manager_spec(&unit);
-                let facts = self.dm_facts(&unit, spec, &exec, family);
+                let mut facts = self.dm_facts(&unit, spec, &exec, family);
+                facts.missing_units = self.missing_required_units(text);
                 plan::LoginManagerInfo {
                     label: label(&unit),
                     binary: exec.first().cloned(),
@@ -843,8 +868,50 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
             immutable: self.distro_immutable(),
             running,
             previous: self.io.read_text(plan::PREVIOUS_DM_FILE),
+            desktops: self.installed_dm_sensitive_desktops(),
+            autologin_notes: self.autologin_notes(&list),
         };
         login_screen_view(&list, &backend, &facts)
+    }
+
+    /// Что станет с автовходом, если основным сделать `new` (прежний —
+    /// `old`). Только чтение: файлы настроек экранов входа, PAM, `getent`.
+    pub fn autologin_transfer(&self, old: &str, new: &str) -> crate::dm_autologin::Transfer {
+        use crate::dm_autologin as al;
+        let read = |p: &str| self.io.read_text(p);
+        let list = |d: &str| self.io.list_dir(d).unwrap_or_default();
+        let pam = al::autologin_spec(new).and_then(|s| {
+            [format!("/etc/pam.d/{}", s.pam), format!("/usr/lib/pam.d/{}", s.pam)].iter().find_map(|p| read(p))
+        });
+        // Группу спрашиваем, только когда автовход есть: иначе она не нужна.
+        let source_on = matches!(al::read_autologin(old, &read, &list), al::AutologinState::On(_));
+        let group_members = pam.as_deref().filter(|_| source_on).and_then(al::pam_autologin_group).and_then(|g| {
+            let out = self.io.run(&["getent".to_string(), "group".to_string(), g], Some(5), true);
+            let line = out.stdout.lines().next().unwrap_or("").to_string();
+            (out.rc() == Some(0) && !line.is_empty()).then(|| {
+                line.split(':').nth(3).unwrap_or("").split(',').map(str::trim).filter(|m| !m.is_empty()).map(str::to_string).collect()
+            })
+        });
+        let facts = al::TargetFacts {
+            pam_autologin: pam,
+            group_members,
+            greeter_user: plan::login_manager_spec(new).and_then(|s| s.user).map(str::to_string),
+        };
+        al::plan_transfer(old, new, &read, &list, &facts)
+    }
+
+    /// Предупреждения об автовходе для окна подтверждения каждой строки,
+    /// которую можно сделать основной: `(юнит, текст)`.
+    fn autologin_notes(&self, list: &[plan::LoginManagerInfo]) -> Vec<(String, String)> {
+        let Some(old) = list.iter().find(|m| m.active) else { return Vec::new() };
+        list.iter()
+            .filter(|m| !m.active && m.present)
+            .filter_map(|m| {
+                let t = self.autologin_transfer(&old.unit, &m.unit);
+                let label = if m.label.trim().is_empty() { m.unit.as_str() } else { m.label.as_str() };
+                crate::dm_autologin::transfer_note(label, &t).map(|n| (m.unit.clone(), n))
+            })
+            .collect()
     }
 
     /// «Сделать основным»: `(сделано, текст для человека)`.
@@ -895,6 +962,14 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
         };
         let cmd = plan::switch_dm_cmd(self.family(), unit, greeter, self.pkg_helper_available());
         let old = list.iter().find(|m| m.active).map(|m| m.unit.clone());
+        // Автовход, который должен оказаться у нового, — для сверки после.
+        let autologin_want = old.as_deref().map(|o| {
+            crate::dm_autologin::read_autologin(o, &|p| self.io.read_text(p), &|d| self.io.list_dir(d).unwrap_or_default())
+        });
+        let autologin_moves = old.as_deref().is_some_and(|o| {
+            let t = self.autologin_transfer(o, unit);
+            !t.is_lost() && t.notes.iter().any(|n| matches!(n, crate::dm_autologin::Note::Moved { .. }))
+        });
         // Сеанс прав окна (тот же один пароль); его нет — прежний помощник
         // пакетов. Сырого пути у переключения нет ни там, ни там (З5).
         let op = crate::privilege::op::PrivOp::SwitchDm {
@@ -916,6 +991,20 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
         });
         let manual = format!("sudo {}", manual_argv.get(1..).unwrap_or_default().join(" "));
         let (ok, mut message) = plan::switch_dm_outcome(rc, &out.stdout, &out.stderr, unit, &manual);
+        if ok && autologin_moves {
+            // Сверка по файлам нового экрана входа, а не по словам помощника:
+            // прежний путь (скрипт) автовход не переносит.
+            if let Some(note) = crate::dm_autologin::transfer_result_note(
+                unit,
+                &row_label(info),
+                autologin_want.as_ref().unwrap_or(&crate::dm_autologin::AutologinState::Off),
+                &|p| self.io.read_text(p),
+                &|d| self.io.list_dir(d).unwrap_or_default(),
+            ) {
+                message.push_str("\n\n");
+                message.push_str(&note);
+            }
+        }
         if ok {
             if let Some(hint) = old.and_then(|o| plan::login_manager_rollback_hint(&o, &backend)) {
                 message.push_str("\n\n");
@@ -2059,6 +2148,11 @@ pub struct LoginScreenView {
     /// «Как вернуть прежний экран входа» — текст файла, который помощник
     /// оставил для консоли ([`plan::PREVIOUS_DM_FILE`]); пусто — файла нет.
     pub rollback: String,
+    /// Что теряют установленные столы под ОСНОВНЫМ экраном входа
+    /// ([`plan::dm_compat_issues`]): сначала «стол не работает», потом
+    /// мелочи. Пусто — всем столам он подходит. У остальных строк то же
+    /// самое — в их `warnings` (что будет, если сделать основным их).
+    pub compat: Vec<String>,
 }
 
 /// Наблюдения для [`login_screen_view`] — собирает обвязка, только чтение.
@@ -2073,6 +2167,12 @@ pub struct LoginScreenFacts {
     pub running: Vec<String>,
     /// Текст [`plan::PREVIOUS_DM_FILE`], если файл есть.
     pub previous: Option<String>,
+    /// Установленные столы, которым не всё равно, какой экран входа
+    /// ([`SystemExec::installed_dm_sensitive_desktops`]).
+    pub desktops: Vec<String>,
+    /// Что станет с автовходом при переключении на юнит:
+    /// `(юнит, предупреждение)` ([`crate::dm_autologin::transfer_note`]).
+    pub autologin_notes: Vec<(String, String)>,
 }
 
 fn backend_key(backend: &plan::DmSwitchBackend) -> &'static str {
@@ -2128,6 +2228,14 @@ pub fn login_manager_pending_note(new_label: &str, running_label: &str) -> Strin
     )
 }
 
+/// Текст подтверждения + предупреждение об автовходе (ДО пароля).
+fn with_autologin_note(confirm: String, unit: &str, facts: &LoginScreenFacts) -> String {
+    match facts.autologin_notes.iter().find(|(u, _)| u == unit) {
+        Some((_, note)) => format!("{confirm}\n\n{note}"),
+        None => confirm,
+    }
+}
+
 /// Решение для раздела «Менеджер входа» — чистая функция над списком
 /// [`SystemExec::login_managers`] и наблюдениями.
 ///
@@ -2147,9 +2255,35 @@ pub fn login_screen_view(
         .unwrap_or_default();
     let switchable = note.is_empty();
     let old = list.iter().find(|m| m.active).map(|m| m.unit.as_str());
+    // Совместимость со столами (только чтение): у основного — общей
+    // строкой раздела, у остальных — только то, что добавится к этому при
+    // переключении на них (то же, что уже сказано, не повторяется). Те же
+    // строки — в окне подтверждения, чтобы их видели ДО пароля.
+    let now_issues = old.map(|u| plan::dm_compat_issues(u, &facts.desktops)).unwrap_or_default();
+    let compat: Vec<String> = now_issues.iter().map(|i| i.text.clone()).collect();
     let managers = list
         .iter()
         .map(|info| {
+            let added: Vec<String> = if info.active {
+                Vec::new()
+            } else {
+                // Сравнение по столу, а не по строке: имя экрана входа в
+                // текстах своё.
+                plan::dm_compat_issues(&info.unit, &facts.desktops)
+                    .into_iter()
+                    .filter(|i| !now_issues.iter().any(|n| n.de_id == i.de_id))
+                    .map(|i| i.text)
+                    .collect()
+            };
+            let with_compat = |text: String| {
+                if added.is_empty() {
+                    text
+                } else {
+                    let mut parts = vec![text];
+                    parts.extend(added.iter().cloned());
+                    parts.join("\n\n")
+                }
+            };
             let (state, mut reason, greeters) = match &info.readiness {
                 plan::DmReadiness::Ready => ("ready", String::new(), Vec::new()),
                 plan::DmReadiness::NeedsGreeterChoice(list) => ("needs_greeter", String::new(), list.clone()),
@@ -2186,14 +2320,22 @@ pub fn login_screen_view(
                     .map(|g| LoginGreeterRow {
                         id: g.id.clone(),
                         name: if g.name.trim().is_empty() { g.id.clone() } else { g.name.clone() },
-                        confirm: plan::login_manager_switch_confirm(old, &info.unit, Some(g), backend),
+                        confirm: with_compat(with_autologin_note(
+                            plan::login_manager_switch_confirm(old, &info.unit, Some(g), backend),
+                            &info.unit,
+                            facts,
+                        )),
                     })
                     .collect(),
                 greeter: suggested,
                 can_switch,
                 confirm_title: plan::login_manager_switch_title(&info.unit),
-                confirm: plan::login_manager_switch_confirm(old, &info.unit, None, backend),
-                warnings: info.warnings.clone(),
+                confirm: with_compat(with_autologin_note(
+                    plan::login_manager_switch_confirm(old, &info.unit, None, backend),
+                    &info.unit,
+                    facts,
+                )),
+                warnings: added.iter().cloned().chain(info.warnings.iter().cloned()).collect(),
             }
         })
         .collect::<Vec<_>>();
@@ -2211,6 +2353,7 @@ pub fn login_screen_view(
         note,
         pending,
         rollback: facts.previous.as_deref().map(str::trim).unwrap_or_default().to_string(),
+        compat,
     }
 }
 

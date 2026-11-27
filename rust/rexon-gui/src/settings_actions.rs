@@ -1359,7 +1359,7 @@ impl qobject::SettingsActions {
         // файла исполнитель запрещает.
         self.run_wallpaper_job(move |exec| {
             let res = exec.apply(&path, &fmt, "");
-            qs::wallpaper_done(res.ok, &res.message)
+            qs::wallpaper_done_warned(res.ok, &res.message, res.warning.as_deref())
         });
     }
 
@@ -3005,7 +3005,11 @@ impl qobject::SettingsActions {
         if let Some(line) = log_line {
             self.as_mut().operation_log(QString::from(&line));
         }
-        self.set_op(op);
+        // Как в «Рабочих столах»: оповещение — только при видимой перемене.
+        let old = &self.rust().op;
+        if op.bar != old.bar || op.status != old.status || op.current != old.current {
+            self.set_op(op);
+        }
     }
 
     fn apply_op_cancellable(self: Pin<&mut Self>, allowed: bool) {
@@ -3204,7 +3208,7 @@ impl qobject::SettingsActions {
         // нагрузкой поднимет общая фоновая дверь.
         self.as_mut().run_wallpaper_job(move |exec| {
             let res = exec.apply_youtube(&job_url, &job_quality, &job_mode, audio);
-            qs::youtube_done(res.ok, &res.message)
+            qs::done_or_warned(res.ok, &res.message, res.warning.as_deref(), qs::youtube_done)
         });
         QString::from(&qs::youtube_starting_status(&quality, &effective, audio))
     }
@@ -3268,7 +3272,7 @@ impl qobject::SettingsActions {
         // Хост веб-обоев поднимает исполнитель ядра (`apply` → `web_plan`).
         self.as_mut().run_wallpaper_job(move |exec| {
             let res = exec.apply(&job_target, "web", "");
-            qs::web_done(res.ok, &res.message)
+            qs::done_or_warned(res.ok, &res.message, res.warning.as_deref(), qs::web_done)
         });
         QString::from(&qs::web_loading_status(&target))
     }

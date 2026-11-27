@@ -124,6 +124,10 @@ const QML_FILES: &[&str] = &[
     // Текст с выравниванием по началу строки и для языка справа налево
     // (почему отдельный тип — в шапке файла).
     "qml/RexonText.qml",
+    // Текст со ссылками из чужого текста и окно вопроса перед внешним
+    // сайтом — одни на все вкладки (решение — ядро `link_policy`).
+    "qml/RexonLinkText.qml",
+    "qml/RexonLinkDialog.qml",
     // Направленные значки и клавиши ← → по зеркалированию места — одни на
     // все листалки и шевроны (почему отдельный тип — в шапке файла).
     "qml/RexonArrows.qml",
@@ -161,6 +165,12 @@ const QML_FILES: &[&str] = &[
 const BRIDGE_FILES: &[&str] = &[
     // Хозяин главного окна на Rust: состав разделов и палитра.
     "src/main_window.rs",
+    // Журнал действий человека: синглтон `ActionJournal` для общих
+    // контролов, меню окна и полосы разделов.
+    "src/action_journal.rs",
+    // Ссылки из чужого текста: синглтон `LinkGuard` общего компонента
+    // `RexonLinkText.qml` (карточка своего магазина, вопрос, ↗).
+    "src/link_guard.rs",
     // Обучение при первом запуске: сценарий и прогресс из ядра для накладки.
     "src/onboarding_overlay.rs",
     // Мастер первого запуска: решение ядра, подписи, фоновая установка.
@@ -521,6 +531,26 @@ fn bake_preview_shader() -> std::path::PathBuf {
     qrc
 }
 
+/// Каталог профиля (`target/<профиль>`, где лежат бинари) по OUT_DIR.
+///
+/// Глубина OUT_DIR зависит от версии cargo: до 1.100 —
+/// `<профиль>/build/<крейт>-<хэш>/out`, с 1.100 —
+/// `<профиль>/build/<крейт>/<хэш>/out`. Прежний счёт «три уровня вверх»
+/// на новой раскладке давал `<профиль>/build`: свежие .mo уходили в
+/// `build/locale`, а пакет 15.11.2026 взял из `<профиль>/locale` каталог
+/// прошлой сборки со старыми строками. Поэтому ищем ближайший снизу
+/// каталог `build` и берём его родителя — так верно при обеих раскладках
+/// (и с `--target`).
+fn profile_dir(out_dir: &std::path::Path) -> std::path::PathBuf {
+    out_dir
+        .ancestors()
+        .skip(1)
+        .find(|p| p.file_name().is_some_and(|n| n == "build"))
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| panic!("в OUT_DIR нет каталога build: {}", out_dir.display()))
+        .to_path_buf()
+}
+
 fn build_translations() {
     let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let root = manifest.join("../..");
@@ -531,15 +561,8 @@ fn build_translations() {
     if !po.join("LINGUAS").is_file() {
         return;
     }
-    // OUT_DIR = target/<профиль>/build/<крейт>-<хэш>/out: профиль — на три
-    // уровня выше (с `--target` путь длиннее спереди, но не сзади).
     let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let profile_dir = out_dir
-        .ancestors()
-        .nth(3)
-        .expect("OUT_DIR глубже трёх уровней")
-        .to_path_buf();
-    let dest = profile_dir.join("locale");
+    let dest = profile_dir(&out_dir).join("locale");
     let status = std::process::Command::new("bash")
         .arg(&script)
         .arg("--build")

@@ -61,18 +61,20 @@ Rectangle {
                                       && (Math.abs(section.strength - (section.st.strength || 0)) > 0.001
                                           || Math.abs(section.speed - (section.st.speed || 0)) > 0.001))
 
-    function reload() {
-        section.st = JSON.parse(actions.state(section.de));
+    function take(json) {
+        section.st = JSON.parse(json);
         section.selected = section.st.preset || "";
         section.strength = section.st.strength !== undefined ? section.st.strength : 0.6;
         section.speed = section.st.speed !== undefined ? section.st.speed : 1.0;
     }
 
-    function did(text) {
-        if (text)
-            section.message(text);
-        section.reload();
+    function reload() {
+        section.take(actions.state(section.de));
     }
+
+    /// Идёт запись (рабочий поток `ScreenEffectsActions`): кнопки неактивны.
+    /// Запись НЕ синхронная — 15.11.2026 окно зависало на быстрых нажатиях.
+    readonly property bool busy: actions.busy
 
     // ── Защита от чёрного экрана (правило #13) ────────────────────────────
     // Шейдер может не собраться на чужом драйвере, и тогда экран темнеет.
@@ -84,17 +86,42 @@ Rectangle {
     property int secondsLeft: 0
     property var previous: null
 
+    /// Что было до последнего «Применить» — для отката пробного показа.
+    property var before: null
+
     function applySelected() {
-        const before = { preset: section.st.preset || "", strength: section.st.strength, speed: section.st.speed };
-        const text = actions.apply(section.de, section.selected, section.strength, section.speed);
-        section.did(text);
-        // Пробный показ — только своему шейдеру (`trial` ядра): штатный
-        // чёрно-белый фильтр KDE/Pantheon/COSMIC чёрного экрана не оставит.
-        if (section.st.trial === true && section.selected !== ""
-                && (section.st.preset || "") === section.selected) {
-            section.previous = before;
+        section.before = { preset: section.st.preset || "", strength: section.st.strength, speed: section.st.speed };
+        section.asked = section.selected;
+        actions.request("apply", section.de, section.selected, section.strength, section.speed);
+    }
+
+    /// Плитка, с которой ушло последнее действие. Пока оно шло, человек мог
+    /// выбрать другую — её выбор итог действия не сбивает.
+    property string asked: ""
+
+    function finished(tag, text, changed, shown, state) {
+        if (text)
+            section.message(text);
+        const picked = section.selected !== section.asked ? section.selected : null;
+        section.take(state);
+        if (picked !== null)
+            section.selected = picked;
+        // Пробный показ — только своему шейдеру (`trial` ядра; штатный
+        // чёрно-белый фильтр KDE/Pantheon/COSMIC чёрного экрана не оставит)
+        // и только если эффект действительно включён: у GNOME/Cinnamon это
+        // подтверждает само расширение (`shown`).
+        if (tag === "apply" && changed && shown && section.st.trial === true
+                && (section.st.preset || "") !== "") {
+            section.previous = section.before;
             section.secondsLeft = section.confirmSeconds;
             section.confirming = true;
+        }
+    }
+
+    Connections {
+        target: actions
+        function onFinished(tag, text, changed, shown, state) {
+            section.finished(tag, text, changed, shown, state);
         }
     }
 
@@ -107,8 +134,11 @@ Rectangle {
         const p = section.previous;
         section.confirming = false;
         section.previous = null;
-        if (p)
-            section.did(actions.apply(section.de, p.preset, p.strength, p.speed));
+        if (p) {
+            section.asked = p.preset;
+            section.selected = p.preset;
+            actions.request("revert", section.de, p.preset, p.strength, p.speed);
+        }
     }
 
     Timer {
@@ -507,6 +537,7 @@ Rectangle {
                 RexonButton {
                     objectName: "screenEffectsKeep"
                     pal: section.pal
+                    enabled: !section.busy
                     highlighted: true
                     text: qsTranslate("rexon", "Keep", "screen effect")
                     onClicked: section.keep()
@@ -515,6 +546,7 @@ Rectangle {
                 RexonButton {
                     objectName: "screenEffectsRevert"
                     pal: section.pal
+                    enabled: !section.busy
                     text: qsTranslate("rexon", "Revert", "screen effect")
                     onClicked: section.revert()
                 }
@@ -530,8 +562,8 @@ Rectangle {
                 objectName: "screenEffectsApply"
                 pal: section.pal
                 highlighted: true
-                enabled: section.dirty
-                text: qsTranslate("rexon", "Apply")
+                enabled: section.dirty && !section.busy
+                text: section.busy ? qsTranslate("rexon", "Applying…", "screen effect") : qsTranslate("rexon", "Apply")
                 onClicked: section.applySelected()
             }
 
@@ -540,10 +572,16 @@ Rectangle {
                 objectName: "screenEffectsRestore"
                 pal: section.pal
                 visible: (section.st.preset || "") !== ""
+                enabled: !section.busy
                 text: qsTranslate("rexon", "Restore as it was")
-                // Окружение — первым аргументом, как у «Применить»: без него
-                // пустая строка уходила вместо окружения, а сила — вместо пресета.
-                onClicked: section.did(actions.apply(section.de, "", section.strength, section.speed))
+                // Окружение — вторым аргументом, сразу за видом действия, как
+                // у «Применить»: прежде пустая строка уходила вместо
+                // окружения, а сила — вместо пресета.
+                onClicked: {
+                    section.asked = "";
+                    section.selected = "";
+                    actions.request("restore", section.de, "", section.strength, section.speed);
+                }
             }
 
             Item { Layout.fillWidth: true }

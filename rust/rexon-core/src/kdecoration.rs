@@ -694,8 +694,13 @@ pub const PREVIEW_MODULE_QMLDIR: &str = "org/kde/kwin/private/kdecoration/qmldir
 /// (иначе кадр выходит вдвое больше плитки).
 pub const SHOT_ENV: &[(&str, &str)] =
     &[("QT_QPA_PLATFORM", "offscreen"), ("QT_QUICK_BACKEND", "software"), ("QT_SCALE_FACTOR", "1")];
-/// Переменные масштаба, которые процессу снимка не передаются.
-pub const SHOT_ENV_REMOVE: &[&str] = &["QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR"];
+/// Переменные, которые процессу снимка не передаются: масштаб и метод
+/// ввода. Снимку вводить нечего, а `QT_IM_MODULE=ibus` заставляет Qt
+/// стучаться к демону IBus сеанса: 16.11.2026 в Cinnamon 6.8 Wayland
+/// снимок Breeze висел на этом до таймаута (15 с на плитку), без
+/// переменных — 0,8 с.
+pub const SHOT_ENV_REMOVE: &[&str] =
+    &["QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR", "QT_IM_MODULE", "QT_IM_MODULES"];
 /// Сколько ждать снимка, секунд.
 pub const SHOT_TIMEOUT_SECS: u64 = 15;
 /// Размеры рамки KWin по порядку номеров `Settings.borderSizesIndex`.

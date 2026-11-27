@@ -65,6 +65,8 @@ fn main() {
 /// загрузилась) — оба выставляет самопроверка из QML; у Flash 7 (нет
 /// Vulkan-видеокарты для обоев) и 8 (ролик не загрузился).
 fn run() -> i32 {
+    // Точка отсчёта замера «первый кадр на экране».
+    rexon_gui::wallpaper_host::mark_host_started();
     // Язык интерфейса Rexon — до всего остального: имя звукового потока
     // обоев в системном микшере берётся из каталога перевода
     // (`wallpaper_audio::stream_description`).
@@ -77,6 +79,23 @@ fn run() -> i32 {
     // Журнал — до разбора режима: строки `-START` и отказы плана уже
     // события. Справка и неверные ключи выше — вывод команды, не журнал.
     install_host_log(rest.iter().any(|a| a == "--selftest" || a.starts_with("--selftest=")));
+    let cinnamon_layer_shell = rexon_gui::wallpaper_host::cinnamon_layer::init_fact();
+    // Показ кадрами в файл заказывает только расширение оболочки. На
+    // Cinnamon с layer-shell обои кладёт Rexon слоем стола, и такой запуск —
+    // второй хост рядом с нашим (копия расширения от прежней версии). Код 0:
+    // расширение любой версии считает это «сняли сами» и молчит.
+    let stream = rexon_core::wallpaper_mmap::env_output_path(std::env::var("REXON_WP_OUTPUT").ok().as_deref()).is_some();
+    if mode != HostMode::Waywallen && rexon_core::wallpaper_engine::stream_host_refused(stream, cinnamon_layer_shell) {
+        rexon_core::log_warn!(
+            "wallpaper-host",
+            "расширение оболочки просит обои кадрами, а на Cinnamon с layer-shell их показывает Rexon слоем стола — второй хост не поднимаю"
+        );
+        return host_exit::OK;
+    }
+    // Один хост показа на сеанс: прежний (если он есть) сменяется — но
+    // только когда показывать точно есть что (план сложился), иначе
+    // негодный запуск снял бы работающие обои.
+    let take_lock = || rexon_gui::wallpaper_host::session_lock::take(mode, &rest);
     let planned = match mode {
         HostMode::Video => video::plan(&rest),
         HostMode::Web => web::plan(&rest),
@@ -88,6 +107,7 @@ fn run() -> i32 {
         HostMode::Swf => {
             return match swf::plan(&rest) {
                 Ok(plan) => {
+                    take_lock();
                     prepare_qpa_platform(plan.placement, HostMode::Swf);
                     swf::run(plan)
                 }
@@ -96,7 +116,10 @@ fn run() -> i32 {
         }
     };
     match planned {
-        Ok(plan) => run_qml(plan),
+        Ok(plan) => {
+            take_lock();
+            run_qml(plan)
+        }
         Err(message) => refuse(&message),
     }
 }

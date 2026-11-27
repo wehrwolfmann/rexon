@@ -44,15 +44,69 @@ Item {
     Connections {
         target: root.actions
         ignoreUnknownSignals: true
-        function onOperationLog(line) { opLog.append(line); }
+        function onOperationLog(line) { root.queueLogLine(line); }
         function onDesktopsChanged() { root.desktopsChanged(); }
+    }
+
+    // Журнал операции: pacman шлёт десятки строк в секунду. Добавление по
+    // одной строке перекладывало весь текст поля на каждую строку и тянуло
+    // вид вниз — прокрутка вырывалась из рук, главный поток не успевал, и
+    // оболочка предлагала закрыть «зависшее» окно (16.11.2026, Cinnamon).
+    // Поэтому строки копятся и уходят в поле пачкой раз в logFlush.interval,
+    // в поле держится только хвост (полный журнал — в rexon.log), а вниз вид
+    // идёт, только если человек и так стоял внизу.
+    readonly property int logKeepLines: 2000
+    property var logPending: []
+    property int logLines: 0
+
+    function queueLogLine(line) {
+        root.logPending.push(line);
+        if (!logFlush.running)
+            logFlush.start();
+    }
+
+    function flushLog() {
+        if (root.logPending.length === 0)
+            return;
+        const chunk = root.logPending.join("\n");
+        const added = root.logPending.length;
+        root.logPending = [];
+        const flick = logScroll.contentItem as Flickable;
+        const follow = !flick || flick.contentHeight <= flick.height
+            || flick.contentY + flick.height >= flick.contentHeight - 24;
+        opLog.append(chunk);
+        root.logLines += added;
+        if (root.logLines > root.logKeepLines + 500) {
+            // Обрезка редкая (раз в 500 строк) — перекладка всего текста
+            // здесь допустима.
+            const all = opLog.text.split("\n");
+            opLog.text = all.slice(all.length - root.logKeepLines).join("\n");
+            root.logLines = root.logKeepLines;
+        }
+        if (follow)
+            opLog.cursorPosition = opLog.length;
+    }
+
+    function resetLog() {
+        logFlush.stop();
+        root.logPending = [];
+        root.logLines = 0;
+        opLog.clear();
+    }
+
+    Timer {
+        id: logFlush
+        interval: 100
+        onTriggered: root.flushLog()
     }
 
     readonly property bool passwordBusy: (root.op && root.op.passwordBusy === true)
 
     onOpPhaseChanged: {
         if (root.opPhase === "running")
-            opLog.clear();
+            root.resetLog();
+        else if (root.opPhase === "done")
+            root.flushLog();
         // Пароль в полях не живёт дольше шага.
         if (root.opPhase !== "password") {
             pwNew.clear();
@@ -373,6 +427,7 @@ Item {
             }
 
             ScrollView {
+                id: logScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: root.opPhase === "running" || root.opPhase === "done"
@@ -398,8 +453,8 @@ Item {
                         color: root.pal.bg_primary
                         border.color: root.pal.border
                     }
-                    // Новая строка — вид на хвост журнала.
-                    onTextChanged: cursorPosition = length
+                    // Вид на хвост — только из flushLog и только если
+                    // человек не прокрутил журнал вверх.
                 }
             }
 

@@ -540,6 +540,7 @@ Item {
         case "skinGroup": return cSkin;
         case "obGroup": return cOnboarding;
         case "trayGroup": return cTray;
+        case "linksGroup": return cLinks;
         case "fmGroup": return cFileManager;
         case "quickFix": return cQuickFix;
         case "completeness": return cCompleteness;
@@ -742,6 +743,50 @@ Item {
                 color: root.colTextSecondary
                 font.weight: root.pal.text_secondary_weight
             }
+        }
+    }
+
+    // ══ 🔗 Ссылки на сайты ═════════════════════════════════════════════════
+    //
+    // Сайты, для которых человек выбрал «Больше не спрашивать» в окне
+    // вопроса перед внешней ссылкой (`RexonLinkDialog`). Список и сброс —
+    // ядро (`link_policy`) через синглтон `LinkGuard`.
+
+    Component {
+        id: cLinks
+
+        ColumnLayout {
+            id: linksBody
+            width: parent ? parent.width : 0
+            height: implicitHeight
+            spacing: root.sty.group.spacing
+
+            property string summary: LinkGuard.trustedSummary()
+
+            RexonText {
+                objectName: "trustedSites"
+                Layout.fillWidth: true
+                text: linksBody.summary
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: root.colTextSecondary
+                font.weight: root.pal.text_secondary_weight
+            }
+
+            RexonButton {
+                id: linksReset
+                objectName: "trustedSitesReset"
+                pal: root.pal
+                text: root.txt["links.reset"]
+                onClicked: {
+                    root.say(LinkGuard.forgetAll());
+                    linksBody.summary = LinkGuard.trustedSummary();
+                }
+                onActiveFocusChanged: if (activeFocus) root.ensureVisible(linksReset)
+            }
+
+            // Список мог пополниться в другой вкладке, пока эта была скрыта.
+            onVisibleChanged: if (visible) linksBody.summary = LinkGuard.trustedSummary()
         }
     }
 
