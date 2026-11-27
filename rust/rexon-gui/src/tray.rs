@@ -840,7 +840,7 @@ mod tests {
     /// Item kind codes — the same numbers the `switch` in the shim parses
     /// (`cpp/rexon_tray.cpp`). If they diverge, the menu silently becomes flat.
     #[test]
-    fn коды_видов_пунктов_совпадают_с_шимом() {
+    fn item_kind_codes_match_shim() {
         assert_eq!(kind_code(core_tray::ItemKind::Action), 0);
         assert_eq!(kind_code(core_tray::ItemKind::Separator), 1);
         assert_eq!(kind_code(core_tray::ItemKind::Check), 2);
@@ -852,7 +852,7 @@ mod tests {
     /// The names of daemon methods that the press dispatcher prints must exist
     /// on its bus. We compare with the core, where the same client lives.
     #[test]
-    fn методы_демона_названы_как_в_ядре() {
+    fn daemon_methods_named_as_in_core() {
         for method in [
             "Next", "Previous", "Pause", "Resume", "Mute", "Unmute", "Rescan",
             "SetShuffle", "SetRotationInterval",
@@ -864,7 +864,7 @@ mod tests {
     }
 
     #[test]
-    fn строка_с_нулём_не_роняет_значок() {
+    fn string_with_nul_does_not_crash_icon() {
         assert_eq!(cstr("Выход").to_string_lossy(), "Выход");
         assert_eq!(cstr("Вы\0ход").to_string_lossy(), "Вы");
     }

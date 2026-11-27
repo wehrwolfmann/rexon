@@ -139,6 +139,12 @@ pub mod qobject {
         #[qproperty(QList_QVariant, sources, READ = sources, NOTIFY = sources_changed)]
         #[qproperty(QString, default_source_id, cxx_name = "defaultSourceId",
                     READ = default_source_id, NOTIFY = sources_changed)]
+        /// waywallen 0.6.2: browser sign-in helpers the daemon offers,
+        /// `[{id, label, labelText, pluginId, available, error}]`.
+        #[qproperty(QList_QVariant, browser_helpers, cxx_name = "browserHelpers",
+                    READ = browser_helpers, NOTIFY = browser_helpers_changed)]
+        #[qproperty(QString, default_browser_helper_id, cxx_name = "defaultBrowserHelperId",
+                    READ = default_browser_helper_id, NOTIFY = browser_helpers_changed)]
         type RemoteAvailabilityQuery = super::RemoteAvailabilityQueryRust;
 
         #[qobject]
@@ -264,6 +270,9 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "sourcesChanged"]
         fn sources_changed(self: Pin<&mut RemoteAvailabilityQuery>);
+        #[qsignal]
+        #[cxx_name = "browserHelpersChanged"]
+        fn browser_helpers_changed(self: Pin<&mut RemoteAvailabilityQuery>);
         /// A frame to the daemon: the token, the request field, the ready `Request`
         /// bytes.
         #[qsignal]
@@ -435,6 +444,8 @@ pub mod qobject {
         fn sources(self: &RemoteAvailabilityQuery) -> QList_QVariant;
         #[cxx_name = "defaultSourceId"]
         fn default_source_id(self: &RemoteAvailabilityQuery) -> QString;
+        fn browser_helpers(self: &RemoteAvailabilityQuery) -> QList_QVariant;
+        fn default_browser_helper_id(self: &RemoteAvailabilityQuery) -> QString;
 
         fn status(self: &RemoteSearchQuery) -> i32;
         fn error(self: &RemoteSearchQuery) -> QString;
@@ -528,6 +539,11 @@ pub mod qobject {
         /// (QMetaObject::invokeMethod by string).
         #[qinvokable]
         fn reload(self: Pin<&mut RemoteAvailabilityQuery>);
+        /// waywallen 0.6.2: the same request, but the daemon probes the browser
+        /// sign-in helpers again (a new browser was installed).
+        #[qinvokable]
+        #[cxx_name = "refreshBrowserHelpers"]
+        fn refresh_browser_helpers(self: Pin<&mut RemoteAvailabilityQuery>);
         /// The daemon's answer: the raw bytes of the `ServerFrame` frame.
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
@@ -770,7 +786,11 @@ pub enum ModelCmd {
 /// file compares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
-    Availability,
+    /// waywallen 0.6.2: `refresh_browser_helpers` — probe the browser sign-in
+    /// helpers again.
+    Availability {
+        refresh_browser_helpers: bool,
+    },
     Search {
         source_id: String,
         query: String,
@@ -803,7 +823,7 @@ impl Request {
     /// The `oneof payload` field this request goes into.
     pub fn field(&self) -> &'static str {
         match self {
-            Request::Availability => "remote_availability",
+            Request::Availability { .. } => "remote_availability",
             Request::Search { .. } => "remote_search",
             Request::Details { .. } => "remote_details",
             Request::Download { .. } => "remote_download",
@@ -821,7 +841,9 @@ impl Request {
     pub fn encode(&self, request_id: u64) -> Vec<u8> {
         let rid = request_id;
         match self {
-            Request::Availability => we_client::remote_availability(rid),
+            Request::Availability { refresh_browser_helpers } => {
+                we_client::remote_availability(rid, *refresh_browser_helpers)
+            }
             Request::Search {
                 source_id,
                 query,
@@ -857,7 +879,12 @@ impl Request {
     pub fn to_json(&self) -> Value {
         let mut map = Map::new();
         match self {
-            Request::Availability => {}
+            Request::Availability { refresh_browser_helpers } => {
+                // Printed only when set: older golden frames carry no field.
+                if *refresh_browser_helpers {
+                    map.insert("refresh_browser_helpers".into(), Value::Bool(true));
+                }
+            }
             Request::Search {
                 source_id,
                 query,
@@ -925,7 +952,9 @@ impl Request {
     pub fn decode(bytes: &[u8]) -> Option<Request> {
         let request = pb::Request::decode(bytes).ok()?;
         Some(match request.payload? {
-            pb::request::Payload::RemoteAvailability(_) => Request::Availability,
+            pb::request::Payload::RemoteAvailability(a) => Request::Availability {
+                refresh_browser_helpers: a.refresh_browser_helpers,
+            },
             pb::request::Payload::RemoteSearch(s) => Request::Search {
                 source_id: s.source_id,
                 query: s.query,
@@ -1411,11 +1440,35 @@ pub struct AvailabilityState {
     pub base: QueryState,
     pub sources: Vec<Value>,
     pub default_source_id: String,
+    /// waywallen 0.6.2: browser sign-in helpers, as the vendor's map.
+    pub browser_helpers: Vec<Value>,
+    pub default_browser_helper_id: String,
     pending: BTreeMap<i64, ()>,
+}
+
+/// A `BrowserHelperInfo` for QML, the vendor's `RemoteAvailabilityQuery` map.
+fn browser_helper(h: &pb::BrowserHelperInfo) -> Value {
+    let mut map = Map::new();
+    map.insert("id".into(), Value::String(h.id.clone()));
+    map.insert("label".into(), Value::String(h.label.clone()));
+    map.insert("labelText".into(), plugin_message_or(h.label_text.as_ref(), &h.label));
+    map.insert("pluginId".into(), Value::String(h.plugin_id.clone()));
+    map.insert("available".into(), Value::Bool(h.available));
+    map.insert("error".into(), Value::String(h.error.clone()));
+    Value::Object(map)
 }
 
 impl AvailabilityState {
     pub fn reload(&mut self, connected: bool) -> Vec<Cmd> {
+        self.reload_availability(connected, false)
+    }
+
+    /// `refreshBrowserHelpers()`: the same request with the helper probe redone.
+    pub fn refresh_browser_helpers(&mut self, connected: bool) -> Vec<Cmd> {
+        self.reload_availability(connected, true)
+    }
+
+    fn reload_availability(&mut self, connected: bool, refresh_browser_helpers: bool) -> Vec<Cmd> {
         let (send, signals) = we_query::begin_call(&mut self.base, connected);
         let mut out = base_events(signals);
         if !send {
@@ -1426,7 +1479,7 @@ impl AvailabilityState {
         out.push(Cmd::Signal(Event::Sent {
             token,
             field: "remote_availability",
-            request: Request::Availability,
+            request: Request::Availability { refresh_browser_helpers },
         }));
         out
     }
@@ -1464,6 +1517,10 @@ impl AvailabilityState {
             .collect();
         drop(l10n);
         self.default_source_id = pick_default(&self.sources, &av.default_source_id);
+        self.browser_helpers = av.browser_helpers.iter().map(browser_helper).collect();
+        self.default_browser_helper_id = av.default_browser_helper_id.clone();
+        // The vendor's order: the helpers first, then the sources.
+        out.push(Cmd::Signal(Event::Prop("browserHelpersChanged")));
         out.push(Cmd::Signal(Event::Prop("sourcesChanged")));
         out.extend(finish(&mut self.base));
         out
@@ -2412,8 +2469,25 @@ impl qobject::RemoteAvailabilityQuery {
         QString::from(&self.state.default_source_id)
     }
 
+    fn browser_helpers(&self) -> qobject::QList_QVariant {
+        let mut list = QList::<QVariant>::default();
+        for helper in &self.state.browser_helpers {
+            list.append(json_to_variant(helper));
+        }
+        list
+    }
+
+    fn default_browser_helper_id(&self) -> QString {
+        QString::from(&self.state.default_browser_helper_id)
+    }
+
     fn reload(mut self: Pin<&mut Self>) {
         let cmds = self.as_mut().rust_mut().state.reload(connected());
+        self.run(&cmds);
+    }
+
+    fn refresh_browser_helpers(mut self: Pin<&mut Self>) {
+        let cmds = self.as_mut().rust_mut().state.refresh_browser_helpers(connected());
         self.run(&cmds);
     }
 
@@ -2433,8 +2507,12 @@ impl qobject::RemoteAvailabilityQuery {
                 Cmd::Signal(event) => {
                     if !self.as_mut().emit_signal(event) {
                         if let Event::Prop(name) = event {
-                            debug_assert_eq!(*name, "sourcesChanged");
-                            self.as_mut().sources_changed();
+                            if *name == "browserHelpersChanged" {
+                                self.as_mut().browser_helpers_changed();
+                            } else {
+                                debug_assert_eq!(*name, "sourcesChanged");
+                                self.as_mut().sources_changed();
+                            }
                         }
                     }
                 }
@@ -3219,7 +3297,12 @@ pub mod golden {
     /// protobuf description).
     fn request_of(field: &str, request: &Value) -> Request {
         match field {
-            "remote_availability" => Request::Availability,
+            "remote_availability" => Request::Availability {
+                refresh_browser_helpers: request
+                    .get("refresh_browser_helpers")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            },
             "remote_search" => Request::Search {
                 source_id: str_at(request, "source_id"),
                 query: str_at(request, "query"),
@@ -3263,6 +3346,7 @@ pub mod golden {
     fn prop_of(sig: &str) -> &'static str {
         match sig {
             "sourcesChanged" => "sourcesChanged",
+            "browserHelpersChanged" => "browserHelpersChanged",
             "sourceIdChanged" => "sourceIdChanged",
             "queryChanged" => "queryChanged",
             "artistIdChanged" => "artistIdChanged",
@@ -4129,6 +4213,10 @@ pub mod selftest {
         connect_base!(&mut guards, &journal, traces, page.download(), RemoteDownloadQuery, "download");
 
         // The queries' own signals.
+        let sink = Arc::clone(&journal);
+        guards.push(page.availability().on_browser_helpers_changed(move |_| {
+            push(&sink, "availability", Event::Prop("browserHelpersChanged"));
+        }));
         let sink = Arc::clone(&journal);
         guards.push(page.availability().on_sources_changed(move |_| {
             push(&sink, "availability", Event::Prop("sourcesChanged"));
@@ -5128,7 +5216,8 @@ mod tests {
         // frame parses back into the same request. Otherwise "the search was sent"
         // could mean "an empty frame was sent".
         let cases = [
-            Request::Availability,
+            Request::Availability { refresh_browser_helpers: false },
+            Request::Availability { refresh_browser_helpers: true },
             Request::Search {
                 source_id: "wallhaven".into(),
                 query: "лес".into(),

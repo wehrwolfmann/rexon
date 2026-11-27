@@ -2116,6 +2116,10 @@ pub enum ApplyAction {
     /// The login screen (SDDM) or the boot splash (Plymouth): selecting an already
     /// installed theme via the system helper (mode `apply-<kind>`).
     SystemTheme,
+    /// A whole theme in the desktop's own format (a MATE metatheme, a Cinnamon
+    /// style — [`crate::native_global`]): controls, window borders or the
+    /// shell theme, icons and pointer in one press.
+    NativeGlobal,
     /// No apply needed (fonts/widgets/wallpaper plugins/archive plugins).
     Noop,
 }
@@ -2138,6 +2142,7 @@ pub fn apply_action_for(cat: Option<&ThemeCategory>, theme_name: &str) -> ApplyA
         "lockscreen" => ApplyAction::Lockscreen,
         "lockwallpaper" => ApplyAction::LockWallpaper,
         "sounds" => ApplyAction::SoundTheme,
+        crate::native_global::SECTION_KEY => ApplyAction::NativeGlobal,
         // Wallpapers: a single picture goes straight to the background, a directory is a pack (we
         // pick the picture from it ourselves). Wallpaper plugins also arrive as a single
         // picture, but their directory is a kpackage, nothing to apply.
@@ -2156,6 +2161,14 @@ pub fn apply_action_for(cat: Option<&ThemeCategory>, theme_name: &str) -> ApplyA
         }
         _ => ApplyAction::Noop,
     }
+}
+
+/// Whether «Apply» of this action brings the icon set and the cursor its
+/// `index.theme` names (installed first if missing, `prepare_theme_deps`): a
+/// GTK theme with a metatheme and a MATE metatheme itself (its key is the
+/// directory holding that `index.theme`).
+pub fn brings_theme_sets(action: &ApplyAction) -> bool {
+    matches!(action, ApplyAction::Gtk | ApplyAction::NativeGlobal)
 }
 
 /// True if apply should set the picture as the desktop background — port of
@@ -2250,6 +2263,9 @@ pub fn apply_message(action: &ApplyAction, ok: bool) -> String {
             } else {
                 tr("Couldn't apply the sound theme")
             }
+        }
+        ApplyAction::NativeGlobal => {
+            if ok { tr("Theme applied") } else { tr("Couldn't apply the theme") }
         }
         ApplyAction::Noop => tr("Installed (this type doesn't need to be applied)"),
         ApplyAction::LockWallpaper
@@ -2970,16 +2986,39 @@ fn run_ok(argv: &[String], timeout_secs: Option<u64>) -> bool {
 /// Whether GTK theme `theme` is dark ([`crate::themes::gtk_theme_is_dark`]):
 /// the GTK 3 style sheet (otherwise GTK 4) from the first themes directory
 /// where the theme exists.
-fn gtk_theme_dark_live(theme: &str, home: &str) -> bool {
+pub fn gtk_theme_dark_live(theme: &str, home: &str) -> bool {
     let data = crate::utils::data_home(xdg_data_home().as_deref(), home);
     let css = crate::gtk_sanitizer::theme_dirs("gtk-theme", home, &data)
         .into_iter()
         .map(|base| format!("{base}/{theme}"))
         .find(|dir| Path::new(dir).is_dir())
         .and_then(|dir| {
-            ["gtk-3.0", "gtk-4.0"].iter().find_map(|v| read_text_lossy(&format!("{dir}/{v}/gtk.css")))
+            ["gtk-3.0", "gtk-4.0"].iter().find_map(|v| {
+                let at = format!("{dir}/{v}");
+                read_text_lossy(&format!("{at}/gtk.css")).map(|css| with_local_imports(&at, css))
+            })
         });
     crate::themes::gtk_theme_is_dark(theme, css.as_deref())
+}
+
+/// `css` followed by the stylesheets it imports from its own directory `dir`
+/// (at most 8 files, each once): the window color may live in an imported file.
+fn with_local_imports(dir: &str, css: String) -> String {
+    let mut seen: Vec<String> = Vec::new();
+    let mut queue = crate::themes::gtk_css_local_imports(&css);
+    let mut out = css;
+    while let Some(name) = queue.pop() {
+        if seen.len() >= 8 || seen.contains(&name) {
+            continue;
+        }
+        seen.push(name.clone());
+        if let Some(text) = read_text_lossy(&format!("{dir}/{name}")) {
+            queue.extend(crate::themes::gtk_css_local_imports(&text));
+            out.push('\n');
+            out.push_str(&text);
+        }
+    }
+    out
 }
 
 /// The standard theme of role `role` (`icons`, `cursor`) in environment
@@ -4666,6 +4705,9 @@ pub struct PressFacts {
     /// what the theme carries; `None` means there was no window, the look is
     /// applied (`plasma-apply-lookandfeel -a`, as before).
     pub global: Option<crate::themes::GlobalPress>,
+    /// A native whole theme: the parts with their steps or the reason they are
+    /// skipped; `None` — the theme is not found on disk.
+    pub native: Option<crate::native_global::NativePress>,
 }
 
 /// The plan of pressing "Apply" for action `action` on theme `theme`: a
@@ -4792,6 +4834,36 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             history: None,
             say: PressSay::Plain,
         },
+        ApplyAction::NativeGlobal => {
+            let Some(press) = &facts.native else {
+                return PressPlan::Refused(Some(trf("The theme “%1” is no longer on disk.", &[&theme])));
+            };
+            // A change of the dark variant of GTK programs is said after the outcome:
+            // it shows in Plasma too.
+            let note = press.dark.and_then(|d| d.change_note());
+            match crate::native_global::press_steps(press) {
+                Err(why) => PressPlan::Refused(Some(why)),
+                Ok((steps, skipped)) if skipped.is_empty() && note.is_none() => {
+                    PressPlan::Steps { steps, history: None, say: PressSay::Plain }
+                }
+                Ok((steps, skipped)) => {
+                    let done = match (skipped.is_empty(), note) {
+                        // TRANSLATORS: %1 what changes for GTK apps (a sentence).
+                        (true, note) => trf("Theme applied. %1", &[&note.unwrap_or_default()]),
+                        // TRANSLATORS: %1 the list of skipped parts with reasons.
+                        (false, None) => trf("Theme applied, except: %1.", &[&skipped.join("; ")]),
+                        (false, Some(note)) => {
+                            format!("{} {note}", trf("Theme applied, except: %1.", &[&skipped.join("; ")]))
+                        }
+                    };
+                    PressPlan::Steps {
+                        steps,
+                        history: None,
+                        say: PressSay::Pair { done, failed: apply_message(action, false) },
+                    }
+                }
+            }
+        }
         ApplyAction::Noop => PressPlan::Nothing,
         // An unsafe theme that is the environment's default cursor: a reset of
         // the native key (the theme name is not written anywhere explicitly).
@@ -5671,7 +5743,7 @@ impl LiveInstaller {
     /// are already installed, or the answer for the theme is remembered).
     pub fn theme_icons_question(&self, item: &crate::models::ThemeItem, theme_name: &str) -> Option<crate::themes::IconsQuestion> {
         let cat = crate::categories::category_by_id(&self.home_path(), item.category_id);
-        if apply_action_for(cat.as_ref(), theme_name) != ApplyAction::Gtk {
+        if !brings_theme_sets(&apply_action_for(cat.as_ref(), theme_name)) {
             return None;
         }
         let plan = self.theme_deps_plan(theme_name);
@@ -5713,7 +5785,7 @@ impl LiveInstaller {
     pub fn prepare_theme_deps(&mut self, item: &crate::models::ThemeItem, theme: &str) -> Result<(), String> {
         use crate::themes::{DepState, deps_to_prepare};
         let cat = crate::categories::category_by_id(&self.home_path(), item.category_id);
-        if apply_action_for(cat.as_ref(), theme) != ApplyAction::Gtk {
+        if !brings_theme_sets(&apply_action_for(cat.as_ref(), theme)) {
             return Ok(());
         }
         if self.icons_choice.is_none() {
@@ -6109,6 +6181,7 @@ impl LiveInstaller {
                 });
             }
             ApplyAction::Icons => facts.icons_valid = self.icon_theme_valid(theme_name),
+            ApplyAction::NativeGlobal => facts.native = self.native_press(theme_name),
             ApplyAction::Gtk => {
                 facts.gtk_dark = gtk_theme_dark_live(theme_name, home);
                 facts.gtk4 = Some(crate::gtk4_theme::facts_live(theme_name, home, xdg.as_deref()));
@@ -6173,6 +6246,60 @@ impl LiveInstaller {
         press_plan_with(action, theme_name, &facts)
     }
 
+    /// The parts of native whole theme `key` with their steps: controls,
+    /// icons and pointer — the same press plans (and probes) as the «GTK
+    /// Themes», «Icons» and «Cursors» buttons; window borders, the shell theme,
+    /// notifications and the light/dark preference — the desktop's own keys,
+    /// as its settings window writes them. `None` — no such theme on disk.
+    fn native_press(&self, key: &str) -> Option<crate::native_global::NativePress> {
+        use crate::native_global::{self as ng, Installed, Part};
+        let theme = ng::find_live(&self.de, &self.home, key)?;
+        let disk = ng::LiveDisk::new(&self.home);
+        let parts = theme
+            .parts()
+            .into_iter()
+            .map(|(part, name)| {
+                let action = match part {
+                    Part::Controls => Some(ApplyAction::Gtk),
+                    Part::Icons => Some(ApplyAction::Icons),
+                    Part::Pointer => Some(ApplyAction::Cursor),
+                    _ => None,
+                };
+                // The pointer goes with the size the theme names (`CursorSize`), as
+                // the MATE «Appearance» window applies it; without one — the current
+                // size. The previous size is in the press snapshot like every other
+                // written key, so «Restore as it was» brings it back.
+                let plan = |action: &ApplyAction| match action {
+                    ApplyAction::Cursor => self.cursor_press(&name, ng::pointer_size(&theme, self.cursor_size())),
+                    _ => self.press_plan(None, action, &name),
+                };
+                let got = match action {
+                    Some(_) if part == Part::Icons && self.icons_choice == Some(false) => Err(ng::kept_icons_reason()),
+                    Some(action) => match plan(&action) {
+                        PressPlan::Steps { steps, .. } => Ok(steps),
+                        PressPlan::Refused(why) => Err(why.unwrap_or_else(|| apply_message(&action, false))),
+                        _ => Err(apply_message(&action, false)),
+                    },
+                    None if !disk.has(part, &name) => Err(ng::missing_reason(part, &name)),
+                    None => Ok(ng::native_key_steps(&self.de, part, &name).unwrap_or_default()),
+                };
+                (part, got)
+            })
+            .collect::<Vec<_>>();
+        // MATE: the dark variant of GTK programs by the theme itself, with the
+        // controls (a light theme must not stay dark because of a key another
+        // desktop left in the shared `settings.ini`).
+        let mut parts = parts;
+        let dark = ng::dark_preference_live(&self.de, &theme, &self.home);
+        if let Some(d) = dark {
+            let files = ng::dark_preference_files_live(&self.home);
+            if let Some((_, Ok(steps))) = parts.iter_mut().find(|(p, _)| *p == Part::Controls) {
+                steps.extend(ng::dark_preference_steps(d.dark, &files));
+            }
+        }
+        Some(ng::NativePress { theme, parts, dark })
+    }
+
     /// Section plans for the parts of a global theme the person ticked
     /// ([`crate::themes::lnf_section_parts`]): the same "Apply" button of the
     /// "Icons", "Cursors", "Colour schemes", "Application style" sections with
@@ -6217,6 +6344,20 @@ impl LiveInstaller {
             out.insert(part, got);
         }
         out
+    }
+
+    /// The press plan of cursor theme `theme` with size `size` (`None` — the
+    /// size is not written): the same plan as «Apply» in the cursors section.
+    fn cursor_press(&self, theme: &str, size: Option<u32>) -> PressPlan {
+        let mut facts = PressFacts {
+            de: self.de.clone(),
+            home: self.home.clone(),
+            xdg_config_home: xdg_config_home(),
+            cursor_size: size,
+            ..PressFacts::default()
+        };
+        self.cursor_facts(theme, &mut facts);
+        press_plan_with(&ApplyAction::Cursor, theme, &facts)
     }
 
     /// Cursor probes for the plan: whether the theme is safe and whether it is

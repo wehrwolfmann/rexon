@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>BrowserLoginButton</name>
+    <message><source>This browser is unavailable.</source><translation>此浏览器不可用。</translation></message>
+    <message><source>Browser: %1</source><translation>浏览器：%1</translation></message>
+    <message><source>Refresh browsers</source><translation>刷新浏览器</translation></message>
+    <message><source>%1: %2</source><translation>%1：%2</translation></message>
+</context>
+<context>
     <name>BrowserLoginDialog</name>
     <message><source>Opening the sign-in window…</source><translation>正在打开登录窗口…</translation></message>
     <message><source>Verifying sign-in…</source><translation>正在验证登录…</translation></message>
@@ -18,6 +25,16 @@
         <location filename="../qml/page/AboutPage.qml" line="58"/>
         <source>Daemon version %1</source>
         <translation>守护进程版本 %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/AboutPage.qml" line="62"/>
+        <source>Daemon version %1 is older than this window</source>
+        <translation>守护进程版本 %1 比当前界面旧</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/AboutPage.qml" line="64"/>
+        <source>Daemon version %1 is newer than this window</source>
+        <translation>守护进程版本 %1 比当前界面新</translation>
     </message>
     <message>
         <location filename="../qml/page/AboutPage.qml" line="58"/>
@@ -283,8 +300,8 @@
     </message>
     <message>
         <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="82"/>
-        <source>Daemon version %1 + is incompatible.</source>
-        <translation>后台版本 %1+ 不兼容。</translation>
+        <source>Daemon version %1 is incompatible.</source>
+        <translation>后台版本 %1 不兼容。</translation>
     </message>
     <message>
         <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="128"/>
@@ -299,6 +316,7 @@
 </context>
 <context>
     <name>DiscoverPage</name>
+    <message><source>Login action failed</source><translation>登录操作失败</translation></message>
     <message>
         <source>This source is no longer available.</source>
         <translation>此来源已不可用。</translation>
@@ -726,6 +744,26 @@
 <context>
     <name>KdeDisplaysHelp</name>
     <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="23"/>
+        <source>Could not switch the desktop wallpaper: %1</source>
+        <translation>无法切换桌面壁纸：%1</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="29"/>
+        <source>The &lt;b&gt;Waywallen&lt;/b&gt; wallpaper plugin is installed, but the desktop does not use it yet.</source>
+        <translation>&lt;b&gt;Waywallen&lt;/b&gt; 壁纸插件已安装，但桌面尚未使用它。</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="41"/>
+        <source>Use Waywallen on this desktop</source>
+        <translation>在此桌面上使用 Waywallen</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="72"/>
+        <source>Or right-click the desktop → &lt;b&gt;Configure Desktop and Wallpaper…&lt;/b&gt; and pick the &lt;b&gt;Waywallen&lt;/b&gt; wallpaper plugin.</source>
+        <translation>或者右键点击桌面 → &lt;b&gt;配置桌面和壁纸…&lt;/b&gt;，并选择 &lt;b&gt;Waywallen&lt;/b&gt; 壁纸插件。</translation>
+    </message>
+    <message>
         <location filename="../qml/component/KdeDisplaysHelp.qml" line="18"/>
         <source>KDE Plasma needs the &lt;b&gt;waywallen-display&lt;/b&gt; wallpaper extension to bridge wallpapers to the desktop. Install it from either source:</source>
         <translation>KDE Plasma 需要 &lt;b&gt;waywallen-display&lt;/b&gt; 壁纸扩展将壁纸桥接到桌面。请从以下任一来源安装：</translation>
@@ -940,6 +978,24 @@
         <location filename="../qml/page/PlaylistEditPage.qml" line="427"/>
         <source>Playlist unavailable</source>
         <translation>播放列表不可用</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/PlaylistEditPage.qml" line="453" />
+        <source>h</source>
+        <comment>hours</comment>
+        <translation>时</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/PlaylistEditPage.qml" line="474" />
+        <source>m</source>
+        <comment>minutes</comment>
+        <translation>分</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/PlaylistEditPage.qml" line="495" />
+        <source>s</source>
+        <comment>seconds</comment>
+        <translation>秒</translation>
     </message>
 </context>
 <context>
@@ -2197,6 +2253,21 @@ Related display: #%1</source>
         <source>On battery</source>
         <translation>使用电池时</translation>
     </message>
+    <message>
+        <location filename="../qml/page/SettingsPage.qml" line="461" />
+        <source>Default device</source>
+        <translation>默认设备</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/SettingsPage.qml" line="469" />
+        <source>%1 (unavailable)</source>
+        <translation>%1（不可用）</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/SettingsPage.qml" line="1452" />
+        <source>Audio output</source>
+        <translation>音频输出</translation>
+    </message>
 </context>
 <context>
     <name>EditLibraryPage</name>
@@ -2274,6 +2345,16 @@ Related display: #%1</source>
         <location filename="../qml/page/SourceManagePage.qml" line="75"/>
         <source>No libraries</source>
         <translation>没有库</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/SourceManagePage.qml" line="68" />
+        <source>Choose Library Folder</source>
+        <translation>选择库文件夹</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/SourceManagePage.qml" line="166" />
+        <source>Change library folder</source>
+        <translation>更改库文件夹</translation>
     </message>
 </context>
 <context>
@@ -2636,6 +2717,17 @@ Unsaved frame state may be lost.</source>
 </context>
 <context>
     <name>WallpaperDetailPanel</name>
+    <message><source>Presets</source><translation>预设</translation></message>
+    <message><source>Loading presets…</source><translation>正在加载预设…</translation></message>
+    <message><source>Retry loading presets</source><translation>重试加载预设</translation></message>
+    <message><source>Save current settings…</source><translation>保存当前设置…</translation></message>
+    <message><source>Manage presets…</source><translation>管理预设…</translation></message>
+    <message><source>Preset applied</source><translation>已应用预设</translation></message>
+    <message><source>Preset applied, but the running renderer could not be updated</source><translation>已应用预设，但未能更新正在运行的渲染器</translation></message>
+    <message><source>Preset operation failed</source><translation>预设操作失败</translation></message>
+    <message><source>Preset operation canceled: %1</source><translation>已取消预设操作：%1</translation></message>
+    <message><source>Property update failed</source><translation>属性更新失败</translation></message>
+    <message><source>Could not refresh wallpaper properties</source><translation>无法刷新壁纸属性</translation></message>
     <message>
         <source>Flip</source>
         <translation>翻转</translation>
@@ -2836,6 +2928,16 @@ Unsaved frame state may be lost.</source>
         <location filename="../qml/page/WallpaperDetailPanel.qml" line="804"/>
         <source>Reset to defaults</source>
         <translation>恢复默认值</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="1110"/>
+        <source>Expanded</source>
+        <translation>已展开</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="1110"/>
+        <source>Collapsed</source>
+        <translation>已折叠</translation>
     </message>
     <message>
         <location filename="../qml/page/WallpaperDetailPanel.qml" line="954"/>
@@ -3593,5 +3695,58 @@ Unsaved frame state may be lost.</source>
     <message><source>Save</source><translation>保存</translation></message>
     <message><source>Add</source><translation>添加</translation></message>
     <message><source>Cancel</source><translation>取消</translation></message>
+</context>
+<context>
+    <name>WallpaperPresetDialog</name>
+    <message><source>Manage presets</source><translation>管理预设</translation></message>
+    <message><source>Save preset</source><translation>保存预设</translation></message>
+    <message><source>Apply preset</source><translation>应用预设</translation></message>
+    <message><source>Update preset</source><translation>更新预设</translation></message>
+    <message><source>Rename preset</source><translation>重命名预设</translation></message>
+    <message><source>Delete preset</source><translation>删除预设</translation></message>
+    <message><source>Update from current values</source><translation>用当前设置更新</translation></message>
+    <message><source>Preset name</source><translation>预设名称</translation></message>
+    <message><source>Apply "%1" and replace current settings not saved in a preset?</source><translation>应用「%1」并覆盖当前未另存的设置？</translation></message>
+    <message><source>Replace the saved values in "%1" with the current property values?</source><translation>用当前属性替换「%1」中保存的设置？</translation></message>
+    <message><source>Delete preset "%1"?</source><translation>删除预设「%1」？</translation></message>
+    <message><source>Refresh properties</source><translation>刷新属性</translation></message>
+    <message><source>Cancel</source><translation>取消</translation></message>
+    <message><source>Close</source><translation>关闭</translation></message>
+</context>
+<context>
+    <name>I18n</name>
+    <message>
+        <location filename="../qml/I18n.qml" line="31" />
+        <source>B</source>
+        <translation>B</translation>
+    </message>
+    <message>
+        <location filename="../qml/I18n.qml" line="31" />
+        <source>KiB</source>
+        <translation>KiB</translation>
+    </message>
+    <message>
+        <location filename="../qml/I18n.qml" line="31" />
+        <source>MiB</source>
+        <translation>MiB</translation>
+    </message>
+    <message>
+        <location filename="../qml/I18n.qml" line="31" />
+        <source>GiB</source>
+        <translation>GiB</translation>
+    </message>
+    <message>
+        <location filename="../qml/I18n.qml" line="31" />
+        <source>TiB</source>
+        <translation>TiB</translation>
+    </message>
+</context>
+<context>
+    <name>waywallen::RemoteSearchQuery</name>
+    <message>
+        <location filename="../src/query/remote_query.cpp" line="436" />
+        <source>The source returned a repeated continuation token.</source>
+        <translation>来源返回了重复的翻页令牌。</translation>
+    </message>
 </context>
 </TS>

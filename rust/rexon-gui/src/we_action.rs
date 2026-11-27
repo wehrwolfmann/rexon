@@ -89,6 +89,12 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "wallpaperSelectEntered"]
         unsafe fn wallpaper_select_entered(self: Pin<&mut Action>, storage: *mut QObject);
+
+        /// waywallen 0.6.2: the answer to `usePlasmaWallpaperPlugin()`; `error` is
+        /// empty on success.
+        #[qsignal]
+        #[cxx_name = "plasmaWallpaperPluginSet"]
+        fn plasma_wallpaper_plugin_set(self: Pin<&mut Action>, error: QString);
     }
 
     unsafe extern "RustQt" {
@@ -106,11 +112,27 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: Pin<&mut Action>, text: &QString);
+
+        /// waywallen 0.6.2: the org.waywallen.kde wallpaper plugin is installed
+        /// (the user's copy or a package).
+        #[qinvokable]
+        #[cxx_name = "hasPlasmaWallpaperPlugin"]
+        fn has_plasma_wallpaper_plugin(self: &Action) -> bool;
+
+        /// waywallen 0.6.2: ask plasmashell to use the plugin on every desktop.
+        /// The answer comes as `plasmaWallpaperPluginSet`.
+        #[qinvokable]
+        #[cxx_name = "usePlasmaWallpaperPlugin"]
+        fn use_plasma_wallpaper_plugin(self: Pin<&mut Action>);
     }
+
+    impl cxx_qt::Threading for Action {}
 }
 
 use core::pin::Pin;
+use cxx_qt::Threading;
 use cxx_qt_lib::QString;
+use rexon_core::waywallen_kde_plugin as wkp;
 
 /// The singleton has no state of its own: the original's only field is a
 /// `QPointer` to the selection storage, and the QPointer lives in the shim
@@ -139,5 +161,43 @@ impl qobject::Action {
 
     pub fn copy_to_clipboard(self: Pin<&mut Self>, text: &QString) {
         qobject::rexon_we_copy_to_clipboard(text);
+    }
+
+    pub fn has_plasma_wallpaper_plugin(&self) -> bool {
+        let env = |k: &str| std::env::var(k).unwrap_or_default();
+        wkp::plugin_installed(&env("HOME"), &env("XDG_DATA_HOME"), &env("XDG_DATA_DIRS"), &|p| {
+            std::path::Path::new(p).is_file()
+        })
+    }
+
+    pub fn use_plasma_wallpaper_plugin(mut self: Pin<&mut Self>) {
+        let handle = self.as_mut().qt_thread();
+        std::thread::spawn(move || {
+            let error = select_plugin_everywhere();
+            let _ = handle.queue(move |object| {
+                object.plasma_wallpaper_plugin_set(QString::from(&error));
+            });
+        });
+    }
+}
+
+/// Assign the plugin on every desktop over the bus (the original's
+/// `evaluateScript` call with a 10 s timeout). Empty — success, else the error
+/// text; like the original, the bus tool's own message is passed on as is.
+fn select_plugin_everywhere() -> String {
+    use rexon_core::utils;
+    let Some((kind, exe)) = utils::DBUS_TOOL_PREFERENCE
+        .iter()
+        .find_map(|(tool, kind)| utils::resolve_tool(tool, &[], None).map(|exe| (*kind, exe)))
+    else {
+        return utils::msg_no_dbus_tool(&["qdbus6"]);
+    };
+    let (dest, path, method) = utils::PLASMA_EVALUATE_SCRIPT;
+    let js = wkp::select_plugin_js();
+    let argv = utils::dbus_call_argv(kind, &exe, dest, path, method, &[utils::DbusArg::Str(js)]);
+    match rexon_core::splash_exec::run_capture(&argv, 10.0) {
+        Some(out) if out.rc == 0 => String::new(),
+        Some(out) if !out.stderr.trim().is_empty() => out.stderr.trim().to_string(),
+        _ => rexon_core::i18n::tr("the process did not start or did not respond in time"),
     }
 }

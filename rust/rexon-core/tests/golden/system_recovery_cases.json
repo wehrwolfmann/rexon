@@ -2955,7 +2955,7 @@
     "planned": "sudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma",
     "remaining": null,
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma"
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне."
    },
    {
     "note": "отказ авторизации по коду 126",
@@ -2966,7 +2966,7 @@
     "planned": "sudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma",
     "remaining": null,
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma"
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне."
    },
    {
     "note": "транзакция упала на полпути: остаток пересчитан по живому состоянию",
@@ -2977,7 +2977,7 @@
     "planned": "sudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma",
     "remaining": "sudo pacman -S libplasma",
     "ok": false,
-    "message": "pacman не довёл откат до конца.\n\nЧто ответил pacman:\nerror: failed to prepare transaction\n\nОсталось выполнить (можно вручную в терминале):\nsudo pacman -S libplasma"
+    "message": "pacman не довёл откат до конца.\n\nЧто ответил pacman:\nerror: failed to prepare transaction\n\nОткат прошёл не до конца. Запустите откат ещё раз: Rexon доделает остальное."
    },
    {
     "note": "упала, а форков больше нет — откат, судя по всему, прошёл",
@@ -2999,7 +2999,7 @@
     "planned": "sudo pacman -Rns aeroshell-smod-git  &&  sudo pacman -S libplasma",
     "remaining": "sudo pacman -S libplasma",
     "ok": false,
-    "message": "pacman не довёл откат до конца.\n\nОсталось выполнить (можно вручную в терминале):\nsudo pacman -S libplasma"
+    "message": "pacman не довёл откат до конца.\n\nОткат прошёл не до конца. Запустите откат ещё раз: Rexon доделает остальное."
    },
    {
     "note": "⭐ починка: команда отката не собралась — вместо строки «None» показываем тело самой транзакции",
@@ -3010,7 +3010,7 @@
     "planned": null,
     "remaining": null,
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo pacman -Rns --noconfirm aeroshell-smod-git; pacman -S --noconfirm --needed libplasma",
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне.",
     "was_python": "Авторизация pkexec отклонена.\nВыполните вручную в терминале:\nNone"
    }
   ],
@@ -3760,7 +3760,7 @@
     "stdout": "",
     "stderr": "",
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo plymouth-set-default-theme cachyos-bootanimation -R"
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне."
    },
    {
     "note": "отказ авторизации текстом агента при другом коде",
@@ -3770,7 +3770,7 @@
     "stdout": "",
     "stderr": "Error: Not authorized\n",
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo plymouth-set-default-theme cachyos-bootanimation -R"
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне."
    },
    {
     "note": "пустой stderr уступает stdout",
@@ -3810,7 +3810,7 @@
     "stdout": "",
     "stderr": "",
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo update-alternatives --set default.plymouth /usr/share/plymouth/themes/bgrt/bgrt.plymouth && update-initramfs -u"
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне."
    }
   ]
  },
@@ -4486,7 +4486,7 @@
     "stdout": "",
     "stderr": "Error executing command as another user: Not authorized\n",
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo rm -f /etc/sddm.conf.d/zz-rexon-theme.conf",
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне.",
     "result_removed": []
    },
    {
@@ -4500,7 +4500,7 @@
     "stdout": "",
     "stderr": "",
     "ok": false,
-    "message": "Пароль администратора не подтверждён.\nСделать это можно вручную в терминале:\nsudo rm -f /etc/sddm.conf.d/zz-rexon-theme.conf",
+    "message": "Пароль администратора не подтверждён.\nПопробуйте ещё раз и введите пароль в открывшемся окне.",
     "result_removed": []
    },
    {

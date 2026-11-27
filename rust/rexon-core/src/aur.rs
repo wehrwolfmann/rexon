@@ -360,6 +360,103 @@ pub fn fetch_category_with_curated<IO: NetIo + ?Sized>(
     }
 }
 
+/// AUR packages that ship whole MATE themes: a theme directory with
+/// `index.theme` whose `[X-GNOME-Metatheme]` names `GtkTheme`,
+/// `MetacityTheme` and `IconTheme` — the three keys without which the MATE
+/// «Appearance» window does not list a theme. Checked 27.11.2026 against what
+/// each package installs: the packaged files (`ubuntu-mate-themes` .deb,
+/// `mint-themes` tree), the `index.theme` the build installs (`greybird`,
+/// `arc`, `yaru`, `vertex`, `numix`, `adapta`, `ceti-2`, `evopop`,
+/// `clearlooks-phenix`, `windows10`) or the one written by the package's
+/// install script (`vimix`, `matcha`, `qogir`, `whitesur`). Left out: sets
+/// whose metatheme misses a required key (`zuki-themes`, `pop-gtk-theme`,
+/// `numix-frost-themes`, `solarized-dark-themes` — MATE would not list them).
+pub const MATE_METATHEMES: &[&str] = &[
+    "ubuntu-mate-themes",
+    "mint-themes",
+    "greybird-gtk-theme",
+    "arc-gtk-theme-git",
+    "yaru-gtk-theme",
+    "vertex-themes",
+    "numix-gtk-theme",
+    "adapta-gtk-theme-git",
+    "ceti-2-themes",
+    "evopop-gtk-theme",
+    "clearlooks-phenix-gtk-theme",
+    "gtk-theme-windows10",
+    "vimix-gtk-themes",
+    "matcha-gtk-theme",
+    "qogir-gtk-theme",
+    "whitesur-gtk-theme",
+];
+
+/// The packages of whole themes of desktop `de` that the AUR shelf of section
+/// `key` shows first: «Global Themes» on MATE — its metathemes
+/// ([`MATE_METATHEMES`]). `None` — the section shelf is the same on every
+/// desktop.
+pub fn native_shelf(key: &str, de: &str) -> Option<&'static [&'static str]> {
+    use crate::native_global::{format_for, Format};
+    (key == "global" && format_for(de) == Some(Format::MateMetatheme)).then_some(MATE_METATHEMES)
+}
+
+/// The whole themes of the desktop from an `/info` answer: by votes, with the
+/// section key `key` (the tile icon depends on it).
+pub fn native_shelf_order(data: &Value, key: &str) -> Vec<AurPackage> {
+    let mut out = parse_results(data);
+    for p in &mut out {
+        p.category = key.to_string();
+    }
+    sort_votes(&mut out);
+    out
+}
+
+/// Put the whole themes of the desktop `native` in front of the section
+/// results `rest` (a package found in both stays once, in front).
+pub fn native_first(native: Vec<AurPackage>, rest: Vec<AurPackage>) -> Vec<AurPackage> {
+    let rest: Vec<AurPackage> = rest.into_iter().filter(|p| !native.iter().any(|n| n.name == p.name)).collect();
+    native.into_iter().chain(rest).collect()
+}
+
+/// Whether package `p` matches every word of search `query` (name or
+/// description), as the AUR search does.
+pub fn matches_query(p: &AurPackage, query: &str) -> bool {
+    let hay = format!("{} {}", p.name, p.description).to_lowercase();
+    query.to_lowercase().split_whitespace().all(|w| hay.contains(w))
+}
+
+/// The AUR shelf of section `key` on desktop `de` without a search query:
+/// the whole themes of the desktop first ([`native_shelf`]), then the
+/// section's own results ([`fetch_category_with_curated`]). Those are the
+/// main thing on this desktop: if they did not come, the error is shown; the
+/// section results are a supplement.
+pub fn fetch_category_for_de<IO: NetIo + ?Sized>(
+    io: &mut IO,
+    key: &str,
+    de: &str,
+) -> Result<Vec<AurPackage>, AurError> {
+    let Some(names) = native_shelf(key, de) else { return fetch_category_with_curated(io, key) };
+    let native = native_shelf_order(&rpc_call(io, &info_url(names))?, key);
+    let rest = fetch_category_with_curated(io, key).unwrap_or_default();
+    Ok(native_first(native, rest))
+}
+
+/// The AUR search within section `key` on desktop `de`: the whole themes of
+/// the desktop that match the query first, then [`search_in_category`].
+pub fn search_in_category_for_de<IO: NetIo + ?Sized>(
+    io: &mut IO,
+    query: &str,
+    key: &str,
+    de: &str,
+) -> Result<Vec<AurPackage>, AurError> {
+    let Some(names) = native_shelf(key, de) else { return search_in_category(io, query, key) };
+    let native: Vec<AurPackage> = native_shelf_order(&rpc_call(io, &info_url(names))?, key)
+        .into_iter()
+        .filter(|p| matches_query(p, query))
+        .collect();
+    let rest = search_in_category(io, query, key).unwrap_or_default();
+    Ok(native_first(native, rest))
+}
+
 /// Aggregate categories for the virtual popular/new (`AGGREGATE_KEYS`).
 pub const AGGREGATE_KEYS: &[&str] = &["global", "plasma", "colors", "icons", "cursor"];
 

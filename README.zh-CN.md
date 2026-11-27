@@ -8,15 +8,20 @@ Rexon 是一款免费的 Linux 桌面环境管理器。在同一个窗口里，�
 
 Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://github.com/KDAB/cxx-qt)）。目前仍处于早期阶段：版本号还是 0.x，主要的开发和测试平台是 Arch Linux / CachyOS。
 
-![Rexon：桌面环境列表，以及 KDE Plasma 的详细信息](.github/screenshots/desktops.png)
+![Rexon：Wallpaper Engine 标签页与动态壁纸库](.github/screenshots/wallpaper-engine.png)
 
-![Rexon：“外观”中的全局主题目录](.github/screenshots/global-themes.png)
+![Rexon：MATE 下的全局主题——桌面自带的主题排在前面，并显示真实预览](.github/screenshots/global-themes.png)
 
 <table>
   <tr>
+    <td><img src=".github/screenshots/desktops.png" alt="桌面环境列表，以及 MATE 的详细信息"></td>
+    <td><img src=".github/screenshots/screen-effects.png" alt="带实时预览的屏幕特效"></td>
+    <td><img src=".github/screenshots/steam.png" alt="登录时播放的 Steam 启动动画"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/conky.png" alt="Conky 小部件目录"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Qt 应用程序样式，以实时控件预览的形式展示"></td>
-    <td><img src=".github/screenshots/gtk-theme-details.png" alt="GTK 主题详情，带有 GTK 4/libadwaita 开关"></td>
-    <td><img src=".github/screenshots/compare.png" alt="桌面环境并排对比"></td>
+    <td></td>
   </tr>
 </table>
 
@@ -90,14 +95,19 @@ Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://git
 
 在 Arch Linux / CachyOS 上，本仓库提供两个软件包：
 
-- [`packaging/rexon/`](packaging/rexon/)：正式版。它从带签名的发布标签（`v0.1.1`）构建，`makepkg` 会用密钥 `B4505C7C7841ECC12D7A0E9D0083083C32159A72` 校验标签签名。只需导入一次：`curl -s https://github.com/wehrwolfmann.gpg | gpg --import`。
+- [`packaging/rexon/`](packaging/rexon/)：正式版。它从带签名的发布标签（`v0.1.2`）构建，`makepkg` 会用密钥 `B4505C7C7841ECC12D7A0E9D0083083C32159A72` 校验标签签名。只需导入一次：`curl -s https://github.com/wehrwolfmann.gpg | gpg --import`。
 - [`packaging/aur/`](packaging/aur/)：`rexon-git`，即 `main` 分支上的最新代码。
 
+壁纸引擎以独立的 AUR 软件包提供：守护进程 `waywallen` 及其插件 `open-wallpaper-engine`；构建还需要 `lito`（AUR）。请先安装它们，再构建 Rexon：
+
 ```sh
+paru -S waywallen open-wallpaper-engine lito
 git clone https://github.com/wehrwolfmann/rexon.git
 cd rexon/packaging/rexon
 makepkg -si
 ```
+
+没有 AUR 助手时，用同样的方式逐个构建这三个包，`waywallen` 要先于 `open-wallpaper-engine`：`git clone https://aur.archlinux.org/<名称>.git && cd <名称> && makepkg -si`。`waywallen-bin`（预编译的 AppImage）暂时不能用：它提供的 `waywallen` 没有版本号，pacman 不会把它算作 Rexon 和 `open-wallpaper-engine` 所需的 `waywallen>=0.6.3`。在 Plasma 上，Rexon 会自行安装壁纸插件 `plasma-wallpaper-waywallen`。
 
 ## 从源码构建
 
@@ -130,10 +140,10 @@ cargo test-core       # 核心测试，不需要 Qt
 ```sh
 tools/build_qml_material.sh
 tools/build_qml_control.sh
-tools/build_qml_qextra.sh    # 需要 lito >= 0.8.7、clang、lld（AUR：lito 或 lito-bin）
+tools/build_qml_qextra.sh    # 需要 lito >= 0.8.11、clang、lld（AUR：lito 或 lito-bin）
 ```
 
-如果想一次性得到全部内容（插件、waywallen 引擎、特权辅助程序及其 polkit 策略），请直接构建软件包：
+如果想一次性得到全部内容（插件、特权辅助程序及其 polkit 策略），请直接构建软件包（同样需要上面的引擎软件包）：
 
 ```sh
 cd packaging/aur
@@ -231,8 +241,8 @@ Rexon 从不以 root 身份运行第三方安装脚本。有些主题作者附�
 
 Rexon 的动态壁纸建立在他人的工作之上：
 
-- **[waywallen](https://github.com/hypengw/waywallen)**，作者 hypengw，MIT 许可证。壁纸引擎（一个独立的守护进程）；软件包附带其未经修改的官方发布版本。动态壁纸页面使用 waywallen 的 QML 界面，并带有少量补丁，存放在 `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`。
-- **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)**，GPL-2.0-only。渲染场景和网页壁纸的 waywallen 插件。它作为由 waywallen 守护进程启动的独立进程运行，Rexon 不与它链接。软件包附带其未经修改的官方发布版本及完整源代码。
+- **[waywallen](https://github.com/hypengw/waywallen)**，作者 hypengw，MIT 许可证。壁纸引擎（一个独立的守护进程）；Rexon 软件包依赖 `waywallen` 软件包，内置引擎的构建版本附带其未经修改的官方发布版本。动态壁纸页面使用 waywallen 的 QML 界面，并带有少量补丁，存放在 `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`。
+- **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)**，GPL-2.0-only。渲染场景和网页壁纸的 waywallen 插件。它作为由 waywallen 守护进程启动的独立进程运行，Rexon 不与它链接。Rexon 软件包依赖 `open-wallpaper-engine` 软件包；内置引擎的构建版本附带其未经修改的官方发布版本及完整源代码。
 - **[waywallen-display](https://github.com/waywallen/waywallen-display)**：KDE Plasma 壁纸插件，未经修改随附。
 - **[Ruffle](https://github.com/ruffle-rs/ruffle)**（MIT / Apache-2.0）：Flash 壁纸；**[QmlMaterial](https://github.com/hypengw/QmlMaterial)** 和 **[QExtra](https://github.com/hypengw/QExtra)**（MIT）：壁纸页面的 QML 插件；**[Mozilla Translations](https://github.com/mozilla/translations)** 模型配合 `fxtranslate` crate（MPL-2.0）：离线翻译壁纸描述；**mpv**：开场动画播放器。
 

@@ -410,8 +410,7 @@ def _install_qextra_lock(stage_lock: str) -> None:
     shutil.copyfile(stage_lock, QEXTRA_LOCK_PATH)
     print(f"[sync] updated: {QEXTRA_LOCK_REL} ({drift})")
     print("[sync] after this: rebuild the plugin with tools/build_qml_qextra.sh "
-          "and update the _qe_git/_qe_reg lists in packaging/aur/PKGBUILD "
-          "(its prepare() checks them against this file)")
+          "(the package fetches exactly this lock with `lito fetch --locked`)")
 
 
 # ---------------------------------------------------------------------------

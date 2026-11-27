@@ -93,6 +93,14 @@ pub trait LookIo {
     fn remove_tree(&self, _path: &str) -> bool {
         false
     }
+    /// The desktop of the RUNNING session (`system::detect_current_de`), so a
+    /// section knows whether a program it starts lands on the screen in front
+    /// of the person or the desktop chosen in "Current desktop" is only being
+    /// prepared for the next login. By default — `None` (unknown): test fakes
+    /// start nothing live, as with [`LookIo::spawn`].
+    fn session_desktop(&self) -> Option<String> {
+        None
+    }
     /// GNOME extensions as reported by the running shell (D-Bus
     /// `ListExtensions`). `None` — no shell. Defaults to `None`:
     /// test fakes do not touch the bus.
@@ -107,6 +115,9 @@ pub struct SystemIo;
 impl LookIo for SystemIo {
     fn gnome_shell_extensions(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
         crate::gnome_ext_section::live_snapshot()
+    }
+    fn session_desktop(&self) -> Option<String> {
+        Some(LookCtx::from_env().de).filter(|de| !de.is_empty())
     }
     fn spawn(&self, argv: &[String]) -> bool {
         let Some(program) = argv.first() else {

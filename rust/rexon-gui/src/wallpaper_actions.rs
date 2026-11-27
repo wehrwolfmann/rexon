@@ -119,6 +119,9 @@ pub mod qobject {
         #[qproperty(QString, wallpaper_id, cxx_name = "wallpaperId", READ = wallpaper_id,
                     WRITE = set_wallpaper_id, NOTIFY = wallpaper_id_changed)]
         #[qproperty(QVariant, wallpaper, READ = wallpaper, NOTIFY = wallpaper_changed)]
+        /// qextra `Query::delay`: `false` — an item change reloads at once instead
+        /// of after the 100 ms debounce (the details panel since waywallen 0.6.2).
+        #[qproperty(bool, delay, READ = delay, WRITE = set_delay, NOTIFY = delay_changed)]
         type WallpaperGetQuery = super::WallpaperGetQueryRust;
 
         #[qobject]
@@ -205,6 +208,22 @@ pub mod qobject {
                     WRITE = set_wallpaper_id, NOTIFY = wallpaper_id_changed)]
         #[qproperty(bool, hidden, READ = hidden, WRITE = set_hidden, NOTIFY = hidden_changed)]
         type WallpaperHideQuery = super::WallpaperHideQueryRust;
+
+        /// waywallen 0.6.2: named property presets of one wallpaper.
+        #[qobject]
+        #[qml_element]
+        #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
+        #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
+        #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
+        #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
+                    WRITE = set_forward_error, NOTIFY = forward_error_changed)]
+        /// `[{id, name}]`, the id as a string (it is an int64 on the wire).
+        #[qproperty(QVariant, presets, READ = presets, NOTIFY = presets_changed)]
+        #[qproperty(bool, renderer_update_failed, cxx_name = "rendererUpdateFailed",
+                    READ = renderer_update_failed, NOTIFY = presets_changed)]
+        #[qproperty(bool, confirmation_required, cxx_name = "confirmationRequired",
+                    READ = confirmation_required, NOTIFY = presets_changed)]
+        type WallpaperPresetQuery = super::WallpaperPresetQueryRust;
     }
 
     // ── Signals of the Query base (the same for all seven) ────────────────
@@ -482,6 +501,37 @@ pub mod qobject {
         #[qsignal]
         fn updated(self: Pin<&mut WallpaperHideQuery>, wallpaper_ids: QStringList,
                    hidden: bool, updated_count: u32);
+
+        #[qsignal]
+        #[cxx_name = "statusChanged"]
+        fn status_changed(self: Pin<&mut WallpaperPresetQuery>, status: i32);
+        #[qsignal]
+        #[cxx_name = "queryingChanged"]
+        fn querying_changed(self: Pin<&mut WallpaperPresetQuery>);
+        #[qsignal]
+        #[cxx_name = "errorChanged"]
+        fn error_changed(self: Pin<&mut WallpaperPresetQuery>);
+        #[qsignal]
+        #[cxx_name = "forwardErrorChanged"]
+        fn forward_error_changed(self: Pin<&mut WallpaperPresetQuery>);
+        #[qsignal]
+        fn finished(self: Pin<&mut WallpaperPresetQuery>);
+        #[qsignal]
+        #[cxx_name = "errorOccurred"]
+        fn error_occurred(self: Pin<&mut WallpaperPresetQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "appErrorOccurred"]
+        fn app_error_occurred(self: Pin<&mut WallpaperPresetQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "sendRequest"]
+        fn send_request(self: Pin<&mut WallpaperPresetQuery>, token: i64, field: QString,
+                        request: QByteArray);
+        #[qsignal]
+        #[cxx_name = "presetsChanged"]
+        fn presets_changed(self: Pin<&mut WallpaperPresetQuery>);
+        #[qsignal]
+        #[cxx_name = "delayChanged"]
+        fn delay_changed(self: Pin<&mut WallpaperGetQuery>);
     }
 
     // ── Getters and setters ───────────────────────────────────────────────
@@ -624,6 +674,23 @@ pub mod qobject {
         fn hidden(self: &WallpaperHideQuery) -> bool;
         #[cxx_name = "setHidden"]
         fn set_hidden(self: Pin<&mut WallpaperHideQuery>, value: bool);
+
+        fn delay(self: &WallpaperGetQuery) -> bool;
+        #[cxx_name = "setDelay"]
+        fn set_delay(self: Pin<&mut WallpaperGetQuery>, value: bool);
+
+        fn status(self: &WallpaperPresetQuery) -> i32;
+        fn error(self: &WallpaperPresetQuery) -> QString;
+        fn querying(self: &WallpaperPresetQuery) -> bool;
+        #[cxx_name = "forwardError"]
+        fn forward_error(self: &WallpaperPresetQuery) -> bool;
+        #[cxx_name = "setForwardError"]
+        fn set_forward_error(self: Pin<&mut WallpaperPresetQuery>, value: bool);
+        fn presets(self: &WallpaperPresetQuery) -> QVariant;
+        #[cxx_name = "rendererUpdateFailed"]
+        fn renderer_update_failed(self: &WallpaperPresetQuery) -> bool;
+        #[cxx_name = "confirmationRequired"]
+        fn confirmation_required(self: &WallpaperPresetQuery) -> bool;
     }
 
     // ── Invokables ────────────────────────────────────────────────────────
@@ -658,6 +725,11 @@ pub mod qobject {
 
         #[qinvokable]
         fn reload(self: Pin<&mut WallpaperPropertySetQuery>);
+        /// waywallen 0.6.2: one write with its arguments (the page's
+        /// `PropertyWriteQueue` sends them one at a time); ignored while busy.
+        #[qinvokable]
+        fn write(self: Pin<&mut WallpaperPropertySetQuery>, wallpaper_id: QString, key: QString,
+                 value: QString, reset: bool);
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut WallpaperPropertySetQuery>, token: i64,
@@ -689,6 +761,29 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut WallpaperHideQuery>, token: i64, frame: &QByteArray);
+
+        #[qinvokable]
+        fn list(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString);
+        #[qinvokable]
+        fn save(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString, name: QString);
+        #[qinvokable]
+        fn update(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString, preset_id: QString);
+        #[qinvokable]
+        fn rename(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString, preset_id: QString,
+                  name: QString);
+        #[qinvokable]
+        fn remove(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString, preset_id: QString);
+        /// `overwrite = false` asks the daemon to refuse when unsaved values would be
+        /// lost (`confirmationRequired` in the answer).
+        #[qinvokable]
+        fn apply(self: Pin<&mut WallpaperPresetQuery>, wallpaper_id: QString, preset_id: QString,
+                 overwrite: bool);
+        /// The query base's `reload()`: the presets have no standing request.
+        #[qinvokable]
+        fn reload(self: Pin<&mut WallpaperPresetQuery>);
+        #[qinvokable]
+        #[cxx_name = "deliverResponse"]
+        fn deliver_response(self: Pin<&mut WallpaperPresetQuery>, token: i64, frame: &QByteArray);
     }
 
     impl cxx_qt::Constructor<()> for WallpaperApplyQuery {}
@@ -699,6 +794,7 @@ pub mod qobject {
     impl cxx_qt::Constructor<()> for WallpaperLayoutSetQuery {}
     impl cxx_qt::Constructor<()> for WallpaperApplyViaPortalQuery {}
     impl cxx_qt::Constructor<()> for WallpaperHideQuery {}
+    impl cxx_qt::Constructor<()> for WallpaperPresetQuery {}
 }
 
 use core::pin::Pin;
@@ -965,7 +1061,7 @@ impl qobject::WallpaperApplyQuery {
         // canvas once plus every standalone display".
         let targets = we_manage::presentation_targets(&self.targets);
         let payload = pb::WallpaperApplyRequest {
-            wallpaper_id,
+            wallpaper: Some(pb::wallpaper_apply_request::Wallpaper::WallpaperId(wallpaper_id)),
             targets,
             renderer_name: self.renderer_name.clone(),
             ..Default::default()
@@ -1038,6 +1134,8 @@ pub struct WallpaperGetQueryRust {
     base: QueryState,
     data: we_wallpaper::WallpaperGetData,
     wallpaper_id: String,
+    /// `!delay` (qextra's default is `delay = true`, and `Default` gives `false`).
+    no_delay: bool,
     /// token → which item was asked with it. An answer to a stale request is
     /// dropped — otherwise the panel shows someone else's wallpaper.
     pending: std::collections::BTreeMap<i64, String>,
@@ -1066,11 +1164,28 @@ impl qobject::WallpaperGetQuery {
         }
         self.as_mut().rust_mut().wallpaper_id = next;
         self.as_mut().wallpaper_id_changed();
-        // The original's connect_requet_reload: an item change → a deferred reload.
+        // The original's connect_requet_reload: an item change → a deferred reload,
+        // or an immediate one with `delay: false` (qextra `Query::delayReload`).
+        if self.no_delay {
+            self.reload();
+            return;
+        }
         let timer = self.debounce;
         if !timer.is_null() {
             unsafe { qobject::rexon_restart_action_debounce(timer) };
         }
+    }
+
+    pub fn delay(&self) -> bool {
+        !self.no_delay
+    }
+
+    pub fn set_delay(mut self: Pin<&mut Self>, value: bool) {
+        if self.no_delay == !value {
+            return;
+        }
+        self.as_mut().rust_mut().no_delay = !value;
+        self.delay_changed();
     }
 
     pub fn wallpaper(&self) -> QVariant {
@@ -1104,7 +1219,12 @@ impl qobject::WallpaperGetQuery {
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             let rust = &mut *rust;
-            we_wallpaper::apply_wallpaper_get(&mut rust.base, &mut rust.data, frame.as_slice())
+            we_wallpaper::apply_wallpaper_get_checked(
+                &mut rust.base,
+                &mut rust.data,
+                frame.as_slice(),
+                &wanted,
+            )
         };
         match parsed {
             Ok(signals) => self.dispatch(signals),
@@ -1408,6 +1528,24 @@ impl qobject::WallpaperPropertySetQuery {
         self.reset_changed();
     }
 
+    /// waywallen 0.6.2 `write()`: the arguments are the request, the properties
+    /// stay for callers that still set them. Busy — the call is dropped, as in the
+    /// original; the page's queue waits for `finished`/`errorOccurred`.
+    pub fn write(mut self: Pin<&mut Self>, wallpaper_id: QString, key: QString, value: QString,
+                 reset: bool) {
+        if self.querying() {
+            return;
+        }
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.wallpaper_id = wallpaper_id.to_string();
+            rust.property_key = key.to_string();
+            rust.property_value = value.to_string();
+            rust.reset = reset;
+        }
+        self.reload();
+    }
+
     pub fn reload(mut self: Pin<&mut Self>) {
         if self.wallpaper_id.is_empty() || self.property_key.is_empty() {
             return;
@@ -1438,11 +1576,18 @@ impl qobject::WallpaperPropertySetQuery {
             let mut rust = self.as_mut().rust_mut();
             take_payload(&mut rust.base, frame.as_slice())
         };
-        // The answer has no payload: success is the absence of an error.
+        // The answer has no data; since waywallen 0.6.2 an answer without the
+        // `wallpaper_property_set` payload is an error, not a success.
         let signals = match parsed {
-            Ok(Answer::Ok(_)) => {
+            Ok(Answer::Ok(Some(pb::response::Payload::WallpaperPropertySet(_)))) => {
                 let mut rust = self.as_mut().rust_mut();
                 we_query::finish(&mut rust.base, Vec::new())
+            }
+            Ok(Answer::Ok(_)) => {
+                let mut rust = self.as_mut().rust_mut();
+                let mut out = we_query::set_error(&mut rust.base, "");
+                out.extend(we_query::set_status(&mut rust.base, STATUS_ERROR));
+                out
             }
             Ok(Answer::Failed(signals)) => signals,
             Err(_) => decode_failed(&mut self.as_mut().rust_mut().base),
@@ -1706,7 +1851,7 @@ mod tests {
     fn target_frame_matches_live_daemon() {
         let targets = we_manage::presentation_targets(&serde_json::json!([{"displayId": 2}]));
         let bytes = pb::WallpaperApplyRequest {
-            wallpaper_id: "71".into(),
+            wallpaper: Some(pb::wallpaper_apply_request::Wallpaper::WallpaperId("71".into())),
             targets,
             ..Default::default()
         }
@@ -1720,7 +1865,7 @@ mod tests {
     #[test]
     fn display_numbers_give_the_same_frame() {
         let bytes = pb::WallpaperApplyRequest {
-            wallpaper_id: "71".into(),
+            wallpaper: Some(pb::wallpaper_apply_request::Wallpaper::WallpaperId("71".into())),
             targets: we_client::display_targets(&[2]),
             ..Default::default()
         }
@@ -1839,6 +1984,143 @@ impl qobject::WallpaperHideQuery {
     pub fn emit_property(self: Pin<&mut Self>, name: &str) {
         let _ = self;
         debug_assert!(false, "нет сигнала для свойства {name}");
+    }
+
+    pub fn dispatch(self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
+        self.dispatch_base(signals);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// WallpaperPresetQuery — named property presets (waywallen 0.6.2)
+// ════════════════════════════════════════════════════════════════════════
+
+#[derive(Default)]
+pub struct WallpaperPresetQueryRust {
+    base: QueryState,
+    presets: Vec<Value>,
+    renderer_update_failed: bool,
+    confirmation_required: bool,
+    pending: std::collections::BTreeSet<i64>,
+}
+
+impl_action_base!(WallpaperPresetQuery);
+
+impl cxx_qt::Initialize for qobject::WallpaperPresetQuery {
+    fn initialize(self: Pin<&mut Self>) {
+        let _ = self;
+    }
+}
+
+/// A preset id from QML: the vendor's `QString::toLongLong()` (garbage → 0).
+fn preset_id(id: &QString) -> i64 {
+    id.to_string().trim().parse().unwrap_or(0)
+}
+
+impl qobject::WallpaperPresetQuery {
+    pub fn presets(&self) -> QVariant {
+        json_to_variant(&Value::Array(self.presets.clone()))
+    }
+
+    pub fn renderer_update_failed(&self) -> bool {
+        self.renderer_update_failed
+    }
+
+    pub fn confirmation_required(&self) -> bool {
+        self.confirmation_required
+    }
+
+    pub fn list(self: Pin<&mut Self>, wallpaper_id: QString) {
+        self.send(wallpaper_id, pb::wallpaper_preset_request::Operation::List(pb::Empty {}), false);
+    }
+
+    pub fn save(self: Pin<&mut Self>, wallpaper_id: QString, name: QString) {
+        let op = pb::wallpaper_preset_request::Operation::SaveName(name.to_string());
+        self.send(wallpaper_id, op, false);
+    }
+
+    pub fn update(self: Pin<&mut Self>, wallpaper_id: QString, preset: QString) {
+        let op = pb::wallpaper_preset_request::Operation::UpdateId(preset_id(&preset));
+        self.send(wallpaper_id, op, false);
+    }
+
+    pub fn rename(self: Pin<&mut Self>, wallpaper_id: QString, preset: QString, name: QString) {
+        let op = pb::wallpaper_preset_request::Operation::Rename(pb::WallpaperPresetRename {
+            preset_id: preset_id(&preset),
+            name: name.to_string(),
+        });
+        self.send(wallpaper_id, op, false);
+    }
+
+    pub fn remove(self: Pin<&mut Self>, wallpaper_id: QString, preset: QString) {
+        let op = pb::wallpaper_preset_request::Operation::DeleteId(preset_id(&preset));
+        self.send(wallpaper_id, op, false);
+    }
+
+    pub fn apply(self: Pin<&mut Self>, wallpaper_id: QString, preset: QString, overwrite: bool) {
+        let op = pb::wallpaper_preset_request::Operation::ApplyId(preset_id(&preset));
+        self.send(wallpaper_id, op, !overwrite);
+    }
+
+    pub fn reload(self: Pin<&mut Self>) {}
+
+    fn send(
+        mut self: Pin<&mut Self>,
+        wallpaper_id: QString,
+        operation: pb::wallpaper_preset_request::Operation,
+        protect_unsaved_values: bool,
+    ) {
+        if self.querying() {
+            return;
+        }
+        let payload = pb::WallpaperPresetRequest {
+            wallpaper_id: wallpaper_id.to_string(),
+            operation: Some(operation),
+            protect_unsaved_values,
+        }
+        .encode_to_vec();
+        if let Some(token) = self.as_mut().send_frame("wallpaper_preset", payload) {
+            self.rust_mut().pending.insert(token);
+        }
+    }
+
+    pub fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
+        if !self.as_mut().rust_mut().pending.remove(&token) {
+            return;
+        }
+        let parsed = {
+            let mut rust = self.as_mut().rust_mut();
+            take_payload(&mut rust.base, frame.as_slice())
+        };
+        let signals = match parsed {
+            Ok(Answer::Ok(Some(pb::response::Payload::WallpaperPreset(rsp)))) => {
+                let mut rust = self.as_mut().rust_mut();
+                rust.presets = rsp
+                    .presets
+                    .iter()
+                    .map(|p| serde_json::json!({"id": p.id.to_string(), "name": p.name}))
+                    .collect();
+                rust.renderer_update_failed = rsp.renderer_update_failed;
+                rust.confirmation_required = rsp.confirmation_required;
+                we_query::finish(&mut rust.base, vec![QuerySignal::Property("presets")])
+            }
+            Ok(Answer::Ok(_)) => {
+                let mut rust = self.as_mut().rust_mut();
+                let mut out = we_query::set_error(&mut rust.base, "");
+                out.extend(we_query::set_status(&mut rust.base, STATUS_ERROR));
+                out
+            }
+            Ok(Answer::Failed(signals)) => signals,
+            Err(_) => decode_failed(&mut self.as_mut().rust_mut().base),
+        };
+        self.dispatch(signals);
+    }
+
+    pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
+        match name {
+            "presets" => self.as_mut().presets_changed(),
+            other => debug_assert!(false, "no signal for property {other}"),
+        }
     }
 
     pub fn dispatch(self: Pin<&mut Self>, signals: Vec<QuerySignal>) {

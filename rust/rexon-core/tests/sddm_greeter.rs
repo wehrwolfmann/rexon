@@ -133,7 +133,7 @@ fn cases() -> Value {
 }
 
 #[test]
-fn эталон_правок_экрана_входа() {
+fn login_screen_edits_golden() {
     let got = cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("REXON_GOLDEN_WRITE").is_some() {
@@ -147,7 +147,7 @@ fn эталон_правок_экрана_входа() {
 /// `-nolisten tcp` is not lost (the KDE module loses it); after «Reset» —
 /// the package values and the former X server arguments again.
 #[test]
-fn перенос_и_сброс_по_итогу_чтения_sddm() {
+fn transfer_and_reset_by_sddm_read_result() {
     let base = cachyos();
     let synced = apply(&base, &plan_on(&base, Some(&plasma_look())));
     assert_eq!(effective(&synced, "Theme", "CursorTheme").as_deref(), Some("Bibata-Modern-Ice"));
@@ -173,7 +173,7 @@ fn перенос_и_сброс_по_итогу_чтения_sddm() {
 /// Font, NumLock and DPI are not set — their keys are not touched (as in the
 /// KDE module): only the cursor changes.
 #[test]
-fn курсор_не_трогается_при_незаданном_dpi() {
+fn cursor_untouched_when_dpi_unset() {
     let base = cachyos();
     let look = SddmLook { dpi: None, numlock: None, font: None, ..plasma_look() };
     let SessionSwitch::Edits(e) = plan_on(&base, Some(&look)) else { panic!("ждали правки") };
@@ -182,7 +182,7 @@ fn курсор_не_трогается_при_незаданном_dpi() {
 }
 
 #[test]
-fn аргументы_x_сервера() {
+fn x_server_arguments() {
     assert_eq!(plan::server_args_with_dpi("-nolisten tcp", Some(96)), "-nolisten tcp -dpi 96");
     assert_eq!(plan::server_args_with_dpi("-dpi 120 -nolisten tcp", Some(96)), "-nolisten tcp -dpi 96");
     assert_eq!(plan::server_args_with_dpi("-nolisten tcp -dpi 120", None), "-nolisten tcp");
@@ -190,7 +190,7 @@ fn аргументы_x_сервера() {
 }
 
 #[test]
-fn фон_темы_как_у_модуля_kde() {
+fn theme_background_like_kde_module() {
     let dir = "/usr/share/sddm/themes/breeze";
     let files = fs(&[
         ("/usr/share/sddm/themes/breeze/metadata.desktop", "[SddmGreeterTheme]\nName=Breeze\nConfigFile=theme.conf\n"),
@@ -223,7 +223,7 @@ fn фон_темы_как_у_модуля_kde() {
 }
 
 #[test]
-fn картинка_по_сигнатуре() {
+fn image_by_signature() {
     assert_eq!(plan::login_image_ext(b"\x89PNG\r\n\x1a\n...."), Some("png"));
     assert_eq!(plan::login_image_ext(b"\xff\xd8\xff\xe0JFIF"), Some("jpg"));
     for bad in [&b"RIFF\0\0\0\0WEBP"[..], b"GIF89a", b"<svg", b"#!/bin/sh", b""] {
@@ -238,7 +238,7 @@ fn картинка_по_сигнатуре() {
 /// `kcmfonts`, `.config` files); outside Plasma — the desktop cursor and font,
 /// from files only Qt colours and fontconfig, the rest honestly «not carried over».
 #[test]
-fn что_берётся_со_стола() {
+fn what_is_taken_from_desktop() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     let files = fs(&[
         ("/h/.config/kcminputrc", "[Keyboard]\nNumLock=1\n\n[Mouse]\ncursorTheme=Bibata-Modern-Ice\ncursorSize=32\n"),
@@ -282,7 +282,7 @@ fn что_берётся_со_стола() {
 /// beats the theme file, absent everywhere — yes; values as in KConfig.
 /// Theme Qt version — `[SddmGreeterTheme] QtVersion`, absent — 5.
 #[test]
-fn часы_и_версия_qt_темы() {
+fn clock_and_theme_qt_version() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     let dir = "/usr/share/sddm/themes/breeze";
     let meta = "[SddmGreeterTheme]\nName=Breeze\nConfigFile=theme.conf\nQtVersion=6\n";
@@ -319,7 +319,7 @@ fn часы_и_версия_qt_темы() {
 /// refusal before the password names what is missing; the picker filter
 /// includes `*.webp`.
 #[test]
-fn webp_по_модулю_qt() {
+fn webp_by_qt_module() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     let webp = b"RIFF\x10\0\0\0WEBPVP8 ";
     assert!(plan::is_webp(webp));
@@ -356,7 +356,7 @@ fn webp_по_модулю_qt() {
 /// daemon: `sddm-greeter` for Qt 5, `sddm-greeter-qt6` for `QtVersion=6`;
 /// flags — `--test-mode --theme <directory>`. No theme or greeter — a refusal in words.
 #[test]
-fn превью_темы_sddm() {
+fn sddm_theme_preview() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     let files = fs(&[
         ("/usr/share/sddm/themes/breeze/metadata.desktop", "[SddmGreeterTheme]\nName=Breeze\nQtVersion=6\n"),
@@ -390,7 +390,7 @@ fn превью_темы_sddm() {
 /// error), exiting by itself with code 0 is not an error either; a crash is a
 /// refusal with the last output lines; a chatty program does not stall on the pipe.
 #[test]
-fn ход_превью() {
+fn preview_progress() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
@@ -428,7 +428,7 @@ fn ход_превью() {
 /// everything; foreign names in the stamp are not accepted. Preview: own —
 /// from the copy, foreign — only if readable, otherwise an honest label.
 #[test]
-fn своя_копия_фона() {
+fn own_background_copy() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     let root = std::env::temp_dir().join(format!("rexon-kept-bg-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

@@ -582,6 +582,20 @@ fn asset_choice_survives_extra_files() {
         "OWE v0.2.8: выбран не плагин"
     );
 
+    // since v0.4.0 the archive is named after the project, not the plugin id
+    let owe_v041 = [
+        "debug-symbols-linux-aarch64.zip",
+        "debug-symbols-linux-x86_64.zip",
+        "open-wallpaper-engine-0.4.1-linux-aarch64.zip",
+        "open-wallpaper-engine-0.4.1-linux-x86_64.zip",
+    ];
+    let picked: Vec<&str> = owe_v041
+        .iter()
+        .copied()
+        .filter(|n| eu::asset_matches(n, &owe.asset_prefix, &owe.asset_suffix))
+        .collect();
+    assert_eq!(picked, ["open-wallpaper-engine-0.4.1-linux-x86_64.zip"], "OWE v0.4.1: выбран не плагин");
+
     let ww_v037 = [
         "waywallen-0.3.7-aarch64.AppImage",
         "waywallen-0.3.7-x86_64.AppImage",

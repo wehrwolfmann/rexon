@@ -1467,7 +1467,7 @@ mod tests {
     }
 
     #[test]
-    fn плагины_сортируются_пользовательские_раньше_системных() {
+    fn plugins_sorted_user_before_system() {
         let payload = pb::response::Payload::PluginList(pb::PluginListResponse {
             plugins: vec![
                 pb::PluginInfo {
@@ -1506,7 +1506,7 @@ mod tests {
     }
 
     #[test]
-    fn источник_несёт_pluginid_и_настройки() {
+    fn source_carries_pluginid_and_settings() {
         let payload = pb::response::Payload::SourceList(pb::SourceListResponse {
             sources: vec![pb::SourcePluginInfo {
                 name: "wallhaven".into(),
@@ -1552,7 +1552,7 @@ mod tests {
     }
 
     #[test]
-    fn автоопределение_считает_добавленные_библиотеки() {
+    fn autodetect_counts_added_libraries() {
         let payload = pb::response::Payload::LibraryAutoDetect(pb::LibraryAutoDetectResponse {
             added: vec![pb::LibraryInstance::default(); 3],
         });
@@ -1565,7 +1565,7 @@ mod tests {
     }
 
     #[test]
-    fn отклонённая_правка_настроек_не_докладывается_принятой() {
+    fn rejected_settings_edit_not_reported_accepted() {
         // Daemon refusal: status is not OK.
         let rsp = pb::Response {
             request_id: 1,
@@ -1585,7 +1585,7 @@ mod tests {
     }
 
     #[test]
-    fn прогресс_задачи_живёт_складом_и_номерами() {
+    fn task_progress_lives_in_store_and_numbers() {
         progress_store::reset();
         // A snapshot of a PREVIOUS task with the same id arrived BEFORE the start of
         // our request — it must not close it.
@@ -1611,7 +1611,7 @@ mod tests {
     // ── batch 7: global toggles and canvases ─────────────────────────
 
     #[test]
-    fn глобальная_пауза_берёт_значение_от_демона_а_не_своё() {
+    fn global_pause_takes_daemon_value_not_own() {
         let mut st = QueryState::default();
         let mut value = false;
         // The client asked for «pause», the daemon answered «not paused» — the daemon wins.
@@ -1630,7 +1630,7 @@ mod tests {
     }
 
     #[test]
-    fn переключатель_паузы_докладывает_значение_даже_без_смены_свойства() {
+    fn pause_toggle_reports_value_even_without_property_change() {
         let mut st = QueryState::default();
         let mut value = true;
         let bytes = frame(pb::response::Payload::GlobalPauseToggle(
@@ -1649,7 +1649,7 @@ mod tests {
     }
 
     #[test]
-    fn чужая_нагрузка_не_трогает_флаг() {
+    fn foreign_payload_does_not_touch_flag() {
         let mut st = QueryState::default();
         let mut value = false;
         let bytes = frame(pb::response::Payload::GlobalMuteSet(
@@ -1663,7 +1663,7 @@ mod tests {
     }
 
     #[test]
-    fn правка_холста_различает_три_исхода() {
+    fn canvas_edit_distinguishes_three_outcomes() {
         let created = frame(pb::response::Payload::CanvasCreate(
             pb::CanvasCreateResponse {
                 canvas: Some(pb::CanvasInfo {
@@ -1701,7 +1701,7 @@ mod tests {
     }
 
     #[test]
-    fn отказ_демона_на_правке_холста_не_даёт_сигнала() {
+    fn daemon_refusal_on_canvas_edit_emits_no_signal() {
         let rsp = pb::Response {
             request_id: 1,
             status: pb::Status::Internal as i32,
@@ -1720,7 +1720,7 @@ mod tests {
     }
 
     #[test]
-    fn участники_холста_читаются_из_карт_qml() {
+    fn canvas_members_read_from_qml_maps() {
         let members = serde_json::json!([
             { "settingsKey": "DP-1", "x": -100.0, "y": 0, "width": 1920.0, "height": 1080 },
             { "settingsKey": "HDMI-1" },

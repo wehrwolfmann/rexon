@@ -800,7 +800,7 @@ mod tests {
     static SHARED_ACTIVITY: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn подпись_одной_строкой_и_с_пределом() {
+    fn label_single_line_and_limited() {
         assert_eq!(clean_label("  ✓  Применить\n«Сепия» "), "✓ Применить «Сепия»");
         assert_eq!(clean_label(""), "(без подписи)");
         let long = "я".repeat(100);
@@ -810,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn место_по_цепочке_предков() {
+    fn place_by_ancestor_chain() {
         let chain = "RexonButton_QMLTYPE_3/QQuickRowLayout/ScreenEffectsSection_QMLTYPE_9/QQuickColumnLayout/AppearancePage_QMLTYPE_2/QQuickLoader/MainWindow_QMLTYPE_0";
         assert_eq!(area_from_chain("appearance", chain), "appearance ▸ AppearancePage ▸ ScreenEffectsSection");
         // Only the two nearest components.
@@ -823,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn строки_действий() {
+    fn action_lines() {
         let area = "appearance ▸ ScreenEffectsSection";
         assert_eq!(
             deed_line(area, &Deed::Click { label: "Применить" }),
@@ -857,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn текущее_действие_видно_сторожу_до_конца_обработчика() {
+    fn current_action_visible_to_watchdog_until_handler_ends() {
         let _serial = SHARED_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner());
         let id = begin_deed("тест ▸ Стенд", &Deed::Click { label: "Висеть" });
         let during = activity_report();
@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn нажатие_кнопки_флажка_и_строки_списка() {
+    fn button_checkbox_and_list_row_press() {
         // A button of the shared control: its own label.
         let b = chain(&[
             "RexonButton_QMLTYPE_3\tb\t\tПрименить\tПрименить",
@@ -922,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    fn карточка_магазина_и_что_не_действие() {
+    fn store_card_and_what_is_not_action() {
         // A card's TapHandler: the label is the card's first caption.
         let t = chain(&[
             "QQuickTapHandler\th\t\t\t",
@@ -959,7 +959,7 @@ mod tests {
     }
 
     #[test]
-    fn поле_ввода_одна_строка_и_никаких_паролей() {
+    fn input_field_single_line_and_no_passwords() {
         let _serial = SHARED_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner());
         let area = "стенд-поле ▸ ExtensionsPage";
         // Empty the first time (focus left, nothing typed) — stay silent.
@@ -984,7 +984,7 @@ mod tests {
     }
 
     #[test]
-    fn сторож_решает_один_раз_на_зависание() {
+    fn watchdog_decides_once_per_hang() {
         let cfg = WatchConfig {
             stall_after: Duration::from_secs(2),
             severe_after: Duration::from_secs(10),
@@ -1019,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn строки_сторожа() {
+    fn watchdog_lines() {
         let s = stall_line(Duration::from_millis(2_250), "раздел steam", Some("#0 libc.so.6: poll+0x10\n"));
         assert_eq!(s, "окно не отвечает 2.2 с; раздел steam\nстек главного потока:\n#0 libc.so.6: poll+0x10");
         let s = stall_line(Duration::from_millis(3_000), "раздел steam", None);
@@ -1031,7 +1031,7 @@ mod tests {
     /// A live run: a thread with a heartbeat artificially «hangs» in sleep — the
     /// watchdog writes a WARN with the stack, one ERROR line and an INFO on recovery.
     #[test]
-    fn сторож_ловит_зависший_поток_и_снимает_его_стек() {
+    fn watchdog_catches_hung_thread_and_dumps_its_stack() {
         let lines: Arc<Mutex<Vec<(Level, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let sink_lines = Arc::clone(&lines);
         let sink: Sink = Arc::new(move |l, m| sink_lines.lock().unwrap().push((l, m.to_string())));

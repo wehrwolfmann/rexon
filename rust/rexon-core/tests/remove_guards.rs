@@ -21,7 +21,7 @@ fn removal(family: PkgFamily, de: &str, current: &str, dm: Option<&str>) -> Vec<
 
 /// Sitting in Xfce — removing Cinnamon does not touch lightdm and the greeter.
 #[test]
-fn удаление_cinnamon_из_xfce_не_трогает_lightdm() {
+fn removing_cinnamon_from_xfce_leaves_lightdm() {
     let arch = PkgFamily::Arch;
     let set = removal(arch, "cinnamon-mint", "xfce", Some("lightdm"));
     assert!(!set.is_empty());
@@ -35,7 +35,7 @@ fn удаление_cinnamon_из_xfce_не_трогает_lightdm() {
 /// Any pair of desktops of any family: not a single package of the current desktop
 /// gets into the removal set of the other one.
 #[test]
-fn ни_одна_пара_столов_не_снимает_пакеты_текущего() {
+fn no_desktop_pair_removes_current_packages() {
     let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
     let ids = system::list_de_ids();
     for fam in FAMILIES {
@@ -58,7 +58,7 @@ fn ни_одна_пара_столов_не_снимает_пакеты_теку
 /// The active login screen is kept even when the current desktop is unknown:
 /// the unit and its package (plasmalogin → plasma-login-manager, on Debian gdm → gdm3).
 #[test]
-fn активный_экран_входа_не_снимается() {
+fn active_login_screen_not_removed() {
     let all = s(&["plasma-login-manager", "sddm", "gdm", "gdm3", "foo"]);
     let keep = system::current_desktop_keep(PkgFamily::Arch, "unknown", Some("plasmalogin"));
     let left = system::without_current_desktop(PkgFamily::Arch, &all, &keep, &|_| None);
@@ -76,7 +76,7 @@ fn активный_экран_входа_не_снимается() {
 /// Arch groups are expanded on both sides: a member of the current desktop's group
 /// stays, even if the desktop being removed names it by name.
 #[test]
-fn член_группы_текущего_стола_остаётся() {
+fn current_desktop_group_member_stays() {
     let qg = |p: &str| -> Option<String> {
         match p {
             "xfce4" => Some("xfce4 xfce4-panel\nxfce4 thunar\n".into()),
@@ -189,7 +189,7 @@ mod helper {
 /// and not a single package manager call; an ordinary package is removed.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-fn помощник_не_снимает_вечное_по_семействам() {
+fn helper_keeps_permanent_packages_by_family() {
     let st = helper::stand("vital");
     for v in [
         "linux-cachyos", "linux-image-amd64", "nvidia-utils", "mesa", "amd-ucode",
@@ -209,7 +209,7 @@ fn помощник_не_снимает_вечное_по_семействам()
 /// and the graphical session's desktop by logind's `Desktop=` (groups expanded).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-fn помощник_не_снимает_текущий_стол_и_экран_входа() {
+fn helper_keeps_current_desktop_and_login_screen() {
     let st = helper::stand("current");
     let xfce = [("FAKE_DESKTOP", "XFCE"), ("FAKE_OWNER", "lightdm-owner")];
     for held in ["lightdm", "lightdm-owner", "lightdm-slick-greeter", "xfce4-panel", "xfce4-goodies"] {
@@ -235,7 +235,7 @@ fn помощник_не_снимает_текущий_стол_и_экран_в
 /// pacman, the names of every table pass.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-fn помощник_ставит_только_из_таблиц() {
+fn helper_installs_only_from_tables() {
     let st = helper::stand("install");
     let (code, out, _) = st.run(&["arch", "install", "evil-tool"], &[]);
     assert_eq!(code, 2);
@@ -251,7 +251,7 @@ fn помощник_ставит_только_из_таблиц() {
 /// the live places install packages through the helper: removing a table from the list
 /// means breaking an honest install (the helper will refuse).
 #[test]
-fn белый_список_покрывает_все_таблицы() {
+fn allowlist_covers_all_tables() {
     use rexon_core::system_plan as plan;
     for fam in FAMILIES {
         let f = fam.as_str();

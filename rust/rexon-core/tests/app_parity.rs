@@ -244,7 +244,7 @@ fn start_page_sections_exist() {
 /// A guard against relapse: a `--page=` appeared in the shortcut without an entry in
 /// the table — so a menu item again promises what the product does not do.
 #[test]
-fn ярлык_не_обещает_неизвестных_страниц() {
+fn launcher_promises_no_unknown_pages() {
     for entry in [inst::LaunchEntry::Python, rust_entry()] {
         let desktop = inst::desktop_content_for(&entry);
         let mut found = 0;
@@ -297,7 +297,7 @@ fn argv(exec: &str) -> Vec<String> {
 }
 
 #[test]
-fn основной_вход_ярлыка_rust_окно() {
+fn launcher_main_entry_is_rust_window() {
     let text = inst::desktop_content_for(&rust_entry());
     let g = groups(&text);
     assert_eq!(g[0].0, "Desktop Entry");
@@ -311,7 +311,7 @@ fn основной_вход_ярлыка_rust_окно() {
 }
 
 #[test]
-fn быстрые_действия_идут_на_rust_окно_и_понимаются_им() {
+fn quick_actions_go_to_rust_window_and_are_understood() {
     let text = inst::desktop_content_for(&rust_entry());
     let g = groups(&text);
     let actions = key(&g[0].1, "Actions").unwrap();
@@ -342,7 +342,7 @@ fn быстрые_действия_идут_на_rust_окно_и_понимаю
 /// would open a copy of what the shortcut itself opens. The guard holds this for
 /// any entry.
 #[test]
-fn пункта_классического_окна_в_ярлыке_нет() {
+fn launcher_has_no_classic_window_entry() {
     for entry in [rust_entry(), inst::LaunchEntry::Python] {
         let text = inst::desktop_content_for(&entry);
         let g = groups(&text);
@@ -359,7 +359,7 @@ fn пункта_классического_окна_в_ярлыке_нет() {
 }
 
 #[test]
-fn откат_по_переменной_уводит_на_python() {
+fn variable_fallback_leads_to_python() {
     let cands = vec![RUST_BIN.to_string()];
     let all = |_: &str| true;
     for v in ["python", "Python", " PYTHON\n"] {
@@ -376,7 +376,7 @@ fn откат_по_переменной_уводит_на_python() {
 }
 
 #[test]
-fn без_бинаря_ярлык_пишется_на_python_а_не_битым() {
+fn without_binary_launcher_written_for_python_not_broken() {
     let cands = inst::main_window_candidates(Some("/usr/bin:/usr/local/bin"), "", &[]);
     let entry = inst::choose_launch_entry(None, &cands, |_| false);
     assert_eq!(entry, inst::LaunchEntry::Python);
@@ -394,7 +394,7 @@ fn без_бинаря_ярлык_пишется_на_python_а_не_битым(
 }
 
 #[test]
-fn кандидаты_бинаря_окна_по_порядку() {
+fn window_binary_candidates_in_order() {
     let c = inst::main_window_candidates(
         Some("/usr/local/bin:relative::/usr/bin/:/usr/local/bin"),
         "/home/u",
@@ -420,7 +420,7 @@ fn кандидаты_бинаря_окна_по_порядку() {
 }
 
 #[test]
-fn автозапуск_по_тому_же_правилу_что_ярлык() {
+fn autostart_follows_launcher_rule() {
     use rexon_core::tray::autostart_exec;
     let cands = vec![RUST_BIN.to_string()];
     for (env, exists) in [(None, true), (Some("python"), true), (None, false)] {
@@ -454,7 +454,7 @@ fn автозапуск_по_тому_же_правилу_что_ярлык() {
 /// the `rexon` module, and the window binary understands the flag itself; with the fallback to Python —
 /// the former lines.
 #[test]
-fn хуки_входа_без_python_при_rust_входе() {
+fn login_hooks_without_python_for_rust_entry() {
     use rexon_core::{appdefaults as ad, session_splash as ss, tray};
     const PY_MARKS: [&str; 4] = ["python", "-m rexon", "from rexon", "import rexon"];
     let cands = vec![RUST_BIN.to_string()];
@@ -576,7 +576,7 @@ fn хуки_входа_без_python_при_rust_входе() {
 }
 
 #[test]
-fn путь_с_пробелом_берётся_в_кавычки() {
+fn path_with_space_is_quoted() {
     assert_eq!(inst::desktop_exec_arg("/usr/bin/x"), "/usr/bin/x");
     assert_eq!(inst::desktop_exec_arg("/опт/Загрузки/x"), "/опт/Загрузки/x");
     assert_eq!(inst::desktop_exec_arg("/a b/x"), "\"/a b/x\"");
@@ -592,7 +592,7 @@ fn путь_с_пробелом_берётся_в_кавычки() {
 /// (under `rust/target`), not in `/tmp`. No utility — the test says so
 /// out loud instead of quietly turning green.
 #[test]
-fn ярлыки_проходят_desktop_file_validate() {
+fn launchers_pass_desktop_file_validate() {
     let Ok(out) = std::process::Command::new("desktop-file-validate").arg("--help").output()
     else {
         eprintln!("НЕ ПРОВЕРЕНО: desktop-file-validate не установлен");
@@ -632,7 +632,7 @@ fn ярлыки_проходят_desktop_file_validate() {
 /// the static copy returns to the package, (c) the window install path in the PKGBUILD
 /// diverges from [`inst::PACKAGE_MAIN_WINDOW`].
 #[test]
-fn ярлыки_пакета_печатает_генератор_ядра() {
+fn package_launchers_printed_by_core_generator() {
     let run = |args: &[&str]| {
         let out = std::process::Command::new(env!("CARGO_BIN_EXE_desktop-entry"))
             .args(args)
@@ -690,7 +690,7 @@ fn ярлыки_пакета_печатает_генератор_ядра() {
     }
 
     let aur = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/aur");
-    let pkgbuild = std::fs::read_to_string(aur.join("PKGBUILD")).unwrap();
+    let pkgbuild = packaging_recipe();
     for name in ["rexon.desktop", "rexon-recover.desktop"] {
         assert!(!aur.join(name).exists(), "статичная копия {name} вернулась в пакет");
     }
@@ -710,10 +710,10 @@ fn ярлыки_пакета_печатает_генератор_ядра() {
 /// unpleasant case: the QML is new, the library is old, and it can be seen only
 /// by eye on the live page.
 #[test]
-fn плагины_вкладки_обоев_едут_в_пакете() {
+fn wallpaper_tab_plugins_ship_in_package() {
     use rexon_core::qml_modules as qm;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    let pkgbuild = packaging_recipe();
 
     let want = std::fs::read_to_string(
         root.join("data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN"),
@@ -740,42 +740,48 @@ fn плагины_вкладки_обоев_едут_в_пакете() {
     }
 }
 
-/// PKGBUILD arrays as makepkg sees them: the file is executed by bash itself with
-/// the given `REXON_BUNDLED_ENGINE` (`None` — the variable is absent altogether).
-/// Returns `name → values` for depends, license, source, sha256sums,
-/// noextract.
+/// The package recipe as a whole: the PKGBUILD and the build script it calls
+/// (`scripts/package-build` stages the package; the literals the core checks live there).
+fn packaging_recipe() -> String {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    let script = std::fs::read_to_string(root.join("scripts/package-build")).unwrap();
+    format!("{pkgbuild}\n{script}")
+}
+
+/// PKGBUILD arrays as makepkg sees them: `file` (relative to the repository root) is
+/// executed by bash itself, with makepkg's `startdir` set to `startdir`.
+/// Returns `name → values` for depends, makedepends, license, source,
+/// sha256sums, noextract.
 fn pkgbuild_arrays(
-    bundled: Option<&str>,
+    file: &str,
+    startdir: &str,
 ) -> std::collections::HashMap<&'static str, Vec<String>> {
+    const NAMES: [&str; 6] = ["depends", "makedepends", "license", "source", "sha256sums", "noextract"];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut cmd = std::process::Command::new("bash");
     // makepkg sets `CARCH` itself (for us — x86_64): the names of the
-    // architecture-specific sources depend on it (`waywallen-kde-…-${CARCH}-embed.zip`).
+    // architecture-specific sources depend on it (`waywallen-kde-…-${CARCH}.zip`).
     cmd.env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .env("CARCH", "x86_64")
+        .env("startdir", root.join(startdir))
         .arg("-c")
         .arg(
             r#"source "$1" || exit 1
-for a in depends license source sha256sums noextract; do
+for a in depends makedepends license source sha256sums noextract; do
   declare -n ref=$a
   for v in "${ref[@]}"; do printf '%s\t%s\n' "$a" "$v"; done
 done"#,
         )
         .arg("pkgbuild")
-        .arg(root.join("packaging/aur/PKGBUILD"));
-    if let Some(v) = bundled {
-        cmd.env("REXON_BUNDLED_ENGINE", v);
-    }
+        .arg(root.join(file));
     let out = cmd.output().expect("bash для чтения PKGBUILD");
-    assert!(out.status.success(), "bash не прочёл PKGBUILD: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.success(), "bash не прочёл {file}: {}", String::from_utf8_lossy(&out.stderr));
     let mut m: std::collections::HashMap<&'static str, Vec<String>> = Default::default();
     for line in String::from_utf8(out.stdout).unwrap().lines() {
         let (k, v) = line.split_once('\t').unwrap();
-        let k = ["depends", "license", "source", "sha256sums", "noextract"]
-            .into_iter()
-            .find(|n| *n == k)
-            .unwrap();
+        let k = NAMES.into_iter().find(|n| *n == k).unwrap();
         m.entry(k).or_default().push(v.to_string());
     }
     m
@@ -802,20 +808,26 @@ fn packaged_engine_comes_from_system_packages() {
     use rexon_core::we_client as wc;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    let release = std::fs::read_to_string(root.join("packaging/rexon/PKGBUILD")).unwrap();
     let tag = upstream_tag();
     assert!(
-        pkgbuild.contains(&format!("\n_ww_min={tag}\n")),
+        pkgbuild.contains(&format!("\n_ww_min={tag}\n")) && release.contains(&format!("\n_ww_min={tag}\n")),
         "_ww_min в PKGBUILD разошёлся с proto/UPSTREAM_TAG ({tag})"
     );
     assert!(pkgbuild.contains("\n_owe_min="), "нет нижней границы плагина");
     // Variables come before depends: bash expands the array at assignment time.
     let at = |needle: &str| pkgbuild.find(needle).unwrap_or_else(|| panic!("нет {needle}"));
     assert!(at("\n_ww_min=") < at("depends=(") && at("\n_owe_min=") < at("depends=("));
-    assert!(at("REXON_BUNDLED_ENGINE") < at("depends=("), "переключатель варианта — до depends");
+    // The distribution recipe has no switch to the bundled engine: that is a separate file.
+    for text in [&pkgbuild, &release] {
+        assert!(!text.contains("REXON_BUNDLED_ENGINE") && !text.contains("AppImage"));
+    }
 
-    // Without the variable and with `0` — one and the same default variant.
-    let unset = pkgbuild_arrays(None);
-    assert_eq!(unset, pkgbuild_arrays(Some("0")), "REXON_BUNDLED_ENGINE=0 обязан совпасть с умолчанием");
+    let unset = pkgbuild_arrays("packaging/aur/PKGBUILD", "packaging/aur");
+    let rel = pkgbuild_arrays("packaging/rexon/PKGBUILD", "packaging/rexon");
+    for k in ["depends", "makedepends", "license"] {
+        assert_eq!(unset[k], rel[k], "{k} разошлись у rexon и rexon-git");
+    }
     let deps = &unset["depends"];
     let owe_min = pkgbuild.split("\n_owe_min=").nth(1).unwrap().lines().next().unwrap();
     assert!(deps.contains(&format!("waywallen>={tag}")), "нет зависимости на пакет демона: {deps:?}");
@@ -845,6 +857,15 @@ fn packaged_engine_comes_from_system_packages() {
     assert_eq!(field("depends"), *deps, ".SRCINFO отстал от depends по умолчанию (makepkg --printsrcinfo)");
     assert_eq!(field("source"), unset["source"], ".SRCINFO отстал от source по умолчанию");
     assert_eq!(field("license"), unset["license"]);
+    let srcinfo = std::fs::read_to_string(root.join("packaging/rexon/.SRCINFO")).unwrap();
+    let field = |name: &str| -> Vec<String> {
+        srcinfo
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix(&format!("{name} = ")).map(str::to_string))
+            .collect()
+    };
+    assert_eq!(field("source"), rel["source"], "packaging/rexon/.SRCINFO отстал от source");
+    assert_eq!(field("depends"), rel["depends"], "packaging/rexon/.SRCINFO отстал от depends");
 
     // The core looks for the engine where the Arch packages put it.
     assert_eq!(wc::SYSTEM_DAEMON, "/usr/bin/waywallen");
@@ -855,7 +876,7 @@ fn packaged_engine_comes_from_system_packages() {
     );
 }
 
-/// The `REXON_BUNDLED_ENGINE=1` variant: the engine ships in the package where the
+/// The bundled variant (`packaging/PKGBUILD.bundled-engine`): the engine ships in the package where the
 /// core looks for it (`we_client::ENGINE_DIR`), with the OWE GPL sources and without dependencies
 /// on the engine packages.
 ///
@@ -870,9 +891,9 @@ fn packaged_engine_comes_from_system_packages() {
 fn bundled_engine_variant_ships_where_core_looks() {
     use rexon_core::we_client as wc;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    let pkgbuild = std::fs::read_to_string(root.join("packaging/PKGBUILD.bundled-engine")).unwrap();
     let tag = upstream_tag();
-    let b = pkgbuild_arrays(Some("1"));
+    let b = pkgbuild_arrays("packaging/PKGBUILD.bundled-engine", "packaging/aur");
     let deps = &b["depends"];
     for need in ["fuse3", "at-spi2-core"] {
         assert!(deps.iter().any(|d| d == need), "во вшитом варианте нет зависимости {need}");
@@ -889,7 +910,7 @@ fn bundled_engine_variant_ships_where_core_looks() {
     let uniq: std::collections::HashSet<&&str> = names.iter().collect();
     assert_eq!(uniq.len(), names.len(), "источник назван дважды: {names:?}");
     // The default variant is a prefix of the bundled one: checksums and order are not shifted.
-    let d = pkgbuild_arrays(None);
+    let d = pkgbuild_arrays("packaging/aur/PKGBUILD", "packaging/aur");
     assert_eq!(b["source"][..d["source"].len()], d["source"][..]);
     assert_eq!(b["sha256sums"][..d["sha256sums"].len()], d["sha256sums"][..]);
     // The AppImage is exactly the protocol tag (prepare() checks the same at build time).
@@ -899,7 +920,14 @@ fn bundled_engine_variant_ships_where_core_looks() {
         "вшитый AppImage не тег протокола {tag}: {:?}",
         b["source"]
     );
-    assert!(b["noextract"].iter().any(|s| s.starts_with("org.waywallen.open-wallpaper-engine-")));
+    // The OWE archive is named as the core's updater expects it (it was renamed
+    // in OWE v0.4.0).
+    let owe = rexon_core::engine_update::targets("/home/u").into_iter().find(|t| t.key == "owe").unwrap();
+    assert!(
+        b["noextract"].iter().any(|s| rexon_core::engine_update::asset_matches(s, &owe.asset_prefix, &owe.asset_suffix)),
+        "no OWE release archive the core recognises: {:?}",
+        b["noextract"]
+    );
 
     // The layout in package() is the one the core looks for.
     assert!(
@@ -922,8 +950,7 @@ fn bundled_engine_variant_ships_where_core_looks() {
         "_strip_own_binaries не обходит каталог движка — strip отрежет squashfs AppImage"
     );
     assert!(pkgbuild.contains("\"$pkgdir/usr/share/rexon/sources/open-wallpaper-engine-${_owe_ver}-src.tar.xz\""));
-    // The tag guard — for both variants.
-    assert!(pkgbuild.contains("\"$tag\" != \"v$_ww_min\""), "нет сторожа _ww_min");
+    // The bundled AppImage is checked against the protocol tag at build time too.
     assert!(pkgbuild.contains("\"$tag\" != \"v$_ww_ver\""), "нет сторожа вшитого _ww_ver");
 
     // The core keeps the bundled layout as a fallback, after the system one.
@@ -945,55 +972,32 @@ fn bundled_engine_variant_ships_where_core_looks() {
 fn plasmoid_ships_only_with_bundled_engine() {
     use rexon_core::waywallen_kde_plugin as wkp;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
     let plasmoid = |s: &String| s.contains("waywallen-kde-");
-    let d = pkgbuild_arrays(None);
-    assert!(!d["source"].iter().any(plasmoid), "the default package downloads the plasmoid: {:?}", d["source"]);
-    assert!(!d["noextract"].iter().any(plasmoid));
-    assert!(
-        !d["license"].iter().any(|l| l == "GPL-2.0-or-later"),
-        "GPL-2.0-or-later came only from the plasmoid metadata: {:?}",
-        d["license"]
-    );
-    let b = pkgbuild_arrays(Some("1"));
+    for (file, dir) in [("packaging/aur/PKGBUILD", "packaging/aur"), ("packaging/rexon/PKGBUILD", "packaging/rexon")] {
+        let text = std::fs::read_to_string(root.join(file)).unwrap();
+        let d = pkgbuild_arrays(file, dir);
+        assert!(!d["source"].iter().any(plasmoid), "{file} downloads the plasmoid: {:?}", d["source"]);
+        assert!(
+            !d["license"].iter().any(|l| l == "GPL-2.0-or-later"),
+            "GPL-2.0-or-later came only from the plasmoid metadata: {:?}",
+            d["license"]
+        );
+        assert!(text.contains(&format!("\n  '{}: ", wkp::PACKAGE_NAME)), "{file}: no optdepends on {}", wkp::PACKAGE_NAME);
+        assert!(text.contains(&format!("\n  '{}: ", wkp::DISPLAY_MODULE_PACKAGE)));
+        for gone in ["libplasma", "kirigami", "plasma-workspace"] {
+            assert!(!text.contains(&format!("\n  '{gone}: ")), "the plugin package brings {gone} itself");
+        }
+    }
+    let script = std::fs::read_to_string(root.join("scripts/package-build")).unwrap();
+    assert!(!script.contains("kpackage") && !script.contains("waywallen-kde"), "the shared install step ships the plasmoid");
+    let bundled = std::fs::read_to_string(root.join("packaging/PKGBUILD.bundled-engine")).unwrap();
+    let b = pkgbuild_arrays("packaging/PKGBUILD.bundled-engine", "packaging/aur");
     assert!(b["source"].iter().any(plasmoid), "the bundled variant lost the plasmoid");
     assert!(b["noextract"].iter().any(plasmoid));
     assert!(b["license"].iter().any(|l| l == "GPL-2.0-or-later"));
-    assert!(
-        pkgbuild.contains(&format!("\n  '{}: ", wkp::PACKAGE_NAME)),
-        "no optdepends on {}",
-        wkp::PACKAGE_NAME
-    );
-    assert!(pkgbuild.contains(&format!("\n  '{}: ", wkp::DISPLAY_MODULE_PACKAGE)));
-    for gone in ["libplasma", "kirigami", "plasma-workspace"] {
-        assert!(!pkgbuild.contains(&format!("\n  '{gone}: ")), "the plugin package brings {gone} itself");
+    for needle in ["bsdtar --no-same-owner -xf \"$srcdir/$_wwd_zip\"", "LICENSE.waywallen-kde-MIT", "LICENSE.waywallen-kde-GPL-2.0"] {
+        assert!(bundled.contains(needle), "the bundled variant does not install {needle}");
     }
-    // The plasmoid is unpacked and its licenses installed only in the bundled variant.
-    let guarded = |needle: &str| {
-        let at = pkgbuild.find(needle).unwrap_or_else(|| panic!("no {needle}"));
-        pkgbuild[..at].rfind("if [[ $_bundled_engine == 1 ]]; then").is_some_and(|g| !pkgbuild[g..at].contains("\n  fi\n"))
-    };
-    assert!(guarded("bsdtar --no-same-owner -xf \"$srcdir/$_wwd_zip\""), "the plasmoid is unpacked in every variant");
-    assert!(guarded("LICENSE.waywallen-kde-MIT"), "the plasmoid license is installed in every variant");
-}
-
-/// Any switch value other than 0 and 1 stops the build instead of
-/// silently building the default variant.
-#[test]
-fn bundled_engine_switch_rejects_garbage() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let out = std::process::Command::new("bash")
-        .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("REXON_BUNDLED_ENGINE", "yes")
-        .arg("-c")
-        .arg(r#"source "$1" >/dev/null 2>&1; srcdir=/nonexistent; prepare"#)
-        .arg("pkgbuild")
-        .arg(root.join("packaging/aur/PKGBUILD"))
-        .output()
-        .unwrap();
-    assert!(!out.status.success(), "prepare() принял REXON_BUNDLED_ENGINE=yes");
-    assert!(String::from_utf8_lossy(&out.stderr).contains("REXON_BUNDLED_ENGINE=yes"));
 }
 
 #[test]
@@ -1078,14 +1082,14 @@ fn wallpaper_reset_argv() {
 //
 // ⭐ TEXT GUARD. The emergency rollback route moved to Rust entirely, and
 // its strings live HERE. Since 02.10.2026 the golden reference is the Rust strings themselves, written
-// below verbatim (`русский_откат_как_был`, `собранные_строки_…`); the former
+// below verbatim (`russian_fallback_as_before`, `собранные_строки_…`); the former
 // check of fragments against the frozen revision of `rexon/app.py` was removed together with
 // Python. Renamed a caption on our side — the check turns red until the golden reference is
 // deliberately updated, and the divergence is visible at once, not on the live machine of
 // a person whose desktop look is broken.
 
 #[test]
-fn отказ_на_чужом_рабочем_столе_теми_же_словами() {
+fn refusal_on_foreign_desktop_in_same_words() {
     let _lang = i18n_pin::ru();
     assert!(app::is_plasma_desktop("KDE"));
     assert!(app::is_plasma_desktop("plasmawayland"));
@@ -1106,7 +1110,7 @@ fn отказ_на_чужом_рабочем_столе_теми_же_слова
 }
 
 #[test]
-fn тема_берётся_из_резервной_копии_а_иначе_дефолтная() {
+fn theme_from_backup_otherwise_default() {
     assert_eq!(app::recover_theme_target(Some(" org.kde.oxygen.desktop \n")), "org.kde.oxygen.desktop");
     assert_eq!(app::recover_theme_target(Some("   ")), app::RECOVER_DEFAULT_TARGET);
     assert_eq!(app::recover_theme_target(None), app::RECOVER_DEFAULT_TARGET);
@@ -1123,7 +1127,7 @@ fn тема_берётся_из_резервной_копии_а_иначе_де
 }
 
 #[test]
-fn предупреждение_о_форках_совпадает_с_оригиналом() {
+fn fork_warning_matches_original() {
     let _lang = i18n_pin::ru();
     let forks = vec!["aeroshell-workspace-git".to_string()];
     let with_cmd = app::fork_warning_lines(&forks, true, "sudo pacman -Rns X");
@@ -1149,7 +1153,7 @@ fn предупреждение_о_форках_совпадает_с_ориги
 }
 
 #[test]
-fn собранные_строки_читаются_как_у_оригинала() {
+fn assembled_strings_read_like_original() {
     let _lang = i18n_pin::ru();
     assert_eq!(
         app::sddm_already_stock_line(Some("breeze")),
@@ -1184,7 +1188,7 @@ fn собранные_строки_читаются_как_у_оригинала
 /// «форки», «апплеты», «бэкап», «reboot», «раскладка панели») incomprehensible
 /// to the buyer, while the emergency rollback is read precisely by a person for whom everything
 /// broke. Not a single Russian rollback string may bring them back. The new
-/// text is held by `собранные_строки_…` and `русский_откат_как_был`, the structure by
+/// text is held by `собранные_строки_…` and `russian_fallback_as_before`, the structure by
 /// `предупреждение_о_форках_…`.
 const JARGON_GONE: &[(&str, &str)] = &[
     ("Обнаружены ПАКЕТЫ-ФОРКИ Plasma (подменяют ядро", "заголовок про пакеты-замены"),
@@ -1203,7 +1207,7 @@ const JARGON_GONE: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn жаргон_оригинала_заменён_осознанно() {
+fn original_jargon_replaced_deliberately() {
     let _lang = i18n_pin::ru();
     let lines = every_recover_line();
     assert!(lines.len() > 30, "сверять было нечего: {}", lines.len());
@@ -1221,7 +1225,7 @@ fn жаргон_оригинала_заменён_осознанно() {
 }
 
 #[test]
-fn стандартные_обои_выбираются_по_порядку() {
+fn default_wallpapers_chosen_in_order() {
     let _lang = i18n_pin::ru();
     // There is a stock candidate — we take it and look no further.
     let got = app::default_wallpaper_dir(
@@ -1350,7 +1354,7 @@ fn recover_lines_fall_back_to_english_without_catalog() {
 /// the language selected now — not the one that was active at the first
 /// access.
 #[test]
-fn константа_отката_следует_за_языком() {
+fn fallback_constant_follows_language() {
     let ru = {
         let _lang = i18n_pin::ru();
         let text: &str = app::PANEL_LAYOUT_RESET_LINE;
@@ -1375,7 +1379,7 @@ fn константа_отката_следует_за_языком() {
 /// jargon rewritten on 01.10.2026 (see [`JARGON_GONE`]): those have the new
 /// text here.
 #[test]
-fn русский_откат_как_был() {
+fn russian_fallback_as_before() {
     let _lang = i18n_pin::ru();
     let forks = vec!["aeroshell-plasma".to_string()];
     let before: Vec<(String, &str)> = vec![

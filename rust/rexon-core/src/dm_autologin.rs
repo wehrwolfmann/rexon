@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn читает_автовход_каждого_экрана_входа() {
+    fn reads_autologin_of_each_login_screen() {
         let m = fs(&[
             ("/usr/lib/sddm/sddm.conf.d/default.conf", "[Autologin]\nRelogin=false\nSession=\nUser=\n"),
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n"),
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn lightdm_частная_группа_места_сильнее() {
+    fn lightdm_private_seat_group_wins() {
         let m = fs(&[(
             "/etc/lightdm/lightdm.conf",
             "[Seat:seat0]\nautologin-user=\n[Seat:*]\nautologin-user=eve\n",
@@ -664,7 +664,7 @@ mod tests {
 
     /// A machine like Wehrwolfmann's: Plasma Login with autologin → SDDM.
     #[test]
-    fn plasma_login_в_sddm_переносит_пользователя_сеанс_и_relogin() {
+    fn plasma_login_to_sddm_moves_user_session_and_relogin() {
         let m = fs(&[
             ("/etc/plasmalogin.conf", "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n"),
             ("/usr/lib/sddm/sddm.conf.d/default.conf", "[Autologin]\nRelogin=false\nSession=\nUser=\n"),
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn в_gdm_пишется_custom_conf_и_честно_про_стол() {
+    fn gdm_gets_custom_conf_and_honest_about_desktop() {
         let m = fs(&[
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nSession=plasma\nUser=alice\n"),
             ("/etc/gdm/custom.conf", "# GDM configuration storage\n\n[daemon]\n\n[security]\n"),
@@ -711,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn в_lightdm_пишется_главный_файл_и_группа_autologin() {
+    fn lightdm_gets_main_file_and_autologin_group() {
         let m = fs(&[
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n"),
             ("/etc/lightdm/lightdm.conf", "[LightDM]\n[Seat:*]\n#autologin-user=\n[XDMCPServer]\n"),
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn в_ddm_свой_файл_в_каталоге_и_без_relogin() {
+    fn ddm_gets_own_file_in_directory_without_relogin() {
         let m = fs(&[("/etc/plasmalogin.conf", "[Autologin]\nRelogin=true\nSession=treeland-user.desktop\nUser=alice\n")]);
         let (read, list) = io(&m);
         let t = plan_transfer("plasmalogin", "ddm", &read, &list, &TargetFacts::default());
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn без_сеанса_откроется_последний_выбранный() {
+    fn without_session_last_selected_opens() {
         let m = fs(&[("/etc/gdm/custom.conf", "[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=carol\n")]);
         let (read, list) = io(&m);
         let t = plan_transfer("gdm", "plasmalogin", &read, &list, &TargetFacts::default());
@@ -763,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn автовхода_не_было_у_нового_он_выключается() {
+    fn no_autologin_before_new_one_disabled() {
         let m = fs(&[
             ("/etc/plasmalogin.conf", "[Autologin]\nSession=plasma\n"),
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nSession=plasma\nUser=bob\n"),
@@ -782,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn нельзя_перенести_честно_говорится() {
+    fn cannot_transfer_said_honestly() {
         let m = fs(&[
             ("/etc/plasmalogin.conf", "[Autologin]\nSession=plasma\nUser=alice\n"),
             // A package file read AFTER /etc by LightDM is the specific group of the place.
@@ -803,14 +803,14 @@ mod tests {
     }
 
     #[test]
-    fn неизвестный_прежний_ничего_не_меняет() {
+    fn unknown_previous_changes_nothing() {
         let m = fs(&[("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nUser=bob\n")]);
         let (read, list) = io(&m);
         assert!(plan_transfer("ly", "sddm", &read, &list, &TargetFacts::default()).is_nothing());
     }
 
     #[test]
-    fn pam_группа_автовхода() {
+    fn autologin_pam_group() {
         let arch = "#%PAM-1.0\nauth        required    pam_env.so\nauth        [success=1 default=ignore]  pam_succeed_if.so user ingroup autologin\nauth        required    pam_unix.so\n";
         assert_eq!(pam_autologin_group(arch).as_deref(), Some("autologin"));
         assert_eq!(pam_autologin_group("auth required pam_permit.so\n"), None);
@@ -819,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn маски_звука_переносятся_только_если_были() {
+    fn sound_masks_moved_only_if_present() {
         assert!(audio_masks_to_add(&[], &|_| false).is_empty());
         let all = audio_masks_to_add(&["wireplumber.service"], &|_| false);
         assert_eq!(all, GREETER_AUDIO_UNITS.to_vec());
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn каждый_экран_входа_из_таблицы_с_автовходом_пишется_в_etc() {
+    fn each_login_screen_with_autologin_writes_to_etc() {
         for s in AUTOLOGIN_SPECS {
             if s.layout == Layout::Greetd {
                 continue;

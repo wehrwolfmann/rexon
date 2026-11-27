@@ -852,7 +852,8 @@ fn reset_plymouth_reports_pkexec_denial() {
         );
     let (ok, msg) = SystemExec::new(&io).reset_plymouth_to_default(Some("bgrt"));
     assert!(!ok);
-    assert!(msg.contains("plymouth-set-default-theme bgrt -R"), "{msg}");
+    // No terminal command for the person (27.11.2026).
+    assert!(msg.contains("Try again") && !msg.contains("plymouth-set-default-theme"), "{msg}");
 }
 
 #[test]
@@ -991,7 +992,8 @@ fn reset_sddm_denial_shows_manual_command() {
     assert!(!ok);
     assert!(removed.is_empty());
     assert!(msg.contains("Пароль администратора не подтверждён"), "{msg}");
-    assert!(msg.contains("sudo rm -f"), "{msg}");
+    // No terminal command for the person (27.11.2026).
+    assert!(!msg.contains("sudo "), "{msg}");
 }
 
 #[test]
@@ -1165,7 +1167,8 @@ fn remove_plasma_forks_memoizes_repo_probe() {
     let (ok, msg) = ex.remove_plasma_forks(None);
     assert!(!ok);
     assert!(msg.contains("Пароль администратора не подтверждён"), "{msg}");
-    assert!(msg.contains("sudo pacman -Rns aeroshell-workspace-git"), "{msg}");
+    // No terminal command for the person (27.11.2026).
+    assert!(!msg.contains("sudo "), "{msg}");
     let si = io
         .commands()
         .into_iter()
@@ -2237,7 +2240,8 @@ fn login_screen_view_without_systemd_shows_command_instead_of_button() {
     assert!(view.note.contains("OpenRC"), "{}", view.note);
     let sddm = view.managers.iter().find(|m| m.unit == "sddm").unwrap();
     assert!(!sddm.can_switch);
-    assert!(sddm.reason.contains("DISPLAYMANAGER=\"sddm\""), "команда для этой init: {}", sddm.reason);
+    // No terminal command for the person (27.11.2026).
+    assert!(sddm.reason.contains("OpenRC") && !sddm.reason.contains("DISPLAYMANAGER"), "{}", sddm.reason);
     assert!(io.commands().is_empty(), "без systemd — ни одной команды");
 }
 
@@ -2373,11 +2377,11 @@ fn switch_login_manager_goes_through_privilege_session() {
     let (ok, _) = SystemExec::new(&io).switch_login_manager("sddm", None);
     assert!(!ok);
     assert!(pkexec_runs(&io).is_empty(), "после отказа сеанса прежней команды нет: {:?}", io.commands());
-    // The password was not confirmed — the old explanation with the manual command.
+    // The password was not confirmed — retry and enter it (no terminal command since 27.11.2026).
     let io = FakeIo { session: Some(Reply::failed(126, "", "")), ..owner_like_machine().with_helpers() };
     let (ok, msg) = SystemExec::new(&io).switch_login_manager("sddm", None);
     assert!(!ok);
-    assert!(msg.contains(&format!("sudo {}", &switch_argv("sddm", None)["pkexec ".len()..])), "{msg}");
+    assert!(msg.contains("Try again") && !msg.contains("sudo "), "{msg}");
 }
 
 #[test]
@@ -2410,7 +2414,8 @@ fn switch_login_manager_password_not_confirmed() {
         let (ok, msg) = SystemExec::new(&io).switch_login_manager("sddm", None);
         assert!(!ok);
         assert!(msg.starts_with("The administrator password wasn't confirmed."), "{msg}");
-        assert!(msg.contains(&format!("sudo {}", plan::pkg_helper_path())), "ручная команда без pkexec: {msg}");
+        // No terminal command for the person (27.11.2026).
+        assert!(!msg.contains(&plan::pkg_helper_path()), "{msg}");
         assert!(!msg.contains("pkexec"), "{msg}");
     }
 }

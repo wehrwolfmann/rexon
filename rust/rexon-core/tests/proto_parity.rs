@@ -289,7 +289,7 @@ fn assert_live_frame(name: &str, case: &Value) {
 
 /// All live daemon ANSWERS are parsed and reassembled as in Python.
 #[test]
-fn живые_ответы_демона_паритетны() {
+fn live_daemon_replies_match() {
     let g = live();
     let cases = g["responses"].as_object().unwrap();
     // The fixture must be non-empty and cover the tab's read requests —
@@ -322,7 +322,7 @@ fn живые_ответы_демона_паритетны() {
 
 /// Server-push `Event`s — the daemon sends them by itself, without a request.
 #[test]
-fn живые_события_демона_паритетны() {
+fn live_daemon_events_match() {
     let g = live();
     let events = g["events"].as_array().unwrap();
     assert!(!events.is_empty(), "фикстура без событий");
@@ -336,7 +336,7 @@ fn живые_события_демона_паритетны() {
 /// support it) — the "error without payload" branch in answer parsing must be
 /// covered by a real frame, not a made-up one.
 #[test]
-fn живой_кадр_ошибки_демона() {
+fn live_daemon_error_frame() {
     let g = live();
     let case = &g["responses"]["autostart_get"];
     let raw = hex_bytes(case["frame_hex"].as_str().unwrap());
@@ -354,7 +354,7 @@ fn живой_кадр_ошибки_демона() {
 /// `subscription_status` frame (field 70, added upstream after the handwritten
 /// table) was accepted and answered by the daemon.
 #[test]
-fn живые_запросы_собираются_prost() {
+fn live_requests_built_by_prost() {
     let g = live();
     for (name, case) in g["requests"].as_object().unwrap() {
         let raw = hex_bytes(case["frame_hex"].as_str().unwrap());

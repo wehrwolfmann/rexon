@@ -1717,6 +1717,39 @@ pub(super) fn marco_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     frame_ops(&root, &gtk, &dir, &name, WINDOW_RECT)
 }
 
+/// A window in the frame of the Marco theme in `borders_dir` around window
+/// contents of `client` size (width, height) with its top left frame corner at
+/// `origin`, colored by the GTK theme `gtk`: the frame operations and the place
+/// of the contents. `None` — the theme has no frame that can be drawn.
+///
+/// The frame is drawn at its real size (the title bar of the theme's own
+/// height), so the contents keep their size too — the way MATE builds the
+/// thumbnail of a whole theme (`theme-thumbnail.c`: a Marco frame around real
+/// GTK widgets).
+pub(super) fn window_frame(
+    borders_dir: &Path,
+    gtk: &GtkColors,
+    title: &str,
+    origin: (f64, f64),
+    client: (f64, f64),
+) -> Option<(Vec<DrawOp>, Rect)> {
+    let dir = borders_dir.join("metacity-1");
+    let (root, _) = load_tree(&dir)?;
+    let theme = Theme::new(&root);
+    let style = theme.focused_style()?;
+    let geometry_name = style.iter().find_map(|s| s.attr("geometry"))?;
+    let geometry = Geometry::from_chain(&theme.chain(&theme.geometries, geometry_name), &theme.constants);
+    let (cw, ch) = (client.0.round() as i64, client.1.round() as i64);
+    let width = cw + geometry.left_width + geometry.right_width;
+    // The title bar height does not depend on the frame size.
+    let top = geometry.layout(width, ch * 2, LEFT_BUTTONS.len(), RIGHT_BUTTONS.len()).top_height;
+    let height = ch + top + geometry.bottom_height;
+    let rect = (origin.0, origin.1, width as f64, height as f64);
+    let ops = frame_ops(&root, gtk, &dir, title, rect)?;
+    let place = (origin.0 + geometry.left_width as f64, origin.1 + top as f64, client.0, client.1);
+    Some((ops, place))
+}
+
 /// Why a MATE frame theme has no sample — for the test stand. An empty string —
 /// the sample came out.
 pub fn marco_failure(install_path: &str) -> &'static str {
@@ -1978,6 +2011,54 @@ mod tests {
         for (condition, want) in [("< 3.6", true), ("<= 3.5", true), ("> 3.5", false), (">= 3.5", true), ("=> 3.2", true), ("< 3.1", false), ("3.5", true), ("мусор", false), ("", false)] {
             assert_eq!(version_satisfied(condition), want, "{condition:?}");
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A whole theme (MATE metatheme): the window in the frame of its border
+    /// theme around contents of exactly the widget form size, the folder icon of
+    /// its icon set beside it; without any part on disk — the placeholder.
+    #[test]
+    fn whole_theme_picture_frames_widgets_like_mate() {
+        use crate::local_preview::{whole_theme_picture, WholeTheme, WHOLE_CLIENT, WHOLE_WIDTH};
+        let root = tmp("whole");
+        let theme = root.join("themes/Sample");
+        put(&theme.join("metacity-1/metacity-theme-1.xml"), SAMPLE);
+        put(&theme.join("gtk-3.0/gtk.css"), "@define-color theme_bg_color #303030;\n@define-color theme_fg_color #eeeeee;\n");
+        let icons = root.join("icons/Set");
+        put(&icons.join("index.theme"), "[Icon Theme]\nName=Set\nDirectories=scalable/places\n\n[scalable/places]\nSize=48\nType=Scalable\n");
+        put(&icons.join("scalable/places/folder.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+        let dir = theme.to_string_lossy().into_owned();
+        let whole = WholeTheme {
+            name: "Sample".into(),
+            gtk_dir: Some(dir.clone()),
+            borders_dir: Some(dir.clone()),
+            icon_dirs: vec![icons.to_string_lossy().into_owned()],
+            cursor_dir: None,
+            widgets_shot: Some("/shot.png".into()),
+        };
+        // The frame keeps the contents at the form size.
+        let gtk = GtkColors::of_theme(&theme);
+        let (_, client) = window_frame(&theme, &gtk, "Sample", (24.0, 10.0), WHOLE_CLIENT).expect("frame");
+        assert_eq!((client.2, client.3), WHOLE_CLIENT);
+        assert!(client.0 >= 24.0 && client.1 > 10.0, "{client:?}");
+        let picture = whole_theme_picture(&whole, "💎");
+        assert_eq!(picture.source, PreviewSource::Sample);
+        assert_eq!(picture.width, WHOLE_WIDTH);
+        let images: Vec<(&str, Rect)> = picture
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Image { path, rect, .. } => Some((path.as_str(), *rect)),
+                _ => None,
+            })
+            .collect();
+        let shot = images.iter().find(|(p, _)| *p == "/shot.png").expect("widgets in the window");
+        assert_eq!((shot.1 .2, shot.1 .3), WHOLE_CLIENT);
+        let folder = images.iter().find(|(p, _)| p.ends_with("folder.svg")).expect("folder icon");
+        assert!(folder.1 .0 >= shot.1 .0 + shot.1 .2, "the icons stand beside the window");
+        // Nothing on disk at all — the kind's placeholder.
+        let none = whole_theme_picture(&WholeTheme::default(), "💎");
+        assert_eq!(none.source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
     }
 

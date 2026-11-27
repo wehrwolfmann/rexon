@@ -521,8 +521,9 @@ fn control_stamp_is_sha256_of_both_protos_as_the_build_script_writes_it() {
     let name = qm::CONTROL_STAMP_REL.rsplit('/').next().unwrap();
     assert!(script.contains(&format!("\"$DEST/{}\"", qm::CONTROL_STAMP_REL)));
     // A package without a stamp is not built.
-    let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
-    assert!(pkgbuild.contains(&format!("[ -s \"$qmod/{}\" ]", qm::CONTROL_STAMP_REL)), "{name}");
+    let pkgbuild = include_str!("../../../scripts/package-build");
+    assert!(pkgbuild.contains(&format!(" {} ", qm::CONTROL_STAMP_REL)), "{name}");
+    assert!(pkgbuild.contains("[[ -s $qmod/$b ]]"), "{name}");
 }
 
 #[test]

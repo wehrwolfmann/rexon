@@ -245,7 +245,8 @@ pub struct UpstreamTarget {
     /// slug GitHub («owner/name»).
     pub repo: String,
     /// The start of the release asset name — the artifact's own name, without the version
-    /// ("" = unknown, then only the suffix is checked).
+    /// ("" = unknown, then only the suffix is checked). Several names an artifact has
+    /// carried are separated by `|`.
     pub asset_prefix: String,
     /// The release asset suffix (for installable).
     pub asset_suffix: String,
@@ -287,9 +288,9 @@ pub fn targets(home: &str) -> Vec<UpstreamTarget> {
             key: "owe".into(),
             title: crate::i18n::tr("open-wallpaper-engine (renderer engine)"),
             repo: "waywallen/open-wallpaper-engine".into(),
-            // the asset name:
-            // org.waywallen.open-wallpaper-engine-<v>-linux-x86_64.zip
-            asset_prefix: OWE_PLUGIN_ID.into(),
+            // the asset name: open-wallpaper-engine-<v>-linux-x86_64.zip since
+            // v0.4.0, org.waywallen.open-wallpaper-engine-<v>-linux-x86_64.zip before
+            asset_prefix: format!("open-wallpaper-engine|{OWE_PLUGIN_ID}"),
             asset_suffix: "-linux-x86_64.zip".into(),
             managed_path: String::new(),
             installable: true,
@@ -887,6 +888,9 @@ pub enum FetchOutcome {
 ///
 /// An empty `asset_prefix` = the original's behavior (suffix only): this way
 /// targets whose naming scheme we do not know keep working.
+///
+/// `prefix` may list several artifact names separated by `|` (upstream renamed the
+/// OWE archive in v0.4.0); any of them fits.
 pub fn asset_matches(name: &str, prefix: &str, suffix: &str) -> bool {
     if !name.ends_with(suffix) {
         return false;
@@ -894,15 +898,14 @@ pub fn asset_matches(name: &str, prefix: &str, suffix: &str) -> bool {
     if prefix.is_empty() {
         return true;
     }
-    let Some(rest) = name
-        .strip_prefix(prefix)
-        .and_then(|r| r.strip_prefix('-'))
-    else {
-        return false;
-    };
-    // the version starts right after the artifact name, and the suffix is a separate
-    // tail, not a piece of this same version (`rest` is longer than the suffix)
-    rest.starts_with(|c: char| c.is_ascii_digit()) && rest.len() > suffix.len()
+    prefix.split('|').any(|p| {
+        let Some(rest) = name.strip_prefix(p).and_then(|r| r.strip_prefix('-')) else {
+            return false;
+        };
+        // the version starts right after the artifact name, and the suffix is a separate
+        // tail, not a piece of this same version (`rest` is longer than the suffix)
+        rest.starts_with(|c: char| c.is_ascii_digit()) && rest.len() > suffix.len()
+    })
 }
 
 /// Check one target — port of `check_target` without the network.

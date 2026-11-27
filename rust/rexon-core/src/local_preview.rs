@@ -1808,6 +1808,180 @@ fn package_icon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
+// ── a whole theme of the desktop (MATE metatheme, Cinnamon style) ─────────
+//
+// A metatheme ships no picture of its own: MATE builds its thumbnail itself
+// (`theme-thumbnail.c` of mate-control-center: the Marco frame of the theme
+// around real GTK widgets in its controls theme, and the folder icon of its
+// icon set in the corner). The tile does the same from the theme's parts: the
+// window in the frame of its window border theme, inside it the snapshot of
+// real widgets of its controls theme (or the window colors when there is no
+// snapshot), the icons of its icon set beside it and its pointer on top.
+
+/// The frame of a whole-theme picture in logical points; the full-screen view
+/// gets the same frame drawn [`WHOLE_BIG_SCALE`] times larger.
+pub const WHOLE_WIDTH: i64 = 600;
+/// See [`WHOLE_WIDTH`].
+pub const WHOLE_HEIGHT: i64 = 340;
+/// How many times larger the full-screen picture is drawn.
+pub const WHOLE_BIG_SCALE: f64 = 2.0;
+/// The window contents: exactly the size of the widget form of a shot
+/// ([`crate::widget_shot::FORM_WIDTH`]), so the widgets stand at their own size.
+pub const WHOLE_CLIENT: (f64, f64) = (crate::widget_shot::FORM_WIDTH as f64, crate::widget_shot::FORM_HEIGHT as f64);
+/// The size of the widget shot for a whole theme in screen pixels: the window
+/// contents of the full-screen picture.
+pub const WHOLE_SHOT_SIZE: (i32, i32) =
+    ((WHOLE_CLIENT.0 * WHOLE_BIG_SCALE) as i32, (WHOLE_CLIENT.1 * WHOLE_BIG_SCALE) as i32);
+
+/// What a whole-theme picture is drawn from: the directories of its parts on
+/// disk (`None` — the part is not named or not installed).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WholeTheme {
+    /// The window title.
+    pub name: String,
+    /// The controls (GTK) theme directory.
+    pub gtk_dir: Option<String>,
+    /// The window border theme directory (with `metacity-1`).
+    pub borders_dir: Option<String>,
+    /// The icon set directory first, then the sets it inherits from.
+    pub icon_dirs: Vec<String>,
+    /// The pointer theme directory (with `cursors`).
+    pub cursor_dir: Option<String>,
+    /// A snapshot of real widgets in the controls theme
+    /// ([`WHOLE_SHOT_SIZE`]), when one was taken.
+    pub widgets_shot: Option<String>,
+}
+
+/// Icons beside the window: the folder (the names MATE looks up for its
+/// thumbnail), the home folder, the trash; the first name found of each.
+const WHOLE_ICON_NAMES: &[&[&str]] = &[
+    &["x-directory-normal", "folder", "inode-directory"],
+    &["user-home", "folder-home"],
+    &["user-trash", "user-trash-full"],
+];
+const WHOLE_ICON_SIZE: f64 = 56.0;
+/// The pointer size looked for in the theme files.
+const WHOLE_POINTER_NOMINAL: u32 = 32;
+
+/// The file of icon `names` (the first one found) in the set and the sets it
+/// inherits from, in the given order.
+fn whole_icon(sets: &[String], names: &[&str], want: i64) -> Option<String> {
+    sets.iter().find_map(|dir| {
+        let dir = std::path::Path::new(dir);
+        let dirs = icon_dirs(dir, want);
+        names.iter().find_map(|n| icon_file(dir, &dirs, n))
+    })
+}
+
+/// The picture of a whole theme ([`WHOLE_WIDTH`]×[`WHOLE_HEIGHT`]). It is a
+/// placeholder only when there is neither a controls theme nor anything else to
+/// draw.
+pub fn whole_theme_picture(theme: &WholeTheme, glyph: &str) -> CardPicture {
+    let (w, h) = (WHOLE_WIDTH as f64, WHOLE_HEIGHT as f64);
+    let mut ops = vec![backdrop_sized(w, h)];
+    let gtk = theme
+        .gtk_dir
+        .as_deref()
+        .map(|d| metacity::GtkColors::of_theme(std::path::Path::new(d)))
+        .unwrap_or_else(metacity::GtkColors::fallback);
+    let p = gtk.palette;
+    let solid = |c: Rgb| (c.0, c.1, c.2, 255u8);
+    const MARGIN: f64 = 24.0;
+    // The frame of the theme's own window borders, or a plain one in the
+    // controls colors when it can't be drawn.
+    let framed = theme.borders_dir.as_deref().and_then(|d| {
+        // A title bar too tall for the picture — the plain frame.
+        let probe = metacity::window_frame(std::path::Path::new(d), &gtk, &theme.name, (0.0, 0.0), WHOLE_CLIENT)?;
+        let outer_h = probe.1 .1 + WHOLE_CLIENT.1 + 12.0;
+        let y = ((h - outer_h) / 2.0).round().max(6.0);
+        metacity::window_frame(std::path::Path::new(d), &gtk, &theme.name, (MARGIN, y), WHOLE_CLIENT)
+    });
+    let drew_frame = framed.is_some();
+    let client = match framed {
+        Some((frame, client)) => {
+            ops.extend(frame);
+            client
+        }
+        None => {
+            const TITLE: f64 = 28.0;
+            let y = ((h - WHOLE_CLIENT.1 - TITLE) / 2.0).round();
+            let outer = (MARGIN, y, WHOLE_CLIENT.0, WHOLE_CLIENT.1 + TITLE);
+            ops.push(DrawOp::Fill { rect: (outer.0 + 3.0, outer.1 + 4.0, outer.2, outer.3), color: (0, 0, 0, 70) });
+            ops.push(DrawOp::Clip { rect: outer, radii: [6.0, 6.0, 0.0, 0.0] });
+            ops.push(DrawOp::Fill { rect: (outer.0, outer.1, outer.2, TITLE), color: solid(p.titlebar) });
+            ops.push(DrawOp::Label {
+                rect: (outer.0 + 12.0, outer.1, outer.2 - 24.0, TITLE),
+                text: theme.name.clone(),
+                pixel_size: 13,
+                bold: true,
+                color: solid(p.text),
+            });
+            ops.push(DrawOp::Unclip);
+            (outer.0, outer.1 + TITLE, WHOLE_CLIENT.0, WHOLE_CLIENT.1)
+        }
+    };
+    // The window contents: the real widgets, or a form in the theme colors.
+    ops.push(DrawOp::Fill { rect: client, color: solid(p.window) });
+    match &theme.widgets_shot {
+        Some(shot) => ops.push(DrawOp::Image { rect: client, path: shot.clone(), cover: false }),
+        None => {
+            let (x, y, cw, _) = client;
+            let ink = mix(p.window, p.text, 0.55);
+            ops.push(DrawOp::Fill { rect: (x + 20.0, y + 20.0, 110.0, 30.0), color: solid(p.button) });
+            ops.push(DrawOp::Fill { rect: (x + 40.0, y + 33.0, 70.0, 5.0), color: solid(p.text) });
+            ops.push(DrawOp::Fill { rect: (x + 20.0, y + 66.0, cw - 40.0, 150.0), color: solid(p.view) });
+            ops.push(DrawOp::Fill { rect: (x + 20.0, y + 96.0, cw - 40.0, 26.0), color: solid(p.selection) });
+            for (i, line_w) in [160.0, 120.0, 190.0, 140.0, 100.0].iter().enumerate() {
+                let line_y = y + 76.0 + i as f64 * 28.0;
+                let color = if i == 1 { solid(p.selection_text) } else { (ink.0, ink.1, ink.2, 255) };
+                ops.push(DrawOp::Fill { rect: (x + 34.0, line_y + 6.0, *line_w, 6.0), color });
+            }
+        }
+    }
+    // The icons of its set in a column to the right of the window.
+    let column_x = client.0 + client.2 + (w - client.0 - client.2 - WHOLE_ICON_SIZE) / 2.0;
+    let icons: Vec<String> = WHOLE_ICON_NAMES
+        .iter()
+        .filter_map(|names| whole_icon(&theme.icon_dirs, names, 96))
+        .collect();
+    let step = h / (icons.len().max(1) as f64);
+    for (i, path) in icons.iter().enumerate() {
+        let y = step * i as f64 + (step - WHOLE_ICON_SIZE) / 2.0;
+        ops.push(DrawOp::Image {
+            rect: (column_x.round(), y.round(), WHOLE_ICON_SIZE, WHOLE_ICON_SIZE),
+            path: path.clone(),
+            cover: false,
+        });
+    }
+    // Its pointer over the window, as if the mouse were there.
+    let pointer = theme.cursor_dir.as_deref().and_then(|d| {
+        let cursors = std::path::Path::new(d).join("cursors");
+        ["left_ptr", "default", "arrow"].iter().find_map(|n| {
+            let data = std::fs::read(cursors.join(n)).ok()?;
+            xcursor_first_frame(&data, WHOLE_POINTER_NOMINAL)
+        })
+    });
+    let drew_pointer = pointer.is_some();
+    if let Some((pw, ph, rgba)) = pointer {
+        let at = (client.0 + client.2 * 0.62, client.1 + client.3 * 0.58);
+        ops.push(DrawOp::Pixels { x: at.0.round(), y: at.1.round(), width: pw, height: ph, rgba });
+    }
+    let has_anything = theme.gtk_dir.is_some() || drew_frame || !icons.is_empty() || drew_pointer;
+    if !has_anything {
+        let mut stub = card_picture(&SampleInput { kind: "", install_path: "", icon_themes: &[] }, glyph);
+        stub.what = "";
+        return stub;
+    }
+    CardPicture {
+        source: PreviewSource::Sample,
+        what: if theme.widgets_shot.is_some() { "theme window with real widgets" } else { "theme window in its colors" },
+        width: WHOLE_WIDTH,
+        height: WHOLE_HEIGHT,
+        base: BASE_BACKGROUND,
+        ops,
+    }
+}
+
 // ── cursor theme sample ───────────────────────────────────────────────────
 //
 // A cursor theme usually has no picture of its own, and the tile stood with the

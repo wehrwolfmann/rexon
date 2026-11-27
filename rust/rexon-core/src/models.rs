@@ -75,6 +75,17 @@ pub struct ThemeItem {
     /// `sourceName` key.
     #[serde(skip)]
     pub source_name: String,
+
+    /// Full-size picture of a theme on disk for the full-screen view
+    /// (`contents/previews/fullscreenpreview.jpg` of a Plasma package and
+    /// the like, [`crate::installed_scan::find_big_preview`]). The tile keeps
+    /// the small `preview_local`: a 2560×1440 file per tile would cost memory
+    /// and time for nothing, while stretching the 600×337 tile picture to the
+    /// monitor looked blurry (27.11.2026, Oxygen). Empty — there is no larger
+    /// picture than the tile one. Not written to files; between the tab's
+    /// threads it travels as a separate `previewBig` key, like `sourceName`.
+    #[serde(skip)]
+    pub preview_big: String,
 }
 
 impl ThemeItem {

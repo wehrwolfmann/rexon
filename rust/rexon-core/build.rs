@@ -67,11 +67,32 @@ fn main() {
 /// set, and the log writes only the crate version.
 fn git_revision(manifest: &std::path::Path) {
     let root = manifest.join("../..");
-    let git = root.join(".git");
-    println!("cargo:rerun-if-changed={}", git.join("HEAD").display());
-    if let Ok(head) = std::fs::read_to_string(git.join("HEAD")) {
+    // The files to watch come from git itself: in a worktree `.git` is a file,
+    // HEAD lives under the main repository's `worktrees/<name>/` and branch refs
+    // in its common directory. Only existing files are watched — cargo treats a
+    // missing rerun-if-changed path as always changed, and `<root>/.git/HEAD` in a
+    // worktree made every agent build rerun this script and rebuild rexon-core
+    // and everything above it. `logs/HEAD` grows on every commit and checkout,
+    // which also covers a branch ref that is only in packed-refs.
+    let git_path = |p: &str| -> Option<std::path::PathBuf> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["rev-parse", "--path-format=absolute", "--git-path", p])
+            .output()
+            .ok()?;
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !path.is_empty()).then(|| std::path::PathBuf::from(path))
+    };
+    let mut watched = vec!["HEAD".to_string(), "logs/HEAD".into(), "packed-refs".into()];
+    if let Some(head) = git_path("HEAD").and_then(|h| std::fs::read_to_string(h).ok()) {
         if let Some(r) = head.trim().strip_prefix("ref: ") {
-            println!("cargo:rerun-if-changed={}", git.join(r).display());
+            watched.push(r.to_string());
+        }
+    }
+    for w in &watched {
+        if let Some(p) = git_path(w).filter(|p| p.is_file()) {
+            println!("cargo:rerun-if-changed={}", p.display());
         }
     }
     let out = std::process::Command::new("git")

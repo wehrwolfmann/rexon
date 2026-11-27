@@ -2,6 +2,7 @@ module waywallen.ui
 typeinfo module.qmltypes
 Window 0.3 qml/Window.qml
 singleton Global 0.3 qml/Global.qml
+singleton BrowserLoginState 0.3 qml/BrowserLoginState.qml
 singleton I18n 0.3 qml/I18n.qml
 StatusDot 0.3 qml/component/StatusDot.qml
 WindowState 0.3 qml/component/WindowState.qml
@@ -9,6 +10,7 @@ PagePopup 0.3 qml/component/PagePopup.qml
 NavigationStack 0.3 qml/component/NavigationStack.qml
 Tag 0.3 qml/component/Tag.qml
 CardBadges 0.3 qml/component/CardBadges.qml
+BrowserLoginButton 0.3 qml/component/BrowserLoginButton.qml
 singleton WallpaperBadgeSettings 0.3 qml/component/WallpaperBadgeSettings.qml
 singleton GpuDetails 0.3 qml/component/GpuDetails.qml
 GpuTag 0.3 qml/component/GpuTag.qml
@@ -43,6 +45,7 @@ SettingField 0.3 qml/component/settings/SettingField.qml
 LibrarySettingsFields 0.3 qml/component/settings/LibrarySettingsFields.qml
 DaemonNotRunDialog 0.3 qml/dialog/DaemonNotRunDialog.qml
 WallpaperFilterDialog 0.3 qml/dialog/WallpaperFilterDialog.qml
+WallpaperPresetDialog 0.3 qml/dialog/WallpaperPresetDialog.qml
 RemoteFilterDialog 0.3 qml/dialog/RemoteFilterDialog.qml
 QrLoginDialog 0.3 qml/dialog/QrLoginDialog.qml
 BrowserLoginDialog 0.3 qml/dialog/BrowserLoginDialog.qml
@@ -59,6 +62,7 @@ RemoteDetailPanel 0.3 qml/page/RemoteDetailPanel.qml
 WallpaperInfoPage 0.3 qml/page/WallpaperInfoPage.qml
 WallpaperCard 0.3 qml/page/WallpaperCard.qml
 SelectSheet 0.3 qml/page/wallpaper/SelectSheet.qml
+PropertyWriteQueue 0.3 qml/page/wallpaper/PropertyWriteQueue.qml
 TweakSheet 0.3 qml/page/wallpaper/TweakSheet.qml
 TweakState 0.3 qml/page/wallpaper/TweakState.qml
 NewPlaylistSheetContent 0.3 qml/page/wallpaper/NewPlaylistSheetContent.qml

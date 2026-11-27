@@ -983,7 +983,7 @@ mod tests {
     }
 
     #[test]
-    fn paru_и_yay_разбираются() {
+    fn paru_and_yay_parsed() {
         // paru: repo_install, do_install, set_install_reason, removemake.
         assert_eq!(
             parse_pacman(&s(&["pacman", "--sync", "--needed", "--noconfirm", "--", "extra/cmake", "core/gcc"]), false),
@@ -1016,7 +1016,7 @@ mod tests {
     }
 
     #[test]
-    fn прочее_отказ() {
+    fn other_refused() {
         for (argv, replace) in [
             (s(&["bash", "-c", "id"]), false), // guard: names, not a launch
             (s(&["pacman", "-S", "x"]), false),                      // targets without `--`
@@ -1045,7 +1045,7 @@ mod tests {
     }
 
     #[test]
-    fn yay_помечает_причину_с_q() {
+    fn yay_marks_reason_with_q() {
         // Live on 08.11.2026 (yay 13.1.0): refusing `-q` broke the build of MATE themes.
         assert_eq!(
             parse_pacman(&s(&["pacman", "-D", "-q", "--asdeps", "--noconfirm", "--config", "/etc/pacman.conf", "--", "gtk2"]), false),
@@ -1054,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn зависимости_из_aur_по_srcinfo() {
+    fn aur_dependencies_from_srcinfo() {
         // Live on 08.11.2026: ayatana-indicator-session/-datetime pull from AUR
         // libayatana-common, librda, properties-cpp, ayatana-indicator-messages; the
         // shim refused with "the window did not ask to build this package".
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn раздельный_srcinfo() {
+    fn split_srcinfo() {
         let t = "pkgbase = vala-panel-appmenu\n\tmakedepends = meson\n\tdepends_x86_64 = glib2\n\npkgname = vala-panel-appmenu-mate\n\tdepends = mate-panel\n\tprovides = vpa-mate=1\n\npkgname = vala-panel-appmenu-registrar\n";
         let p = parse_srcinfo_pkgs(t);
         assert_eq!(p.len(), 2);
@@ -1086,7 +1086,7 @@ mod tests {
     }
 
     #[test]
-    fn метка_операции() {
+    fn operation_label() {
         let t = "0123456789abcdef0123456789abcdef";
         assert_eq!(parse_op_flag(&format!("--rexon-op=42.{t}")), Some((42, t.to_string())));
         assert_eq!(parse_op_flag(&format!("--rexon-op=1.{t}")), None);

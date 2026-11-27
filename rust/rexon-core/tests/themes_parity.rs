@@ -1739,6 +1739,19 @@ fn remove_gtk_settings_key_keeps_the_rest() {
 
 /// Whether the theme is dark: the window background color from gtk.css (following `@name` references), without it —
 /// "dark" in the name; the color matters more than the name.
+/// MATE themes keep their colors in a file `gtk.css` imports (BlackMATE: only
+/// `@import url("gtk-main.css");`); without following it the dark BlackMATE
+/// counted as light by its name. Resources and paths outside the theme are left out.
+#[test]
+fn gtk_css_local_imports_names_the_theme_files() {
+    let css = "@import url(\"gtk-main.css\");\n@import 'gtk-widgets.css';\n\
+               @import url(\"resource:///com/ubuntu/themes/Yaru/3.0/gtk.css\");\n\
+               @import url(\"/usr/share/x.css\");\n@import url(\"../up.css\");\n";
+    assert_eq!(TH::gtk_css_local_imports(css), vec!["gtk-main.css".to_string(), "gtk-widgets.css".to_string()]);
+    let main = "@define-color bg_color #3b3b3e;\n@define-color theme_bg_color @bg_color;\n";
+    assert!(TH::gtk_theme_is_dark("BlackMATE", Some(&format!("@import url(\"gtk-main.css\");\n{main}"))));
+}
+
 #[test]
 fn gtk_theme_is_dark_by_css_then_name() {
     let dracula = "@define-color bg_color #1e1f29;\n@define-color theme_bg_color @bg_color;\n";

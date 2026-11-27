@@ -1064,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    fn plasma_снимок_со_шрифтами_рамкой_и_раскладкой() {
+    fn plasma_snapshot_with_fonts_decoration_and_layout() {
         let mut io = Fake { tools: vec!["qdbus6"], ..Default::default() };
         io.answers.insert(
             "qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.dumpCurrentLayoutJS".into(),
@@ -1109,7 +1109,7 @@ mod tests {
     /// A package written here is read by Rexon's theme contents with the same parts
     /// and values — for Plasma and for applying outside it.
     #[test]
-    fn пакет_читается_составом_темы() {
+    fn package_read_as_theme_contents() {
         let io = Fake::default();
         let mut s = Snapshot::default();
         s.put(COLORS, Some("Nordic".into()));
@@ -1141,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn вне_plasma_шрифты_и_стиль_из_родных_мест() {
+    fn outside_plasma_fonts_and_style_from_native_places() {
         let mut io = Fake { tools: vec!["gsettings"], ..Default::default() };
         io.answers.insert("gsettings get org.mate.interface font-name".into(), "'Ubuntu 11'\n".into());
         io.answers.insert("gsettings get org.mate.interface monospace-font-name".into(), "'Ubuntu Mono 13'\n".into());
@@ -1163,7 +1163,7 @@ mod tests {
     /// marker from earlier versions (without a style) is read as a regular font. The
     /// caption in the save window includes the style.
     #[test]
-    fn вне_plasma_шрифты_меню_панели_и_маленький_с_начертанием() {
+    fn outside_plasma_menu_panel_and_small_fonts_with_style() {
         use crate::qt_settings::{FontFace, FontFile};
         let mut io = Fake { tools: vec!["gsettings"], ..Default::default() };
         io.answers.insert("gsettings get org.mate.interface font-name".into(), "'DejaVu Sans Bold 10'\n".into());
@@ -1239,7 +1239,7 @@ mod tests {
     /// MATE → theme → MATE: weight and slant come back as Pango words rather than
     /// accidentally riding inside the family name.
     #[test]
-    fn шрифты_с_начертанием_mate_тема_mate() {
+    fn fonts_with_style_mate_theme_mate() {
         let g = crate::themes::apply_global_choice_plan("t", &fonts_press(mate_faces_theme()), "mate").unwrap();
         let argvs = plan_argvs(&g.plan);
         for want in [
@@ -1255,7 +1255,7 @@ mod tests {
     /// MATE → theme → Plasma: a QFont entry with weight and slant goes into
     /// kdeglobals, and Plasma reads it as its own.
     #[test]
-    fn шрифты_с_начертанием_mate_тема_plasma() {
+    fn fonts_with_style_mate_theme_plasma() {
         // One more theme part — so that fonts go through their own commands rather than
         // the whole theme via plasma-apply-lookandfeel.
         let mut c = mate_faces_theme();
@@ -1275,7 +1275,7 @@ mod tests {
     /// labwc and sway title with a style → the theme's QFont fields. labwc without
     /// its own rc.xml reads the system one; sway — the `font` line of its config.
     #[test]
-    fn шрифт_заголовка_с_начертанием_labwc_и_sway() {
+    fn title_font_with_style_labwc_and_sway() {
         let io = Fake::default();
         io.write(
             "/etc/xdg/labwc/rc.xml",
@@ -1292,7 +1292,7 @@ mod tests {
 
     /// A Plasma theme with a style (Qt 6 and the old Qt 5 entry) → XFCE.
     #[test]
-    fn шрифты_с_начертанием_plasma_тема_xfce() {
+    fn fonts_with_style_plasma_theme_xfce() {
         let mut c = crate::themes::LnfContents::default();
         c.values.insert(FONT_TITLE.into(), "Noto Sans,11,-1,5,600,1,0,0,0,0,0,0,0,0,0,1".into());
         c.values.insert(FONT_GENERAL.into(), "Noto Sans,10,-1,5,75,0,0,0,0,0".into());
@@ -1304,7 +1304,7 @@ mod tests {
     }
 
     #[test]
-    fn имя_как_у_plasma() {
+    fn name_like_plasma() {
         let io = Fake::default();
         io.write("/h/.local/share/plasma/look-and-feel/org.x/metadata.json", r#"{"KPlugin":{"Name":"Тёмная"}}"#);
         assert!(name_problem(&io, "/h", "").is_some());
@@ -1323,7 +1323,7 @@ mod tests {
     }
 
     #[test]
-    fn id_как_у_пакетов_plasma() {
+    fn id_like_plasma_packages() {
         assert_eq!(theme_id("Stend Proba"), "local.stend-proba");
         assert_eq!(theme_id("  Моя тема "), "local.moya-tema");
         assert_eq!(theme_id("../.x"), "local.x");
@@ -1333,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn автор_из_passwd_и_экранирование() {
+    fn author_from_passwd_and_escaping() {
         let pw = "root:x:0:0::/root:/bin/bash\nalex:x:1000:1000:Wehrwolfmann,,,:/home/alex:/bin/fish\nbob:x:1001:1001::/home/bob:/bin/sh\n";
         assert_eq!(author_from_passwd(pw, "alex"), "Wehrwolfmann");
         assert_eq!(author_from_passwd(pw, "bob"), "bob");
@@ -1345,7 +1345,7 @@ mod tests {
     }
 
     #[test]
-    fn превью_как_у_plasma_и_плитка() {
+    fn preview_like_plasma_and_tile() {
         let root = std::env::temp_dir().join(format!("rexon-global-save-{}", std::process::id()));
         let dir = root.to_string_lossy().into_owned();
         // Without a screenshot — a tile.
@@ -1362,7 +1362,7 @@ mod tests {
     }
 
     #[test]
-    fn плитка_цветами_схемы() {
+    fn tile_in_scheme_colours() {
         let img = tile_image("[Colors:Window]\nBackgroundNormal=10,20,30\n", 2);
         assert_eq!(img.dimensions(), (600, 340));
         assert_eq!(img.get_pixel(300, 330).0, [10, 20, 30, 255]);

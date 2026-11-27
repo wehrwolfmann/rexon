@@ -1899,10 +1899,15 @@ impl CatalogView {
     /// and answers for categories the person has already left are discarded
     /// by it.
     pub fn aur_cache_key(&self) -> String {
+        // A shelf that differs by desktop (`aur::native_shelf`) is cached per desktop.
+        let key = match crate::aur::native_shelf(&self.category.key, &self.de) {
+            Some(_) => format!("{}@{}", self.category.key, self.de),
+            None => self.category.key.clone(),
+        };
         if self.query.is_empty() {
-            format!("cat:{}", self.category.key)
+            format!("cat:{key}")
         } else {
-            format!("search:{}:{}", self.category.key, self.query)
+            format!("search:{key}:{}", self.query)
         }
     }
 
@@ -3787,8 +3792,12 @@ pub fn description_html(
     let body = if show_original { original } else { translated };
     let empty = no_description_html();
     let body = if body.is_empty() { empty.as_str() } else { body };
+    // Whatever the store sent (HTML, Markdown, BBCode, plain text) → safe
+    // markup: headings, lists, bold, links; no scripts and no pictures
+    // loaded behind the person's back (`rich_text`).
+    let body = crate::rich_text::store_description_html(&inline_emoticons(body));
     // Code and commands in a store description go left to right in any language.
-    let body = crate::ui_base::pre_left_to_right(&inline_emoticons(body));
+    let body = crate::ui_base::pre_left_to_right(&body);
     if !was_translated {
         return body;
     }
@@ -5457,6 +5466,17 @@ pub fn zoom_frames<F: Fn(&str) -> bool>(
     }
 }
 
+/// The viewer frames with a theme's tile picture `small` swapped for its
+/// full-size picture `big` ([`crate::models::ThemeItem::preview_big`]): the
+/// card shows the small one, the full-screen view the large one. Nothing
+/// changes when `big` is empty or not on disk.
+pub fn zoom_full_size<F: Fn(&str) -> bool>(paths: Vec<String>, small: &str, big: &str, exists: F) -> Vec<String> {
+    if small.is_empty() || big.is_empty() || !exists(big) {
+        return paths;
+    }
+    paths.into_iter().map(|p| if p == small { big.to_string() } else { p }).collect()
+}
+
 /// The label of the local theme apply button after success.
 pub fn local_applied_btn() -> String {
     tr("✅ Active")
@@ -5464,6 +5484,19 @@ pub fn local_applied_btn() -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// The full-screen view swaps the card's small tile picture for the
+    /// theme's full-size one, and only when that file is on disk.
+    #[test]
+    fn zoom_full_size_swaps_small_for_big() {
+        let small = "/t/contents/previews/preview.png";
+        let big = "/t/contents/previews/fullscreenpreview.jpg";
+        let paths = vec![small.to_string(), "/t/other.png".to_string()];
+        assert_eq!(super::zoom_full_size(paths.clone(), small, big, |_| true), vec![big.to_string(), "/t/other.png".to_string()]);
+        assert_eq!(super::zoom_full_size(paths.clone(), small, big, |p| p != big), paths);
+        assert_eq!(super::zoom_full_size(paths.clone(), small, "", |_| true), paths);
+        assert_eq!(super::zoom_full_size(paths.clone(), "", big, |_| true), paths);
+    }
 
     /// The file choice block: lines in the order given, the automatic one
     /// marked, the size and the day on one line; with one file there is no

@@ -63,6 +63,14 @@ void *rexon_lp_canvas_new(int32_t width, int32_t height, const char *base_hex)
     return new Canvas(width, height, base_hex);
 }
 
+void rexon_lp_scale(void *canvas, double k)
+{
+    auto *c = static_cast<Canvas *>(canvas);
+    c->painter.scale(k, k);
+    // Ready pixels (a pointer) are enlarged smoothly, not in blocks.
+    c->painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+}
+
 void rexon_lp_fill(void *canvas, double x, double y, double w, double h,
                    uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -114,7 +122,10 @@ void rexon_lp_image(void *canvas, const char *path, double x, double y,
     QImageReader reader(QString::fromUtf8(path));
     // An SVG drawing is read right away at the needed size — otherwise it
     // would be stretched from its native, usually tiny, size.
-    reader.setScaledSize(QSize(qRound(w), qRound(h)));
+    // On a scaled canvas the drawing is read at the screen size, not the
+    // point size: otherwise it would be stretched after reading.
+    const qreal k = c->painter.deviceTransform().m11();
+    reader.setScaledSize(QSize(qRound(w * k), qRound(h * k)));
     const QImage image = reader.read();
     if (image.isNull()) {
         return;

@@ -20,6 +20,16 @@
         <translation>Daemon-Version %1</translation>
     </message>
     <message>
+        <location filename="../qml/page/AboutPage.qml" line="62"/>
+        <source>Daemon version %1 is older than this window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/page/AboutPage.qml" line="64"/>
+        <source>Daemon version %1 is newer than this window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../qml/page/AboutPage.qml" line="58"/>
         <source>Checking for updates…</source>
         <translation>Nach Aktualisierungen wird gesucht …</translation>
@@ -292,8 +302,8 @@
     </message>
     <message>
         <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="81"/>
-        <source>Daemon version %1 + is incompatible.</source>
-        <translation>Daemon-Version %1 + ist nicht kompatibel.</translation>
+        <source>Daemon version %1 is incompatible.</source>
+        <translation>Daemon-Version %1 ist nicht kompatibel.</translation>
     </message>
     <message>
         <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="127"/>
@@ -406,6 +416,10 @@
         <location filename="../qml/page/DiscoverPage.qml" line="705"/>
         <source>No wallpapers found</source>
         <translation>Keine Hintergrundbilder gefunden</translation>
+    </message>
+    <message>
+        <source>This source is no longer available.</source>
+        <translation>Diese Quelle ist nicht mehr verfügbar.</translation>
     </message>
 </context>
 <context>
@@ -804,6 +818,26 @@
 <context>
     <name>KdeDisplaysHelp</name>
     <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="23"/>
+        <source>Could not switch the desktop wallpaper: %1</source>
+        <translation>Das Hintergrundbild der Arbeitsfläche konnte nicht umgestellt werden: %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="29"/>
+        <source>The &lt;b&gt;Waywallen&lt;/b&gt; wallpaper plugin is installed, but the desktop does not use it yet.</source>
+        <translation>Das Hintergrundbild-Plugin &lt;b&gt;Waywallen&lt;/b&gt; ist installiert, wird von der Arbeitsfläche aber noch nicht verwendet.</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="41"/>
+        <source>Use Waywallen on this desktop</source>
+        <translation>Waywallen auf dieser Arbeitsfläche verwenden</translation>
+    </message>
+    <message>
+        <location filename="../qml/component/KdeDisplaysHelp.qml" line="72"/>
+        <source>Or right-click the desktop → &lt;b&gt;Configure Desktop and Wallpaper…&lt;/b&gt; and pick the &lt;b&gt;Waywallen&lt;/b&gt; wallpaper plugin.</source>
+        <translation>Oder klicken Sie mit der rechten Maustaste auf die Arbeitsfläche → &lt;b&gt;Arbeitsfläche und Hintergrundbild einrichten …&lt;/b&gt; und wählen Sie das Hintergrundbild-Plugin &lt;b&gt;Waywallen&lt;/b&gt;.</translation>
+    </message>
+    <message>
         <location filename="../qml/component/KdeDisplaysHelp.qml" line="18"/>
         <source>KDE Plasma needs the &lt;b&gt;waywallen-display&lt;/b&gt; wallpaper extension to bridge wallpapers to the desktop. Install it from either source:</source>
         <translation>KDE Plasma benötigt das Hintergrundbild-Plugin &lt;b&gt;waywallen-display&lt;/b&gt;, um Hintergrundbilder auf die Arbeitsfläche zu bringen. Installieren Sie es aus einer der beiden Quellen:</translation>
@@ -1018,6 +1052,21 @@
         <location filename="../qml/page/PlaylistEditPage.qml" line="432"/>
         <source>Playlist unavailable</source>
         <translation>Wiedergabeliste nicht verfügbar</translation>
+    </message>
+    <message>
+        <source>h</source>
+        <comment>hours</comment>
+        <translation>h</translation>
+    </message>
+    <message>
+        <source>m</source>
+        <comment>minutes</comment>
+        <translation>min</translation>
+    </message>
+    <message>
+        <source>s</source>
+        <comment>seconds</comment>
+        <translation>s</translation>
     </message>
 </context>
 <context>
@@ -2296,6 +2345,18 @@ Betroffener Bildschirm: #%1</translation>
         <source>On battery</source>
         <translation>Im Akkubetrieb</translation>
     </message>
+    <message>
+        <source>Default device</source>
+        <translation>Standardgerät</translation>
+    </message>
+    <message>
+        <source>%1 (unavailable)</source>
+        <translation>%1 (nicht verfügbar)</translation>
+    </message>
+    <message>
+        <source>Audio output</source>
+        <translation>Audioausgabe</translation>
+    </message>
 </context>
 <context>
     <name>SidebarNowPlaying</name>
@@ -2381,6 +2442,14 @@ Betroffener Bildschirm: #%1</translation>
         <location filename="../qml/page/SourceManagePage.qml" line="75"/>
         <source>No libraries</source>
         <translation>Keine Bibliotheken</translation>
+    </message>
+    <message>
+        <source>Choose Library Folder</source>
+        <translation>Bibliotheksordner auswählen</translation>
+    </message>
+    <message>
+        <source>Change library folder</source>
+        <translation>Bibliotheksordner ändern</translation>
     </message>
 </context>
 <context>
@@ -2702,6 +2771,18 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <source>Lower values use less GPU memory but may require more texture uploads.</source>
         <translation>Kleinere Werte benötigen weniger GPU-Speicher, können aber häufigere Textur-Uploads verursachen.</translation>
     </message>
+    <message>
+        <source>Card badges</source>
+        <translation>Kartenabzeichen</translation>
+    </message>
+    <message>
+        <source>Show card badges</source>
+        <translation>Kartenabzeichen anzeigen</translation>
+    </message>
+    <message>
+        <source>Edit rules</source>
+        <translation>Regeln bearbeiten</translation>
+    </message>
 </context>
 <context>
     <name>WallpaperCard</name>
@@ -2945,6 +3026,62 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
     <message>
         <source>Update available</source>
         <translation>Update verfügbar</translation>
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="135" />
+        <source>Preset applied, but the running renderer could not be updated</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="137" />
+        <source>Preset applied</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="143" />
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="145" />
+        <source>Preset operation failed</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="274" />
+        <source>Could not refresh wallpaper properties</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="393" />
+        <source>Retry loading presets</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="393" />
+        <source>Loading presets…</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="408" />
+        <source>Save current settings…</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="419" />
+        <source>Manage presets…</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="489" />
+        <source>Property update failed</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="492" />
+        <source>Preset operation canceled: %1</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/page/WallpaperDetailPanel.qml" line="1074" />
+        <source>Presets</source>
+        <translation type="unfinished" />
     </message>
 </context>
 <context>
@@ -3420,6 +3557,14 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <source>About</source>
         <translation>Über</translation>
     </message>
+    <message>
+        <source>Back</source>
+        <translation>Zurück</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Menü</translation>
+    </message>
 </context>
 <context>
     <name>WindowExclusionsPage</name>
@@ -3656,6 +3801,188 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
     <message>
         <source>Delete group</source>
         <translation>Gruppe löschen</translation>
+    </message>
+</context>
+<context>
+    <name>NavigationStack</name>
+    <message>
+        <source>Failed to open page</source>
+        <translation>Seite konnte nicht geöffnet werden</translation>
+    </message>
+</context>
+<context>
+    <name>ArtistPage</name>
+    <message>
+        <source>Artist</source>
+        <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Open web page</source>
+        <translation>Webseite öffnen</translation>
+    </message>
+</context>
+<context>
+    <name>WallpaperBadgeRulesPage</name>
+    <message>
+        <source>Card badge rules</source>
+        <translation>Regeln für Kartenabzeichen</translation>
+    </message>
+    <message>
+        <source>Content rating</source>
+        <translation>Altersfreigabe</translation>
+    </message>
+    <message>
+        <source>Wallpaper type</source>
+        <translation>Typ des Hintergrundbilds</translation>
+    </message>
+    <message>
+        <source>Tag</source>
+        <translation>Schlagwort</translation>
+    </message>
+    <message>
+        <source>Rules ignore case and match the whole value. Use * for any number of characters and ? for one character. A tag rule matches any tag on the wallpaper.</source>
+        <translation>Regeln ignorieren Groß- und Kleinschreibung und vergleichen den ganzen Wert. * steht für beliebig viele Zeichen, ? für genau ein Zeichen. Eine Schlagwort-Regel greift bei jedem Schlagwort des Hintergrundbilds.</translation>
+    </message>
+    <message>
+        <source>%1: %2 → %3</source>
+        <translation>%1: %2 → %3</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Bearbeiten</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Entfernen</translation>
+    </message>
+    <message>
+        <source>Match field</source>
+        <translation>Vergleichsfeld</translation>
+    </message>
+    <message>
+        <source>Matching value</source>
+        <translation>Gesuchter Wert</translation>
+    </message>
+    <message>
+        <source>Badge text</source>
+        <translation>Abzeichentext</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Speichern</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Hinzufügen</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+</context>
+<context>
+    <name>I18n</name>
+    <message>
+        <source>B</source>
+        <translation>B</translation>
+    </message>
+    <message>
+        <source>KiB</source>
+        <translation>KiB</translation>
+    </message>
+    <message>
+        <source>MiB</source>
+        <translation>MiB</translation>
+    </message>
+    <message>
+        <source>GiB</source>
+        <translation>GiB</translation>
+    </message>
+    <message>
+        <source>TiB</source>
+        <translation>TiB</translation>
+    </message>
+</context>
+<context>
+    <name>waywallen::RemoteSearchQuery</name>
+    <message>
+        <source>The source returned a repeated continuation token.</source>
+        <translation>Die Quelle hat ein bereits verwendetes Fortsetzungstoken zurückgegeben.</translation>
+    </message>
+</context>
+<context>
+    <name>WallpaperPresetDialog</name>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="31" />
+        <source>Save preset</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="32" />
+        <source>Apply preset</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="33" />
+        <source>Update preset</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="34" />
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="144" />
+        <source>Rename preset</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="35" />
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="153" />
+        <source>Delete preset</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="36" />
+        <source>Manage presets</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="135" />
+        <source>Update from current values</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="168" />
+        <source>Preset name</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="180" />
+        <source>Apply "%1" and replace current settings not saved in a preset?</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="181" />
+        <source>Replace the saved values in "%1" with the current property values?</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="182" />
+        <source>Delete preset "%1"?</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="190" />
+        <source>Refresh properties</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="203" />
+        <source>Close</source>
+        <translation type="unfinished" />
+    </message>
+    <message>
+        <location filename="../qml/dialog/WallpaperPresetDialog.qml" line="203" />
+        <source>Cancel</source>
+        <translation type="unfinished" />
     </message>
 </context>
 </TS>

@@ -10,7 +10,7 @@ fn movie() -> std::path::PathBuf {
 }
 
 #[test]
-fn ползунок_линеен_как_у_видео_и_ноль_молчит() {
+fn slider_linear_like_video_and_zero_is_silent() {
     // ⚠️ What is checked is not "quieter/louder" but the PROPORTION. Ruffle's own scale
     // is logarithmic: half the slider gives 0.1 of the level there, a quarter — 0.025.
     // A "half < loud" check would let such a scale pass green, while the person

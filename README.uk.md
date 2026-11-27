@@ -15,15 +15,20 @@ Rexon написано мовою Rust, інтерфейс — на Qt 6 / QML (
 Програма молода: номер версії поки що 0.x, а основна платформа розробки й
 перевірки — Arch Linux / CachyOS.
 
-![Rexon: список стільниць і подробиці про KDE Plasma](.github/screenshots/desktops.png)
+![Rexon: вкладка Wallpaper Engine з бібліотекою живих шпалер](.github/screenshots/wallpaper-engine.png)
 
-![Rexon: каталог глобальних тем у розділі «Вигляд»](.github/screenshots/global-themes.png)
+![Rexon: глобальні теми в MATE — спершу власні теми стільниці, зі справжніми прев'ю](.github/screenshots/global-themes.png)
 
 <table>
   <tr>
+    <td><img src=".github/screenshots/desktops.png" alt="Список стільниць і подробиці про MATE"></td>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Ефекти екрана з живим прев'ю"></td>
+    <td><img src=".github/screenshots/steam.png" alt="Стартові ролики Steam під час входу"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/conky.png" alt="Каталог віджетів Conky"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Стилі програм Qt — живі зразки елементів керування"></td>
-    <td><img src=".github/screenshots/gtk-theme-details.png" alt="Подробиці теми GTK з перемикачем GTK 4/libadwaita"></td>
-    <td><img src=".github/screenshots/compare.png" alt="Порівняння стільниць пліч-о-пліч"></td>
+    <td></td>
   </tr>
 </table>
 
@@ -138,16 +143,29 @@ Rexon написано мовою Rust, інтерфейс — на Qt 6 / QML (
 Для Arch Linux / CachyOS у цьому репозиторії два пакунки:
 
 - [`packaging/rexon/`](packaging/rexon/) — випуск. Збирається з підписаної мітки
-  випуску (`v0.1.1`), і `makepkg` звіряє підпис мітки з ключем
+  випуску (`v0.1.2`), і `makepkg` звіряє підпис мітки з ключем
   `B4505C7C7841ECC12D7A0E9D0083083C32159A72`. Імпортуйте ключ один раз:
   `curl -s https://github.com/wehrwolfmann.gpg | gpg --import`.
 - [`packaging/aur/`](packaging/aur/) — `rexon-git`, свіжий код із `main`.
 
+Рушій шпалер встановлюється окремими пакунками з AUR: демон `waywallen` і
+його плагін `open-wallpaper-engine`; для збирання потрібен ще `lito` (AUR).
+Спершу встановіть їх, потім зберіть Rexon:
+
 ```sh
+paru -S waywallen open-wallpaper-engine lito
 git clone https://github.com/wehrwolfmann/rexon.git
 cd rexon/packaging/rexon
 makepkg -si
 ```
+
+Без помічника AUR зберіть кожен із трьох так само, `waywallen` раніше за
+`open-wallpaper-engine`:
+`git clone https://aur.archlinux.org/<назва>.git && cd <назва> && makepkg -si`.
+`waywallen-bin` (готовий AppImage) поки не підходить: він оголошує `waywallen`
+без версії, і pacman не зараховує його для залежності `waywallen>=0.6.3` у
+Rexon і в `open-wallpaper-engine`. У Plasma модуль шпалер
+`plasma-wallpaper-waywallen` Rexon встановлює сам.
 
 ## Збирання з початкового коду
 
@@ -187,11 +205,11 @@ cargo test-core       # тести ядра, Qt не потрібен
 ```sh
 tools/build_qml_material.sh
 tools/build_qml_control.sh
-tools/build_qml_qextra.sh    # потрібні lito >= 0.8.7, clang, lld (AUR: lito або lito-bin)
+tools/build_qml_qextra.sh    # потрібні lito >= 0.8.11, clang, lld (AUR: lito або lito-bin)
 ```
 
-Щоб отримати все одразу — модулі, рушій waywallen, привілейованих помічників
-та їхні політики polkit, — краще зберіть пакунок:
+Щоб отримати все одразу — модулі, привілейованих помічників та їхні
+політики polkit, — краще зберіть пакунок (пакунки рушія вище потрібні й тут):
 
 ```sh
 cd packaging/aur
@@ -365,14 +383,16 @@ Rexon ніколи не запускає від root сторонні скрип
 Живі шпалери Rexon побудовано на чужій праці:
 
 - **[waywallen](https://github.com/hypengw/waywallen)** від hypengw — MIT. Рушій
-  шпалер (окрема служба); пакунок постачає його офіційний випуск без змін.
+  шпалер (окрема служба); пакунок Rexon залежить від пакунка
+  `waywallen`, а збірка з вбудованим рушієм постачає його офіційний випуск без змін.
   Сторінка «Живі шпалери» використовує QML-інтерфейс waywallen з невеликими правками,
   які лежать у `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`.
 - **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)** —
   GPL-2.0-only. Модуль waywallen, який малює сценові та вебшпалери. Він
   працює окремими процесами, які запускає служба waywallen; Rexon із ним не
-  компонується. Пакунок постачає офіційний випуск без змін разом із повним
-  початковим кодом.
+  компонується. Пакунок
+  Rexon залежить від пакунка `open-wallpaper-engine`; збірка з вбудованим рушієм постачає
+  офіційний випуск без змін разом із повним початковим кодом.
 - **[waywallen-display](https://github.com/waywallen/waywallen-display)** — модуль
   шпалер для KDE Plasma, постачається без змін.
 - **[Ruffle](https://github.com/ruffle-rs/ruffle)** (MIT / Apache-2.0) — Flash-шпалери;

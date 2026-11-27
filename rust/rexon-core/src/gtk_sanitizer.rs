@@ -719,13 +719,13 @@ mod tests {
     }
 
     #[test]
-    fn ini_label_берёт_каталог_версии() {
+    fn ini_label_takes_version_directory() {
         assert_eq!(ini_label("/home/u/.config/gtk-3.0/settings.ini"), "gtk-3.0/settings.ini");
         assert_eq!(ini_label("settings.ini"), "settings.ini");
     }
 
     #[test]
-    fn write_ini_setting_создаёт_файл() {
+    fn write_ini_setting_creates_file() {
         assert_eq!(
             write_ini_setting(None, "gtk-theme-name", "Adwaita"),
             "[Settings]\ngtk-theme-name=Adwaita\n"
@@ -733,20 +733,20 @@ mod tests {
     }
 
     #[test]
-    fn write_ini_setting_дописывает_ключ_в_конец_секции() {
+    fn write_ini_setting_appends_key_to_section_end() {
         let src = "[Settings]\na=1\n\n[Other]\nb=2\n";
         let out = write_ini_setting(Some(src), "gtk-theme-name", "Breeze");
         assert_eq!(out, "[Settings]\na=1\n\ngtk-theme-name=Breeze\n[Other]\nb=2\n");
     }
 
     #[test]
-    fn write_ini_setting_создаёт_секцию_если_её_нет() {
+    fn write_ini_setting_creates_missing_section() {
         let out = write_ini_setting(Some("[Other]\nb=2\n"), "k", "v");
         assert_eq!(out, "[Other]\nb=2\n[Settings]\nk=v\n");
     }
 
     #[test]
-    fn пустой_дефолт_не_попадает_в_kde_правку() {
+    fn empty_default_not_in_kde_edit() {
         // No icon theme at all on the system → pick_safe_default returns the literal
         // "breeze"; for an empty type — an empty string, no edit.
         let mut fs = snap(json!({"dirs": {}, "files": {}}));
@@ -757,7 +757,7 @@ mod tests {
     /// "Sounds" theme. The value is not edited (it is not in the edit plan), there
     /// is a note about it.
     #[test]
-    fn звуковая_тема_которой_нет_не_подменяется() {
+    fn missing_sound_theme_not_substituted() {
         let mut fs = snap(json!({
             "dirs": {
                 "/usr/share/sounds": ["ocean", "mate"],
@@ -795,7 +795,7 @@ mod tests {
     /// An existing theme (user or system) and an empty value — no notes; a directory
     /// without `index.theme` does not count as a theme.
     #[test]
-    fn замечание_о_звуковой_теме_только_когда_темы_нет() {
+    fn sound_theme_note_only_when_theme_missing() {
         let mut fs = snap(json!({
             "dirs": {
                 "/usr/share/sounds": ["ocean", "mate"],
@@ -823,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn unsafe_курсор_считается_битым() {
+    fn unsafe_cursor_counted_as_broken() {
         let mut fs = snap(json!({
             "dirs": {"/usr/share/icons": [], "/usr/share/icons/Adwaita": [],
                      "/usr/share/icons/Adwaita/cursors": []},

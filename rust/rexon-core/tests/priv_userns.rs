@@ -743,9 +743,11 @@ fn stand_code_stays_out_of_release() {
         }
     }
 
-    let pkgbuild = std::fs::read_to_string(repo().join("packaging/aur/PKGBUILD")).unwrap();
-    assert!(!pkgbuild.contains("rexon-priv-stand"), "пакет ставит бинарь стенда");
-    assert!(!pkgbuild.contains("--features"), "пакет собирается с feature — проверить, что не stand");
+    for recipe in ["packaging/aur/PKGBUILD", "scripts/package-build"] {
+        let text = std::fs::read_to_string(repo().join(recipe)).unwrap();
+        assert!(!text.contains("rexon-priv-stand"), "пакет ставит бинарь стенда ({recipe})");
+        assert!(!text.contains("--features"), "пакет собирается с feature — проверить, что не stand ({recipe})");
+    }
 
     let helper = std::fs::read(HELPER).unwrap();
     for needle in [&b"REXON_STAND_DIR"[..], b"REXON_STAND_BUILD", b"rexon-priv-stand", b"priv-ns-enter"] {

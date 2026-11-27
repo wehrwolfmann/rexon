@@ -449,6 +449,14 @@
   [
    "browser_login_cancel",
    98
+  ],
+  [
+   "audio_output_list",
+   99
+  ],
+  [
+   "wallpaper_preset",
+   100
   ]
  ],
  "requests": [

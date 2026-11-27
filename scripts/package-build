@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# Build and stage Rexon for a distribution package.
+#
+# Called by packaging/*/PKGBUILD so that the recipe lives with the code it
+# builds and the PKGBUILD stays short. The layout written by `install` is
+# checked by the core's tests (app_parity.rs and others read this file).
+#
+#   scripts/package-build prepare SRCDIR          # fonts, lito sources (network)
+#   scripts/package-build build   SRCDIR          # offline
+#   scripts/package-build check   SRCDIR
+#   scripts/package-build install SRCDIR PKGDIR PKGNAME
+#
+# SRCDIR is makepkg's $srcdir: the checkout is SRCDIR/rexon, the QmlMaterial
+# checkout and the downloaded fonts and translation model lie next
+# to it. LITO may point to a lito binary other than the one in PATH.
+set -euo pipefail
+
+cmd=${1:?usage: package-build prepare|build|check|install SRCDIR [PKGDIR PKGNAME]}
+srcdir=$(realpath "${2:?missing SRCDIR}")
+tree="$srcdir/rexon"
+rel="$tree/rust/target/release"
+lito="${LITO:-lito}"
+export XDG_DATA_HOME="$srcdir/lito-data" CARGO_TARGET_DIR="$tree/rust/target"
+
+# lito crashes on non-ASCII paths; fail before the long Rust build.
+if LC_ALL=C grep -q '[^ -~]' <<<"$srcdir"; then
+  echo "the build directory must be an ASCII-only path: $srcdir" >&2
+  exit 1
+fi
+
+# Exactly one file must match the glob.
+one() {
+  local m=("$@")
+  [[ ${#m[@]} == 1 && -e ${m[0]} ]] || { echo "expected one file, got: ${m[*]}" >&2; return 1; }
+  printf '%s\n' "${m[0]}"
+}
+
+do_prepare() {
+  # The fonts are git-lfs pointers in the QmlMaterial repository; the real
+  # files are separate sources named <pin:0:12>-<file>.
+  local pin f
+  pin=$(tr -d '[:space:]' < "$tree/data/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN")
+  for f in "$srcdir/${pin:0:12}-"*; do
+    cp "$f" "$srcdir/QmlMaterial/assets/${f##*/"${pin:0:12}"-}"
+  done
+  "$lito" -C "$tree/tools/qextra_plugin" fetch --locked
+}
+
+do_build() {
+  # Keep build-machine paths out of the binaries: panic locations (rustc) and
+  # __FILE__ in the cxx-qt headers (cc). makepkg maps $srcdir itself only
+  # when it builds a debug package.
+  local cargo_home="${CARGO_HOME:-$HOME/.cargo}" map
+  map="-ffile-prefix-map=$cargo_home=/usr/src/cargo"
+  RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$cargo_home=/usr/src/cargo"
+  if [[ $RUSTFLAGS != *"--remap-path-prefix=$srcdir="* ]]; then
+    RUSTFLAGS+=" --remap-path-prefix=$srcdir=/usr/src/rexon"
+    map+=" -ffile-prefix-map=$srcdir=/usr/src/rexon"
+  fi
+  export RUSTFLAGS CFLAGS="${CFLAGS:-} $map" CXXFLAGS="${CXXFLAGS:-} $map"
+  export CARGO_NET_OFFLINE=true
+
+  # Neither cmake (Ninja) nor lito read MAKEFLAGS; without a limit they use
+  # every core, which ran out of memory on 8 GB.
+  local jobs
+  jobs=$(grep -oE '(-j *|--jobs[= ]+)[0-9]+' <<<"${MAKEFLAGS:-}" | grep -oE '[0-9]+$' | tail -n1 || true)
+  if [[ -n $jobs ]]; then
+    export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$jobs}"
+    export QEXTRA_JOBS="${QEXTRA_JOBS:-$jobs}"
+  fi
+
+  cd "$tree/rust"
+  # The workspace default member is the core only; the splash is built
+  # separately so that feature unification does not rebuild rexon-gui.
+  cargo build --frozen --release -p rexon-core -p rexon-gui -p rexon-qt-filter
+  cargo build --frozen --release -p rexon-splash-overlay
+  "$rel"/desktop-entry --package > "$srcdir/rexon.desktop"
+  "$rel"/desktop-entry --package --recover > "$srcdir/rexon-recover.desktop"
+
+  # QML plugins of the wallpaper tab, built by the same scripts as in the tree.
+  QML_MATERIAL_SRC="$srcdir/QmlMaterial" \
+    bash "$tree/tools/build_qml_material.sh" "$srcdir/qml_modules"
+  QML_CONTROL_BUILD="$srcdir/qml_control-build" \
+    bash "$tree/tools/build_qml_control.sh" "$srcdir/qml_modules"
+  QEXTRA_FROZEN=1 QEXTRA_ENV_FLAGS=1 QEXTRA_BUILD="$srcdir/qextra-build" LITO="$lito" \
+    bash "$tree/tools/build_qml_qextra.sh" "$srcdir/qml_modules"
+}
+
+do_check() {
+  desktop-file-validate "$srcdir/rexon.desktop" "$srcdir/rexon-recover.desktop"
+  # The id must stay rexon.desktop, and there is no homepage besides GitHub.
+  appstreamcli validate --no-net \
+    --override=cid-desktopapp-is-not-rdns=info,url-homepage-missing=info \
+    "$tree/packaging/rexon.metainfo.xml"
+}
+
+do_install() {
+  pkgdir=$(realpath "${1:?missing PKGDIR}")
+  local lib="$pkgdir/usr/lib/rexon" data="$pkgdir/usr/lib/rexon/rexon"
+  local lic="$pkgdir/usr/share/licenses/${2:?missing PKGNAME}"
+  local qmod="$pkgdir/usr/lib/rexon/qml_modules"
+  local b unit who path size ext d
+  cd "$tree"
+
+  install -Dm755 "$rel/rexon-main-window" "$pkgdir/usr/lib/rexon/rexon-main-window"
+  install -Dm755 "$rel/rexon-theme-shot" "$lib/rexon-theme-shot"
+  install -Dm755 "$rel/rexon-login-rescue" "$pkgdir/usr/lib/rexon/rexon-login-rescue"
+  for unit in $("$rel/rexon-login-rescue" --list-files); do
+    install -d "$pkgdir$(dirname "$unit")"
+    "$rel/rexon-login-rescue" --file "$unit" > "$pkgdir$unit"
+    chmod 644 "$pkgdir$unit"
+  done
+  for b in rexon-wallpaper-host rexon-splash-overlay; do
+    install -Dm755 "$rel/$b" "$pkgdir/usr/bin/$b"
+  done
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/rexon" <<'LAUNCHER'
+#!/bin/sh
+REXON_PACKAGED=1
+export REXON_PACKAGED
+if [ "${1:-}" = doctor ]; then
+  exec /usr/lib/rexon/rexon-login-rescue doctor
+fi
+exec /usr/lib/rexon/rexon-main-window "$@"
+LAUNCHER
+  chmod 755 "$pkgdir/usr/bin/rexon"
+
+  # QML modules: Qcm/Material, waywallen/control and QExtra, plus our filter .so.
+  install -d "$qmod"
+  cp -a "$srcdir/qml_modules/." "$qmod/"
+  find "$qmod" -name '*_qml_module_dir_map.qrc' -delete
+  for b in Qcm/Material/libqml_materialplugin.so waywallen/control/libwaywallen-controlplugin.so \
+           waywallen/control/proto.sha256 QExtra/libqextraplugin.so QExtra/QT_VERSION; do
+    [[ -s $qmod/$b ]] || { echo "missing QML module file: $b" >&2; return 1; }
+  done
+  install -Dm755 "$rel/librexon_qt_filter.so" "$qmod/waywallen/control/librexon_qt_filter.so"
+
+  # Product data (installer::package_data_dir_candidates).
+  install -d "$data/qt_wallpaper_engine"
+  cp -a data/qt_wallpaper_engine/qml_ui "$data/qt_wallpaper_engine/qml_ui"
+  install -Dm644 data/qt_wallpaper_engine/proto/UPSTREAM_TAG "$data/qt_wallpaper_engine/proto/UPSTREAM_TAG"
+  install -Dm644 data/themes.json "$data/themes.json"
+  cp -a data/assets "$data/assets"
+  find "$data" -name '__pycache__' -type d -prune -exec rm -rf {} +
+  find "$data" -name '*.py' -delete
+
+  # en→ru description translation model (translator_engine::model_files_in).
+  local mt_pair=enru
+  local mt="$data/translate/$mt_pair"
+  install -Dm644 "$(one "$srcdir"/*-model.${mt_pair}.intgemm.alphas.bin)" "$mt/model.${mt_pair}.intgemm.alphas.bin"
+  install -Dm644 "$(one "$srcdir"/*-vocab.${mt_pair}.spm)" "$mt/vocab.${mt_pair}.spm"
+
+  # Interface translations from po/ of this commit (i18n::SYSTEM_LOCALEDIR).
+  bash scripts/i18n-update.sh --build "$pkgdir/usr/share/locale"
+  bash scripts/i18n-update.sh --verify "$pkgdir/usr/share/locale"
+
+  install -Dm644 rexon_icon.png "$lib/rexon_icon.png"
+
+  # Privileged helpers and their polkit policies, printed by the core. No
+  # passwordless rule: that stays the user's choice.
+  for who in $("$rel/package-polkit" --list); do
+    path=$("$rel/package-polkit" --path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --helper "$who" > "$pkgdir$path"
+    chmod 755 "$pkgdir$path"
+    path=$("$rel/package-polkit" --policy-path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --policy "$who" > "$pkgdir$path"
+    chmod 644 "$pkgdir$path"
+  done
+  for who in $("$rel/package-polkit" --list-binaries); do
+    path=$("$rel/package-polkit" --path "$who")
+    install -Dm755 "$rel/${path##*/}" "$pkgdir$path"
+    path=$("$rel/package-polkit" --policy-path "$who")
+    install -d "$pkgdir$(dirname "$path")"
+    "$rel/package-polkit" --policy "$who" > "$pkgdir$path"
+    chmod 644 "$pkgdir$path"
+  done
+  install -Dm755 "$rel/rexon-sudo-shim" "$pkgdir/usr/lib/rexon-sudo-shim"
+
+  install -Dm644 "$srcdir/rexon.desktop" "$pkgdir/usr/share/applications/rexon.desktop"
+  install -Dm644 "$srcdir/rexon-recover.desktop" "$pkgdir/usr/share/applications/rexon-recover.desktop"
+  install -Dm644 packaging/rexon.metainfo.xml "$pkgdir/usr/share/metainfo/rexon.metainfo.xml"
+  for size in 16 24 32 48 64 128 256 512; do
+    install -Dm644 "rexon_icon_$size.png" "$pkgdir/usr/share/icons/hicolor/${size}x$size/apps/rexon.png"
+  done
+  install -Dm644 rexon_icon_128.png "$pkgdir/usr/share/pixmaps/rexon.png"
+
+  # GNOME Shell and Cinnamon wallpaper extensions; their schemas also go to
+  # the shared directory, compiled by the glib2 pacman hook.
+  ext='rexon-wallpaper@rexon.app'
+  install -d "$pkgdir/usr/share/gnome-shell/extensions" "$pkgdir/usr/share/cinnamon/extensions"
+  cp -a "data/gnome-extension/$ext" "$pkgdir/usr/share/gnome-shell/extensions/$ext"
+  cp -a "data/cinnamon-extension/$ext" "$pkgdir/usr/share/cinnamon/extensions/$ext"
+  for d in "$pkgdir"/usr/share/{gnome-shell,cinnamon}/extensions/"$ext"/schemas; do
+    [[ -d $d ]] && glib-compile-schemas "$d"
+  done
+  install -Dm644 -t "$pkgdir/usr/share/glib-2.0/schemas" \
+    "data/gnome-extension/$ext/schemas/"*.gschema.xml \
+    "data/cinnamon-extension/$ext/schemas/"*.gschema.xml
+
+  # Licenses of everything shipped; see NOTICE.
+  local fx=rust/vendor/fxtranslate reg="$XDG_DATA_HOME/lito/registry/tree"
+  install -Dm644 LICENSE "$lic/LICENSE"
+  install -Dm644 NOTICE "$lic/NOTICE"
+  install -Dm644 "$srcdir/QmlMaterial/LICENSE" "$lic/LICENSE.QmlMaterial"
+  install -Dm644 rust/rexon-swf/NotoSans-OFL-1.1.txt "$lic/LICENSE.NotoSans-OFL-1.1"
+  install -Dm644 "$(one "$XDG_DATA_HOME"/lito/git/checkouts/QExtra-*/*/LICENSE-MIT)" "$lic/LICENSE.QExtra-MIT"
+  install -Dm644 "$(one "$reg"/ncrequest-*/LICENSE.txt)" "$lic/LICENSE.ncrequest-MIT"
+  install -Dm644 "$(one "$reg"/lihttpto-*/LICENSE-MIT)" "$lic/LICENSE.lihttpto-MIT"
+  install -Dm644 "$fx/crate/LICENSE" "$lic/LICENSE.fxtranslate-MPL-2.0"
+  install -Dm644 "$fx/crate/vendor/gemmology/LICENSE" "$lic/LICENSE.gemmology-MIT"
+  install -Dm644 "$fx/crate/vendor/xsimd/LICENSE" "$lic/LICENSE.xsimd-BSD-3-Clause"
+  # MPL-2.0 is per-file: our only change to the crate is this one patch.
+  install -Dm644 "$fx"/patches/0001-*.patch "$lic/fxtranslate-0.4.2-rexon.patch"
+  install -Dm644 "$fx/crate/LICENSE" "$lic/LICENSE.translations-model-MPL-2.0"
+}
+
+case $cmd in
+  prepare) do_prepare ;;
+  build) do_build ;;
+  check) do_check ;;
+  install) do_install "${3:-}" "${4:-}" ;;
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac

@@ -1,0 +1,243 @@
+# Local build variant: the package from ./PKGBUILD (rexon or rexon-git) with
+# the wallpaper engine bundled in /usr/lib/rexon/engine instead of depending
+# on the waywallen and open-wallpaper-engine packages. For machines and
+# channels without those packages (manual install, Steam); not for
+# distribution repositories. Copy it next to the PKGBUILD and its .install
+# file and run:
+#   makepkg -p PKGBUILD.bundled-engine
+#
+# The daemon is a separate process and the OWE renderers are started by it,
+# so the GPL-2.0-only plugin is only aggregated with Rexon (GPL-2 §2); its
+# complete source of the same tag ships in /usr/share/rexon/sources (§3(a)).
+
+. "${startdir:-.}/PKGBUILD"
+# makepkg -p writes the pkgver() result into this file, not into ./PKGBUILD.
+pkgver=$pkgver
+pkgrel=$pkgrel
+
+# The AppImage is exactly the tag the protocol was vendored from; the plugin
+# fits that daemon (entry_version 5, spawn_version 10). Change them together.
+_ww_ver=0.6.3
+_ww_appimage="waywallen-${_ww_ver}-${CARCH}.AppImage"
+# org.waywallen.kde Plasma wallpaper plugin of the same daemon generation
+# (data/kpackage/org.waywallen.kde/vendor.toml), installed per user by Rexon.
+_wwd_ver=0.4.8
+_wwd_zip="waywallen-kde-${_wwd_ver}-${CARCH}.zip"
+# OWE stays at 0.3.4 until the CEF 158 first-frame fix (waywallen/open-wallpaper-engine#203)
+# is released: 0.4.x shows no web wallpapers under Wayland (open-wallpaper-engine#200).
+_owe_ver=0.3.4
+_owe_commit=5dd7b4cfb38fe21c64e9c036bbd89ae5b866b49e   # tag v0.3.4
+_owe_id=org.waywallen.open-wallpaper-engine
+_owe_zip="${_owe_id}-${_owe_ver}-linux-${CARCH}.zip"
+# What lito compiles into the plugin, from the tag's lito.lock.
+# git: name|url|commit|directory in lito's source bundle
+_owe_git=(
+  'glslang|https://github.com/KhronosGroup/glslang.git|275822a6261ee689aadb1da5f09a0ec2f058685c|c395e2aaa9cb8d8fb93b07b4c4d577edfa6e698ecff8b9495da8e176be545138'
+  'wavsen|https://github.com/hypengw/wavsen.git|fe27f752e29a94565b6a33083d90df9a020ee76f|c04565f5a2032d9c0edaedbaf9e609a875514f0d9646695709b1522f3a080e79'
+  'quickjs|https://github.com/quickjs-ng/quickjs.git|3c051980ab7e783dfbfb1c70c014ce5e05ecf24c|331b9bd81fcec183b71723ba4f8b3c47ed128fe90f9e2095beff407999fe4283'
+  'vectext|https://github.com/vecren/vectext.git|36fc965d8cb418f9dc17d31683dc268dabb52cb2|21970ad8a7f3b1c43ee2acdaf92336ce20163dc1ec66cfbb3bdaa7a05b1dff35'
+  'vrento|https://github.com/vecren/vrento.git|02101d93c5fd76d8d4892910ba16765892d197c0|dd545781aaa95b1ccd52e4193abedb3430e5ba9553c3ec5b6724e959cc7ffa15'
+  'eigen|https://chromium.googlesource.com/external/gitlab.com/libeigen/eigen.git|bc3b39870ecb690a623a3f49149a358b95c5781d|b8200cc545ec10dd9086947f174b97b20d038960af0922e188a78f5b750992ef'
+)
+# lito registry: name|version|archive sha256 (= checksum in lito.lock)
+_owe_reg=(
+  'licrypto|0.1.2|0b5b3d95c5f623fd2db57c2be8a46f0a22d2e28950cc14715f8f759e2322ffad'
+  'liffto|0.1.1|69ef95356eb4b133b887ab1390fc1f639f5e0c130391cde27d9a168532f0399f'
+  'ligraph|0.1.1|dca11b780cc1952352ed904ab98f4a87f028ecde645b820044b96513f8b0f10e'
+  'lito-spirv|0.1.0|feeeeb78f97962e7414f1f9170c8bcabd9396d3c77a416b3962d5a4225b3699d'
+  'liunicode|0.1.1|6b99808201e17df098c037acdc01906052310a89c329e65a982bb57e2d6896f2'
+  'rstd-alloc|0.1.14|faa993c306623aebf193b35d95a13eaa8e103f27468e1781bfb6fbe77ed4d859'
+  'rstd-argparse|0.1.14|30fcb186882a3110237460878d549ea12ccebfe4b891a6799a2e4e526e2d5069'
+  'rstd-basic|0.1.14|7d87f101b79dee64ff091d93eff9917d1ac2711aabd9d690ca89944aaa02d917'
+  'rstd-bench|0.1.14|2b8989b0e206f1965b088b217c705a7237c2ab6987cf1449d14d642525917d06'
+  'rstd-core|0.1.14|fc8c3fb298d4eaf1819d3cd646c178a49a6859343ed879e75bc1b58540f1b8f8'
+  'rstd-cppstd|0.1.14|5c73b2629459d44493478f4994352edba91e1200daddcf079cfb537f01a16aa4'
+  'rstd-dlopn|0.1.14|dad3e0240944d9d10484c20804b8d9fc9e0e9042d34bdc5e6cbbbe8d6f0d77e0'
+  'rstd-json|0.1.14|1b55959397720b4770796beae5894fa5d0cea571d76eea884708cf2d97050ecc'
+  'rstd-log|0.1.14|6565f5aa4332b73ae5f57b3a1262fa077faa1318a175fd0bf329a092a31069ae'
+  'rstd-nostd|0.1.14|4a21ffaa80a5d74e40d776ae48be1ae0fe1062b2b025ec7884199bdf652e8105'
+  'rstd-parse|0.1.14|bfa88bc16a181e014bc0e65323aa94436bb8450a1f0e9c1f8ba36f639650e96b'
+  'rstd-runtime|0.1.14|4f7b50c34af632192a05e9ad708885930ca37df97ad67c3f64f618974138e282'
+  'rstd-serde|0.1.14|a086e99c1eb958e46c2f275ec76fb6f9642a4455f3ee7e3c2e1fdf10762f14b2'
+  'rstd-std|0.1.14|86190265f1f4d95589954c8e151a0e6efebb20f010da6d8bc7a01eb8fb7fbc68'
+  'rstd-test|0.1.14|310407e6517a01ba64600f0b8a5f8e880db522dc99a7285a4f1590273b64380e'
+  'spirvto|0.1.0|331b447bb6ba8e08d5bdb58958dce5dd894f09d1b99d54276dc5403d44aac324'
+  'vvk|0.1.2|5342ef810782acabfd73f14469294faefa594fc0696fdacddd8de7978a2ef177'
+)
+# Only the libcef_dll_wrapper sources of this archive are compiled into the
+# plugin; libcef.so itself ships inside the plugin zip.
+_cef_archive='cef_binary_149.0.4+g2f1bfd8+chromium-149.0.7827.156_linux64_minimal.tar.bz2'
+_cef_url="https://cef-builds.spotifycdn.com/${_cef_archive//+/%2B}"
+_cef_sha=6d43607675e47ed6bfa40d1cfce136d04e7720529f8f1c4435d4ba1dcd1839b2
+
+# The plasmoid states MIT (LICENSE) and GPL-2.0-or-later (metadata.json);
+# both texts ship until upstream clarifies (waywallen/waywallen-display#70).
+license+=('GPL-2.0-only' 'GPL-2.0-or-later')
+_d=()
+for _x in "${depends[@]}"; do
+  [[ $_x == waywallen* || $_x == open-wallpaper-engine* ]] || _d+=("$_x")
+done
+# fuse3: the AppImage runtime; the rest are linked by the plugin's libcef.so and renderers.
+depends=("${_d[@]}" fuse3 at-spi2-core nss nspr libcups expat systemd-libs mesa
+         libx11 libxcb libxext libxfixes libxcomposite libxdamage libxrandr
+         libxkbcommon cairo pango lz4 fontconfig freetype2)
+makedepends+=(patchelf)
+# The bundled plasmoid imports org.kde.taskmanager (WindowModel.qml).
+optdepends+=('plasma-workspace: the bundled Plasma wallpaper plugin (org.kde.taskmanager)')
+# makepkg's strip would cut the squashfs off the AppImage; ours skips the engine.
+options=('!lto' '!strip' '!debug')
+source+=("${_ww_appimage}::https://github.com/waywallen/waywallen/releases/download/v${_ww_ver}/${_ww_appimage}"
+         "waywallen-${_ww_ver}-LICENSE::https://raw.githubusercontent.com/waywallen/waywallen/v${_ww_ver}/LICENSE"
+         "${_owe_zip}::https://github.com/waywallen/open-wallpaper-engine/releases/download/v${_owe_ver}/${_owe_zip}"
+         "open-wallpaper-engine::git+https://github.com/waywallen/open-wallpaper-engine.git#commit=${_owe_commit}"
+         "${_cef_archive}::${_cef_url}"
+         "${_wwd_zip}::https://github.com/waywallen/waywallen-display/releases/download/v${_wwd_ver}/${_wwd_zip}")
+sha256sums+=('148cffac6a744e7b28e7d421ac9a069283a270ca5f5652365855149b00c2a238'
+             '2d1edaf74e77c63e166ed948c2fee17a50dd15f73d8e9db249117e5fde8bef24'
+             '94db107147c62ca29a1b44ca99a32d809ed9f0f889f381ca268f66e9cd087ae2'
+             'SKIP'
+             "$_cef_sha"
+             'ed0438b4789d3987fca7cc844387b3b69916f07e06ecf794d933a377f2aa659f')
+noextract+=("${_owe_zip}" "${_cef_archive}" "${_wwd_zip}")
+for _x in "${_owe_git[@]}"; do
+  IFS='|' read -r _n _u _c _ <<<"$_x"
+  source+=("owe-dep-${_n}::git+${_u}#commit=${_c}")
+  sha256sums+=('SKIP')
+done
+for _x in "${_owe_reg[@]}"; do
+  IFS='|' read -r _n _v _s <<<"$_x"
+  source+=("lito-${_n}-${_v}.tar.zst::https://registry.litocpp.org/packages/${_n}/${_n}-${_v}.tar.zst")
+  sha256sums+=("$_s")
+  noextract+=("lito-${_n}-${_v}.tar.zst")
+done
+unset _d _x _n _u _c _v _s
+
+eval "_base_$(declare -f prepare)"
+eval "_base_$(declare -f build)"
+eval "_base_$(declare -f package)"
+
+prepare() {
+  _base_prepare
+  local tag
+  tag=$(awk 'NR==1{print $1}' "$srcdir/rexon/data/qt_wallpaper_engine/proto/UPSTREAM_TAG")
+  if [[ "$tag" != "v$_ww_ver" ]]; then
+    echo "bundled AppImage $_ww_ver, but the protocol was vendored from $tag" >&2
+    return 1
+  fi
+  if (( $(vercmp "$_owe_ver" "$_owe_min") < 0 )); then
+    echo "bundled OWE plugin $_owe_ver is older than $_owe_min" >&2
+    return 1
+  fi
+  rm -rf "$srcdir/owe-plugin"
+  install -d "$srcdir/owe-plugin"
+  bsdtar --no-same-owner -xf "$srcdir/$_owe_zip" -C "$srcdir/owe-plugin"
+  grep -qx "id = \"$_owe_id\"" "$srcdir/owe-plugin/plugin.toml" \
+    && grep -qx "version = \"$_owe_ver\"" "$srcdir/owe-plugin/plugin.toml" \
+    && grep -q "^version = \"$_owe_ver\"" "$srcdir/open-wallpaper-engine/lito.toml" || {
+    echo "$_owe_zip or the OWE source is not $_owe_id $_owe_ver" >&2
+    return 1
+  }
+}
+
+build() {
+  _base_build
+  _owe_source_bundle
+}
+
+package() {
+  _base_package
+  local eng="$pkgdir/usr/lib/rexon/engine"
+  install -Dm755 "$srcdir/$_ww_appimage" "$eng/waywallen.AppImage"
+  install -d "$eng/plugins"
+  cp -a --no-preserve=ownership "$srcdir/owe-plugin" "$eng/plugins/$_owe_id"
+  chmod -R u+rwX,go+rX,go-w "$eng/plugins/$_owe_id"
+  _owe_fix_runpath "$eng/plugins/$_owe_id"
+  install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}-src.tar.xz" \
+    "$pkgdir/usr/share/rexon/sources/open-wallpaper-engine-${_owe_ver}-src.tar.xz"
+  local kpkg="$pkgdir/usr/lib/rexon/rexon/kpackage"
+  install -d "$kpkg"
+  bsdtar --no-same-owner -xf "$srcdir/$_wwd_zip" -C "$kpkg"
+  install -m644 "$srcdir/rexon/data/kpackage/org.waywallen.kde/vendor.toml" \
+    "$kpkg/org.waywallen.kde/vendor.toml"
+  local lic="$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 "$kpkg/org.waywallen.kde/LICENSE" "$lic/LICENSE.waywallen-kde-MIT"
+  install -Dm644 "$srcdir/rexon/packaging/licenses/GPL-2.0.txt" "$lic/LICENSE.waywallen-kde-GPL-2.0"
+  install -Dm644 "$srcdir/open-wallpaper-engine/LICENSE" "$lic/LICENSE.open-wallpaper-engine-GPL-2.0"
+  install -Dm644 "$srcdir/waywallen-${_ww_ver}-LICENSE" "$lic/LICENSE.waywallen-MIT"
+  install -Dm644 "$srcdir/owe-src/open-wallpaper-engine-${_owe_ver}/third_party-cef/"*/LICENSE.txt \
+    "$lic/LICENSE.CEF-BSD-3-Clause"
+  _strip_own_binaries
+}
+
+# Complete source of the OWE plugin: the tag, everything lito builds into it
+# (lito's source-bundle layout) and the CEF wrapper sources. Reproducible.
+_owe_source_bundle() {
+  local top="open-wallpaper-engine-${_owe_ver}"
+  local root="$srcdir/owe-src/$top" e n u c d v
+  local bundle="$root/.lito/source-bundle/v1"
+  rm -rf "$srcdir/owe-src"
+  install -d "$bundle/git" "$bundle/registry/source" "$root/third_party-cef"
+  git -C "$srcdir/open-wallpaper-engine" archive --format=tar "$_owe_commit" | tar -x -C "$root"
+  for e in "${_owe_git[@]}"; do
+    IFS='|' read -r n u c d <<<"$e"
+    install -d "$bundle/git/$d"
+    git -C "$srcdir/owe-dep-$n" archive --format=tar "$c" | tar -x -C "$bundle/git/$d"
+  done
+  for e in "${_owe_reg[@]}"; do
+    IFS='|' read -r n v c <<<"$e"
+    install -m644 "$srcdir/lito-$n-$v.tar.zst" "$bundle/registry/source/$n-$v-${c:0:16}.tar.zst"
+  done
+  bsdtar --no-same-owner -xf "$srcdir/$_cef_archive" -C "$root/third_party-cef" \
+    --include '*/include/*' --include '*/libcef_dll/*' --include '*/cmake/*' \
+    --include '*/CMakeLists.txt' --include '*/LICENSE.txt' --include '*/README.txt'
+  {
+    echo "Open Wallpaper Engine ${_owe_ver}: complete source of the ${_owe_id} plugin"
+    echo "shipped in /usr/lib/rexon/engine/plugins/. License: GPL-2.0-only (LICENSE)."
+    echo "Source: https://github.com/waywallen/open-wallpaper-engine commit ${_owe_commit}."
+    echo "Build dependencies (the tag's lito.lock) in .lito/source-bundle/v1/:"
+    for e in "${_owe_git[@]}"; do
+      IFS='|' read -r n u c d <<<"$e"
+      echo "  git/$d  $u @ $c"
+    done
+    for e in "${_owe_reg[@]}"; do
+      IFS='|' read -r n v c <<<"$e"
+      echo "  registry/source/$n-$v-${c:0:16}.tar.zst  sha256 $c"
+    done
+    echo "third_party-cef/: libcef_dll_wrapper and CEF headers (BSD-3-Clause) from"
+    echo "  $_cef_url (sha256 $_cef_sha)."
+    echo "Build: see BUILD.md (lito, https://github.com/litocpp/lito)."
+  } > "$root/SOURCES.txt"
+  tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
+    -C "$srcdir/owe-src" -cf - "$top" | xz -T0 -9 > "$srcdir/owe-src/$top-src.tar.xz"
+}
+
+# The renderers carry upstream CI's RUNPATH (/home/runner/...), which any
+# user named runner could populate. Keep only $ORIGIN entries.
+_owe_fix_runpath() {
+  local f rp keep
+  while IFS= read -r -d '' f; do
+    [[ "$(head -c4 "$f" | od -An -c | tr -d ' ')" == '177ELF' ]] || continue
+    rp=$(patchelf --print-rpath "$f") || return 1
+    [[ -n $rp ]] || continue
+    keep=$(tr ':' '\n' <<<"$rp" | { grep -E '^\$ORIGIN(/|$)' || true; } | paste -sd: -)
+    if [[ -z $keep ]]; then
+      patchelf --remove-rpath "$f" || return 1
+    elif [[ $keep != "$rp" ]]; then
+      patchelf --set-rpath "$keep" "$f" || return 1
+    fi
+  done < <(find "$1" -type f -print0)
+}
+
+# Strip our binaries; leave the engine and the upstream plasmoid as shipped.
+_strip_own_binaries() {
+  local f
+  while IFS= read -r -d '' f; do
+    [[ "$(head -c4 "$f" | od -An -c | tr -d ' ')" == '177ELF' ]] || continue
+    case "$f" in
+      *.so|*.so.*) strip --strip-unneeded "$f" ;;
+      *) strip --strip-all "$f" ;;
+    esac
+  done < <(find "$pkgdir" \( -path "$pkgdir/usr/lib/rexon/engine" \
+                         -o -path "$pkgdir/usr/lib/rexon/rexon/kpackage" \) -prune \
+                         -o -type f -print0)
+}

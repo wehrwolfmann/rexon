@@ -40,7 +40,8 @@ pub mod qobject {
 
         /// A section action for environment `de`: a preset by name (empty — turn
         /// off), strength 0…1, speed 0…`max_speed`. `tag` says what it is
-        /// ("apply", "restore", "revert") and comes back in `finished`.
+        /// ("apply", "install" — install the missing program first, then
+        /// apply; "restore", "revert") and comes back in `finished`.
         /// Does not wait: the result comes with the `finished` signal.
         #[qinvokable]
         fn request(self: Pin<&mut ScreenEffectsActions>, tag: &QString, de: &QString, preset: &QString, strength: f64, speed: f64);
@@ -79,7 +80,8 @@ pub struct ScreenEffectsActionsRust {
 }
 
 fn snapshot(de: &str) -> String {
-    let state = se::read_state(&SystemIo, &se::ctx_for(LookCtx::from_env(), de));
+    let family = se::live_install_family();
+    let state = se::read_state_for(&SystemIo, &se::ctx_for(LookCtx::from_env(), de), family.as_deref());
     serde_json::to_string(&state).unwrap_or_default()
 }
 
@@ -101,7 +103,15 @@ impl qobject::ScreenEffectsActions {
             while let Some(req) = queue.take() {
                 let ctx = se::ctx_for(LookCtx::from_env(), &req.de);
                 let new = se::settings_from_ui(&req.preset, req.strength, req.speed);
-                let out = se::apply_confirmed(&SystemIo, &ctx, &new, &std::thread::sleep);
+                let out = if req.tag == "install" {
+                    // The missing program (picom) is installed the usual Rexon way —
+                    // the password window, no «Yes/No» — and then the effect goes on.
+                    let family = se::live_install_family();
+                    let packages = se::install_packages(&SystemIo, &ctx, family.as_deref());
+                    se::install_then_apply(&SystemIo, &ctx, &new, &packages, &se::live_install, &std::thread::sleep)
+                } else {
+                    se::apply_confirmed(&SystemIo, &ctx, &new, &std::thread::sleep)
+                };
                 let state = snapshot(&req.de);
                 // The window is closed — there is nobody to report to, but the action
                 // (for example, rolling back a trial) is still finished.

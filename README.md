@@ -14,15 +14,20 @@ Rexon is written in Rust with a Qt 6 / QML interface (via [cxx-qt](https://githu
 It is early software: the version number is still 0.x, and the main development
 and test platform is Arch Linux / CachyOS.
 
-![Rexon: the list of desktop environments with details of KDE Plasma](.github/screenshots/desktops.png)
+![Rexon: the Wallpaper Engine tab with a library of live wallpapers](.github/screenshots/wallpaper-engine.png)
 
-![Rexon: Global Themes catalog under Appearance](.github/screenshots/global-themes.png)
+![Rexon: Global Themes on MATE — the desktop's own themes first, with real previews](.github/screenshots/global-themes.png)
 
 <table>
   <tr>
+    <td><img src=".github/screenshots/desktops.png" alt="The list of desktop environments with details of MATE"></td>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Screen effects with live previews"></td>
+    <td><img src=".github/screenshots/steam.png" alt="Steam startup movies at login"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/conky.png" alt="Catalog of Conky widgets"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Qt application styles shown as live widget previews"></td>
-    <td><img src=".github/screenshots/gtk-theme-details.png" alt="GTK theme details with the GTK 4/libadwaita switch"></td>
-    <td><img src=".github/screenshots/compare.png" alt="Side-by-side comparison of desktop environments"></td>
+    <td></td>
   </tr>
 </table>
 
@@ -130,16 +135,30 @@ The package is built for x86_64. Qt 6.6 or newer is required.
 On Arch Linux / CachyOS there are two packages in this repository:
 
 - [`packaging/rexon/`](packaging/rexon/) — the release. It is built from the signed
-  release tag (`v0.1.1`), and `makepkg` checks the tag's signature against the key
+  release tag (`v0.1.2`), and `makepkg` checks the tag's signature against the key
   `B4505C7C7841ECC12D7A0E9D0083083C32159A72`. Import it once with
   `curl -s https://github.com/wehrwolfmann.gpg | gpg --import`.
 - [`packaging/aur/`](packaging/aur/) — `rexon-git`, the latest code from `main`.
 
+The wallpaper engine comes as separate AUR packages: the `waywallen` daemon
+and its `open-wallpaper-engine` plugin; the build also needs `lito` (AUR).
+Install them first, then build Rexon:
+
 ```sh
+paru -S waywallen open-wallpaper-engine lito
 git clone https://github.com/wehrwolfmann/rexon.git
 cd rexon/packaging/rexon
 makepkg -si
 ```
+
+Without an AUR helper, build each of the three the same way, `waywallen`
+before `open-wallpaper-engine`:
+`git clone https://aur.archlinux.org/<name>.git && cd <name> && makepkg -si`.
+`waywallen-bin` (the prebuilt AppImage) does not fit yet: it provides
+`waywallen` without a version, and pacman does not count that for the
+`waywallen>=0.6.3` dependency of Rexon and of `open-wallpaper-engine`. On
+Plasma, Rexon installs the `plasma-wallpaper-waywallen` wallpaper plugin by
+itself.
 
 ## Building from source
 
@@ -179,11 +198,12 @@ in `tools/` put them into `~/.local/share/rexon/qml_modules`:
 ```sh
 tools/build_qml_material.sh
 tools/build_qml_control.sh
-tools/build_qml_qextra.sh    # needs lito >= 0.8.7, clang, lld (AUR: lito or lito-bin)
+tools/build_qml_qextra.sh    # needs lito >= 0.8.11, clang, lld (AUR: lito or lito-bin)
 ```
 
-To get everything at once — the plugins, the waywallen engine, the privileged
-helpers and their polkit policies — build the package instead:
+To get everything at once — the plugins, the privileged helpers and their
+polkit policies — build the package instead (the engine packages above are
+needed here too):
 
 ```sh
 cd packaging/aur
@@ -352,13 +372,14 @@ language — no code changes are needed.
 Rexon's live wallpapers are built on the work of others:
 
 - **[waywallen](https://github.com/hypengw/waywallen)** by hypengw — MIT. The
-  wallpaper engine (a separate daemon); the package ships its official release
-  unmodified. The Live wallpapers page uses waywallen's QML interface with small
+  wallpaper engine (a separate daemon); Rexon's package depends on the
+  `waywallen` package, and the bundled-engine build ships its official release unmodified. The Live wallpapers page uses waywallen's QML interface with small
   patches kept in `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`.
 - **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)** —
   GPL-2.0-only. The waywallen plugin that renders scene and web wallpapers. It runs as
-  separate processes started by the waywallen daemon; Rexon does not link to it. The
-  package ships the official release unmodified, together with its full source code.
+  separate processes started by the waywallen daemon; Rexon does not link to it. Rexon's
+  package depends on the `open-wallpaper-engine` package; the bundled-engine build ships
+  the official release unmodified, together with its full source code.
 - **[waywallen-display](https://github.com/waywallen/waywallen-display)** — the KDE
   Plasma wallpaper plugin, shipped unmodified.
 - **[Ruffle](https://github.com/ruffle-rs/ruffle)** (MIT / Apache-2.0) — Flash

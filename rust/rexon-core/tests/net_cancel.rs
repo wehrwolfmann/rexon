@@ -90,7 +90,7 @@ fn client_still_there(sock: &mut TcpStream) -> bool {
 }
 
 #[test]
-fn обычный_запрос_проходит_через_отменяемый_транспорт() {
+fn plain_request_passes_through_cancellable_transport() {
     let (port, saw) = slow_server(Duration::from_millis(0), "каталог");
     let mut net = UreqNet::new();
     let body = net
@@ -101,7 +101,7 @@ fn обычный_запрос_проходит_через_отменяемый_
 }
 
 #[test]
-fn отмена_рвёт_ожидание_ответа_не_дожидаясь_сервера() {
+fn cancel_breaks_reply_wait_without_waiting_for_server() {
     // The server "thinks" for 5 seconds — as long as the client would wait without cancellation.
     let (port, saw) = slow_server(Duration::from_secs(5), "поздно");
     let mut net = UreqNet::new();
@@ -137,7 +137,7 @@ fn отмена_рвёт_ожидание_ответа_не_дожидаясь_�
 }
 
 #[test]
-fn запрос_с_уже_взведённым_токеном_в_сеть_не_идёт() {
+fn request_with_armed_token_does_not_hit_network() {
     let (port, saw) = slow_server(Duration::from_secs(5), "не должно понадобиться");
     let token = CancelToken::new();
     token.cancel();
@@ -170,7 +170,7 @@ fn запрос_с_уже_взведённым_токеном_в_сеть_не_�
 /// `cargo test -p rexon-core --test net_cancel -- --ignored`.
 #[test]
 #[ignore = "needs the internet"]
-fn живой_https_запрос_каталога_проходит() {
+fn live_https_catalog_request_passes() {
     let mut net = UreqNet::new();
     let started = Instant::now();
     let body = net
@@ -191,7 +191,7 @@ fn живой_https_запрос_каталога_проходит() {
 }
 
 #[test]
-fn токен_отменяет_только_свой_транспорт() {
+fn token_cancels_only_own_transport() {
     let (port_a, _saw_a) = slow_server(Duration::from_millis(0), "первый");
     let (port_b, _saw_b) = slow_server(Duration::from_millis(0), "второй");
     let mut a = UreqNet::new();
@@ -247,7 +247,7 @@ fn stalling_body_server(promised: usize, sent: &'static str) -> (u16, mpsc::Rece
 /// the window, but Rexon does not close — the tab's background task does not finish, and
 /// the exit waits for it forever.
 #[test]
-fn отмена_посреди_чтения_тела_возвращает_управление() {
+fn cancel_mid_body_read_returns_control() {
     let (port, saw) = stalling_body_server(1_000_000, "начало тела");
     let mut net = UreqNet::new();
     let token = net.cancel_token();

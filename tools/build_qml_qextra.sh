@@ -21,7 +21,7 @@
 # Rexon compares it with the process's Qt (`qml_modules::choose_qextra`) and on
 # a mismatch takes the QML stand-in from `qml_ui/QExtra/`.
 #
-# Requirements: lito >= 0.8.7 (the LITO variable or PATH), clang >= 22, lld,
+# Requirements: lito >= 0.8.11 (the LITO variable or PATH), clang >= 22, lld,
 # cmake, ninja, qt6-base, qt6-declarative, qt6-grpc, ffmpeg, libva, curl,
 # glslang, vulkan-headers, libpulse.
 #
@@ -31,6 +31,9 @@
 #   QEXTRA_SOURCE_BUNDLE — the directory of a lito source bundle (inside `v1/git/…`
 #     and `v1/registry/source/…`, the `lito lock export` layout): the build runs
 #     with `--frozen` and never goes to the network;
+#   QEXTRA_FROZEN=1 — build with `--frozen` from lito's own cache
+#     ($XDG_DATA_HOME/lito, filled beforehand by `lito fetch --locked`): no
+#     network, the same way `cargo fetch` + `cargo build --frozen` work;
 #   QEXTRA_ENV_FLAGS=1 — add the environment's CFLAGS, CXXFLAGS and LDFLAGS
 #     (`lito --use-env-flags`), including `-ffile-prefix-map`; the keys
 #     held by the release profile (-O*, -g*, LTO, strip) and
@@ -42,7 +45,9 @@ set -euo pipefail
 
 # 0.8.7: the wavsen 7564374 manifest (the waywallen 0.5.0 slice) writes the
 # `condition` field on a dependency, and 0.8.5 rejects it with «unknown field: condition».
-LITO_MIN="0.8.7"
+# 0.8.11: ncrequest 0.2.4 (the waywallen 0.6.3 slice) forwards features
+# (`features.native-tls.enables`), and 0.8.8 rejects it with «unknown field: enables».
+LITO_MIN="0.8.11"
 DEST="${1:-$HOME/.local/share/rexon/qml_modules}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$HERE/qextra_plugin"
@@ -126,6 +131,8 @@ if [ -n "${QEXTRA_SOURCE_BUNDLE:-}" ]; then
         exit 2
     }
     LITO_SOURCES=(--frozen --source-bundle "$QEXTRA_SOURCE_BUNDLE")
+elif [ "${QEXTRA_FROZEN:-}" = 1 ]; then
+    LITO_SOURCES=(--frozen)
 fi
 (cd "$WORK/wrapper" && "$LITO_BIN" "${LITO_GLOBAL[@]}" build --profile release \
     "${LITO_SOURCES[@]}" -j "$JOBS")

@@ -2230,7 +2230,7 @@ mod tests {
     /// it for `rexon doctor` bypassing Qt.
     #[test]
     fn package_installs_rescue() {
-        let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
+        let pkgbuild = include_str!("../../../scripts/package-build");
         assert!(pkgbuild.contains(&format!("\"$pkgdir{RESCUE_BIN_PACKAGE}\"")));
         assert!(pkgbuild.contains(&format!("exec {RESCUE_BIN_PACKAGE} {DOCTOR_WORD}")));
         assert!(pkgbuild.contains("rexon-login-rescue\" --list-files"));

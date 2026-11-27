@@ -1813,7 +1813,7 @@ const ROLE_BASE: i32 = 256 + 1;
 
 /// Role names in number order — the single source of truth for roleNames,
 /// data() and roleNumber().
-const ROLE_NAMES: [&str; 36] = [
+const ROLE_NAMES: [&str; 37] = [
     // Where the tile comes from: `ocs` (the store), `aur` (a package), `local`
     // (the disk).
     "kind",
@@ -1878,6 +1878,9 @@ const ROLE_NAMES: [&str; 36] = [
     // (`aur::no_preview_note`): honestly what the item is and why there is no
     // screenshot.
     "previewNote",
+    // The full-size picture of a theme on disk for the full-screen view
+    // (`ThemeItem::preview_big`); empty — the viewer shows `preview`.
+    "previewBig",
     // The AUR package mark in mixed results ("All"): a set, a system package,
     // a password (`ap::aur_mix_badge`), and its tooltip.
     "mixBadge",
@@ -2236,6 +2239,95 @@ fn drawn_key(id: &str, install_path: &str) -> String {
 /// A theme tile picture: the theme's own picture (the scan) matters more
 /// than a drawn one; a drawn one — only for a theme without its own; a store
 /// picture — by number.
+/// The note of a «Global Themes» disk tile from the scan row (`stamp_note` of
+/// the host); `None` — the row has none.
+fn note_from_row(raw: &Value) -> Option<rexon_core::native_global::CardNote> {
+    let line = raw.get("noteLine").and_then(Value::as_str).filter(|l| !l.is_empty())?;
+    Some(rexon_core::native_global::CardNote {
+        line: line.to_string(),
+        tooltip: raw.get("noteTooltip").and_then(Value::as_str).unwrap_or("").to_string(),
+        warn: raw.get("noteWarn").and_then(Value::as_bool).unwrap_or(false),
+    })
+}
+
+/// Tiles of the whole themes of the desktop («Global Themes» outside Plasma).
+const NATIVE_TILE_PREFIX: &str = "local:nativeglobal:";
+
+/// The full-screen copy of a drawn tile picture lies next to it under this suffix.
+const BIG_PICTURE_SUFFIX: &str = ".big.png";
+
+/// The full-screen copy of drawn picture `path`, when it is on disk.
+fn big_picture_path(path: &str) -> Option<String> {
+    let big = format!("{path}{BIG_PICTURE_SUFFIX}");
+    std::path::Path::new(&big).is_file().then_some(big)
+}
+
+/// Give tile `id` its full-screen picture (the magnifier and the viewer take it).
+fn set_card_big_picture(cards: &mut [Card], id: &str, big: &str) {
+    for c in cards.iter_mut() {
+        if let Card::Theme(it) = c {
+            if it.id == id {
+                it.preview_big = big.to_string();
+            }
+        }
+    }
+}
+
+/// Draw the picture of a whole theme of the desktop: the tile into `dest`, the
+/// same frame twice as large into `big`. The widgets are shot from its controls
+/// theme by `helper` (no helper or display — the window in the theme colors).
+/// `false` — the tile picture could not be written.
+fn draw_native_picture(
+    theme: Option<&rexon_core::native_global::NativeTheme>,
+    home: &str,
+    de: &str,
+    helper: Option<&str>,
+    gtk_dark: bool,
+    glyph: &str,
+    dest: &str,
+    big: &str,
+) -> bool {
+    use rexon_core::local_preview as lp;
+    use rexon_core::widget_shot as ws;
+    let Some(theme) = theme else {
+        let stub = lp::card_picture(&lp::SampleInput { kind: "", install_path: "", icon_themes: &[] }, glyph);
+        return crate::local_preview_render::render_picture_to_png(&stub, dest);
+    };
+    let mut whole = rexon_core::native_global::whole_theme_live(theme, home);
+    // The variant the programs will have after «Apply» (MATE: by the theme itself).
+    let gtk_dark = rexon_core::native_global::picture_dark_live(de, theme, home, gtk_dark);
+    let shot_png = format!("{dest}.shot.png");
+    let work = std::path::Path::new(dest).parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    // The same GTK shot as a tile of the «GTK Themes» section, only larger.
+    let kind = whole.gtk_dir.as_deref().and_then(|dir| ws::shot_kind(&format!("local:gtk:{}", theme.gtk), dir, true, gtk_dark));
+    let shot = match (helper, kind) {
+        (Some(helper), Some(kind)) => {
+            let req = ws::ShotRequest { kind, palette: Vec::new() };
+            ws::take_shot_sized(helper, &work, &req, &shot_png, lp::WHOLE_SHOT_SIZE)
+        }
+        _ => false,
+    };
+    if shot {
+        whole.widgets_shot = Some(shot_png.clone());
+    }
+    let picture = lp::whole_theme_picture(&whole, glyph);
+    let drawn = crate::local_preview_render::render_picture_to_png(&picture, dest);
+    // The full-screen copy only for a real picture: a placeholder has nothing larger.
+    if drawn && picture.source == lp::PreviewSource::Sample {
+        let _ = crate::local_preview_render::render_scaled_to_png(&picture, big, lp::WHOLE_BIG_SCALE);
+    } else {
+        let _ = std::fs::remove_file(big);
+    }
+    let _ = std::fs::remove_file(&shot_png);
+    rexon_core::log_info!(
+        "appearance",
+        "whole theme picture {}: {} (widgets shot: {shot})",
+        theme.key,
+        if picture.what.is_empty() { "placeholder" } else { picture.what }
+    );
+    drawn
+}
+
 fn tile_picture(previews: &BTreeMap<String, String>, item: &ThemeItem) -> String {
     if !item.preview_local.is_empty() {
         return item.preview_local.clone();
@@ -2313,6 +2405,9 @@ pub struct AppearanceModelRust {
     /// GNOME extension tiles: tile number → shell information
     /// ([`GnomeExtra`]).
     gnome: BTreeMap<String, GnomeExtra>,
+    /// «Global Themes» outside Plasma: tile number → the note under its name
+    /// (what a native theme sets, what of a Plasma package carries over).
+    notes: BTreeMap<String, rexon_core::native_global::CardNote>,
     /// How many works the section has in total by the store's answer.
     total: i64,
     /// Whether there is anything after the page — for a topped-up store stream
@@ -2483,6 +2578,7 @@ impl Default for AppearanceModelRust {
             spices: BTreeMap::new(),
             site: BTreeMap::new(),
             gnome: BTreeMap::new(),
+            notes: BTreeMap::new(),
             total: 0,
             has_more: None,
             grid_cols: 0,
@@ -3190,6 +3286,9 @@ impl qobject::AppearanceModel {
         if let Some(v) = self.gnome_role(item, name) {
             return v;
         }
+        if let Some(v) = self.note_role(item, local, name) {
+            return v;
+        }
         if !local {
             if let Some(x) = self.rust().site.get(&item.id) {
                 match name {
@@ -3234,6 +3333,11 @@ impl qobject::AppearanceModel {
             "starGlyph" if local => qstr(""),
             "starGlyph" => qstr(ap::card_star_glyph(item.rated_stars())),
             "preview" => qstr(&file_url(&tile_picture(&self.rust().previews, item))),
+            "previewBig" => qstr(&if local && std::path::Path::new(&item.preview_big).is_file() {
+                file_url(&item.preview_big)
+            } else {
+                String::new()
+            }),
             // A theme has no fallback sign: the original left the picture place empty,
             // and inventing something of our own here would be making things up.
             "previewText" => qstr(""),
@@ -3288,6 +3392,33 @@ impl qobject::AppearanceModel {
             }
             _ => QVariant::default(),
         }
+    }
+
+    /// The note line of «Global Themes» outside Plasma: the one sent with a disk
+    /// tile, and for a Plasma package from the store — what can carry over at
+    /// most (its contents are not known before download). `None` — no note.
+    fn note_role(&self, item: &ThemeItem, local: bool, name: &str) -> Option<QVariant> {
+        if !matches!(name, "metaLine" | "metaTooltip" | "metaWarn") {
+            return None;
+        }
+        let me = self.rust();
+        let store_note;
+        let note = match me.notes.get(&item.id) {
+            Some(n) => n,
+            None if !local
+                && me.view.category.key == "global"
+                && categories::section_id_for(item.category_id) == 722 =>
+            {
+                store_note = rexon_core::native_global::store_plasma_note(&me.view.de)?;
+                &store_note
+            }
+            None => return None,
+        };
+        Some(match name {
+            "metaLine" => qstr(&note.line),
+            "metaTooltip" => qstr(&note.tooltip),
+            _ => QVariant::from(&note.warn),
+        })
     }
 
     /// Roles in which a Cinnamon Spices tile differs from a KDE Store item:
@@ -3426,6 +3557,7 @@ impl qobject::AppearanceModel {
             }
             "previewSample" => qstr(&if pkg.is_font() { rexon_core::aur::font_sample_text() } else { String::new() }),
             "previewNote" => qstr(&rexon_core::aur::no_preview_note(pkg)),
+            "previewBig" => qstr(""),
             "mixBadge" => qstr(&ap::aur_mix_badge(&self.rust().view, &pkg.category)),
             "mixBadgeTooltip" => qstr(&ap::aur_mix_badge_tooltip()),
             "previewText" => qstr(pkg.icon()),
@@ -4207,6 +4339,9 @@ impl qobject::AppearanceModel {
                     if let Some(src) = raw.get("sourceName").and_then(Value::as_str) {
                         item.source_name = src.to_string();
                     }
+                    if let Some(big) = raw.get("previewBig").and_then(Value::as_str) {
+                        item.preview_big = big.to_string();
+                    }
                     if let Some(ui) = RemovalUi::from_row(raw) {
                         self.as_mut().rust_mut().removal.insert(item.id.clone(), ui);
                     }
@@ -4232,6 +4367,14 @@ impl qobject::AppearanceModel {
                         }
                         None => {
                             self.as_mut().rust_mut().gnome.remove(&item.id);
+                        }
+                    }
+                    match note_from_row(raw) {
+                        Some(n) => {
+                            self.as_mut().rust_mut().notes.insert(item.id.clone(), n);
+                        }
+                        None => {
+                            self.as_mut().rust_mut().notes.remove(&item.id);
                         }
                     }
                     cards.push(Card::Theme(Box::new(item)));
@@ -5792,6 +5935,8 @@ impl qobject::AppearanceModel {
             return;
         }
         let mut ready: Vec<(String, String)> = Vec::new();
+        // Full-screen pictures of ready tiles (tile number → file).
+        let mut bigs: Vec<(String, String)> = Vec::new();
         let mut todo: Vec<PictureJob> = Vec::new();
         // KDE window borders are captured by their modules; what is on the machine
         // — once per batch of tiles.
@@ -5802,8 +5947,11 @@ impl qobject::AppearanceModel {
         // Qt styles, Kvantum and GTK themes are captured with real widgets.
         let widget_shots = wants
             .iter()
-            .any(|w| ["local:widgetstyle:", "local:kvantum:", "local:gtk:"].iter().any(|p| w.0.starts_with(p)))
+            .any(|w| {
+                ["local:widgetstyle:", "local:kvantum:", "local:gtk:", NATIVE_TILE_PREFIX].iter().any(|p| w.0.starts_with(p))
+            })
             .then(|| rexon_core::widget_shot::ShotSetup::live(&home));
+        let de_now = self.rust().view.de.clone();
         for (id, category_id, install_path, name, author) in wants {
             let kind = rexon_core::de_apply::apply_kind_of_local_id(&id).unwrap_or("").to_string();
             let glyph = lp::type_emoji(&author);
@@ -5822,6 +5970,23 @@ impl qobject::AppearanceModel {
             let widget_shot = widget_shots.as_ref().and_then(|s| s.request(&id, &install_path));
             let shot_tag = match widget_shots.as_ref().map(|s| s.cache_tag(&id, &install_path)) {
                 Some(tag) if !tag.is_empty() => format!("{shot_tag}\u{0}{tag}"),
+                _ => shot_tag,
+            };
+            // A whole theme of the desktop: its picture holds a widget shot of its
+            // controls theme when there is something to shoot with.
+            // Where the theme sets the dark variant itself (MATE), the picture does
+            // not follow the GTK settings of the moment.
+            let shot_tag = match widget_shots.as_ref() {
+                Some(s) if id.starts_with(NATIVE_TILE_PREFIX) => format!(
+                    "{shot_tag}\u{0}{}{}\u{0}{}",
+                    rexon_core::widget_shot::style_tag(),
+                    s.helper.is_some() && s.gtk_display,
+                    if rexon_core::native_global::sets_dark_preference(&de_now) {
+                        "own".to_string()
+                    } else {
+                        s.gtk_dark.to_string()
+                    }
+                ),
                 _ => shot_tag,
             };
             // For a colour scheme the scan gives the path without the extension; the
@@ -5846,6 +6011,9 @@ impl qobject::AppearanceModel {
                 file_stamp(&stamped),
             );
             if std::path::Path::new(&dest).is_file() {
+                if let Some(big) = big_picture_path(&dest) {
+                    bigs.push((id.clone(), big));
+                }
                 ready.push((drawn_key(&id, &install_path), dest));
             } else {
                 todo.push(PictureJob { id, kind, install_path, glyph, dest, shot, widget_shot });
@@ -5856,6 +6024,9 @@ impl qobject::AppearanceModel {
                 let mut me = self.as_mut().rust_mut();
                 for (key, path) in &ready {
                     me.previews.insert(key.clone(), path.clone());
+                }
+                for (id, big) in &bigs {
+                    set_card_big_picture(&mut me.cards, id, big);
                 }
             }
             // The frames appeared after a model reset — we repaint one role, not the
@@ -5883,10 +6054,34 @@ impl qobject::AppearanceModel {
         }
         let handle = self.as_ref().get_ref().qt_thread();
         let shots_runner = shots.and_then(|s| s.runner);
+        let gtk_shots = widget_shots.as_ref().is_some_and(|s| s.gtk_display);
+        let gtk_dark = widget_shots.as_ref().is_some_and(|s| s.gtk_dark);
         let widget_helper = widget_shots.and_then(|s| s.helper);
+        let de = self.rust().view.de.clone();
         let spawned = std::thread::Builder::new().name("rexon-tile-pictures".into()).spawn(move || {
             let icon_themes = lp::icon_theme_dirs(&home, "/usr");
+            // The whole themes of the desktop on disk — once per batch.
+            let natives = todo
+                .iter()
+                .any(|j| j.id.starts_with(NATIVE_TILE_PREFIX))
+                .then(|| rexon_core::native_global::scan_live(&de, &home))
+                .unwrap_or_default();
             for job in todo {
+                if let Some(key) = job.id.strip_prefix(NATIVE_TILE_PREFIX) {
+                    let theme = natives.iter().find(|t| t.key == key);
+                    let helper = widget_helper.as_deref().filter(|_| gtk_shots);
+                    let (dest, big) = (job.dest.clone(), format!("{}{BIG_PICTURE_SUFFIX}", job.dest));
+                    let drawn = draw_native_picture(theme, &home, &de, helper, gtk_dark, &job.glyph, &dest, &big);
+                    let key = drawn_key(&job.id, &job.install_path);
+                    let id = job.id;
+                    if handle
+                        .queue(move |object| object.local_picture_ready(&id, &key, drawn.then_some(dest)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    continue;
+                }
                 // A KDE border is drawn by its module in a separate process; if it failed
                 // — the previous picture (a sample from SVG or a placeholder).
                 let shot_png = format!("{}.shot.png", job.dest);
@@ -5951,6 +6146,9 @@ impl qobject::AppearanceModel {
             me.drawing.remove(id);
             let Some(path) = path else { return };
             me.previews.insert(key.to_string(), path.clone());
+            if let Some(big) = big_picture_path(&path) {
+                set_card_big_picture(&mut me.cards, id, &big);
+            }
             // The open details panel is waiting for this frame (the border snapshot
             // after the "Configure…" window).
             let for_detail = me.detail.as_ref().is_some_and(|it| it.id == id) && me.detail_frame.is_empty();
@@ -6753,6 +6951,12 @@ impl qobject::AppearanceModel {
         let current = me.detail_frame.clone();
         let Some((paths, index)) = ap::zoom_frames(&current, &me.gallery_loaded, exists) else {
             return out;
+        };
+        // A theme on disk: the card frame is the small tile picture, the
+        // full-screen view gets the theme's full-size one.
+        let paths = match me.detail.as_ref() {
+            Some(it) => ap::zoom_full_size(paths, &it.preview_local, &it.preview_big, exists),
+            None => paths,
         };
         for path in paths {
             out.append(qstr(&file_url(&path)));

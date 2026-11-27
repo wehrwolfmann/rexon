@@ -806,8 +806,29 @@ pub fn category_by_id(home: &Path, cat_id: i64) -> Option<ThemeCategory> {
         .iter()
         .position(|c| c.id == cat_id)
         .or_else(|| all.iter().position(|c| c.id == section_id_for(cat_id)))
-        .or_else(|| all.iter().position(|c| c.ocs_cats().contains(&cat_id)))?;
-    all.into_iter().nth(pos)
+        .or_else(|| all.iter().position(|c| c.ocs_cats().contains(&cat_id)));
+    match pos {
+        Some(pos) => all.into_iter().nth(pos),
+        None => (cat_id == crate::native_global::SECTION_ID).then(|| native_global_category(home)),
+    }
+}
+
+/// The category of the desktop's own whole themes (`native_global`): their
+/// tiles live in «Global Themes» outside Plasma, so it is deliberately not in
+/// [`categories`] and not in the sidebar — only [`category_by_id`] finds it,
+/// so that «Apply» on such a tile reaches its own action.
+pub fn native_global_category(home: &Path) -> ThemeCategory {
+    ThemeCategory {
+        store: CatalogSource::None,
+        ..cat(
+            crate::native_global::SECTION_ID,
+            crate::native_global::SECTION_KEY,
+            trc("appearance section", "Global Themes"),
+            "💎",
+            exp(home, "~/.themes"),
+            crate::native_global::SECTION_KEY,
+        )
+    }
 }
 
 /// Find a category by apply_kind — the first in the declaration order of `CATEGORIES`
@@ -943,6 +964,20 @@ pub fn category_condition(cat_key: &str, de_id: &str) -> Option<String> {
 /// without session variables then names another file
 /// ([`crate::de_customization::condition_note_id_on`]).
 pub fn category_condition_on(cat_key: &str, de_id: &str, qt_desktop_installed: bool) -> Option<String> {
+    // «Global Themes» on a desktop with its own whole themes (MATE, Cinnamon):
+    // those come first and are applied whole; the Plasma packages below — part
+    // by part, as the general note says.
+    if cat_key == "global" && crate::native_global::format_for(de_id).is_some() {
+        let here = crate::native_global::desktop_name(de_id);
+        return Some(crate::i18n::trf(
+            // TRANSLATORS: the «Global Themes» note on MATE or Cinnamon; %1 the desktop.
+            "%1 themes come first and are applied whole, as %1 itself applies them. Below them are \
+             Plasma packages: Rexon applies their parts one by one — colors, application style, \
+             icons, pointers, fonts and title bar buttons; the window that opens before applying \
+             says what carries over.",
+            &[&here],
+        ));
+    }
     crate::de_customization::condition_note_id_on(category_kind(cat_key)?, de_id, qt_desktop_installed)
 }
 

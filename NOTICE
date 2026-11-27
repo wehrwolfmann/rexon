@@ -18,8 +18,8 @@ clarifies.) The wallpaper engine itself (the waywallen daemon and the Open
 Wallpaper Engine plugin) is by default not shipped with Rexon: the
 distribution package depends on the separate system packages waywallen and
 open-wallpaper-engine, which carry their own licenses and sources. Only the
-bundled-engine build (REXON_BUNDLED_ENGINE=1: Steam, manual installation)
-ships both as separate programs alongside Rexon: the unmodified upstream
+bundled-engine build (packaging/PKGBUILD.bundled-engine: Steam, manual
+installation) ships both as separate programs alongside Rexon: the unmodified upstream
 waywallen AppImage (MIT) and the unmodified Open Wallpaper Engine plugin
 release (GPL-2.0-only) together with its complete corresponding source code
 in /usr/share/rexon/sources; neither is covered by the Apache License. The
@@ -44,7 +44,7 @@ Use in Rexon:
     crate) reproduces the waywallen-ui interface design (a reimplementation in
     Rust/QML, our own code).
   * Vendored QML files and the Russian interface translation catalog of
-    waywallen @v0.4.4 (data/qt_wallpaper_engine/qml_ui/waywallen/ui/) —
+    waywallen @v0.6.3 (data/qt_wallpaper_engine/qml_ui/waywallen/ui/) —
     verbatim, with our series of changes on top as separate files
     (data/qt_wallpaper_engine/qml_ui/waywallen/patches/; each one is
     explained in ATTRIBUTION.md next to them).
@@ -82,14 +82,14 @@ Use in Rexon:
     _archived/tools/we_proto/ and are not shipped.
   * The waywallen daemon itself is a SEPARATE process (D-Bus + WebSocket),
     and since 2026-10-30 Rexon does NOT ship it: the Rexon distribution
-    package depends on the system waywallen package (0.6.0 or newer — the
+    package depends on the system waywallen package (0.6.3 or newer — the
     tag the protocol and interface above were taken from), which the package
     manager installs and updates; the daemon's package carries its license
     and sources. Rexon runs it as a separate program (/usr/bin/waywallen).
-  * The exception is the bundled-engine build (REXON_BUNDLED_ENGINE=1: the
-    Steam release, manual installation). It ships the v0.6.0 release
+  * The exception is the bundled-engine build (packaging/PKGBUILD.bundled-engine: the
+    Steam release, manual installation). It ships the v0.6.3 release
     unmodified: /usr/lib/rexon/engine/waywallen.AppImage (the official
-    waywallen-0.6.0-x86_64.AppImage, sha256 d17e19c6…351fd). The MIT text is
+    waywallen-0.6.3-x86_64.AppImage, sha256 148cffac…a238). The MIT text is
     below; as a separate file — /usr/share/licenses/rexon-git/LICENSE.waywallen-MIT.
     ⚠️ Inside the AppImage upstream ships third-party libraries under their
     own licenses: Qt 6 (LGPL-3.0), GLib (LGPL-2.1+), FFmpeg (libavcodec,
@@ -125,7 +125,7 @@ MIT license text:
 
 waywallen-display (Plasma wallpaper plugin org.waywallen.kde)
 -------------------------------------------------------------
-https://github.com/waywallen/waywallen-display (release v0.4.5)
+https://github.com/waywallen/waywallen-display (release v0.4.8)
 Copyright (c) 2026 hypengw
 License: recorded two ways upstream — the extensions/kde/LICENSE file
 carries MIT, while the plasmoid's metadata.json declares GPL-2.0-or-later.
@@ -135,10 +135,12 @@ both texts: /usr/share/licenses/rexon-git/LICENSE.waywallen-kde-MIT and
 LICENSE.waywallen-kde-GPL-2.0.
 
 Use in Rexon:
-  * The `org.waywallen.kde` plasmoid is not in the Rexon repository. At
-    build time the package downloads the official release archive
-    `waywallen-kde-0.4.5-x86_64.zip` (sha256 = the release digest on
-    GitHub: dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41),
+  * The `org.waywallen.kde` plasmoid is not in the Rexon repository. The
+    distribution package leaves it to the plasma-wallpaper-waywallen package
+    (optional dependency). Only the bundled-engine build downloads the
+    official release archive `waywallen-kde-0.4.8-x86_64.zip` (sha256 = the
+    release digest on GitHub:
+    ed0438b4789d3987fca7cc844387b3b69916f07e06ecf794d933a377f2aa659f),
     unpacks it into
     /usr/lib/rexon/rexon/kpackage/ and installs it UNMODIFIED: no changes of
     ours on top, the binary is not stripped. Only our description file
@@ -241,23 +243,24 @@ License: GPL-2.0-only (clarified by upstream on 2026-09-24)
 
 Use in Rexon:
   * Wallpaper Engine scene and web wallpapers are rendered by this plugin's
-    renderers waywallen-wescene-renderer and waywallen-weweb-renderer.
+    renderers owe-scene and owe-web (waywallen-wescene-renderer and
+    waywallen-weweb-renderer before 0.4).
     They are SEPARATE executable processes started by the waywallen daemon
     (fork/exec); Rexon does not link their code or include it in its binaries.
   * Since 2026-10-30 Rexon does NOT ship the plugin: the Rexon distribution
-    package depends on the system open-wallpaper-engine package (0.3.3 or
+    package depends on the system open-wallpaper-engine package (0.3.4 or
     newer), which installs the plugin into /usr/share/waywallen/plugins/ and
     carries its license, sources and dependencies (CEF and others).
-  * The exception is the bundled-engine build (REXON_BUNDLED_ENGINE=1). It
-    ships the official plugin release unmodified (v0.3.3, commit
-    f119c26860fa4607565994fb29c864eb0ee7cd15):
+  * The exception is the bundled-engine build (packaging/PKGBUILD.bundled-engine). It
+    ships the official plugin release unmodified (v0.3.4, commit
+    5dd7b4cfb38fe21c64e9c036bbd89ae5b866b49e):
     /usr/lib/rexon/engine/plugins/org.waywallen.open-wallpaper-engine/
-    (org.waywallen.open-wallpaper-engine-0.3.3-linux-x86_64.zip,
-    sha256 0944e6f5…30e3). In the package this is "mere aggregation"
+    (org.waywallen.open-wallpaper-engine-0.3.4-linux-x86_64.zip,
+    sha256 94db1071…7ae2). In the package this is "mere aggregation"
     (GPL-2 §2).
     GPL-2 §3(a): the complete corresponding source of the same tag — together
     with the build dependencies from lito.lock and the CEF wrapper sources —
-    lies next to it, /usr/share/rexon/sources/open-wallpaper-engine-0.3.3-src.tar.xz
+    lies next to it, /usr/share/rexon/sources/open-wallpaper-engine-0.3.4-src.tar.xz
     (the list is SOURCES.txt inside the archive). License text —
     /usr/share/licenses/rexon-git/LICENSE.open-wallpaper-engine-GPL-2.0.
     Inside the plugin upstream ships CEF (Chromium Embedded Framework,

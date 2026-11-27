@@ -254,7 +254,7 @@ fn replace_url_with_target(input: &str) -> String {
 /// already built markup. Any `<…>` tag is carried over as is, and after
 /// `<a …>` the text up to `</a>` is not touched — otherwise the address inside
 /// `href="…"` and the link label were wrapped again.
-fn autolink(input: &str) -> String {
+pub(crate) fn autolink(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
     let mut i = 0usize;
@@ -333,6 +333,27 @@ pub fn bbcode_to_html(src: &str) -> String {
     // 2. Escaping: the description author must not sneak in raw HTML.
     stage = escape_html(&stage);
 
+    // 3–7. Inline markup, quotes, headings, rules, lists, links and images.
+    stage = bbcode_markup(&stage);
+
+    // 8. Bare addresses (with the fix: we do not go inside markup).
+    stage = autolink(&stage);
+
+    // 9. Line breaks — last, so that a `\n` inside tag bodies survives until
+    //    they are parsed.
+    stage = stage.replace("\r\n", "\n").replace('\n', "<br>");
+
+    // 10. Returning [noparse] bodies — as escaped text.
+    restore_noparse(&stage, &stash)
+}
+
+/// The BBCode tags of a description → HTML (passes 3–7 of [`bbcode_to_html`]):
+/// inline markup, quotes, headings, rules, lists, links and images. Neither
+/// escapes the text nor touches line breaks, so it also serves descriptions
+/// that mix BBCode with HTML (`rich_text::store_description_html`, which
+/// then puts the result through its tag whitelist).
+pub(crate) fn bbcode_markup(src: &str) -> String {
+    let mut stage = src.to_string();
     // 3. Inline markup.
     for (tag, open, close) in [
         ("b", "<b>", "</b>"),
@@ -364,16 +385,7 @@ pub fn bbcode_to_html(src: &str) -> String {
     stage = replace_url_with_target(&stage);
     stage = replace_bare_url(&stage);
     stage = replace_tag(&stage, "img", "<img src=\"", "\">");
-
-    // 8. Bare addresses (with the fix: we do not go inside markup).
-    stage = autolink(&stage);
-
-    // 9. Line breaks — last, so that a `\n` inside tag bodies survives until
-    //    they are parsed.
-    stage = stage.replace("\r\n", "\n").replace('\n', "<br>");
-
-    // 10. Returning [noparse] bodies — as escaped text.
-    restore_noparse(&stage, &stash)
+    stage
 }
 
 /// `[url]X[/url]` → `<a href="X">X</a>` (the address goes both into href and
@@ -465,4 +477,96 @@ pub fn color_to_wire(r: f64, g: f64, b: f64, a: f64, include_alpha: bool) -> Str
 /// Whether the wire string has alpha — port of `Util::colorHasAlpha`.
 pub fn color_has_alpha(s: &str) -> bool {
     parse_wire_color(s).len() >= 4
+}
+
+/// Port of `detail::externalLinkAllowed` (waywallen 0.6.2,
+/// `ui/include/waywallen/external_link.hpp`): links from wallpaper descriptions,
+/// plugin text and remote metadata are untrusted, and only web pages (`http`,
+/// `https` with a host) may be handed to the desktop. The link is trimmed first,
+/// as `App::openExternalLink` does.
+pub fn external_link_allowed(link: &str) -> bool {
+    let link = link.trim();
+    let Some((scheme, rest)) = link.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    if link.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = if let Some(v6) = host_port.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("")
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    !host.is_empty()
+}
+
+#[cfg(test)]
+mod external_link_tests {
+    use super::external_link_allowed as ok;
+
+    #[test]
+    fn only_web_pages_with_a_host() {
+        for link in ["https://example.org", " http://example.org/a?b#c ", "HTTPS://user@host:8080/x",
+                     "http://[::1]/"] {
+            assert!(ok(link), "{link}");
+        }
+        for link in ["file:///etc/passwd", "javascript:alert(1)", "steam://run/1", "https:///nohost",
+                     "mailto:a@b.c", "", "example.org", "https://exa mple.org"] {
+            assert!(!ok(link), "{link}");
+        }
+    }
+}
+
+/// Port of `DaemonDBusClient::daemonVersionOrder` (waywallen 0.6.2): the daemon
+/// release against this interface — `-1` older, `1` newer, `0` the same or either
+/// one unknown. Like `QVersionNumber::fromString`, the numeric prefix counts
+/// (`0.6.3-rc1` is `0.6.3`) and trailing zeros do not (`0.6` = `0.6.0`).
+pub fn version_order(daemon: &str, ui: &str) -> i32 {
+    fn parse(v: &str) -> Option<Vec<u64>> {
+        let v = v.trim().strip_prefix('v').unwrap_or(v.trim());
+        let mut out = Vec::new();
+        for part in v.split('.') {
+            let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+            if digits.is_empty() {
+                break;
+            }
+            out.push(digits.parse().ok()?);
+            if digits.len() != part.len() {
+                break;
+            }
+        }
+        while out.last() == Some(&0) {
+            out.pop();
+        }
+        (!out.is_empty() || v.starts_with('0')).then_some(out)
+    }
+    match (parse(daemon), parse(ui)) {
+        (Some(d), Some(u)) => match d.cmp(&u) {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        },
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod version_order_tests {
+    use super::version_order as order;
+
+    #[test]
+    fn older_newer_same_unknown() {
+        assert_eq!(order("0.6.1", "0.6.3"), -1);
+        assert_eq!(order("0.7.0", "0.6.3"), 1);
+        assert_eq!(order("0.6.3", "v0.6.3"), 0);
+        assert_eq!(order("0.6", "0.6.0"), 0);
+        assert_eq!(order("0.6.3-rc1", "0.6.3"), 0);
+        assert_eq!(order("", "0.6.3"), 0);
+        assert_eq!(order("unknown", "0.6.3"), 0);
+    }
 }

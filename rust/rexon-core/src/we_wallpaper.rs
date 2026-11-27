@@ -748,6 +748,37 @@ pub fn apply_wallpaper_get(
     Ok(q::finish(st, out))
 }
 
+/// [`apply_wallpaper_get`] with the check waywallen 0.6.2 added to
+/// `WallpaperGetQuery::reload`: an answer without a `wallpaper_get` payload, or
+/// with an entry other than `wanted`, is an error (empty text, `Error` status)
+/// instead of an empty or foreign wallpaper. The details panel waits for
+/// `status === Finished` before it trusts the property values.
+pub fn apply_wallpaper_get_checked(
+    st: &mut QueryState,
+    data: &mut WallpaperGetData,
+    frame_bytes: &[u8],
+    wanted: &str,
+) -> Result<Vec<QuerySignal>, prost::DecodeError> {
+    let frame = pb::ServerFrame::decode(frame_bytes)?;
+    let foreign = match frame.kind {
+        Some(pb::server_frame::Kind::Response(ref rsp)) if rsp.status == pb::Status::Ok as i32 => {
+            match rsp.payload {
+            Some(pb::response::Payload::WallpaperGet(ref wg)) => {
+                    wg.entry.as_ref().map(|e| e.id.as_str()).unwrap_or("") != wanted
+                }
+                _ => true,
+            }
+        }
+        _ => false,
+    };
+    if foreign {
+        let mut out = q::set_error(st, "");
+        out.extend(q::set_status(st, q::STATUS_ERROR));
+        return Ok(out);
+    }
+    apply_wallpaper_get(st, data, frame_bytes)
+}
+
 // ── WallpaperApplyQuery: playlists stopped by applying ──────────────────
 
 /// The list of playlists the daemon stopped while applying a wallpaper — in the

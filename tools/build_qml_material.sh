@@ -46,7 +46,12 @@ git -C "$WORK" fetch origin "$PIN" 2>/dev/null || git -C "$WORK" fetch origin
 # The reset brought back the git-lfs pointers, downloading them again without network
 # was impossible, and 131-byte pointers silently went into the package instead of fonts:
 # all icons of the wallpaper tab were empty squares (VM, 30.10.2026, r1893).
-if [ "$(git -C "$WORK" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != \
+# A fresh `clone --no-checkout` has HEAD on the remote's default branch and an
+# empty tree: when that branch tip IS the pin, the commit check alone skipped the
+# checkout and cmake found no CMakeLists.txt (27.11.2026, pin 712fb28). Only an
+# EMPTY tree counts: a prepared one must keep its real fonts (see above).
+if [ -z "$(ls -A "$WORK" | grep -vx '.git')" ] || \
+   [ "$(git -C "$WORK" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != \
      "$(git -C "$WORK" rev-parse -q --verify "$PIN^{commit}")" ]; then
     git -C "$WORK" checkout -q -f "$PIN"
 fi

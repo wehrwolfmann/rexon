@@ -1475,3 +1475,25 @@ fn limit_reloads_only_after_first_start() {
     assert!(reload);
     assert!(d.reload_pending);
 }
+
+/// waywallen 0.6.2: an answer with another entry (or none) is an error, not a
+/// foreign or empty wallpaper — the details panel waits for `Finished` before it
+/// trusts the property values.
+#[test]
+fn checked_get_rejects_a_foreign_entry() {
+    let mut st = q::QueryState::default();
+    let mut d = w::WallpaperGetData::default();
+    q::begin_call(&mut st, true);
+    let frame = ok_frame(pb::response::Payload::WallpaperGet(pb::WallpaperGetResponse {
+        entry: Some(full_entry()),
+    }));
+    let sig = w::apply_wallpaper_get_checked(&mut st, &mut d, &frame, "another").unwrap();
+    assert!(sig.contains(&q::QuerySignal::StatusChanged(q::STATUS_ERROR)), "{sig:?}");
+    assert!(!sig.contains(&prop("wallpaper")));
+    assert!(d.wallpaper.is_empty());
+
+    q::begin_call(&mut st, true);
+    let id = full_entry().id;
+    let sig = w::apply_wallpaper_get_checked(&mut st, &mut d, &frame, &id).unwrap();
+    assert!(sig.contains(&prop("wallpaper")) && sig.contains(&q::QuerySignal::Finished), "{sig:?}");
+}

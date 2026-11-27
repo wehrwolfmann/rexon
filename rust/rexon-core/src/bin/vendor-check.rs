@@ -60,7 +60,7 @@
 //!     with `--выкачать`). The sum is that of the archive itself; with network
 //!     it is compared with the asset's `digest` in the GitHub releases API, and
 //!     with `pkgbuild_var` set — also with the package recipe
-//!     (`packaging/aur/PKGBUILD`: the line `<pkgbuild_var>=<version>` and the
+//!     (`packaging/PKGBUILD.bundled-engine`: the line `<pkgbuild_var>=<version>` and the
 //!     same sum in `sha256sums`), so the two records do not drift apart. If the
 //!     directory is unpacked, its contents are compared with `tree` — that is
 //!     how a manual edit of the download is caught.
@@ -86,7 +86,7 @@ const SUM_PREFIX: &str = "sha256-tree:";
 /// Prefix of the downloaded archive's sum.
 const ARCHIVE_PREFIX: &str = "sha256:";
 /// The package recipe the archive sum is compared with (from the repository root).
-const PKGBUILD_REL: &str = "packaging/aur/PKGBUILD";
+const PKGBUILD_REL: &str = "packaging/PKGBUILD.bundled-engine";
 const UA: &str = "rexon-vendor-check";
 const HTTP_TIMEOUT: u64 = 20;
 

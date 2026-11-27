@@ -75,6 +75,22 @@ pub mod qobject {
         #[qproperty(QVariant, plugins, READ = plugins, WRITE = set_plugins,
                     NOTIFY = plugins_changed)]
         type SettingsSetQuery = super::SettingsSetQueryRust;
+
+        /// waywallen 0.6.2: the sound server's output devices for the renderer
+        /// output picker (`renderer.audio_output`). Asked on demand: the daemon
+        /// does not push changes.
+        #[qobject]
+        #[qml_element]
+        #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
+        #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
+        #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
+        #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
+                    WRITE = set_forward_error, NOTIFY = forward_error_changed)]
+        /// `[{name, description, isDefault}]`.
+        #[qproperty(QVariant, outputs, READ = outputs, NOTIFY = outputs_changed)]
+        /// `false` — the daemon could not reach a sound server.
+        #[qproperty(bool, available, READ = available, NOTIFY = outputs_changed)]
+        type AudioOutputListQuery = super::AudioOutputListQueryRust;
     }
 
     unsafe extern "RustQt" {
@@ -145,6 +161,34 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "pluginsChanged"]
         fn plugins_changed(self: Pin<&mut SettingsSetQuery>);
+
+        #[qsignal]
+        #[cxx_name = "statusChanged"]
+        fn status_changed(self: Pin<&mut AudioOutputListQuery>, status: i32);
+        #[qsignal]
+        #[cxx_name = "queryingChanged"]
+        fn querying_changed(self: Pin<&mut AudioOutputListQuery>);
+        #[qsignal]
+        #[cxx_name = "errorChanged"]
+        fn error_changed(self: Pin<&mut AudioOutputListQuery>);
+        #[qsignal]
+        #[cxx_name = "forwardErrorChanged"]
+        fn forward_error_changed(self: Pin<&mut AudioOutputListQuery>);
+        #[qsignal]
+        fn finished(self: Pin<&mut AudioOutputListQuery>);
+        #[qsignal]
+        #[cxx_name = "errorOccurred"]
+        fn error_occurred(self: Pin<&mut AudioOutputListQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "appErrorOccurred"]
+        fn app_error_occurred(self: Pin<&mut AudioOutputListQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "sendRequest"]
+        fn send_request(self: Pin<&mut AudioOutputListQuery>, token: i64, field: QString,
+                        request: QByteArray);
+        #[qsignal]
+        #[cxx_name = "outputsChanged"]
+        fn outputs_changed(self: Pin<&mut AudioOutputListQuery>);
     }
 
     extern "RustQt" {
@@ -175,6 +219,16 @@ pub mod qobject {
         fn plugins(self: &SettingsSetQuery) -> QVariant;
         #[cxx_name = "setPlugins"]
         fn set_plugins(self: Pin<&mut SettingsSetQuery>, value: &QVariant);
+
+        fn status(self: &AudioOutputListQuery) -> i32;
+        fn error(self: &AudioOutputListQuery) -> QString;
+        fn querying(self: &AudioOutputListQuery) -> bool;
+        #[cxx_name = "forwardError"]
+        fn forward_error(self: &AudioOutputListQuery) -> bool;
+        #[cxx_name = "setForwardError"]
+        fn set_forward_error(self: Pin<&mut AudioOutputListQuery>, value: bool);
+        fn outputs(self: &AudioOutputListQuery) -> QVariant;
+        fn available(self: &AudioOutputListQuery) -> bool;
     }
 
     extern "RustQt" {
@@ -189,6 +243,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut SettingsSetQuery>, token: i64, frame: &QByteArray);
+
+        #[qinvokable]
+        fn reload(self: Pin<&mut AudioOutputListQuery>);
+        #[qinvokable]
+        #[cxx_name = "deliverResponse"]
+        fn deliver_response(self: Pin<&mut AudioOutputListQuery>, token: i64, frame: &QByteArray);
     }
 }
 
@@ -360,6 +420,71 @@ impl qobject::SettingsSetQuery {
             "global" => self.as_mut().global_changed(),
             "plugins" => self.as_mut().plugins_changed(),
             other => debug_assert!(false, "нет сигнала для свойства {other}"),
+        }
+    }
+
+    pub fn dispatch(self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
+        self.dispatch_base(signals);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// AudioOutputListQuery — output devices for the renderer sound (waywallen 0.6.2)
+// ════════════════════════════════════════════════════════════════════════
+
+#[derive(Default)]
+pub struct AudioOutputListQueryRust {
+    base: QueryState,
+    outputs: Vec<Value>,
+    available: bool,
+    pending: std::collections::BTreeSet<i64>,
+}
+
+impl_query_base!(AudioOutputListQuery);
+
+impl qobject::AudioOutputListQuery {
+    pub fn outputs(&self) -> QVariant {
+        json_to_variant(&Value::Array(self.outputs.clone()))
+    }
+
+    pub fn available(&self) -> bool {
+        self.available
+    }
+
+    pub fn reload(mut self: Pin<&mut Self>) {
+        let payload = pb::AudioOutputListRequest {}.encode_to_vec();
+        if let Some(token) = self.as_mut().send_frame("audio_output_list", payload) {
+            self.rust_mut().pending.insert(token);
+        }
+    }
+
+    pub fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
+        if !self.as_mut().rust_mut().pending.remove(&token) {
+            return;
+        }
+        let parsed = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            we_settings::apply_audio_output_list(
+                &mut rust.base,
+                &mut rust.outputs,
+                &mut rust.available,
+                frame.as_slice(),
+            )
+        };
+        match parsed {
+            Ok(signals) => self.dispatch(signals),
+            Err(_) => {
+                let signals = decode_failed(&mut self.as_mut().rust_mut().base);
+                self.dispatch(signals);
+            }
+        }
+    }
+
+    pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
+        match name {
+            "outputs" => self.as_mut().outputs_changed(),
+            other => debug_assert!(false, "no signal for property {other}"),
         }
     }
 

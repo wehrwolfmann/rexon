@@ -431,6 +431,11 @@ Item {
                         pal: root.pal
                         sty: root.sty
                         de: root.lookDe
+                        // Alone on the screen, the section fills it: "Apply" stays
+                        // pinned at the top, the tiles scroll inside (as "MATE panel").
+                        fillHeight: root.panel === "screeneffects"
+                                    ? Math.max(360, flick.height - 2 * root.sty.page.margin)
+                                    : 0
                         onMessage: text => root.say(text)
                     }
                 }

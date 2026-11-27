@@ -1344,6 +1344,10 @@ fn aur_cache_key_separates_search_from_the_section() {
     let mut icons = view("icons");
     icons.query = "nord".into();
     assert_ne!(icons.aur_cache_key(), v.aur_cache_key());
+    // «Global Themes» on MATE has its own shelf (MATE whole themes first): its own key.
+    let mate = CatalogView::new(cat("global"), "mate");
+    assert_eq!(mate.aur_cache_key(), "cat:global@mate");
+    assert_eq!(CatalogView::new(cat("icons"), "mate").aur_cache_key(), "cat:icons");
 }
 
 /// The mark of an AUR package where it comes mixed with single items («Все»):

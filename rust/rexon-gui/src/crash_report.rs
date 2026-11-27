@@ -758,7 +758,7 @@ mod tests {
     /// The guard looks at the SOURCE, not at the value: the value always agrees
     /// with itself, while it is exactly the call that can drift.
     #[test]
-    fn имя_для_системы_берётся_из_общей_двери_а_не_из_заголовка() {
+    fn system_name_taken_from_shared_entry_not_title() {
         let src = include_str!("crash_report.rs");
         let call = src
             .lines()
@@ -783,7 +783,7 @@ mod tests {
     /// title is the core's string for the customer and does not depend on the
     /// machine name.
     #[test]
-    fn видимый_заголовок_окна_падения_остался_человеческим() {
+    fn visible_crash_window_title_stays_human() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
         let dir = "/home/u/.config/rexon/crashes";
         let dialog =

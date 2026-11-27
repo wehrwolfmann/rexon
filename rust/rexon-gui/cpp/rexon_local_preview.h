@@ -21,6 +21,10 @@ extern "C" {
 // text.
 void *rexon_lp_canvas_new(int32_t width, int32_t height, const char *base_hex);
 
+// p.scale(k, k): the next operations are given in points, the canvas is k
+// times larger (a full-screen picture).
+void rexon_lp_scale(void *canvas, double k);
+
 // p.fillRect(QRectF(x, y, w, h), QColor(r, g, b, a))
 void rexon_lp_fill(void *canvas, double x, double y, double w, double h,
                    uint8_t r, uint8_t g, uint8_t b, uint8_t a);

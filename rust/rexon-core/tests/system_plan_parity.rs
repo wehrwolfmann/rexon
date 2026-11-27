@@ -239,6 +239,9 @@ fn scripts_match_python_verbatim() {
     // allowlist has no mate-wayland-session, and wayfire took its place under
     // its own desktop (Wayfire). The golden data has no retake mechanism — exactly these five places
     // were edited by hand, the check confirms the match.
+    // Updated 2026-11-27 (pkg helper, by hand): picom joined the tool table
+    // (`utils::TOOL_PACKAGES`) for «Screen effects» on MATE/Xfce/LXQt — one
+    // word added to the arch/debian/fedora/suse install allowlists, nothing else.
     assert_eq!(
         json!(de_helper_pkg_table()),
         s["de_helper_pkg_table"],
@@ -1195,10 +1198,8 @@ fn denied_hint_never_says_none() {
         assert!(was.contains("None"), "кейс починки не про «None»: {c}");
         let message = c["message"].as_str().unwrap();
         assert!(!message.contains("None"), "«None» доехало до человека: {c}");
-        assert!(
-            message.contains(c["shell"].as_str().unwrap()),
-            "вместо команды отката должно стоять тело транзакции: {c}"
-        );
+        // Since 27.11.2026 no command is shown at all (the person has no terminal).
+        assert!(!message.contains(c["shell"].as_str().unwrap()), "{c}");
     }
 }
 
@@ -1206,7 +1207,7 @@ fn denied_hint_never_says_none() {
 /// Plymouth, SDDM). The old text «pkexec authorization denied.» told
 /// the customer service words and claimed a refusal when the person simply
 /// closed the password window. The first line must match the install and
-/// removal refusals, the terminal command must arrive as is.
+/// removal refusals; no terminal command (27.11.2026).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn denied_message_speaks_plain_russian() {
@@ -1214,7 +1215,9 @@ fn denied_message_speaks_plain_russian() {
     let _lang = i18n_pin::ru();
     let cmd = "sudo rm -f /etc/sddm.conf.d/zz-rexon-theme.conf";
     let msg = rexon_core::system_plan::pkexec_denied_message(cmd);
-    let words = msg.strip_suffix(cmd).expect("команда для терминала — в конце, как есть");
+    // No command "to run by hand in a terminal" (27.11.2026): the person has no terminal.
+    assert!(!msg.contains(cmd) && !msg.contains("терминал"), "{msg}");
+    let words = msg.as_str();
     for jargon in ["pkexec", "polkit", "Авторизац", "отклонен", "хелпер"] {
         assert!(!words.contains(jargon), "в тексте для покупателя «{jargon}»: {msg}");
     }

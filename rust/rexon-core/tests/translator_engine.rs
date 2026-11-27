@@ -579,30 +579,32 @@ fn a_russian_comment_in_the_batch_is_left_alone() {
 /// will say "no model", there will be no translation, and nothing will crash. So the path and
 /// the names are taken FROM THE CORE rather than retyped into the check by hand.
 #[test]
-fn модель_едет_в_поставке_туда_где_её_ищет_ядро() {
+fn model_ships_where_core_looks_for_it() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    // The PKGBUILD downloads the model, scripts/package-build installs it.
+    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap()
+        + &std::fs::read_to_string(root.join("scripts/package-build")).unwrap();
 
     // The direction directory: `<data>/translate/<pair>`.
-    let dir = format!("$data/{}/$_mt_pair", te::MODEL_DIR_REL);
+    let dir = format!("$data/{}/$mt_pair", te::MODEL_DIR_REL);
     assert!(pkgbuild.contains(&dir), "пакет кладёт модель не в «{dir}»");
-    assert!(pkgbuild.contains("_mt_pair=enru"), "в PKGBUILD нет направления en→ru");
+    assert!(pkgbuild.contains("mt_pair=enru"), "в PKGBUILD нет направления en→ru");
 
     // The file names are those `model_files_in` looks for; in the PKGBUILD the pair is moved
     // into a variable, so the name pattern is checked.
     let want = te::model_files_in("", "en", "ru", &|_: &str| true).expect("имена файлов модели");
     for path in [want.model, want.src_vocab] {
         let name = path.rsplit('/').next().unwrap().to_string();
-        let tmpl = name.replace(&te::model_pair("en", "ru"), "${_mt_pair}");
+        let tmpl = name.replace(&te::model_pair("en", "ru"), "${mt_pair}");
         assert!(pkgbuild.contains(&tmpl), "пакет не кладёт файл модели {name}");
     }
 
-    // Checksums are verified TWICE: archives by makepkg itself, unpacked files
-    // in prepare(). The second check is the guarantee that the package got
-    // the measured edition of the model, not an unpacking corruption.
+    // The archives are verified by makepkg (sha256sums); gzip checks the unpacked
+    // data with its own CRC, so the package gets exactly the measured edition.
+    let sums = pkgbuild.split("sha256sums=(").nth(1).expect("sha256sums in PKGBUILD");
     assert!(
-        pkgbuild.contains("sha256sum --check"),
-        "PKGBUILD не сверяет sha256 РАСПАКОВАННОЙ модели"
+        !sums.trim_start().starts_with(')') && pkgbuild.contains("model.enru.intgemm.alphas.bin.gz::"),
+        "PKGBUILD не сверяет архив модели"
     );
     assert!(
         pkgbuild.contains("LICENSE.translations-model-MPL-2.0"),

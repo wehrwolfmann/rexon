@@ -120,10 +120,11 @@ fn fail(msg: &str) -> ! {
 mod tests {
     use rexon_core::system_plan as plan;
 
+    /// The package's install step (`scripts/package-build`, called by the PKGBUILD).
     fn pkgbuild() -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packaging/aur/PKGBUILD");
-        std::fs::read_to_string(path).expect("PKGBUILD читается")
+            .join("../../scripts/package-build");
+        std::fs::read_to_string(path).expect("scripts/package-build читается")
     }
 
     /// The package must install the helpers and print them with this program.
@@ -133,7 +134,7 @@ mod tests {
     /// turns red earlier. The second half: the texts come from the core rather
     /// than being rewritten by hand in the PKGBUILD.
     #[test]
-    fn пакет_ставит_помощников_polkit() {
+    fn package_installs_polkit_helpers() {
         let src = pkgbuild();
         assert!(
             src.contains("package-polkit"),
@@ -174,7 +175,7 @@ mod tests {
     /// installed by people using the package), and its policy points at the
     /// package path.
     #[test]
-    fn пакет_везёт_помощника_тем_экрана_входа() {
+    fn package_ships_login_screen_theme_helper() {
         use rexon_core::installer as inst;
         assert!(super::HELPERS.contains(&"system"));
         let path = plan::helper_path_in(plan::HELPER_DIR_PACKAGE, inst::SYSTEM_HELPER_NAME);
@@ -197,7 +198,7 @@ mod tests {
     /// path, and the PKGBUILD installs it with mode 755 (the window's client
     /// refuses a file writable by the group or by everyone).
     #[test]
-    fn пакет_везёт_помощника_сеанса_прав() {
+    fn package_ships_privilege_session_helper() {
         assert!(super::BINARY_HELPERS.contains(&"session"));
         assert!(!super::HELPERS.contains(&"session"), "тело сеанса не печатается: это бинарь");
         let path = plan::helper_path_in(plan::HELPER_DIR_PACKAGE, plan::SESSION_HELPER_NAME);
@@ -221,7 +222,7 @@ mod tests {
     /// The package directory and the manual installation directory differ, and the
     /// policy is printed for the path where the helper actually lives.
     #[test]
-    fn политика_пакета_указывает_на_путь_пакета() {
+    fn package_policy_points_to_package_path() {
         let path = plan::helper_path_in(plan::HELPER_DIR_PACKAGE, plan::DE_HELPER_NAME);
         assert_eq!(path, "/usr/lib/rexon-de-helper");
         assert!(plan::de_policy_xml_for(&path).contains(&format!(

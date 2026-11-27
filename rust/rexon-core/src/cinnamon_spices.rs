@@ -378,13 +378,17 @@ pub fn thumb_url(t: &SpiceType, s: &Spice) -> String {
 /// counts.
 pub fn theme_item(t: &SpiceType, s: &Spice, lang: &str) -> ThemeItem {
     let (name, description) = localized(s, lang);
-    let mut gallery = Vec::new();
-    for p in [&s.screenshot, &s.icon] {
-        let u = site_url(p);
-        if !u.is_empty() && !gallery.contains(&u) {
-            gallery.push(u);
-        }
-    }
+    // The card gallery is the full-size screenshot alone; the icon only when
+    // there is no screenshot (actions). Previously the list was «screenshot,
+    // icon», and the shared gallery rule (`appearance_page::gallery_urls`
+    // drops the first picture — the KDE Store «face» of an item) left the
+    // card and the full-screen view with the icon (27.11.2026).
+    let gallery: Vec<String> = [&s.screenshot, &s.icon]
+        .into_iter()
+        .map(|p| site_url(p))
+        .find(|u| !u.is_empty())
+        .into_iter()
+        .collect();
     ThemeItem {
         id: item_id(t, &s.key),
         name,
@@ -611,7 +615,6 @@ mod index_tests {
             preview_url: "https://cinnamon-spices.linuxmint.com/git/applets/weather@mockturtl/screenshot.png".into(),
             preview_urls: vec![
                 "https://cinnamon-spices.linuxmint.com/git/applets/weather@mockturtl/screenshot.png".into(),
-                "https://cinnamon-spices.linuxmint.com/files/applets/weather@mockturtl.png".into(),
             ],
             download_url: "https://cinnamon-spices.linuxmint.com/files/applets/weather@mockturtl.zip".into(),
             download_name: "weather@mockturtl.zip".into(),
@@ -624,6 +627,11 @@ mod index_tests {
         };
         assert_eq!(item, want);
         assert_ne!(name, "Weather");
+        // The card and the full-screen view get the screenshot, not the icon.
+        assert_eq!(
+            crate::appearance_page::gallery_urls(&item.preview_urls, &item.preview_url),
+            vec!["https://cinnamon-spices.linuxmint.com/git/applets/weather@mockturtl/screenshot.png".to_string()]
+        );
         assert_eq!(item.version.len(), 10);
         assert_eq!(version_label(1_784_985_259), "2026.07.25");
         assert_eq!(version_label(0), "");

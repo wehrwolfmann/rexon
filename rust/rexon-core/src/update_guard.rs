@@ -1243,8 +1243,8 @@ pub fn finding_text_for(f: &Finding, rollback: bool, audience: Audience) -> Stri
                  “sudo pacman -Syu”, then “sudo reboot”.",
             ),
             Effect::Programs => tr(
-                "If you have already updated and programs stop starting: run “sudo pacman -Syu” \
-                 in a terminal once the repository has caught up.",
+                "If you have already updated and programs stop starting: update the system \
+                 again once the repository has caught up.",
             ),
         });
     }

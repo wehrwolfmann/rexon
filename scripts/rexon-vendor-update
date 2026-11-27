@@ -1226,40 +1226,12 @@ def _qextra_lito_note() -> str:
     return ""
 
 
-def _qextra_pkgbuild_lost() -> list[str]:
-    """Sources from the lock slice that are missing from the package lists.
-
-    The package builds QExtra offline from the sources named in `PKGBUILD`
-    (`_qe_git`, `_qe_reg`), and its `prepare()` refuses on a divergence —
-    but that is visible only when building the package. Here the same thing is visible at once.
-    """
-    lock = _read_line(QEXTRA_LOCK)
-    pkgbuild = _read_line(REPO / "packaging/aur/PKGBUILD")
-    lost = [f"{url} @ {rev[:7]}"
-            for url, rev in re.findall(
-                r'(?m)^source = "git\+([^"#]+)#([0-9a-f]+)"', lock)
-            if f"|{url}|{rev}'" not in pkgbuild]
-    lost += [f"{name} {ver}"
-             for name, ver, digest in re.findall(
-                 r'name = "([^"]+)"\nversion = "([^"]+)"\n'
-                 r'source = "registry\+[^"]*"\nchecksum = "([0-9a-f]{64})"',
-                 lock)
-             if f"'{name}|{ver}|{digest}'" not in pkgbuild]
-    return lost
-
-
 def _qextra_module(show, drift: list[str], unchecked: list[str]) -> None:
     """The third module: the real QExtra vs the lock slice, Qt and the markup."""
     m = re.search(r"QExtra\.git#([0-9a-f]{7,40})", _read_line(QEXTRA_LOCK))
     want = m.group(1) if m else ""
-    lost = _qextra_pkgbuild_lost()
-    if lost:
-        drift.append("the QExtra sources in packaging/aur/PKGBUILD lag behind "
-                     "tools/qextra_plugin/lito.lock — update _qe_git/_qe_reg"
-                     " and .SRCINFO: " + ", ".join(lost))
-        show("QExtra in the package:", red(f"sources behind: {len(lost)}"))
-    elif want:
-        show("QExtra in the package:", green("the sources match the lock slice"))
+    # The package fetches the QExtra sources from this lock itself
+    # (`lito fetch --locked` in scripts/package-build), so nothing to sync there.
     built = QML_MODULES / "QExtra"
     have = _read_line(built / "QEXTRA_PIN")
     rebuild = "rebuild: tools/build_qml_qextra.sh"

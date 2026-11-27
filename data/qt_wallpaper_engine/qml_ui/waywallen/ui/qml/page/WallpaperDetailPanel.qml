@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQml as Qml
 import QtQuick.Layouts
 import Qcm.Material as MD
 import waywallen.ui as W
@@ -18,13 +17,137 @@ Item {
     property bool unsubscribeAccepted: false
     property var infoPresentation: null
 
-    onWallpaperIdChanged: unsubscribeAccepted = false
+    onWallpaperIdChanged: {
+        unsubscribeAccepted = false;
+        if (!detailReady)
+            return;
+        root.dismissAnchoredPopups();
+        presetDialog.close();
+        presetListWallpaperId = "";
+        presetListFailed = false;
+        pendingPreset = null;
+        propertyRefreshPending = true;
+        propertyWrites.flush();
+        root.advanceWallpaperRequests();
+    }
 
     signal back
     signal dismissAnchoredPopups
     signal hiddenChanged(bool hidden)
 
-    readonly property var wp: (wallpaperGetQuery.wallpaper?.id_proto ?? "") !== "" ? wallpaperGetQuery.wallpaper : root.fallbackWallpaper
+    onDismissAnchoredPopups: presetMenu.dismissImmediately()
+
+    readonly property var wallpaperDetails: wallpaperId.length > 0 && wallpaperGetQuery.wallpaper?.id_proto === wallpaperId ? wallpaperGetQuery.wallpaper : null
+    readonly property var wp: wallpaperDetails ?? (fallbackWallpaper?.id_proto === wallpaperId ? fallbackWallpaper : null)
+    readonly property bool propertyValuesReady: wallpaperDetails !== null && !propertyRefreshPending && wallpaperGetQuery.status === 2
+    readonly property bool canOpenPresets: propertyValuesReady && !presetDialog.visible && pendingPreset === null && activePreset === null
+    readonly property bool canEditProperties: canOpenPresets && !presetMenu.visible
+    readonly property bool presetListReady: wallpaperId.length > 0 && presetListWallpaperId === wallpaperId && activePreset?.operation !== "list"
+    property Item presetAnchor: null
+    property string presetListWallpaperId: ""
+    property bool presetListFailed: false
+    property bool detailReady: false
+    property bool propertyRefreshPending: false
+    property int propertySnapshotRevision: 0
+    property var pendingPreset: null
+    property var activePreset: null
+
+    function refreshWallpaper() {
+        propertyRefreshPending = true;
+        root.advanceWallpaperRequests();
+    }
+
+    function advanceWallpaperRequests() {
+        if (propertyWrites.busy || activePreset !== null)
+            return;
+        if (pendingPreset !== null) {
+            const request = pendingPreset;
+            root.sendPreset(request);
+            pendingPreset = null;
+            return;
+        }
+        if (!propertyRefreshPending)
+            return;
+        propertyRefreshPending = false;
+        if (wallpaperGetQuery.wallpaperId !== wallpaperId)
+            wallpaperGetQuery.wallpaperId = wallpaperId;
+        else if (wallpaperId.length > 0)
+            wallpaperGetQuery.reload();
+    }
+
+    function openPresetMenu(anchor) {
+        if (presetMenu.opened && presetAnchor === anchor) {
+            presetMenu.close();
+            return;
+        }
+        root.dismissAnchoredPopups();
+        presetAnchor = anchor;
+        root.requestPreset("list", "", "", false);
+        presetMenu.open();
+    }
+
+    function requestPreset(operation, presetId, name, overwrite) {
+        if (wallpaperId.length === 0 || (presetDialog.visible && presetDialog.wallpaperId !== wallpaperId) || pendingPreset !== null || activePreset !== null)
+            return;
+        const request = { wallpaperId, operation, presetId, name, overwrite };
+        if (operation === "list")
+            presetListFailed = false;
+        if (operation === "save" || operation === "apply" || operation === "update") {
+            if (!propertyValuesReady)
+                return;
+            pendingPreset = request;
+            propertyWrites.flush();
+        } else {
+            root.sendPreset(request);
+        }
+    }
+
+    function sendPreset(request) {
+        activePreset = request;
+        const id = request.wallpaperId;
+        switch (request.operation) {
+        case "list": presetQuery.list(id); break;
+        case "save": presetQuery.save(id, request.name); break;
+        case "update": presetQuery.update(id, request.presetId); break;
+        case "rename": presetQuery.rename(id, request.presetId, request.name); break;
+        case "remove": presetQuery.remove(id, request.presetId); break;
+        case "apply": presetQuery.apply(id, request.presetId, request.overwrite); break;
+        }
+    }
+
+    function finishPreset(ok, error) {
+        const request = activePreset;
+        if (request === null)
+            return;
+        const currentWallpaper = wallpaperId === request.wallpaperId;
+        if (currentWallpaper && ok)
+            presetListWallpaperId = wallpaperId;
+        if (currentWallpaper && request.operation === "list") {
+            presetListFailed = !ok;
+        } else if (currentWallpaper && request.operation === "apply" && ok && presetQuery.confirmationRequired) {
+            const preset = presetQuery.presets.find(item => item.id === request.presetId);
+            if (preset)
+                presetDialog.openFor(wallpaperId, "apply", preset);
+        } else {
+            if (currentWallpaper && request.operation === "apply") {
+                propertyRefreshPending = true;
+                if (ok && presetQuery.rendererUpdateFailed)
+                    W.Action.toast(qsTr("Preset applied, but the running renderer could not be updated"), 6000);
+                else if (ok)
+                    W.Action.toast(qsTr("Preset applied"));
+            }
+            if (currentWallpaper && presetDialog.visible && presetDialog.wallpaperId === request.wallpaperId) {
+                if (ok)
+                    presetDialog.completed();
+                else
+                    presetDialog.errorText = error || qsTr("Preset operation failed");
+            } else if (!ok && request.operation !== "list") {
+                W.Global.toastError(error || qsTr("Preset operation failed"));
+            }
+        }
+        activePreset = null;
+        root.advanceWallpaperRequests();
+    }
 
     property int rendererIndex: 0
     readonly property var kFillModeValues: [1, 2, 3, 7]
@@ -140,7 +263,15 @@ Item {
 
     W.WallpaperGetQuery {
         id: wallpaperGetQuery
-        wallpaperId: root.wallpaperId
+        delay: false
+        forwardError: false
+        onFinished: {
+            if (root.wallpaperDetails && !root.propertyRefreshPending) {
+                propertyModel.setOverridesJson(root.wallpaperDetails.userPropertyOverrides);
+                ++root.propertySnapshotRevision;
+            }
+        }
+        onErrorOccurred: error => W.Global.toastError(error || qsTr("Could not refresh wallpaper properties"))
     }
 
     W.PresentationTargetState {
@@ -177,7 +308,7 @@ Item {
         function onStatusChanged() {
             if (applyQuery.status === 2) {
                 root.toastStoppedPlaylists();
-                wallpaperGetQuery.reload();
+                root.refreshWallpaper();
             } else if (applyQuery.status === 3) {
                 const message = applyQuery.error && applyQuery.error.length > 0 ? applyQuery.error : qsTr("Apply failed");
                 W.Global.toastError(message);
@@ -225,6 +356,82 @@ Item {
 
     W.WallpaperPropertySetQuery {
         id: setQuery
+        forwardError: false
+        onFinished: propertyWrites.acknowledge(true, "")
+        onErrorOccurred: error => propertyWrites.acknowledge(false, error)
+    }
+
+    W.WallpaperPresetQuery {
+        id: presetQuery
+        forwardError: false
+        onFinished: root.finishPreset(true, "")
+        onErrorOccurred: error => root.finishPreset(false, error)
+    }
+
+    MD.Menu {
+        id: presetMenu
+        parent: root
+        anchorItem: root.presetAnchor
+        anchorAlignment: MD.Popup.End
+        closePolicy: MD.Popup.CloseOnEscape | MD.Popup.CloseOnPressOutside
+        dim: false
+        maximumWidth: 260
+        height: Math.min(implicitHeight, overlayHeight > 0 ? Math.min(360, overlayHeight - 16) : 360)
+        model: root.presetListReady && !root.presetListFailed ? presetQuery.presets : []
+        contentDelegate: MD.MenuItem {
+            required property var modelData
+            text: modelData.name
+            onClicked: {
+                presetMenu.close();
+                root.requestPreset("apply", modelData.id, "", false);
+            }
+        }
+
+        MD.MenuItem {
+            visible: !root.presetListReady || root.presetListFailed
+            height: visible ? implicitHeight : 0
+            text: root.presetListFailed ? qsTr("Retry loading presets") : qsTr("Loading presets…")
+            enabled: root.presetListFailed
+            closeOnActivation: false
+            onClicked: root.requestPreset("list", "", "", false)
+        }
+
+        MD.MenuSeparator {
+            visible: presetMenu.model.length > 0
+            height: visible ? implicitHeight : 0
+        }
+
+        MD.MenuItem {
+            visible: root.presetListReady && !root.presetListFailed
+            height: visible ? implicitHeight : 0
+            enabled: root.propertyValuesReady
+            text: qsTr("Save current settings…")
+            icon.name: MD.Token.icon.save
+            onClicked: {
+                presetMenu.close();
+                presetDialog.openFor(root.wallpaperId, "save", null);
+            }
+        }
+
+        MD.MenuItem {
+            visible: presetMenu.model.length > 0
+            height: visible ? implicitHeight : 0
+            text: qsTr("Manage presets…")
+            icon.name: MD.Token.icon.settings
+            onClicked: {
+                presetMenu.close();
+                presetDialog.openFor(root.wallpaperId, "manage", null);
+            }
+        }
+    }
+
+    W.WallpaperPresetDialog {
+        id: presetDialog
+        busy: root.pendingPreset !== null || root.activePreset !== null
+        currentValuesReady: root.propertyValuesReady
+        presets: presetQuery.presets
+        onRequested: (operation, presetId, name) => root.requestPreset(operation, presetId, name, operation === "apply")
+        onRefreshRequested: root.refreshWallpaper()
     }
 
     Connections {
@@ -232,7 +439,7 @@ Item {
         function onWallpaperHiddenChanged(wallpaperIds, hidden) {
             if (!root.wallpaperId || wallpaperIds.indexOf(root.wallpaperId) < 0)
                 return;
-            wallpaperGetQuery.reload();
+            root.refreshWallpaper();
             root.hiddenChanged(hidden);
         }
     }
@@ -247,7 +454,7 @@ Item {
         target: layoutSetQuery
         function onStatusChanged() {
             if (layoutSetQuery.status === 2)
-                wallpaperGetQuery.reload();
+                root.refreshWallpaper();
             else if (layoutSetQuery.status === 3)
                 W.Action.toast(qsTr("Layout update failed"));
         }
@@ -262,63 +469,46 @@ Item {
 
     W.UserPropertyListModel {
         id: propertyModel
-        schemaJson: wallpaperGetQuery.wallpaper?.userPropertiesSchema ?? ""
-        overridesJson: wallpaperGetQuery.wallpaper?.userPropertyOverrides ?? ""
+        wallpaperId: root.wallpaperId
+        schemaJson: root.wallpaperDetails?.userPropertiesSchema ?? ""
     }
 
-    Component.onCompleted: pluginQuery.reload()
-
-    QtObject {
-        id: m_pending_writes
-        property string wallpaperId: ""
-        property var entries: ({})
-
-        function queue(key, value, reset) {
-            const e = entries;
-            e[key] = {
-                value: value,
-                reset: reset
-            };
-            entries = e;
-            if (!restartFlush())
-                entries = {};
-        }
-
-        function restartFlush() {
-            wallpaperId = root.wallpaperId;
-            if (wallpaperId.length === 0)
-                return false;
-            m_flush_timer.restart();
-            return true;
-        }
+    Component.onCompleted: {
+        detailReady = true;
+        root.refreshWallpaper();
+        pluginQuery.reload();
     }
 
-    Qml.Timer {
-        id: m_flush_timer
-        interval: 200
-        repeat: false
-        onTriggered: {
-            const wallpaperId = m_pending_writes.wallpaperId;
-            const e = m_pending_writes.entries;
-            for (const k in e) {
-                const operation = e[k];
-                setQuery.wallpaperId = wallpaperId;
-                setQuery.propertyKey = k;
-                setQuery.propertyValue = operation.value;
-                setQuery.reset = operation.reset;
-                setQuery.reload();
+    W.PropertyWriteQueue {
+        id: propertyWrites
+        onWriteRequested: (wallpaperId, key, value, reset) => setQuery.write(wallpaperId, key, value, reset)
+        onDrained: root.advanceWallpaperRequests()
+        onWriteFailed: (wallpaperId, error) => {
+            if (wallpaperId === root.wallpaperId)
+                root.propertyRefreshPending = true;
+            const message = error || qsTr("Property update failed");
+            if (root.pendingPreset?.wallpaperId === wallpaperId) {
+                root.pendingPreset = null;
+                const canceled = qsTr("Preset operation canceled: %1").arg(message);
+                if (presetDialog.visible && presetDialog.wallpaperId === wallpaperId)
+                    presetDialog.errorText = canceled;
+                else
+                    W.Global.toastError(canceled);
+            } else if (presetDialog.visible && presetDialog.wallpaperId === wallpaperId) {
+                presetDialog.errorText = message;
+            } else {
+                W.Global.toastError(message);
             }
-            m_pending_writes.entries = {};
         }
     }
 
     Connections {
         target: propertyModel
         function onValueChanged(key, value) {
-            m_pending_writes.queue(key, value, false);
+            propertyWrites.enqueue(propertyModel.wallpaperId, key, value, false);
         }
         function onResetRequested(key) {
-            m_pending_writes.queue(key, "", true);
+            propertyWrites.enqueue(propertyModel.wallpaperId, key, "", true);
         }
     }
 
@@ -370,7 +560,7 @@ Item {
         text: qsTr("Open web page")
         icon.name: MD.Token.icon.web
         visible: String(root.wp?.webUrl ?? "").length > 0
-        onTriggered: MD.Util.openUrlExternally(root.wp.webUrl)
+        onTriggered: W.App.openExternalLink(root.wp.webUrl)
     }
 
     MD.Action {
@@ -633,7 +823,7 @@ Item {
                         wrapMode: Text.WordWrap
                         maximumLineCount: m_description.expanded ? Number.MAX_SAFE_INTEGER : m_description.collapsedLines
                         elide: m_description.expanded ? Text.ElideNone : Text.ElideRight
-                        onLinkActivated: link => MD.Util.openUrlExternally(link)
+                        onLinkActivated: link => W.App.openExternalLink(link)
                     }
                 }
 
@@ -831,10 +1021,13 @@ Item {
                 readonly property string type: row.value.type
                 readonly property string section: row.value.section
                 readonly property string kind: row.value.kind
+                readonly property bool isGroup: row.value.isGroup
+                readonly property bool expanded: row.value.expanded
                 readonly property bool supported: row.value.supported
                 readonly property real minVal: row.value.minVal
                 readonly property real maxVal: row.value.maxVal
                 readonly property real stepVal: row.value.stepVal
+                readonly property int precision: row.value.precision
                 readonly property string valueSuffix: row.value.valueSuffix
                 readonly property string currentValue: row.value.currentValue
                 readonly property bool hasAlpha: row.value.hasAlpha
@@ -874,15 +1067,30 @@ Item {
 
                         MD.Text {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             text: m_prop_section.section === "property" ? qsTr("Properties") : qsTr("User properties")
+                            elide: Text.ElideRight
                             typescale: MD.Token.typescale.label_large
                             color: MD.Token.color.on_surface_variant
+                        }
+
+                        MD.EmbedChip {
+                            id: presetButton
+                            visible: m_prop_delegate.row.index === 0
+                            enabled: root.canOpenPresets
+                            text: qsTr("Presets")
+                            trailingIconName: MD.Token.icon.arrow_drop_down
+                            onClicked: root.openPresetMenu(presetButton)
+                            Component.onDestruction: {
+                                if (root.presetAnchor === presetButton)
+                                    presetMenu?.dismissImmediately();
+                            }
                         }
 
                         MD.IconButton {
                             icon.name: MD.Token.icon.restart_alt
                             mdState.size: MD.Enum.XS
-                            enabled: m_prop_section.section === "property" ? propertyModel.hasPredefinedPropertyOverrides : propertyModel.hasUserPropertyOverrides
+                            enabled: root.canEditProperties && (m_prop_section.section === "property" ? propertyModel.hasPredefinedPropertyOverrides : propertyModel.hasUserPropertyOverrides)
                             onClicked: {
                                 if (m_prop_section.section === "property")
                                     propertyModel.resetPredefinedProperties();
@@ -895,7 +1103,45 @@ Item {
                     }
                 }
 
+                MD.ListItem {
+                    id: propertyGroupHeader
+                    Layout.fillWidth: true
+                    visible: m_prop_delegate.isGroup
+                    itemRow: m_prop_delegate.row
+                    text: m_prop_delegate.label
+                    radius: 8
+                    leftPadding: 8
+                    rightPadding: 8
+                    verticalPadding: 6
+                    implicitHeight: Math.max(40, implicitContentHeight + topPadding + bottomPadding)
+                    Accessible.description: m_prop_delegate.expanded ? qsTr("Expanded") : qsTr("Collapsed")
+                    onClicked: {
+                        root.dismissAnchoredPopups();
+                        propertyModel.setGroupExpanded(m_prop_delegate.key, !m_prop_delegate.expanded);
+                    }
+
+                    contentItem: RowLayout {
+                        spacing: 8
+
+                        MD.Text {
+                            Layout.fillWidth: true
+                            text: propertyGroupHeader.text
+                            textFormat: Text.RichText
+                            typescale: MD.Token.typescale.label_large
+                            color: propertyGroupHeader.mdState.textColor
+                            wrapMode: Text.WordWrap
+                        }
+
+                        MD.Icon {
+                            name: m_prop_delegate.expanded ? MD.Token.icon.expand_less : MD.Token.icon.expand_more
+                            color: propertyGroupHeader.mdState.textColor
+                            size: 20
+                        }
+                    }
+                }
+
                 MD.TextEdit {
+                    visible: !m_prop_delegate.isGroup
                     text: m_prop_delegate.label
                     textFormat: TextEdit.RichText
                     typescale: MD.Token.typescale.label_medium
@@ -906,12 +1152,13 @@ Item {
                     selectByMouse: false
                     activeFocusOnPress: false
                     wrapMode: TextEdit.WordWrap
-                    onLinkActivated: link => MD.Util.openUrlExternally(link)
+                    onLinkActivated: link => W.App.openExternalLink(link)
                 }
 
                 MD.Switch {
                     id: m_switch
                     visible: m_prop_delegate.type === "bool"
+                    enabled: root.canEditProperties
                     onCheckedChangeRequested: checked => propertyModel.setValue(m_prop_delegate.key, checked ? "true" : "false")
                 }
                 Binding {
@@ -923,10 +1170,11 @@ Item {
                 W.ValueSlider {
                     id: m_slider
                     visible: m_prop_delegate.type === "slider"
+                    enabled: root.canEditProperties
                     Layout.fillWidth: true
                     from: m_prop_delegate.minVal
                     to: m_prop_delegate.maxVal
-                    stepSize: m_prop_delegate.stepVal > 0 ? m_prop_delegate.stepVal : (m_prop_delegate.maxVal > 10 ? 1 : 0)
+                    stepSize: m_prop_delegate.stepVal
                     valueText: displayValue(value)
                     valueMaxText: {
                         const minText = displayValue(from);
@@ -935,7 +1183,7 @@ Item {
                     }
                     valueTypescale: MD.Token.typescale.body_small
                     function displayValue(v) {
-                        return Number(v).toFixed(m_prop_delegate.maxVal > 10 ? 0 : 3) + m_prop_delegate.valueSuffix;
+                        return Number(v).toFixed(m_prop_delegate.precision) + m_prop_delegate.valueSuffix;
                     }
                     onValueChangeRequested: value => propertyModel.setValue(m_prop_delegate.key, String(value))
                 }
@@ -959,6 +1207,7 @@ Item {
                         }
                     }
                     visible: m_prop_delegate.type === "color"
+                    enabled: root.canEditProperties
                     Layout.preferredWidth: 80
                     Layout.preferredHeight: 32
                     showAlpha: m_prop_delegate.hasAlpha
@@ -979,6 +1228,7 @@ Item {
                         }
                     }
                     visible: m_prop_delegate.type === "combo" && m_prop_delegate.supported
+                    enabled: root.canEditProperties
                     Layout.fillWidth: true
                     mdState.size: MD.Enum.S
                     popupMaximumHeight: Math.min(320, (Window.window?.height ?? 480) * 0.45)
@@ -998,8 +1248,12 @@ Item {
                 W.ApplyTextField {
                     id: m_text_input
                     visible: m_prop_delegate.type === "textinput"
+                    enabled: root.canEditProperties
                     Layout.fillWidth: true
-                    text: m_prop_delegate.currentValue
+                    text: {
+                        void (root.propertySnapshotRevision);
+                        return m_prop_delegate.currentValue;
+                    }
                     canApply: text !== m_prop_delegate.currentValue
                     onApplied: value => propertyModel.setValue(m_prop_delegate.key, value)
                 }

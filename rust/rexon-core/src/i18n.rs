@@ -1425,7 +1425,7 @@ mod tests {
     /// A live case on 08.10.2026: system ru, formats de, de chosen — the window
     /// substituted `LANGUAGE=de`, but "as in the system" must remain Russian.
     #[test]
-    fn системный_язык_считается_по_исходной_локали() {
+    fn system_language_computed_from_original_locale() {
         let env = |pairs: &'static [(&'static str, &'static str)]| {
             move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
         };

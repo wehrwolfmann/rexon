@@ -2,18 +2,18 @@ name        = "org.waywallen.kde"
 description = "Плагин обоев waywallen для Plasma (сторона вывода изображения)"
 upstream    = "https://github.com/waywallen/waywallen-display"
 source      = "github-release"
-version     = "0.4.5"
-tag         = "v0.4.5"
-asset       = "waywallen-kde-0.4.5-x86_64.zip"
-vendored    = "2026-11-08"
+version     = "0.4.8"
+tag         = "v0.4.8"
+asset       = "waywallen-kde-0.4.8-x86_64.zip"
+vendored    = "2026-11-27"
 license     = "MIT / GPL-2.0-or-later — см. note"
-checksum    = "sha256:dfcb0ea49e87e42d395f27a6278c21f5564ae2f6e02dbc5cc5e6ff9565459d41"
-tree        = "sha256-tree:491674fa16c689f8946efad63caaa9d2696fb0b7af58aa95ffc790f07e6df101"
+checksum    = "sha256:ed0438b4789d3987fca7cc844387b3b69916f07e06ecf794d933a377f2aa659f"
+tree        = "sha256-tree:6829c757919cd7c852e05aa49271f4028e613b5189c3eabed81ae5d23d41cf14"
 pkgbuild_var = "_wwd_ver"
 note        = """
 Плазмоид едет БЕЗ ИЗМЕНЕНИЙ — официальный архив выпуска, наших правок нет \
 (решение владельца 09.10.2026). В git лежит только этот файл: архив качает \
-пакет при сборке (packaging/aur/PKGBUILD, переменная _wwd_ver, сумма = \
+пакет при сборке (packaging/PKGBUILD.bundled-engine, переменная _wwd_ver, сумма = \
 digest выпуска), а для запуска из дерева и тестов его распаковывает сюда же \
 `cargo run -p rexon-core --bin vendor-check -- --выкачать`.
 Пакет кладёт этот файл рядом с распакованным плазмоидом: по нему Rexon \

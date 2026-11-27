@@ -3330,9 +3330,9 @@ mod tests {
         );
         assert!(InstallLayout::for_mode(InstallMode::Portable, "/h", None).is_none());
 
-        // The package puts our .so in the same place (PKGBUILD), and doesn't ship
-        // the former rexon-gui library at all.
-        let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
+        // The package puts our .so in the same place (scripts/package-build), and
+        // doesn't ship the former rexon-gui library at all.
+        let pkgbuild = include_str!("../../../scripts/package-build");
         assert!(pkgbuild.contains(&format!("\"$qmod/{}/{}\"", qm::RUST_LIB_SUBDIR, qm::FILTER_LIB_NAME)));
         assert!(!pkgbuild.contains(RETIRED_GUI_LIB));
 

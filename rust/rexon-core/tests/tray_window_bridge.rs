@@ -61,7 +61,7 @@ fn shim_source() -> String {
 
 /// The shim must look for a QML window among windows, not among widgets.
 #[test]
-fn шим_ищет_окно_среди_окон_а_не_только_виджетов() {
+fn shim_finds_window_among_windows_not_only_widgets() {
     let src = shim_source();
     assert!(
         src.contains("QGuiApplication::topLevelWindows()")
@@ -83,7 +83,7 @@ fn шим_ищет_окно_среди_окон_а_не_только_видже�
 
 /// The widget path must ask the REAL QApplication.
 #[test]
-fn шим_не_создаёт_виджеты_без_qapplication() {
+fn shim_creates_no_widgets_without_qapplication() {
     let src = shim_source();
     assert!(
         src.contains("qobject_cast<QApplication *>(QCoreApplication::instance())"),
@@ -99,7 +99,7 @@ fn шим_не_создаёт_виджеты_без_qapplication() {
 
 /// The window's doors must move into the GUI thread by themselves.
 #[test]
-fn двери_окна_переносятся_в_поток_gui() {
+fn window_entry_points_moved_to_gui_thread() {
     let src = shim_source();
     assert!(
         has_live_line(&src, "bool on_gui_thread("),
@@ -126,7 +126,7 @@ fn двери_окна_переносятся_в_поток_gui() {
 /// QApplication in Rust comes from cxx-qt-lib-extras — without this dependency
 /// the main window binary cannot have an icon.
 #[test]
-fn крейт_gui_объявляет_qapplication_на_rust() {
+fn gui_crate_declares_qapplication_in_rust() {
     let path = repo_root().join("rust/rexon-gui/Cargo.toml");
     let manifest = std::fs::read_to_string(&path).expect("не прочитал манифест rexon-gui");
     assert!(
@@ -139,7 +139,7 @@ fn крейт_gui_объявляет_qapplication_на_rust() {
 /// The reference to the QApplication crate in the rexon-gui root — the line
 /// without which the WHOLE package fails to link, including other binaries.
 #[test]
-fn крейт_gui_ссылается_на_qapplication_из_кода() {
+fn gui_crate_references_qapplication_from_code() {
     let path = repo_root().join("rust/rexon-gui/src/lib.rs");
     let lib = std::fs::read_to_string(&path).expect("не прочитал src/lib.rs крейта rexon-gui");
     assert!(
@@ -155,7 +155,7 @@ fn крейт_gui_ссылается_на_qapplication_из_кода() {
 
 /// The main window must build a QApplication and tear down the scene before exit.
 #[test]
-fn главное_окно_строит_qapplication_и_снимает_сцену() {
+fn main_window_builds_qapplication_and_grabs_scene() {
     let path = repo_root().join("rust/rexon-gui/src/bin/main_window.rs");
     let src = std::fs::read_to_string(&path).expect("не прочитал main_window.rs");
     assert!(
@@ -190,7 +190,7 @@ fn главное_окно_строит_qapplication_и_снимает_сцен�
 
 /// A section from the icon menu switches in the QML window too.
 #[test]
-fn переход_к_разделу_умеет_полосу_на_qml() {
+fn section_jump_supports_qml_strip() {
     let src = shim_source();
     assert!(
         src.contains("QQuickTabBar"),

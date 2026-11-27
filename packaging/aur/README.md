@@ -125,19 +125,21 @@ namcap PKGBUILD; namcap *.pkg.tar.zst   # lint (namcap package)
 `REXON_GITURL="git+file://<path to clone>" makepkg …` — only the
 **committed** state is built, uncommitted changes do not get into the package.
 
-### Variant with the bundled wallpaper engine (`REXON_BUNDLED_ENGINE=1`)
+### Variant with the bundled wallpaper engine (`PKGBUILD.bundled-engine`)
 
 By default the wallpaper engine comes from the separate system packages
 `waywallen` and `open-wallpaper-engine` (this is how the package goes to the
 AUR and CachyOS). For the Steam release, manual installs and machines where
-these packages are missing and you do not want to install them, the same
-PKGBUILD builds a package with the engine inside:
+these packages are missing and you do not want to install them,
+`packaging/PKGBUILD.bundled-engine` builds a package with the engine inside.
+It sources the PKGBUILD next to it, so copy it beside `PKGBUILD` and the
+`.install` file:
 
 ```bash
-REXON_BUNDLED_ENGINE=1 makepkg -f
+makepkg -f -p PKGBUILD.bundled-engine
 ```
 
-What changes with `1` (with `0` or without the variable — nothing):
+What it changes compared to the PKGBUILD:
 
 - `depends`: instead of `waywallen>=…` and `open-wallpaper-engine>=…` —
   `fuse3` (the AppImage runtime) and `at-spi2-core` (CEF inside the plugin);
@@ -157,19 +159,12 @@ What changes with `1` (with `0` or without the variable — nothing):
 Such a package does not conflict with the `waywallen`/`open-wallpaper-engine`
 packages: the bundled files live in their own directories. If both are
 installed, the core starts the system engine and the bundle stays as a
-fallback. Any value of the variable other than `0` and `1` is rejected by
-`prepare()`. The protocol tag guard is the same for both variants:
-`_ww_min` and (in the bundled one) `_ww_ver` must match
-`proto/UPSTREAM_TAG`, `_owe_ver` must be no older than `_owe_min`.
+fallback. Its `prepare()` checks that `_ww_ver` is the
+`proto/UPSTREAM_TAG` tag and `_owe_ver` is no older than `_owe_min`.
 
-`.SRCINFO` describes only the default variant (`makepkg --printsrcinfo`
-without the variable): the AUR and helpers such as paru see the system
-dependencies.
-
-Why an environment variable rather than editing a line at the top of the
-file: `REXON_GITURL` is passed the same way; the file in the repository and
-`.SRCINFO` stay the default variant, and a "one-off" edit cannot be
-committed by accident.
+`.SRCINFO` describes only `PKGBUILD`: the AUR and helpers such as paru see
+the system dependencies. A separate file rather than an environment switch
+keeps the distribution PKGBUILD free of the bundled recipe.
 
 ## Publishing to the AUR (once the public repository exists)
 
@@ -201,34 +196,37 @@ committed by accident.
   `pacman -U/-S`, remove it with Rexon's "Uninstall" or by hand.
 - The package does not install autostart — the tray writes it at the person's choice.
 - The `Qcm.Material` revision is recorded in the PKGBUILD twice — `_qm_pin`
-  and the font checksums. `prepare()` fails if `_qm_pin` lags behind the
-  vendored `QML_MATERIAL_PIN`; when changing the pin, recompute the sha256
+  and the font checksums. The core tests (`app_parity`) fail if `_qm_pin`
+  lags behind the vendored `QML_MATERIAL_PIN`; when changing the pin, recompute the sha256
   of the five fonts (`makepkg -g`) and update `.SRCINFO`.
 - The wallpaper engine comes as separate packages (since 2026-10-30):
   `depends` on `waywallen>=${_ww_min}` and `open-wallpaper-engine>=${_owe_min}`;
   by default the Rexon package does not carry the AppImage, the OWE plugin
-  or its sources (the bundled variant is `REXON_BUNDLED_ENGINE=1`, see
+  or its sources (the bundled variant is `PKGBUILD.bundled-engine`, see
   "Local build"). Both packages are currently in the AUR (ZhangHua):
   `makepkg -s` will not fetch them — install them beforehand (`paru -S
   waywallen open-wallpaper-engine`). `waywallen-bin` does not satisfy the
   versioned dependency of `open-wallpaper-engine` (its `provides=waywallen`
-  has no version). `_ww_min` must match `proto/UPSTREAM_TAG` — `prepare()`
-  checks this; on a vendor bump raise it, check the plugin contract
+  has no version). `_ww_min` must match `proto/UPSTREAM_TAG` — the core
+  tests check this; on a vendor bump raise it, check the plugin contract
   (`SUPPORTED_ENTRY_VERSIONS`, `SPAWN_VERSION`) and `_owe_min`, and update
-  `.SRCINFO`; for the bundled variant also `_ww_ver`, `_owe_ver`, their
+  `.SRCINFO`; for the bundled variant (`PKGBUILD.bundled-engine`) also `_ww_ver`, `_owe_ver`, their
   sha256 (= the GitHub release `digest`), `_owe_git`/`_owe_reg` from the OWE
   tag's `lito.lock` and the lines in `NOTICE`. `_qm_pin` follows
   `QML_MATERIAL_PIN` after `scripts/rexon-vendor-update`.
 - `xdg-terminal-exec` and `yay` in optdepends are AUR packages.
 - `lito` in makedepends is an AUR package too (it is not in the official
   repositories): it builds the QExtra QML plugin. Before building, install
-  `lito` or `lito-bin` (provides=lito), version 0.8.7 or newer — `makepkg -s`
+  `lito` or `lito-bin` (provides=lito), version 0.8.11 or newer — `makepkg -s`
   will not fetch it from the AUR by itself; a suitable binary from elsewhere
   can be given via the `LITO` variable (together with `makepkg -d`, since
   the dependency is not installed as a package). The build directory
-  (`BUILDDIR`) must be an ASCII-only path — otherwise `prepare()` refuses.
-  The QExtra sources (`_qe_git`, `_qe_reg`) must match
-  `tools/qextra_plugin/lito.lock`; it is written by `scripts/rexon-vendor-update`.
+  (`BUILDDIR`) must be an ASCII-only path — otherwise the build refuses
+  before compiling. The QExtra sources are fetched by `lito fetch --locked`
+  in `prepare()` from `tools/qextra_plugin/lito.lock` (written by
+  `scripts/rexon-vendor-update`); the build itself is offline (`--frozen`).
+- The build steps live in `scripts/package-build` (prepare, build, check,
+  install); the PKGBUILD only calls it.
 - Any `makepkg.conf` flags will do (`-O2` on Arch, `-O3` on CachyOS, with or
   without `-g`): QExtra is built with lito's `release` profile, which
   controls optimization, debug info, LTO and strip itself — these flags and
@@ -238,7 +236,7 @@ committed by accident.
 - Memory. The build is parallel, and on a machine with 8 GB of RAM it was
   killed by OOM twice: `rustc` while linking and `cc1plus` on
   `control.qpb.cpp`. The job count is limited by `CARGO_BUILD_JOBS` (Rust)
-  and `-jN` in `MAKEFLAGS` (`makepkg.conf`): from the latter `build()`
+  and `-jN` in `MAKEFLAGS` (`makepkg.conf`): from the latter `scripts/package-build`
   derives `CMAKE_BUILD_PARALLEL_LEVEL` for `cmake --build` and lito's job
   count, unless they are set explicitly.
   With 8 GB this works:

@@ -158,6 +158,10 @@
     },
     {
      "q": "availability",
+     "sig": "browserHelpersChanged"
+    },
+    {
+     "q": "availability",
      "sig": "sourcesChanged"
     },
     {
@@ -2856,6 +2860,10 @@
     },
     {
      "q": "availability",
+     "sig": "browserHelpersChanged"
+    },
+    {
+     "q": "availability",
      "sig": "sourcesChanged"
     },
     {
@@ -4852,6 +4860,10 @@
      "token": 1,
      "field": "remote_availability",
      "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "browserHelpersChanged"
     },
     {
      "q": "availability",

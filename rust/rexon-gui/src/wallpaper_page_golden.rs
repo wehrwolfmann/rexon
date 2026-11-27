@@ -776,7 +776,13 @@ pub fn request_json(frame: &[u8]) -> (String, Value) {
         pb::request::Payload::WallpaperApply(r) => (
             "wallpaper_apply".into(),
             map(vec![
-                ("wallpaper_id", Value::String(r.wallpaper_id)),
+                (
+                    "wallpaper_id",
+                    Value::String(match r.wallpaper {
+                        Some(pb::wallpaper_apply_request::Wallpaper::WallpaperId(id)) => id,
+                        _ => String::new(),
+                    }),
+                ),
                 ("targets", targets(&r.targets)),
                 ("renderer_name", Value::String(r.renderer_name)),
             ]),

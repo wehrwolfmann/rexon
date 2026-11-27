@@ -16,6 +16,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import org.rexon.gui 1.0
 
@@ -47,6 +48,16 @@ Rectangle {
     property real clock: 0
 
     readonly property real labelWidth: Math.max(section.sty.widths.fieldLabel, 220)
+
+    /// A program is missing for «Apply» (picom on MATE/Xfce/LXQt), and Rexon
+    /// can install it itself: instead of «Apply» there is «Install … and
+    /// apply». Without it the section used to say «press “Apply”» while
+    /// hiding the button — a dead end (27.11.2026, MATE).
+    readonly property bool canInstall: section.st.can_apply !== true
+                                       && (section.st.missing || "") !== ""
+                                       && (section.st.install || []).length > 0
+    /// The current action is an installation (for the button label).
+    property bool installing: false
 
     readonly property var selectedTile: (section.st.presets || []).find(p => p.id === section.selected) || null
 
@@ -96,7 +107,8 @@ Rectangle {
     function applySelected() {
         section.before = { preset: section.st.preset || "", strength: section.st.strength, speed: section.st.speed };
         section.asked = section.selected;
-        actions.request("apply", section.de, section.selected, section.strength, section.speed);
+        section.installing = section.canInstall;
+        actions.request(section.canInstall ? "install" : "apply", section.de, section.selected, section.strength, section.speed);
     }
 
     /// The tile the last action came from. While it was running, the user may
@@ -105,6 +117,7 @@ Rectangle {
     property string asked: ""
 
     function finished(tag, text, changed, shown, state) {
+        section.installing = false;
         if (text)
             section.message(text);
         const picked = section.selected !== section.asked ? section.selected : null;
@@ -115,7 +128,7 @@ Rectangle {
         // greyscale filter of KDE/Pantheon/COSMIC will not leave a black screen),
         // and only if the effect is actually enabled: on GNOME/Cinnamon this is
         // confirmed by the extension itself (`shown`).
-        if (tag === "apply" && changed && shown && section.st.trial === true
+        if ((tag === "apply" || tag === "install") && changed && shown && section.st.trial === true
                 && (section.st.preset || "") !== "") {
             section.previous = section.before;
             section.secondsLeft = section.confirmSeconds;
@@ -177,7 +190,13 @@ Rectangle {
     border.color: section.sty.group.border
     border.width: 1
     radius: section.sty.group.radius
-    implicitHeight: body.implicitHeight + 2 * (section.sty.group.marginV + border.width)
+    /// The height to fill (the "Appearance" screen gives its own); 0 — as tall
+    /// as the content, nothing scrolls inside.
+    property real fillHeight: 0
+    implicitHeight: section.fillHeight > 0
+                    ? section.fillHeight
+                    : head.implicitHeight + section.sty.group.spacing + body.implicitHeight
+                      + 2 * (section.sty.group.marginV + border.width)
 
     // ── Desktop sample under the tiles ────────────────────────────────────
     // Drawn once and handed to all tiles as a texture.
@@ -302,213 +321,91 @@ Rectangle {
         height: 0
     }
 
+    // ── Pinned: title, hint, buttons, the trial strip ─────────────────────
+    // As in "MATE panel" (Wehrwolfmann 27.11.2026): "Apply" stays at the top
+    // right whatever the tiles are scrolled to; with `fillHeight` the section
+    // fills the screen and only the part below scrolls.
+
     ColumnLayout {
-        id: body
+        id: head
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        height: implicitHeight
         spacing: section.sty.group.spacing
 
-        RexonText {
+        RowLayout {
             Layout.fillWidth: true
-            text: qsTranslate("rexon", "Screen effects")
-            color: section.pal.text_primary
-            font.bold: true
-            font.pointSize: 13
-            wrapMode: Text.WordWrap
-        }
+            spacing: 8
 
-        RexonText {
-            Layout.fillWidth: true
-            text: qsTranslate("rexon", "Make the screen look like an old tube monitor, a worn video tape or a film print. Pick an effect and press “Apply”; “Off” returns the screen to normal.")
-            color: section.pal.text_secondary
-            wrapMode: Text.WordWrap
-        }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
 
-        // What this environment can do — a core phrase (the `support` table).
-        RexonText {
-            objectName: "screenEffectsNote"
-            Layout.fillWidth: true
-            visible: (section.st.note || "") !== ""
-            text: section.st.note || ""
-            color: section.st.can_apply === true ? section.pal.text_secondary : section.pal.state_warn
-            wrapMode: Text.WordWrap
-        }
+                RexonText {
+                    Layout.fillWidth: true
+                    text: qsTranslate("rexon", "Screen effects")
+                    color: section.pal.text_primary
+                    font.bold: true
+                    font.pointSize: 13
+                    wrapMode: Text.WordWrap
+                }
 
-        RexonText {
-            Layout.fillWidth: true
-            visible: (section.st.needs || "") !== ""
-            // TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
-            text: bidi.arg(qsTranslate("rexon", "Needs: %1"), section.st.needs || "")
-            color: section.pal.text_secondary
-            wrapMode: Text.WordWrap
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            spacing: 10
-
-            Repeater {
-                model: [{ id: "", label: qsTranslate("rexon", "Off", "screen effect"), index: -1, animated: false }]
-                       .concat(section.st.presets || [])
-
-                delegate: Rectangle {
-                    id: tile
-                    required property var modelData
-                    readonly property bool chosen: tile.modelData.id === section.selected
-                    readonly property bool current: tile.modelData.id === (section.st.preset || "")
-
-                    objectName: "screenEffectTile_" + (tile.modelData.id || "off")
-                    width: 196
-                    height: tileColumn.implicitHeight + 12
-                    radius: 6
-                    color: tileMouse.containsMouse ? section.pal.bg_card_hover : section.pal.bg_card
-                    border.width: tile.chosen || tile.activeFocus ? 2 : 1
-                    border.color: tile.chosen || tile.activeFocus ? section.pal.accent : section.pal.border
-                    activeFocusOnTab: true
-
-                    Keys.onReturnPressed: section.selected = tile.modelData.id
-                    Keys.onSpacePressed: section.selected = tile.modelData.id
-
-                    MouseArea {
-                        id: tileMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            section.selected = tile.modelData.id;
-                            tile.forceActiveFocus();
-                        }
-                    }
-
-                    Column {
-                        id: tileColumn
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.margins: 6
-                        y: 6
-                        spacing: 4
-
-                        ShaderEffect {
-                            id: preview
-                            width: parent.width
-                            height: Math.round(width * sample.height / sample.width)
-                            readonly property bool plain: tile.modelData.index < 0
-                            property variant source: sampleTexture
-                            property real rx_preset: Math.max(0, tile.modelData.index)
-                            property real rx_s: section.strength
-                            property real rx_window: section.st.per_window === true ? 1 : 0
-                            property real rx_time: tile.modelData.animated === true ? section.clock : 0
-                            property size rx_res: Qt.size(preview.width, preview.height)
-                            // "Off" — the sample as is (the default Qt shader).
-                            fragmentShader: preview.plain ? "" : "shaders/screen-effects.frag.qsb"
-                        }
-
-                        RowLayout {
-                            width: parent.width
-                            spacing: 4
-
-                            RexonText {
-                                Layout.fillWidth: true
-                                text: (tile.chosen ? "◉ " : "○ ") + tile.modelData.label
-                                color: section.pal.text_primary
-                                elide: Text.ElideRight
-                            }
-
-                            RexonText {
-                                visible: tile.current
-                                text: qsTranslate("rexon", "(current)")
-                                color: section.pal.accent
-                            }
-                        }
-                    }
+                // The hint names only the button that is really there: «Apply», or
+                // «Install … and apply» when a program is missing; where nothing can be
+                // applied, the core note below says why.
+                RexonText {
+                    objectName: "screenEffectsIntro"
+                    Layout.fillWidth: true
+                    text: section.st.can_apply === true
+                          ? qsTranslate("rexon", "Make the screen look like an old tube monitor, a worn video tape or a film print. Pick an effect and press “Apply”; “Off” returns the screen to normal.")
+                          : section.canInstall
+                            // TRANSLATORS: %1 is a program name, e.g. picom; the quoted text is the label of the button below.
+                            ? bidi.arg(qsTranslate("rexon", "Make the screen look like an old tube monitor, a worn video tape or a film print. Pick an effect and press “Install %1 and apply”; “Off” returns the screen to normal."), section.st.missing)
+                            : qsTranslate("rexon", "Make the screen look like an old tube monitor, a worn video tape or a film print.")
+                    color: section.pal.text_secondary
+                    wrapMode: Text.WordWrap
                 }
             }
-        }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            // The stock COSMIC filter has no strength — the slider would change nothing.
-            visible: section.st.has_strength !== false
-
-            RexonText {
-                Layout.preferredWidth: section.labelWidth
-                wrapMode: Text.WordWrap
-                text: qsTranslate("rexon", "Strength:")
-                color: section.pal.text_primary
-            }
-
-            RexonText {
-                text: qsTranslate("rexon", "Subtle")
-                color: section.pal.text_secondary
-            }
-
-            RexonSlider {
-                id: strengthSlider
-                objectName: "screenEffectsStrength"
-                Layout.fillWidth: true
+            // Remove our block: the config returns to its previous bytes.
+            RexonButton {
+                objectName: "screenEffectsRestore"
+                Layout.alignment: Qt.AlignTop
                 pal: section.pal
-                enabled: section.selected !== ""
-                from: 0
-                to: 1
-                stepSize: 0.05
-                value: section.strength
-                onMoved: section.strength = strengthSlider.value
+                visible: (section.st.can_apply === true || section.canInstall) && !section.confirming
+                         && (section.st.preset || "") !== ""
+                enabled: !section.busy
+                text: qsTranslate("rexon", "Restore as it was")
+                // The environment goes as the second argument, right after the action
+                // kind, as with "Apply": previously an empty string went in place of the
+                // environment and the strength in place of the preset.
+                onClicked: {
+                    section.asked = "";
+                    section.selected = "";
+                    actions.request("restore", section.de, "", section.strength, section.speed);
+                }
             }
 
-            RexonText {
-                text: qsTranslate("rexon", "Strong")
-                color: section.pal.text_secondary
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            // Only moving effects have a speed, and only where the host gives them time.
-            visible: section.st.moving === true
-
-            RexonText {
-                Layout.preferredWidth: section.labelWidth
-                wrapMode: Text.WordWrap
-                text: qsTranslate("rexon", "Motion speed:")
-                color: section.pal.text_primary
-            }
-
-            RexonText {
-                text: qsTranslate("rexon", "Still")
-                color: section.pal.text_secondary
-            }
-
-            RexonSlider {
-                id: speedSlider
-                objectName: "screenEffectsSpeed"
-                Layout.fillWidth: true
+            RexonButton {
+                objectName: "screenEffectsApply"
+                Layout.alignment: Qt.AlignTop
+                visible: (section.st.can_apply === true || section.canInstall) && !section.confirming
                 pal: section.pal
-                enabled: section.selectedTile !== null && section.selectedTile.animated === true
-                from: 0
-                to: section.st.max_speed || 3
-                stepSize: 0.25
-                value: section.speed
-                onMoved: section.speed = speedSlider.value
+                highlighted: true
+                // Installing makes sense only for an effect: «Off» needs nothing.
+                enabled: section.dirty && !section.busy && (!section.canInstall || section.selected !== "")
+                text: section.busy
+                      ? (section.installing
+                         // TRANSLATORS: %1 is a program name, e.g. picom.
+                         ? bidi.arg(qsTranslate("rexon", "Installing %1…", "screen effect"), section.st.missing || "")
+                         : qsTranslate("rexon", "Applying…", "screen effect"))
+                      : (section.canInstall
+                         // TRANSLATORS: %1 is a program name, e.g. picom.
+                         ? bidi.arg(qsTranslate("rexon", "Install %1 and apply"), section.st.missing || "")
+                         : qsTranslate("rexon", "Apply"))
+                onClicked: section.applySelected()
             }
-
-            RexonText {
-                text: qsTranslate("rexon", "Fast")
-                color: section.pal.text_secondary
-            }
-        }
-
-        RexonText {
-            Layout.fillWidth: true
-            visible: section.st.moving === true && section.selectedTile !== null
-                     && section.selectedTile.animated === true && section.speed > 0
-            text: qsTranslate("rexon", "Moving effects keep the graphics card busy all the time. At “Still” the picture stays the same and costs almost nothing.")
-            color: section.pal.text_secondary
-            wrapMode: Text.WordWrap
         }
 
         // The "on trial" confirmation is in the page itself, without a pop-up
@@ -557,39 +454,224 @@ Rectangle {
                 }
             }
         }
+    }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            visible: section.st.can_apply === true && !section.confirming
+    // ── Everything else: scrolls under the pinned part ────────────────────
 
-            RexonButton {
-                objectName: "screenEffectsApply"
-                pal: section.pal
-                highlighted: true
-                enabled: section.dirty && !section.busy
-                text: section.busy ? qsTranslate("rexon", "Applying…", "screen effect") : qsTranslate("rexon", "Apply")
-                onClicked: section.applySelected()
+    ScrollView {
+        id: bodyView
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: head.bottom
+        anchors.topMargin: section.sty.group.spacing
+        anchors.leftMargin: section.sty.group.marginH + section.border.width
+        anchors.rightMargin: section.sty.group.marginH + section.border.width
+        height: section.fillHeight > 0
+                ? Math.max(0, section.height - head.height - section.sty.group.spacing
+                              - 2 * (section.sty.group.marginV + section.border.width))
+                : body.implicitHeight
+        clip: true
+        contentWidth: availableWidth
+
+        ColumnLayout {
+            id: body
+            width: bodyView.availableWidth
+            spacing: section.sty.group.spacing
+
+            // What this environment can do — a core phrase (the `support` table).
+            RexonText {
+                objectName: "screenEffectsNote"
+                Layout.fillWidth: true
+                visible: (section.st.note || "") !== ""
+                text: section.st.note || ""
+                color: section.st.can_apply === true ? section.pal.text_secondary : section.pal.state_warn
+                wrapMode: Text.WordWrap
             }
 
-            // Remove our block: the config returns to its previous bytes.
-            RexonButton {
-                objectName: "screenEffectsRestore"
-                pal: section.pal
-                visible: (section.st.preset || "") !== ""
-                enabled: !section.busy
-                text: qsTranslate("rexon", "Restore as it was")
-                // The environment goes as the second argument, right after the action
-                // kind, as with "Apply": previously an empty string went in place of the
-                // environment and the strength in place of the preset.
-                onClicked: {
-                    section.asked = "";
-                    section.selected = "";
-                    actions.request("restore", section.de, "", section.strength, section.speed);
+            RexonText {
+                Layout.fillWidth: true
+                visible: (section.st.needs || "") !== "" && !section.canInstall
+                // TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
+                text: bidi.arg(qsTranslate("rexon", "Needs: %1"), section.st.needs || "")
+                color: section.pal.text_secondary
+                wrapMode: Text.WordWrap
+            }
+
+            // What the installation will do — said before the button is pressed.
+            RexonText {
+                objectName: "screenEffectsInstallNote"
+                Layout.fillWidth: true
+                visible: section.canInstall
+                // TRANSLATORS: %1 is a program name, e.g. picom.
+                text: bidi.arg(qsTranslate("rexon", "Rexon will install %1 (it asks for your password). %1 takes the place of the desktop's built-in compositor while an effect is on; “Off” brings the built-in one back."), section.st.missing || "")
+                color: section.pal.text_secondary
+                wrapMode: Text.WordWrap
+            }
+
+            Flow {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Repeater {
+                    model: [{ id: "", label: qsTranslate("rexon", "Off", "screen effect"), index: -1, animated: false }]
+                           .concat(section.st.presets || [])
+
+                    delegate: Rectangle {
+                        id: tile
+                        required property var modelData
+                        readonly property bool chosen: tile.modelData.id === section.selected
+                        readonly property bool current: tile.modelData.id === (section.st.preset || "")
+
+                        objectName: "screenEffectTile_" + (tile.modelData.id || "off")
+                        width: 196
+                        height: tileColumn.implicitHeight + 12
+                        radius: 6
+                        color: tileMouse.containsMouse ? section.pal.bg_card_hover : section.pal.bg_card
+                        border.width: tile.chosen || tile.activeFocus ? 2 : 1
+                        border.color: tile.chosen || tile.activeFocus ? section.pal.accent : section.pal.border
+                        activeFocusOnTab: true
+
+                        Keys.onReturnPressed: section.selected = tile.modelData.id
+                        Keys.onSpacePressed: section.selected = tile.modelData.id
+
+                        MouseArea {
+                            id: tileMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                section.selected = tile.modelData.id;
+                                tile.forceActiveFocus();
+                            }
+                        }
+
+                        Column {
+                            id: tileColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 6
+                            y: 6
+                            spacing: 4
+
+                            ShaderEffect {
+                                id: preview
+                                width: parent.width
+                                height: Math.round(width * sample.height / sample.width)
+                                readonly property bool plain: tile.modelData.index < 0
+                                property variant source: sampleTexture
+                                property real rx_preset: Math.max(0, tile.modelData.index)
+                                property real rx_s: section.strength
+                                property real rx_window: section.st.per_window === true ? 1 : 0
+                                property real rx_time: tile.modelData.animated === true ? section.clock : 0
+                                property size rx_res: Qt.size(preview.width, preview.height)
+                                // "Off" — the sample as is (the default Qt shader).
+                                fragmentShader: preview.plain ? "" : "shaders/screen-effects.frag.qsb"
+                            }
+
+                            RowLayout {
+                                width: parent.width
+                                spacing: 4
+
+                                RexonText {
+                                    Layout.fillWidth: true
+                                    text: (tile.chosen ? "◉ " : "○ ") + tile.modelData.label
+                                    color: section.pal.text_primary
+                                    elide: Text.ElideRight
+                                }
+
+                                RexonText {
+                                    visible: tile.current
+                                    text: qsTranslate("rexon", "(current)")
+                                    color: section.pal.accent
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            Item { Layout.fillWidth: true }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                // The stock COSMIC filter has no strength — the slider would change nothing.
+                visible: section.st.has_strength !== false
+
+                RexonText {
+                    Layout.preferredWidth: section.labelWidth
+                    wrapMode: Text.WordWrap
+                    text: qsTranslate("rexon", "Strength:")
+                    color: section.pal.text_primary
+                }
+
+                RexonText {
+                    text: qsTranslate("rexon", "Subtle")
+                    color: section.pal.text_secondary
+                }
+
+                RexonSlider {
+                    id: strengthSlider
+                    objectName: "screenEffectsStrength"
+                    Layout.fillWidth: true
+                    pal: section.pal
+                    enabled: section.selected !== ""
+                    from: 0
+                    to: 1
+                    stepSize: 0.05
+                    value: section.strength
+                    onMoved: section.strength = strengthSlider.value
+                }
+
+                RexonText {
+                    text: qsTranslate("rexon", "Strong")
+                    color: section.pal.text_secondary
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                // Only moving effects have a speed, and only where the host gives them time.
+                visible: section.st.moving === true
+
+                RexonText {
+                    Layout.preferredWidth: section.labelWidth
+                    wrapMode: Text.WordWrap
+                    text: qsTranslate("rexon", "Motion speed:")
+                    color: section.pal.text_primary
+                }
+
+                RexonText {
+                    text: qsTranslate("rexon", "Still")
+                    color: section.pal.text_secondary
+                }
+
+                RexonSlider {
+                    id: speedSlider
+                    objectName: "screenEffectsSpeed"
+                    Layout.fillWidth: true
+                    pal: section.pal
+                    enabled: section.selectedTile !== null && section.selectedTile.animated === true
+                    from: 0
+                    to: section.st.max_speed || 3
+                    stepSize: 0.25
+                    value: section.speed
+                    onMoved: section.speed = speedSlider.value
+                }
+
+                RexonText {
+                    text: qsTranslate("rexon", "Fast")
+                    color: section.pal.text_secondary
+                }
+            }
+
+            RexonText {
+                Layout.fillWidth: true
+                visible: section.st.moving === true && section.selectedTile !== null
+                         && section.selectedTile.animated === true && section.speed > 0
+                text: qsTranslate("rexon", "Moving effects keep the graphics card busy all the time. At “Still” the picture stays the same and costs almost nothing.")
+                color: section.pal.text_secondary
+                wrapMode: Text.WordWrap
+            }
         }
     }
 }

@@ -307,6 +307,27 @@ pub fn system_install_dirs(xdg_data_dirs: &str, home: &str) -> Vec<String> {
     out
 }
 
+/// Whether the plugin is installed anywhere a Plasma session would find it — the
+/// original's `QStandardPaths::locate(GenericDataLocation,
+/// "plasma/wallpapers/org.waywallen.kde/metadata.json")`: the user's data directory
+/// (`$XDG_DATA_HOME`, by default `~/.local/share`) first, then `$XDG_DATA_DIRS`.
+/// `exists` checks a file path (the executor's file system).
+pub fn plugin_installed(
+    home: &str,
+    xdg_data_home: &str,
+    xdg_data_dirs: &str,
+    exists: &dyn Fn(&str) -> bool,
+) -> bool {
+    let user = if xdg_data_home.is_empty() {
+        install_dir(home.trim_end_matches('/'))
+    } else {
+        join(&[xdg_data_home, "plasma/wallpapers", PLUGIN_ID])
+    };
+    std::iter::once(user)
+        .chain(system_install_dirs(xdg_data_dirs, home))
+        .any(|dir| exists(&metadata_json_path(&dir)))
+}
+
 /// What is visible about the packaged plugin (the executor reads the FS and asks the
 /// package manager).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -1273,11 +1294,16 @@ pub fn parse_vendor_version(text: &str) -> Option<String> {
 ///
 /// ⚠️ The hash changes not only with the version: Rexon packages up to and including r1278
 /// stripped debug symbols from the `.so`, and one installed from them has a different hash
-/// than the release. Since 09.10.2026 the plasmoid travels from the release archive bit for bit
-/// (PKGBUILD excludes it from `_strip_own_binaries`), but the stripped forms
-/// remain for those who installed the earlier packages. An unknown hash means the version is
-/// unknown, not "old".
+/// than the release. The bundled-engine build ships the plasmoid bit for bit (it is excluded
+/// from `_strip_own_binaries`); the distribution package lets makepkg strip it. The version
+/// of our own installs still comes from `vendor.toml`, but moving between the two builds
+/// changes the runtime hash, so the plugin is refreshed once ("same version, different
+/// content"). The stripped forms below remain for those who installed the earlier packages.
+/// An unknown hash means the version is unknown, not "old".
 pub const KNOWN_RUNTIME_SHA: &[(&str, &str)] = &[
+    // 0.4.8 — the upstream release `waywallen-kde-0.4.8-x86_64.zip` (travels in the
+    // bundled-engine package since 27.11.2026).
+    ("9d5cb24ecd1fd38b", "0.4.8"),
     // 0.4.5 — the upstream release `waywallen-kde-0.4.5-x86_64.zip` (travels in the package
     // since 08.11.2026; from this release on the archive has no "-embed" suffix).
     ("4d90629e44055113", "0.4.5"),
@@ -1320,7 +1346,8 @@ pub fn version_from_runtime_sha(sha: &str) -> Option<&'static str> {
 /// library: EGL frame synchronisation, #76; v0.4.3 checked 23.10.2026 —
 /// the same constant, only an optional "tagged" display role field
 /// added; v0.4.4 and v0.4.5 checked 08.11.2026 — the same constant, v9; v0.4.6
-/// checked 25.11.2026 by the tag's `include/waywallen_display.h` — still v9).
+/// checked 25.11.2026 by the tag's `include/waywallen_display.h` — still v9; v0.4.7
+/// and v0.4.8 checked 27.11.2026 the same way — still v9).
 pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
     ("0.4.0", 9),
     ("0.3.0", 8),
@@ -1333,18 +1360,19 @@ pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
 
 /// Up to which plugin version the table above is verified. For newer ones we do not
 /// guess the protocol (a new release could have changed it).
-pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.6";
+pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.8";
 
 /// Which display protocols a waywallen daemon of a given version accepts
 /// (`MIN/MAX_SUPPORTED_CLIENT_VERSION`), in descending version order. Taken from the
 /// upstream `waywallen` tags on 02.10.2026, v0.4.4 checked 09.10.2026, v0.5.0 —
 /// 23.10.2026, v0.6.0 — 08.11.2026 (still `[9..=9]`); v0.6.1 checked 2026-11-23,
-/// still `[9..=9]`. Below 0.3.0 nothing is recorded (the range is wider there and of no
+/// still `[9..=9]`; v0.6.2 and v0.6.3 checked 2026-11-27 (`protocol/waywallen_display_v1.xml`
+/// version 9, `MIN/MAX_SUPPORTED_CLIENT_VERSION = PROTOCOL_VERSION`). Below 0.3.0 nothing is recorded (the range is wider there and of no
 /// interest to us) — no verdict.
 pub const DAEMON_DISPLAY_PROTOCOLS: &[(&str, u32, u32)] = &[("0.4.0", 9, 9), ("0.3.0", 8, 8)];
 
 /// Up to which daemon version the table above is verified.
-pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.6.1";
+pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.6.3";
 
 fn version_key(v: &str) -> Vec<u128> {
     let mut t = crate::engine_update::ver_tuple(v);

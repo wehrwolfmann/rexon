@@ -600,7 +600,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn свой_поток_не_считается_чужим_звуком() {
+    fn own_stream_not_counted_as_foreign_audio() {
         // The signs must cover what our stream is labelled with in the sound
         // system: otherwise the wallpaper mutes itself, and it looks like "the
         // sound just does not work".
@@ -609,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn поток_flash_обоев_тоже_свой() {
+    fn flash_wallpaper_stream_also_own() {
         // ⭐ A live measurement on 16.09.2026: Flash goes to audio as an ALSA
         // client, and PipeWire's ALSA plugin labels the stream in its own words.
         // None of the previous names gave an exact match — Flash wallpapers muted
@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn бэкенд_опроса_берётся_из_ядра() {
+    fn polling_backend_taken_from_core() {
         // There is no "what to ask with" table of our own here — only converting
         // the environment name into what the core already knows.
         assert_eq!(
@@ -639,14 +639,14 @@ mod tests {
     }
 
     #[test]
-    fn неизвестное_окружение_не_оставляет_без_звука() {
+    fn unknown_desktop_does_not_leave_silence() {
         // There is no way to learn about windows — the wallpaper must play, not
         // stay silent.
         assert_eq!(probe_windows("", 1920, 1080), Conditions::default());
     }
 
     #[test]
-    fn объяснение_различает_тишину_по_просьбе_и_по_обстановке() {
+    fn explanation_distinguishes_requested_and_situational_silence() {
         let off = AudioSettings {
             enabled: false,
             ..AudioSettings::default()

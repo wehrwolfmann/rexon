@@ -45,7 +45,7 @@ const HOME: &str = "/home/tester";
 /// the engine DB). The sequence is compared with LIVE Python: the real
 /// `os.path.isfile` / `shutil.which` calls were recorded there.
 #[test]
-fn порядок_кандидатов_бинаря() {
+fn binary_candidate_order() {
     let g = golden();
     let expect: Vec<(String, String)> = g["find_daemon_probe_order"]
         .as_array()
@@ -73,7 +73,7 @@ fn порядок_кандидатов_бинаря() {
 /// The stale extracted binary is excluded deliberately — it must never
 /// appear among the candidates under any conditions.
 #[test]
-fn owe_ref_не_в_кандидатах() {
+fn owe_ref_not_among_candidates() {
     for c in wc::daemon_binary_candidates(PKG, HOME) {
         if let wc::DaemonCandidate::File(p) = c {
             assert!(
@@ -107,7 +107,7 @@ impl wc::DaemonFs for FakeFs {
 }
 
 #[test]
-fn выбор_бинаря_по_приоритету() {
+fn binary_choice_by_priority() {
     let bundled = format!("{PKG}/vendor/waywallen.AppImage");
     let bundled_plain = format!("{PKG}/vendor/waywallen");
     let managed = wc::managed_appimage_path(HOME);
@@ -837,7 +837,7 @@ fn refresh_texts_name_who_brought_the_update() {
 // ============================================================================
 
 #[test]
-fn содержимое_автозапуска() {
+fn autostart_contents() {
     let g = golden();
     let a = &g["autostart"];
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
@@ -852,7 +852,7 @@ fn содержимое_автозапуска() {
     // the AppImage was unmounted under a still running process. Everything
     // ELSE in the contents must match Python byte for byte.
     let unit = wc::autostart_unit_content(&binary);
-    let без_починки: String = unit
+    let without_repair: String = unit
         .lines()
         .filter(|l| {
             !l.starts_with("KillMode=") && !l.starts_with("# The daemon lives in an AppImage")
@@ -865,7 +865,7 @@ fn содержимое_автозапуска() {
         })
         .map(|l| format!("{l}\n"))
         .collect();
-    assert_eq!(без_починки, a["unit_content"].as_str().unwrap());
+    assert_eq!(without_repair, a["unit_content"].as_str().unwrap());
     // Retaken 01.10.2026: `Comment=` in English + `Comment[<code>]` from
     // the catalog (previously there was only `Comment[ru]`), `Name[ru]` from the catalog.
     assert_eq!(
@@ -881,29 +881,29 @@ fn содержимое_автозапуска() {
 /// a still living process, and a normal shutdown ends with SIGBUS. We check
 /// ALL unit templates Rexon writes for the user.
 #[test]
-fn юниты_с_appimage_обязаны_нести_killmode_mixed() {
-    let проверить = |имя: &str, unit: &str| {
-        let из_appimage = unit
+fn appimage_units_must_carry_killmode_mixed() {
+    let check = |label_name: &str, unit: &str| {
+        let from_appimage = unit
             .lines()
             .filter(|l| l.starts_with("ExecStart="))
             .any(|l| l.to_ascii_lowercase().contains(".appimage"));
-        if !из_appimage {
+        if !from_appimage {
             return;
         }
         assert!(
             unit.lines().any(|l| l.trim() == "KillMode=mixed"),
-            "{имя}: ExecStart ведёт на AppImage, но KillMode=mixed нет — \
+            "{label_name}: ExecStart ведёт на AppImage, но KillMode=mixed нет — \
              остановка службы даст SIGBUS (разбор в шапке we_client)"
         );
     };
 
-    проверить(
+    check(
         wc::AUTOSTART_UNIT,
         &wc::autostart_unit_content(&format!(
             "{HOME}/.local/share/waywallen/waywallen.AppImage"
         )),
     );
-    проверить(
+    check(
         "rexon-session-splash.service",
         &rexon_core::session_splash::systemd_unit_content("/usr/bin/rexon --session-splash"),
     );
@@ -913,9 +913,9 @@ fn юниты_с_appimage_обязаны_нести_killmode_mixed() {
 /// only the wrapping is edited. Otherwise template fixes would reach only those who
 /// clicked «Start at login» again.
 #[test]
-fn освежение_устаревшего_юнита() {
+fn refresh_of_outdated_unit() {
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
-    let свежий = wc::autostart_unit_content(&binary);
+    let fresh = wc::autostart_unit_content(&binary);
 
     // No file — nothing to touch.
     assert_eq!(wc::refresh_unit_plan(None, None, HOME), wc::UnitRefresh::Skip);
@@ -926,46 +926,46 @@ fn освежение_устаревшего_юнита() {
     );
     // An up-to-date unit is not touched.
     assert_eq!(
-        wc::refresh_unit_plan(Some(&свежий), None, HOME),
+        wc::refresh_unit_plan(Some(&fresh), None, HOME),
         wc::UnitRefresh::UpToDate
     );
 
     // A unit of the old kind (no KillMode) — rewrite it, keeping the binary.
-    let старый: String = свежий
+    let old_unit: String = fresh
         .lines()
         .filter(|l| !l.starts_with("KillMode=") && !l.starts_with('#'))
         .map(|l| format!("{l}\n"))
         .collect();
-    match wc::refresh_unit_plan(Some(&старый), None, HOME) {
+    match wc::refresh_unit_plan(Some(&old_unit), None, HOME) {
         wc::UnitRefresh::Rewrite {
             unit_path,
             unit_content,
             daemon_reload_argv,
         } => {
             assert_eq!(unit_path, wc::autostart_unit_path(None, HOME));
-            assert_eq!(unit_content, свежий);
+            assert_eq!(unit_content, fresh);
             assert_eq!(daemon_reload_argv, wc::autostart_daemon_reload_argv());
         }
         other => panic!("ожидался Rewrite, получено {other:?}"),
     }
 
     // The engine path was chosen by the user — it must not be replaced.
-    let свой = "/opt/waywallen/waywallen.AppImage";
-    let чужой: String = wc::autostart_unit_content(свой)
+    let own = "/opt/waywallen/waywallen.AppImage";
+    let foreign: String = wc::autostart_unit_content(own)
         .lines()
         .filter(|l| !l.starts_with("KillMode="))
         .map(|l| format!("{l}\n"))
         .collect();
-    match wc::refresh_unit_plan(Some(&чужой), None, HOME) {
+    match wc::refresh_unit_plan(Some(&foreign), None, HOME) {
         wc::UnitRefresh::Rewrite { unit_content, .. } => {
-            assert_eq!(unit_content, wc::autostart_unit_content(свой));
+            assert_eq!(unit_content, wc::autostart_unit_content(own));
         }
         other => panic!("ожидался Rewrite, получено {other:?}"),
     }
 }
 
 #[test]
-fn бинарь_из_записанного_юнита() {
+fn binary_from_written_unit() {
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
     assert_eq!(
         wc::unit_binary(&wc::autostart_unit_content(&binary)).as_deref(),
@@ -981,7 +981,7 @@ fn бинарь_из_записанного_юнита() {
 }
 
 #[test]
-fn пути_автозапуска() {
+fn autostart_paths() {
     let g = golden();
     let a = &g["autostart"];
 
@@ -1034,7 +1034,7 @@ fn argv_systemctl() {
 }
 
 #[test]
-fn вердикт_autostart_enabled() {
+fn autostart_enabled_verdict() {
     // systemd said enabled — that is enough.
     assert!(wc::autostart_enabled(Some((0, "enabled\n")), false));
     // nonzero code / another status → look at XDG.
@@ -1047,7 +1047,7 @@ fn вердикт_autostart_enabled() {
 }
 
 #[test]
-fn планы_автозапуска() {
+fn autostart_plans() {
     let _lang = i18n_pin::ru();
     let g = golden();
     let msgs = &g["autostart"]["messages"];
@@ -1090,7 +1090,7 @@ fn планы_автозапуска() {
         } => {
             assert_eq!(unit_path, wc::autostart_unit_path(None, HOME));
             // The contents themselves are compared with the Python golden data in
-            // `содержимое_автозапуска` (the intentional divergence on
+            // `autostart_contents` (the intentional divergence on
             // `KillMode` is there too); here what matters is that the plan carries exactly them.
             assert_eq!(unit_content, wc::autostart_unit_content(&binary));
             assert_eq!(daemon_reload_argv, wc::autostart_daemon_reload_argv());
@@ -1121,7 +1121,7 @@ fn планы_автозапуска() {
 /// `enable_plan` answers `NoBinary`; the reason must then be
 /// human and translated, and empty when supported.
 #[test]
-fn доступность_автозапуска_совпадает_с_планом_включения() {
+fn autostart_availability_matches_enable_plan() {
     let _lang = i18n_pin::ru();
     for systemd in [true, false] {
         let (supported, reason) = wc::autostart_availability(Some("/opt/ww/waywallen"));
@@ -1143,7 +1143,7 @@ fn доступность_автозапуска_совпадает_с_план�
 }
 
 #[test]
-fn тексты_ошибок_автозапуска() {
+fn autostart_error_texts() {
     let _lang = i18n_pin::ru();
     assert_eq!(
         wc::enable_failed_message("  Unit not found\n", "прочее"),
@@ -1196,7 +1196,7 @@ impl WaywallenIo for FakeIo {
 }
 
 #[test]
-fn probe_читает_свойства_через_общий_трейт() {
+fn probe_reads_properties_through_common_trait() {
     let mut io = FakeIo::new(&[
         ("WsPort", DbusValue::Int(37281)),
         ("Version", DbusValue::Str("0.2.5".into())),
@@ -1232,7 +1232,7 @@ fn probe_читает_свойства_через_общий_трейт() {
 /// ⚠️ Fix for a bug of the original: `int(ws_port)` on a non-numeric string crashed with
 /// an unhandled `ValueError` — the WE tab did not open. Here it is 0.
 #[test]
-fn probe_не_падает_на_нечисловом_ws_port() {
+fn probe_survives_non_numeric_ws_port() {
     let mut io = FakeIo::new(&[("WsPort", DbusValue::Str("нет".into()))]);
     let st = wc::probe(&mut io);
     assert!(st.running);
@@ -1245,7 +1245,7 @@ fn probe_не_падает_на_нечисловом_ws_port() {
 }
 
 #[test]
-fn решение_ensure_running() {
+fn ensure_running_decision_table() {
     let g = golden();
     let live = wc::DaemonStatus {
         running: true,
@@ -1289,7 +1289,7 @@ fn решение_ensure_running() {
 }
 
 #[test]
-fn решение_поллинга() {
+fn polling_decision() {
     let g = golden();
     let live = wc::DaemonStatus { running: true, ws_port: 1, ..Default::default() };
     assert_eq!(
@@ -1311,7 +1311,7 @@ fn решение_поллинга() {
 }
 
 #[test]
-fn адреса_dbus_единые_с_основным_клиентом() {
+fn dbus_addresses_shared_with_main_client() {
     let g = golden();
     assert_eq!(wc::DBUS_SERVICE, g["dbus"]["service"].as_str().unwrap());
     assert_eq!(wc::DBUS_PATH, g["dbus"]["path"].as_str().unwrap());
@@ -1321,7 +1321,7 @@ fn адреса_dbus_единые_с_основным_клиентом() {
 }
 
 #[test]
-fn разбор_list_tasks() {
+fn list_tasks_parsing() {
     let g = golden();
     let argv: Vec<String> = g["busctl"]["argv"]
         .as_array()
@@ -1350,7 +1350,7 @@ fn разбор_list_tasks() {
 }
 
 #[test]
-fn разбор_строк_qtdbus() {
+fn qtdbus_line_parsing() {
     let rows = vec![vec![
         DbusValue::Int(1),
         DbusValue::Str("scan".into()),
@@ -1384,7 +1384,7 @@ fn разбор_строк_qtdbus() {
 }
 
 #[test]
-fn быстрые_методы_и_остановка_обоев() {
+fn quick_methods_and_wallpaper_stop() {
     assert_eq!(wc::dbus_quick_result(&[]), "");
     assert_eq!(wc::dbus_quick_result(&[DbusValue::Int(7)]), "7");
     assert_eq!(wc::dbus_quick_result(&[DbusValue::Str("ok".into())]), "ok");
@@ -1404,7 +1404,7 @@ fn быстрые_методы_и_остановка_обоев() {
 // ============================================================================
 
 #[test]
-fn нумерация_request_id() {
+fn request_id_numbering() {
     let mut ids = wc::RequestIds::new();
     assert_eq!(ids.peek(), 1);
     let g = golden();
@@ -1419,7 +1419,7 @@ fn нумерация_request_id() {
 }
 
 #[test]
-fn таблица_полей_совпадает_с_дескриптором_python() {
+fn field_table_matches_python_descriptor() {
     let g = golden();
     let expect: Vec<(String, u32)> = g["request_payload_fields"]
         .as_array()
@@ -1444,7 +1444,7 @@ fn таблица_полей_совпадает_с_дескриптором_pyth
 /// golden data (that is exactly how the hole appeared: the handwritten list and the golden data fell behind
 /// in sync). Here are invariants independent of the golden data.
 #[test]
-fn таблица_полей_генерится_из_proto() {
+fn field_table_generated_from_proto() {
     // Fields added upstream after the handwritten table (69–74): their
     // absence dropped `call(field, msg)` from bridge.py to the Python fallback.
     for (name, num) in [
@@ -1555,7 +1555,7 @@ fn build(name: &str, id: u64) -> Vec<u8> {
         // The golden data was taken from Python BEFORE the fix (the display number was not sent at all),
         // so it is zero here — proto3 does not write zeros, and the bytes match
         // one to one. That the number now ARRIVES is checked by the separate test
-        // `display_rename_несёт_номер_дисплея` below.
+        // `display_rename_carries_display_number` below.
         "display_rename" => wc::display_rename(id, "DP-1", 0, "Основной", false),
         "display_rename_clear" => wc::display_rename(id, "DP-1", 0, "", true),
         "display_layout_set_empty" => wc::display_layout_set(
@@ -1608,7 +1608,7 @@ fn build(name: &str, id: u64) -> Vec<u8> {
         "settings_get" => wc::settings_get(id),
         "plugin_list" => wc::plugin_list(id),
         "plugin_install" => wc::plugin_install(id, "/tmp/owe.zip"),
-        "remote_availability" => wc::remote_availability(id),
+        "remote_availability" => wc::remote_availability(id, false),
         "remote_search_plain" => wc::remote_search(
             id,
             &wc::RemoteSearch {
@@ -1645,7 +1645,7 @@ fn build(name: &str, id: u64) -> Vec<u8> {
 }
 
 #[test]
-fn кадры_запросов_байт_в_байт() {
+fn request_frames_byte_for_byte() {
     let g = golden();
     let cases = g["requests"].as_array().unwrap();
     assert_eq!(cases.len(), 50, "фикстура усохла — эталон пересобрать");
@@ -1658,7 +1658,7 @@ fn кадры_запросов_байт_в_байт() {
 }
 
 #[test]
-fn универсальный_путь_call() {
+fn generic_call_path() {
     let g = golden();
     for case in g["generic"].as_array().unwrap() {
         let field = case["field"].as_str().unwrap();
@@ -1679,7 +1679,7 @@ fn универсальный_путь_call() {
 /// `settings_set` is the only request with a `map` field: the order of entries on
 /// the wire is undefined, so the comparison is structural (by decoding both frames).
 #[test]
-fn settings_set_структурно() {
+fn settings_set_structurally() {
     let g = golden();
     let c = &g["settings_set"];
     let id = c["request_id"].as_u64().unwrap();
@@ -1712,7 +1712,7 @@ fn settings_set_структурно() {
 /// decides by it what to remove before installing static wallpapers — testing such a branch
 /// on a made-up answer would be dishonest.
 #[test]
-fn идентификаторы_рендереров_из_живого_кадра() {
+fn renderer_ids_from_live_frame() {
     let live: Value =
         serde_json::from_str(include_str!("golden/we_live_frames.json"))
             .unwrap();
@@ -1740,7 +1740,7 @@ fn идентификаторы_рендереров_из_живого_кадр�
 /// to remove", not an exception — installing static wallpapers must not fail
 /// because of the shape of the daemon's answer.
 #[test]
-fn идентификаторы_рендереров_вырожденные_случаи() {
+fn renderer_ids_degenerate_cases() {
     // Garbage instead of a frame.
     assert_eq!(wc::renderer_ids_from_frame(&[0xff, 0xff, 0xff]), None);
     // An empty frame — the oneof kind is not filled in.
@@ -1825,7 +1825,7 @@ fn идентификаторы_рендереров_вырожденные_сл
 /// but is not used for target resolution", fix #79). The old wrapper
 /// did not send the number at all — the alias went nowhere.
 #[test]
-fn display_rename_несёт_номер_дисплея() {
+fn display_rename_carries_display_number() {
     let frame = wc::display_rename(7, "DP-1", 42, "Основной", false);
     let request = pb::Request::decode(&frame[..]).expect("кадр разбирается");
     let Some(pb::request::Payload::DisplayRename(inner)) = request.payload else {
@@ -1842,7 +1842,7 @@ fn display_rename_несёт_номер_дисплея() {
 /// plugin the request is not sent, the name is trimmed, an empty one is not sent —
 /// the field stays unset, and the daemon chooses the default name.
 #[test]
-fn library_add_несёт_обрезанное_имя() {
+fn library_add_carries_trimmed_name() {
     let req = wc::library_add_request("/обои", "we", "  Мастерская  ", Default::default()).expect("запрос уходит");
     assert_eq!(req.path, "/обои");
     assert_eq!(req.plugin_name, "we");
@@ -1897,7 +1897,7 @@ fn library_add_несёт_обрезанное_имя() {
 /// name; with a number `<= 0` or a name empty after trimming the request is not sent
 /// (`LibraryEditQuery::reload`).
 #[test]
-fn library_edit_кадр_и_отказы() {
+fn library_edit_frame_and_refusals() {
     assert_eq!(
         wc::request_payload_field_number("library_edit"),
         Some(93),
