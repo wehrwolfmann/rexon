@@ -14,19 +14,34 @@ Rexon is written in Rust with a Qt 6 / QML interface (via [cxx-qt](https://githu
 It is early software: the version number is still 0.x, and the main development
 and test platform is Arch Linux / CachyOS.
 
-![Rexon: the Wallpaper Engine tab with a library of live wallpapers](.github/screenshots/wallpaper-engine.png)
+![Rexon: a live Wallpaper Engine wallpaper applied to the whole desktop](.github/screenshots/live-wallpaper.gif)
 
-![Rexon: Global Themes on MATE — the desktop's own themes first, with real previews](.github/screenshots/global-themes.png)
+![Rexon: a MATE global theme applied — the whole desktop changes its look](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ The Desktops tab in motion</summary>
+<img src=".github/screenshots/desktops.gif" alt="The Desktops tab in motion" loading="lazy">
+</details>
+
+<details>
+<summary>▶ The Steam tab in motion</summary>
+<img src=".github/screenshots/steam.gif" alt="The Steam tab in motion" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="The list of desktop environments with details of MATE"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="Screen effects with live previews"></td>
-    <td><img src=".github/screenshots/steam.png" alt="Steam startup movies at login"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon: Global Themes on MATE — the desktop's own themes first, with real previews"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="The Wallpaper Engine tab with a library of live wallpapers"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Screen effects with live previews"></td>
     <td><img src=".github/screenshots/conky.png" alt="Catalog of Conky widgets"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Qt application styles shown as live widget previews"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="Steam startup movies at login"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>

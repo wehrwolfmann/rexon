@@ -8,19 +8,34 @@ Rexon 是一款免费的 Linux 桌面环境管理器。在同一个窗口里，�
 
 Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://github.com/KDAB/cxx-qt)）。目前仍处于早期阶段：版本号还是 0.x，主要的开发和测试平台是 Arch Linux / CachyOS。
 
-![Rexon：Wallpaper Engine 标签页与动态壁纸库](.github/screenshots/wallpaper-engine.png)
+![Rexon：将 Wallpaper Engine 动态壁纸应用到整个桌面](.github/screenshots/live-wallpaper.gif)
 
-![Rexon：MATE 下的全局主题——桌面自带的主题排在前面，并显示真实预览](.github/screenshots/global-themes.png)
+![Rexon：应用 MATE 全局主题——整个桌面随之改变外观](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ “桌面环境”标签页演示</summary>
+<img src=".github/screenshots/desktops.gif" alt="“桌面环境”标签页演示" loading="lazy">
+</details>
+
+<details>
+<summary>▶ “Steam”标签页演示</summary>
+<img src=".github/screenshots/steam.gif" alt="“Steam”标签页演示" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="桌面环境列表，以及 MATE 的详细信息"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="带实时预览的屏幕特效"></td>
-    <td><img src=".github/screenshots/steam.png" alt="登录时播放的 Steam 启动动画"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon：MATE 下的全局主题——桌面自带的主题排在前面，并显示真实预览"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="Wallpaper Engine 标签页与动态壁纸库"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="带实时预览的屏幕特效"></td>
     <td><img src=".github/screenshots/conky.png" alt="Conky 小部件目录"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Qt 应用程序样式，以实时控件预览的形式展示"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="登录时播放的 Steam 启动动画"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>

@@ -15,19 +15,34 @@ Rexon написан на Rust, интерфейс — на Qt 6 / QML (чере
 Программа молодая: номер версии пока 0.x, а основная платформа разработки и
 проверки — Arch Linux / CachyOS.
 
-![Rexon: вкладка Wallpaper Engine с библиотекой живых обоев](.github/screenshots/wallpaper-engine.png)
+![Rexon: живые обои Wallpaper Engine применяются на весь рабочий стол](.github/screenshots/live-wallpaper.gif)
 
-![Rexon: глобальные темы в MATE — сначала собственные темы стола, с настоящими превью](.github/screenshots/global-themes.png)
+![Rexon: применение глобальной темы MATE — весь стол меняет вид](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ Вкладка «Рабочие столы» в движении</summary>
+<img src=".github/screenshots/desktops.gif" alt="Вкладка «Рабочие столы» в движении" loading="lazy">
+</details>
+
+<details>
+<summary>▶ Вкладка Steam в движении</summary>
+<img src=".github/screenshots/steam.gif" alt="Вкладка Steam в движении" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="Список рабочих столов и подробности о MATE"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="Эффекты экрана с живыми превью"></td>
-    <td><img src=".github/screenshots/steam.png" alt="Ролики Steam при входе в систему"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon: глобальные темы в MATE — сначала собственные темы стола, с настоящими превью"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="Вкладка Wallpaper Engine с библиотекой живых обоев"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Эффекты экрана с живыми превью"></td>
     <td><img src=".github/screenshots/conky.png" alt="Каталог виджетов Conky"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Стили приложений Qt — живые образцы элементов управления"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="Ролики Steam при входе в систему"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>
