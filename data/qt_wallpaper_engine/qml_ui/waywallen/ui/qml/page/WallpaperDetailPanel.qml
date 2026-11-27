@@ -326,12 +326,12 @@ Item {
         id: applyAction
         text: qsTr("Apply")
         busy: applyQuery.querying
-        // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
-        // появляется, только когда плагин обоев уже назначен, а назначает
-        // его Rexon по нажатию «Применить» — без этой ветки кнопка была
-        // серой на свежей системе навсегда. Пока дисплеев нет, цель — «все
-        // рабочие столы» (пустой `wireTargets`); кадр придерживает
-        // транспорт Rexon до регистрации дисплея. Правка живёт в
+        // REXON EDIT (a defect fix, not a feature): on KDE a display
+        // appears only once the wallpaper plugin is assigned, and Rexon
+        // assigns it on pressing «Apply» — without this branch the button stayed
+        // grey forever on a fresh system. While there are no displays, the target is «all
+        // desktops» (empty `wireTargets`); the Rexon transport holds
+        // the frame until a display registers. The edit lives in
         // patches/0010-apply-without-displays-on-kde.patch.
         enabled: applyTargetState.hasSelection || (!applyTargetState.hasTargets && W.App.applyWithoutDisplays)
         onTriggered: {

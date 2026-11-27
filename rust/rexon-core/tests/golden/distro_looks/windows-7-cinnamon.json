@@ -1,0 +1,187 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Windows 7 style”?",
+      "text": "The look <b>Windows 7 style</b> will be applied to your desktop.<br><br>What will change: GTK theme, window frames, icons, panel layout, desktop behaviour.<br><br>Rexon builds these parts itself from what your desktop has, close to the original: panel layout, desktop behaviour.<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "windows-7",
+    "name": "Windows 7 style",
+    "items": [
+      {
+        "index": 0,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/Windows-7"
+        }
+      },
+      {
+        "index": 1,
+        "kind": "window-decoration",
+        "consumer": "gtk-ssd",
+        "path": "sources/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk-ssd",
+          "path": "sources/Windows-7"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/w7-icons/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/w7-icons/Windows-7"
+        }
+      },
+      {
+        "index": 3,
+        "kind": "panel-layout",
+        "consumer": "cinnamon-panel",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "cinnamon-panel",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "behaviour",
+        "consumer": "muffin",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "muffin",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      }
+    ],
+    "skipped": [],
+    "install": [],
+    "aur": [],
+    "roles": [],
+    "fetch": [
+      {
+        "id": "Windows-7",
+        "url": "https://github.com/B00merang-Project/Windows-7.git",
+        "pin": {
+          "pin": "git",
+          "value": "943b5307b349d3526068be0fa32f7549ee37ab45"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/Windows-7-943b5307b349"
+      },
+      {
+        "id": "w7-icons",
+        "url": "https://www.pling.com/p/2370808/#Windows-7-v1.1.1.tar.xz",
+        "pin": {
+          "pin": "sha256",
+          "value": "b825c52df773e286954ec66bca15d2ca65192792c5bc27ac2dad39c217c7a647"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/w7-icons-b825c52df773"
+      }
+    ],
+    "uses_settings": false,
+    "values": {}
+  },
+  "calls": [
+    "gsettings get org.cinnamon.desktop.interface gtk-theme",
+    "gsettings get org.cinnamon.desktop.wm.preferences theme",
+    "gsettings get org.cinnamon.desktop.interface icon-theme",
+    "gsettings get org.cinnamon.desktop.interface gtk-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon.desktop.interface gtk-theme",
+    "gsettings get org.cinnamon.desktop.interface gtk-theme",
+    "gsettings set org.cinnamon.desktop.interface gtk-theme Windows-7",
+    "gsettings get org.cinnamon.desktop.wm.preferences theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon.desktop.wm.preferences theme",
+    "gsettings get org.cinnamon.desktop.wm.preferences theme",
+    "gsettings set org.cinnamon.desktop.wm.preferences theme Windows-7",
+    "gsettings get org.cinnamon.desktop.interface icon-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon.desktop.interface icon-theme",
+    "gsettings get org.cinnamon.desktop.interface icon-theme",
+    "gsettings set org.cinnamon.desktop.interface icon-theme Windows-7",
+    "gsettings get org.cinnamon panels-enabled",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon panels-enabled",
+    "gsettings get org.cinnamon panels-enabled",
+    "gsettings set org.cinnamon panels-enabled ['1:0:bottom']",
+    "gsettings get org.cinnamon panels-height",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon panels-height",
+    "gsettings get org.cinnamon panels-height",
+    "gsettings set org.cinnamon panels-height ['1:40']",
+    "gsettings get org.cinnamon panels-autohide",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon panels-autohide",
+    "gsettings get org.cinnamon panels-autohide",
+    "gsettings set org.cinnamon panels-autohide ['1:false']",
+    "gsettings get org.cinnamon enabled-applets",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon enabled-applets",
+    "gsettings get org.cinnamon enabled-applets",
+    "gsettings set org.cinnamon enabled-applets ['panel1:left:0:menu@cinnamon.org:0', 'panel1:left:1:grouped-window-list@cinnamon.org:1', 'panel1:right:0:systray@cinnamon.org:2', 'panel1:right:1:xapp-status@cinnamon.org:3', 'panel1:right:2:notifications@cinnamon.org:4', 'panel1:right:3:network@cinnamon.org:5', 'panel1:right:4:sound@cinnamon.org:6', 'panel1:right:5:calendar@cinnamon.org:7', 'panel1:right:6:show-desktop@cinnamon.org:8']",
+    "gsettings get org.cinnamon.desktop.wm.preferences button-layout",
+    "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon.desktop.wm.preferences button-layout",
+    "gsettings get org.cinnamon.desktop.wm.preferences button-layout",
+    "gsettings set org.cinnamon.desktop.wm.preferences button-layout :minimize,maximize,close",
+    "gsettings get org.cinnamon.desktop.interface gtk-theme"
+  ],
+  "missing": [],
+  "message": "“Windows 7 style” applied.",
+  "installed": [],
+  "profile": {
+    ".config/": "",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Mint-Y\ngtk-icon-theme-name=Windows-7\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Windows-7\n",
+    ".config/kdeglobals": "\n[Icons]\nTheme=Windows-7\n",
+    ".gsstore/": "",
+    ".gsstore/org.cinnamon.desktop.interface/": "",
+    ".gsstore/org.cinnamon.desktop.interface/gtk-theme": "Windows-7",
+    ".gsstore/org.cinnamon.desktop.interface/icon-theme": "Windows-7",
+    ".gsstore/org.cinnamon.desktop.wm.preferences/": "",
+    ".gsstore/org.cinnamon.desktop.wm.preferences/button-layout": ":minimize,maximize,close",
+    ".gsstore/org.cinnamon.desktop.wm.preferences/theme": "Windows-7",
+    ".gsstore/org.cinnamon.theme/": "",
+    ".gsstore/org.cinnamon.theme/name": "Mint-Y",
+    ".gsstore/org.cinnamon/": "",
+    ".gsstore/org.cinnamon/enabled-applets": "['panel1:left:0:menu@cinnamon.org:0', 'panel1:left:1:grouped-window-list@cinnamon.org:1', 'panel1:right:0:systray@cinnamon.org:2', 'panel1:right:1:xapp-status@cinnamon.org:3', 'panel1:right:2:notifications@cinnamon.org:4', 'panel1:right:3:network@cinnamon.org:5', 'panel1:right:4:sound@cinnamon.org:6', 'panel1:right:5:calendar@cinnamon.org:7', 'panel1:right:6:show-desktop@cinnamon.org:8']",
+    ".gsstore/org.cinnamon/panels-autohide": "['1:false']",
+    ".gsstore/org.cinnamon/panels-enabled": "['1:0:bottom']",
+    ".gsstore/org.cinnamon/panels-height": "['1:40']",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/icons/": "",
+    ".local/share/icons/Windows-7/": "",
+    ".local/share/icons/Windows-7/.rexon-owner": "look:windows-7\n",
+    ".local/share/icons/Windows-7/COPYING": "GPL-3\n",
+    ".local/share/icons/Windows-7/index.theme": "[Icon Theme]\nName=Windows-7\nInherits=Adwaita,hicolor\nDirectories=places\n\n[places]\nSize=48\n",
+    ".local/share/icons/Windows-7/places/": "",
+    ".local/share/icons/Windows-7/places/start-here.png": "author-logo",
+    ".local/share/themes/": "",
+    ".local/share/themes/Windows-7/": "",
+    ".local/share/themes/Windows-7/.rexon-owner": "look:windows-7\n",
+    ".local/share/themes/Windows-7/gtk-2.0/": "",
+    ".local/share/themes/Windows-7/gtk-2.0/gtkrc": "x\n",
+    ".local/share/themes/Windows-7/gtk-3.0/": "",
+    ".local/share/themes/Windows-7/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows-7/gtk-4.0/": "",
+    ".local/share/themes/Windows-7/gtk-4.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows-7/index.theme": "[Desktop Entry]\nName=Windows-7\n",
+    ".local/share/themes/Windows-7/metacity-1/": "",
+    ".local/share/themes/Windows-7/metacity-1/metacity-theme-3.xml": "<metacity_theme/>\n",
+    ".local/share/themes/Windows-7/xfwm4/": "",
+    ".local/share/themes/Windows-7/xfwm4/themerc": "x=1\n"
+  }
+}

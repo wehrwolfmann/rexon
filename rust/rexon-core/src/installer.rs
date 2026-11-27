@@ -150,11 +150,11 @@ pub fn system_helper_script() -> String {
 }
 
 const SYSTEM_HELPER_SCRIPT_TMPL: &str = r#"#!/bin/bash
-# Rexon system helper — привилегированная установка и выбор SDDM/Plymouth-тем.
-# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.system-install,
-# auth_admin_keep: подтверждённый пароль держится несколько минут для окна
-# Rexon). Принимает только строго валидируемые аргументы. НЕ выполняет
-# произвольный код и не пропускает его в систему в составе темы.
+# Rexon system helper — privileged install and selection of SDDM/Plymouth themes.
+# Run EXCLUSIVELY through pkexec (polkit action org.rexon.system-install,
+# auth_admin_keep: a confirmed password is kept for a few minutes for the
+# Rexon window). Accepts only strictly validated arguments. Does NOT run
+# arbitrary code and does not let it into the system as part of a theme.
 set -euo pipefail
 export LC_ALL=C LANG=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -170,10 +170,10 @@ theme_id="$2"
 staged="$3"
 family="$4"
 
-# 1) category — строгий allowlist. `apply-<вид>` — режим «Применить»: тема
-#    уже стоит в /usr/share/<вид>/themes, её надо только выбрать (решение
-#    04.10.2026: установка тему не включает, включает кнопка). `remove-<вид>`
-#    — режим «Удалить»: снять каталог темы (не активной и не из пакета).
+# 1) category — a strict allowlist. `apply-<kind>` — the «Apply» mode: the theme
+#    is already in /usr/share/<kind>/themes and only needs to be selected (decision
+#    of 04.10.2026: installing does not enable the theme, the button does). `remove-<kind>`
+#    — the «Remove» mode: remove the theme directory (not the active one, not from a package).
 mode=install
 case "$category" in
     sddm|plymouth) : ;;
@@ -182,8 +182,8 @@ case "$category" in
     *) die bad_category "$category" ;;
 esac
 
-# 2) theme_id — только безопасные символы; без / .. и ведущих '-' и '.'
-#    ('-x' стал бы флагом plymouth-set-default-theme, '.' — корнем тем).
+# 2) theme_id — only safe characters; no / .. and no leading '-' and '.'
+#    ('-x' would become a flag of plymouth-set-default-theme, '.' — the themes root).
 case "$theme_id" in
     ""|-*|.*|*/*|*..*) die bad_theme_name "$theme_id" ;;
 esac
@@ -191,18 +191,18 @@ if ! printf '%s' "$theme_id" | grep -Eq '^[A-Za-z0-9._-]+$'; then
     die bad_theme_chars "$theme_id"
 fi
 
-# 3) family — принимается для совместимости вызова; способ активации
-#    Plymouth выбирается НЕ по нему, а по факту наличия инструментов.
+# 3) family — accepted for call compatibility; the Plymouth activation
+#    method is chosen NOT by it but by the actual presence of tools.
 case "$family" in
     arch|debian) : ;;
     *) die bad_family "$family" ;;
 esac
 
-# Пересборка образа ядра после смены темы — первым, что есть. Порядок — как
-# у помощника сеанса прав: сначала сценарий самого plymouth (его зовёт и
-# `plymouth-set-default-theme -R`; дистрибутив настраивает его под свой
-# загрузчик — на CachyOS с Limine это limine-mkinitcpio, а голый
-# `mkinitcpio -P` образ Limine не обновляет). Нечем — код 3.
+# Rebuilding the kernel image after a theme change — with the first thing available. The order is
+# as in the session rights helper: first plymouth's own script (it is also called by
+# `plymouth-set-default-theme -R`; the distribution sets it up for its own
+# bootloader — on CachyOS with Limine that is limine-mkinitcpio, while a bare
+# `mkinitcpio -P` does not update the Limine image). Nothing to use — code 3.
 rebuild_initramfs() {
     local p
     for p in /usr/lib/plymouth/plymouth-update-initrd \
@@ -226,7 +226,7 @@ rebuild_initramfs() {
     fi
 }
 
-# Есть ли в файле `[Theme] Current=` (не в комментарии, именно в группе Theme).
+# Whether the file has `[Theme] Current=` (not in a comment, exactly in the Theme group).
 sddm_has_current() {
     awk 'BEGIN { r = 1 }
          { s = $0; sub(/^[ \t]+/, "", s) }
@@ -235,14 +235,14 @@ sddm_has_current() {
          END { exit r }' "$1"
 }
 
-# Тема экрана входа SDDM. /etc/sddm.conf SDDM читает ПОСЛЕДНИМ, после всех
-# sddm.conf.d/*.conf, и его `Current=` молча перекрывал свой файл (так на
-# CachyOS: Current=breeze). Поэтому значение меняется во всех файлах /etc,
-# где ключ уже есть (настройки KDE тоже покажут эту тему), а свой файл
-# пишется, только если ключа в /etc нет нигде. Две фазы: сначала копии с
-# правкой рядом с каждым файлом (не вышло хоть одна, или файл — ссылка —
-# копии снимаются, система не тронута), затем mv поверх. Прочие строки
-# остаются как были.
+# The SDDM login screen theme. SDDM reads /etc/sddm.conf LAST, after all
+# sddm.conf.d/*.conf, and its `Current=` silently overrode our own file (so on
+# CachyOS: Current=breeze). So the value is changed in all files of /etc
+# where the key already exists (the KDE settings will show this theme too), and our own file
+# is written only if the key is nowhere in /etc. Two phases: first edited copies
+# next to each file (if even one fails, or a file is a link, the
+# copies are removed and the system is untouched), then mv over. Other lines
+# stay as they were.
 sddm_set_theme() {
     local f tmp files=() tmps=()
     for f in /etc/sddm.conf.d/*.conf /etc/sddm.conf; do
@@ -277,21 +277,21 @@ REXON_EOF
     fi
 }
 
-# Выбор темы, уже лежащей в /usr/share/<вид>/themes/<имя>.
+# Selecting a theme that already lies in /usr/share/<kind>/themes/<name>.
 activate() {
     local dest="/usr/share/$category/themes/$theme_id" prev
     if [ "$category" = "sddm" ]; then
         sddm_set_theme
         return 0
     fi
-    # Способ активации выбираем по ФАКТУ, а не по семейству: на Ubuntu
-    # бинарь plymouth-set-default-theme вырезан из пакета и остаются только
-    # alternatives, а на Debian наоборот — alternatives для plymouth не
-    # используются (тема там обычный файл, update-alternatives на нём
-    # ошибается), зато бинарь работает и сам зовёт update-initramfs.
-    # На Debian и openSUSE бинарь лежит в /usr/sbin (он уже в PATH выше).
-    # Тема выбирается без -R, образ пересобирается следом: не вышло —
-    # прежняя тема возвращается в настройки (образ и так прежний).
+    # The activation method is chosen by FACT, not by family: on Ubuntu
+    # the plymouth-set-default-theme binary is cut out of the package and only
+    # alternatives remain, while on Debian it is the other way round — alternatives are not
+    # used for plymouth (the theme there is a regular file, update-alternatives fails
+    # on it), but the binary works and calls update-initramfs itself.
+    # On Debian and openSUSE the binary lives in /usr/sbin (it is already in PATH above).
+    # The theme is selected without -R, the image is rebuilt right after: if that fails,
+    # the previous theme goes back into the settings (the image is the previous one anyway).
     if command -v plymouth-set-default-theme >/dev/null 2>&1; then
         prev="$(plymouth-set-default-theme 2>/dev/null || true)"
         plymouth-set-default-theme "$theme_id"
@@ -321,8 +321,8 @@ activate() {
     fi
 }
 
-# Строка `ключ = значение` в файле настроек (ключ без учёта регистра,
-# пробелы по краям не в счёт). Разбор — средствами bash, без внешних программ.
+# A `key = value` line in a settings file (the key case-insensitive,
+# spaces at the edges do not count). Parsing — with bash means, without external programs.
 conf_has() {
     local line k v
     while IFS= read -r line || [ -n "$line" ]; do
@@ -336,9 +336,9 @@ conf_has() {
     return 1
 }
 
-# Выбрана ли тема сейчас. С запасом: любое упоминание в любом источнике, без
-# разбора групп и порядка, — лишний отказ лучше снятой активной темы
-# (экран входа без темы, заставка без файлов при следующей сборке образа).
+# Whether the theme is selected now. With a margin: any mention in any source, without
+# parsing groups and order — an extra refusal is better than a removed active theme
+# (a login screen without a theme, a splash without files on the next image build).
 theme_is_active() {
     local f link
     if [ "$category" = "sddm" ]; then
@@ -356,7 +356,7 @@ theme_is_active() {
     return 1
 }
 
-# Каталог принадлежит пакету системы — его снимает менеджер пакетов, а не мы.
+# The directory belongs to a system package — the package manager removes it, not us.
 theme_from_package() {
     if command -v pacman >/dev/null 2>&1 && pacman -Qoq -- "$dest" >/dev/null 2>&1; then
         return 0
@@ -372,9 +372,9 @@ theme_from_package() {
 
 [ -n "${PKEXEC_UID:-}" ] || die not_via_pkexec
 
-# Режим «Удалить»: только каталог /usr/share/<вид>/themes/<имя> — обычный
-# каталог, не ссылка (имя уже без / и ..), не выбранная сейчас тема и не
-# файлы пакета системы. Ссылки ВНУТРИ темы rm не разыменовывает.
+# The «Remove» mode: only the directory /usr/share/<kind>/themes/<name> — a regular
+# directory, not a link (the name is already without / and ..), not the currently selected theme and not
+# files of a system package. rm does not dereference links INSIDE the theme.
 if [ "$mode" = "remove" ]; then
     [ "$staged" = "-" ] || die sys_args
     dest="/usr/share/$category/themes/$theme_id"
@@ -385,9 +385,9 @@ if [ "$mode" = "remove" ]; then
     exit 0
 fi
 
-# Режим «Применить»: ничего не копируем, staged — прочерк. Тема обязана уже
-# стоять в системном каталоге обычным каталогом (не ссылкой): выбрать можно
-# только то, что положил root.
+# The «Apply» mode: we copy nothing, staged is a dash. The theme must already
+# be in the system directory as a regular directory (not a link): only what root
+# put there can be selected.
 if [ "$mode" = "apply" ]; then
     [ "$staged" = "-" ] || die sys_args
     dest="/usr/share/$category/themes/$theme_id"
@@ -399,10 +399,10 @@ if [ "$mode" = "apply" ]; then
     exit 0
 fi
 
-# 4) staged — каталог вызвавшего под /tmp|/var/tmp (Rexon создаёт его через
-#    mkdtemp). Сначала ВХОДИМ в него: дальше работаем с тем самым каталогом,
-#    и подмена любой части пути ссылкой уже ничего не меняет. Место и
-#    владельца проверяем у входа, а не у пути.
+# 4) staged — the caller's directory under /tmp|/var/tmp (Rexon creates it with
+#    mkdtemp). First we ENTER it: from then on we work with that very directory,
+#    and replacing any part of the path with a link changes nothing anymore. The place and
+#    the owner are checked at the entry, not on the path.
 [ -d "$staged" ] || die staged_not_dir "$staged"
 cd -P -- "$staged" 2>/dev/null || die staged_unreachable "$staged"
 real_staged="$(pwd -P)"
@@ -412,25 +412,25 @@ case "$real_staged" in
 esac
 [ "$(stat -c %u .)" = "$PKEXEC_UID" ] || die staged_not_callers "$real_staged"
 
-# 5) Копия в свой каталог (0700, root) — проверяется и ставится ИМЕННО она.
+# 5) A copy into our own directory (0700, root) — it is EXACTLY that copy that is checked and installed.
 work="$(mktemp -d /var/tmp/rexon-system-helper.XXXXXXXX)" || die no_work_dir
 trap 'rm -rf -- "$work"' EXIT
 src="$work/theme"
 cp -R -P -- . "$src" || die theme_copy_failed
 
-# 6) Тема — только обычные файлы и каталоги.
+# 6) A theme — only regular files and directories.
 odd="$(find "$src" -mindepth 1 ! -type f ! -type d -print -quit)"
 [ -z "$odd" ] || die theme_odd "${odd#"$src"/}"
 
-# 7) Plymouth: ни исполняемого кода, ни модуля мимо каталога модулей.
+# 7) Plymouth: no executable code, no module outside the modules directory.
 modline='^[[:space:]]*ModuleName[[:space:]]*=[[:space:]]*(__PLY_MODULES__)[[:space:]]*$'
 check_plymouth_conf() {
     local f="$1" rel="${1#"$src"/}" total strict
-    # NUL: plymouth читает строку до него, проверка видела бы другое.
+    # NUL: plymouth reads the line up to it, the check would see something else.
     [ "$(tr -d '\000' <"$f" | wc -c)" = "$(wc -c <"$f")" ] \
         || die nul_byte "$rel"
-    # Каждое вхождение слова ModuleName (без учёта регистра) обязано быть
-    # целой строкой ModuleName=<штатный модуль>.
+    # Every occurrence of the word ModuleName (case-insensitive) must be
+    # a whole line ModuleName=<stock module>.
     total="$({ grep -aoi 'modulename' "$f" || true; } | wc -l)"
     strict="$({ grep -aE "$modline" "$f" || true; } | wc -l)"
     [ "$total" = "$strict" ] \
@@ -449,8 +449,8 @@ if [ "$category" = "plymouth" ]; then
         || die no_stock_module "$theme_id.plymouth"
 fi
 
-# ── Установка ────────────────────────────────────────────────────────
-# Только копия: выбирает тему режим `apply-<вид>` (кнопка «Применить»).
+# ── Install ──────────────────────────────────────────────────────────
+# Copy only: the theme is selected by the `apply-<kind>` mode (the «Apply» button).
 dest="/usr/share/$category/themes/$theme_id"
 install -d "$dest"
 cp -R -P -T --remove-destination -- "$src" "$dest"
@@ -658,7 +658,7 @@ pub fn system_policy_xml_for(helper_path: &str) -> String {
 /// ([`desktop_content_for`]): there is no longer anything to open the classic
 /// window from the menu with, and the answer that tells the person to "click
 /// the desktop entry" must be rewritten together with the move off Python.
-pub const CLASSIC_WINDOW_ENTRY: &str = "Rexon (классическое окно)";
+pub const CLASSIC_WINDOW_ENTRY: &str = "Rexon (классическое окно)"; // i18n-exempt: the removed item's name as old Russian desktop entries carried it
 
 /// Fallback variable: `REXON_ENTRY=python` sends the main entry to Python.
 pub const ENTRY_ENV: &str = "REXON_ENTRY";
@@ -1147,7 +1147,7 @@ fn launcher_script(lib_dir: &str, note: &str) -> String {
     );
     format!(
         "#!/bin/sh\n\
-         # Rexon — лаунчер ({note}).\n\
+         # Rexon — launcher ({note}).\n\
          exec {bin} \"$@\"\n",
         bin = crate::ext_manager::shlex_quote(&bin),
     )
@@ -1155,12 +1155,12 @@ fn launcher_script(lib_dir: &str, note: &str) -> String {
 
 /// The system install launcher (`self.LIB_DIR` is fixed).
 pub fn system_launcher(lib_dir: &str) -> String {
-    launcher_script(lib_dir, "установка в систему")
+    launcher_script(lib_dir, "system install")
 }
 
 /// The home folder install launcher.
 pub fn user_launcher(lib_dir: &str) -> String {
-    launcher_script(lib_dir, "установка в домашнюю папку")
+    launcher_script(lib_dir, "home folder install")
 }
 
 // ============================================================================
@@ -1459,28 +1459,28 @@ impl FirstRunOffer {
     pub fn log_line(&self) -> String {
         match self {
             FirstRunOffer::Offer { default_mode, forced, .. } => format!(
-                "мастер установки: предложить (режим {}{})",
+                "install wizard: offer (mode {}{})",
                 default_mode.as_str(),
                 if *forced { ", REXON_FIRST_RUN=force" } else { "" }
             ),
             FirstRunOffer::Skip(reason) => {
                 let why = match reason {
                     FirstRunSkip::ForcedNever => "REXON_FIRST_RUN=never".to_string(),
-                    FirstRunSkip::PackagedEnv => format!("пакет дистрибутива ({PACKAGED_ENV})"),
+                    FirstRunSkip::PackagedEnv => format!("distribution package ({PACKAGED_ENV})"),
                     FirstRunSkip::PackagedLocation(p) => {
-                        format!("пакет дистрибутива (файл в {p})")
+                        format!("distribution package (file in {p})")
                     }
-                    FirstRunSkip::Steam(var) => format!("запуск из Steam ({var})"),
-                    FirstRunSkip::DevTree(root) => format!("дерево разработчика ({root})"),
-                    FirstRunSkip::InstalledSystem => "уже установлен в систему".to_string(),
+                    FirstRunSkip::Steam(var) => format!("started from Steam ({var})"),
+                    FirstRunSkip::DevTree(root) => format!("developer tree ({root})"),
+                    FirstRunSkip::InstalledSystem => "already installed system-wide".to_string(),
                     FirstRunSkip::InstalledUser => {
-                        "уже установлен в домашнюю папку".to_string()
+                        "already installed in the home folder".to_string()
                     }
                     FirstRunSkip::Declined => {
-                        format!("человек ответил «больше не спрашивать» ({KEY_FIRST_RUN_DECLINED})")
+                        format!("the person chose \"don't ask again\" ({KEY_FIRST_RUN_DECLINED})")
                     }
                 };
-                format!("мастер установки: не предлагать — {why}")
+                format!("install wizard: don't offer — {why}")
             }
         }
     }
@@ -2541,7 +2541,7 @@ impl UninstallPart {
 //     LITERAL `~/.cache/rexon` bypassing XDG — `appearance_cache::cache_dir`
 //     (OCS), `installed_scan` (previews), the fallback wallpaper PID file of
 //     `wallpaper_exec`;
-//   * data `<XDG_DATA_HOME|~/.local/share>/rexon` — `rxn_v4_installer`
+//   * data `<XDG_DATA_HOME|~/.local/share>/rexon` — adaptive wallpapers
 //     (`wallpapers/`), desktop backups (`backups/`), `qml_modules::module_dirs`
 //     (`qml_modules/`, the developer build — NOT part of the install: the
 //     install puts modules into `~/.local/lib/rexon`); the LITERAL
@@ -3069,7 +3069,7 @@ pub fn icon_install_block(icons: &IconSet) -> String {
         .map(|(src, dst)| format!("install -Dm644 {src} {dst}"))
         .collect();
     if cmds.is_empty() {
-        "# Иконки не найдены".to_string()
+        "# Icons not found".to_string()
     } else {
         cmds.join("\n")
     }
@@ -3123,7 +3123,7 @@ pub fn passwordless_rule_block(tmp_rules: &str, consent: bool) -> String {
         format!("install -Dm644 {tmp_rules} {REXON_POLKIT_RULES_PATH}")
     } else {
         format!(
-            "# Правило «без пароля» ставится только с согласия; прежнее, поставленное молча, снимается.\n\
+            "# The «passwordless» rule is installed only with consent; a previous one, installed silently, is removed.\n\
              rm -f {REXON_POLKIT_RULES_PATH}"
         )
     }
@@ -3153,9 +3153,9 @@ pub struct InstallScriptParams {
 /// `install_script` f-string in `install_to_system`.
 pub fn system_install_script(p: &InstallScriptParams) -> String {
     let dep_line = if p.dep_cmd.is_empty() {
-        "# Зависимости уже установлены".to_string()
+        "# Dependencies already installed".to_string()
     } else {
-        format!("# Установка зависимостей\n{}", p.dep_cmd)
+        format!("# Installing dependencies\n{}", p.dep_cmd)
     };
     let icon_block = icon_install_block(&p.icons);
     let helper_block = format!(
@@ -3179,23 +3179,23 @@ pub fn system_install_script(p: &InstallScriptParams) -> String {
          update-desktop-database {desktop_dir} 2>/dev/null || true\n\
          gtk4-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || \\\n\
          \x20 gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true\n\
-         # KDE SyCoCa rebuild (чтобы панель/меню сразу увидели иконку)\n\
+         # KDE SyCoCa rebuild (so the panel/menu see the icon right away)\n\
          ( kbuildsycoca6 --noincremental 2>/dev/null || \\\n\
          \x20 kbuildsycoca5 --noincremental 2>/dev/null ) || true\n\
          \n\
-         # Wehrwolfmann: GNOME Shell + Cinnamon extensions для wallpaper-режима.\n\
-         # Mutter (GNOME) и Muffin (Cinnamon) не поддерживают wlr-layer-shell —\n\
-         # extension через Clutter.Actor + mmap-streaming. Ставим всегда без выбора\n\
-         # пользователя (на случай переключения на GNOME/Cinnamon-Wayland).\n\
+         # Wehrwolfmann: GNOME Shell + Cinnamon extensions for the wallpaper mode.\n\
+         # Mutter (GNOME) and Muffin (Cinnamon) do not support wlr-layer-shell —\n\
+         # an extension through Clutter.Actor + mmap streaming. Always installed without\n\
+         # the user's choice (in case of switching to GNOME/Cinnamon-Wayland).\n\
          for de_pair in \"gnome-extension|/usr/share/gnome-shell/extensions\" \\\n\
          \x20              \"cinnamon-extension|/usr/share/cinnamon/extensions\"; do\n\
          \x20   DE_DIR=\"${{de_pair%|*}}\"\n\
          \x20   DEST_BASE=\"${{de_pair#*|}}\"\n\
          \x20   EXT_SRC=\"{lib}/$DE_DIR/{ext}\"\n\
          \x20   EXT_DEST=\"$DEST_BASE/{ext}\"\n\
-         \x20   # Расширение раньше называлось {ext_legacy} (домен от\n\
-         \x20   # чужого проекта). Старый каталог сносим: два расширения с одним и тем\n\
-         \x20   # же кодом рисовали бы обои дважды.\n\
+         \x20   # The extension used to be called {ext_legacy} (a domain of\n\
+         \x20   # another project). The old directory is removed: two extensions with the same\n\
+         \x20   # code would draw the wallpaper twice.\n\
          \x20   rm -rf \"$DEST_BASE/{ext_legacy}\"\n\
          \x20   if [ -d \"$EXT_SRC\" ]; then\n\
          \x20       rm -rf \"$EXT_DEST\"\n\
@@ -3247,7 +3247,7 @@ pub fn system_install_plan(p: &InstallScriptParams, tmp_sh: &str) -> Vec<PlanSte
             id: RunStepId::AppInstall,
             cmd: system_install_cmd(tmp_sh),
             needs_root: true,
-            description: "Установка в систему (один пароль)".into(),
+            description: "System install (one password)".into(),
         },
         PlanStep::RemoveFiles {
             paths: install_cleanup_paths(p, tmp_sh),
@@ -3517,7 +3517,7 @@ pub fn uninstall_system_plan_for(sys: &InstallPaths, paths: &[String], tmp_sh: &
             id: RunStepId::AppUninstall,
             cmd: uninstall_system_cmd(tmp_sh),
             needs_root: true,
-            description: "Удаление system (pkexec)".into(),
+            description: "System uninstall (pkexec)".into(),
         },
         PlanStep::RemoveFiles { paths: vec![tmp_sh.to_string()] },
     ]
@@ -3651,12 +3651,12 @@ pub fn uninstall_summary(
     if pkg_name.is_none() && !has_system && !has_user {
         return UninstallSummary {
             ok: false,
-            message: "Rexon не установлен".to_string(),
+            message: "Rexon is not installed".to_string(),
         };
     }
     let mut which: Vec<String> = Vec::new();
     if let Some(name) = pkg_name {
-        which.push(format!("пакет {name}"));
+        which.push(format!("package {name}"));
     }
     if has_system {
         which.push("system".to_string());
@@ -3666,7 +3666,7 @@ pub fn uninstall_summary(
     }
     UninstallSummary {
         ok: true,
-        message: format!("Rexon удалён ({})", which.join(", ")),
+        message: format!("Rexon removed ({})", which.join(", ")),
     }
 }
 
@@ -3678,8 +3678,8 @@ mod package_data_dir_tests {
     /// Lay out a layout: `<base>/<rel>/qt_wallpaper_engine/qml_ui/PageHost.qml`.
     fn lay_out(base: &Path, rel: &str) {
         let dir = base.join(rel).join("qt_wallpaper_engine/qml_ui");
-        std::fs::create_dir_all(&dir).expect("каталог раскладки создан");
-        std::fs::write(dir.join("PageHost.qml"), b"// stub").expect("метка записана");
+        std::fs::create_dir_all(&dir).expect("layout directory created");
+        std::fs::write(dir.join("PageHost.qml"), b"// stub").expect("stub written");
     }
 
     /// Both live layouts — the developer tree and the package — are assembled
@@ -3717,7 +3717,7 @@ mod package_data_dir_tests {
         // No layout nearby — an honest "not found".
         assert_eq!(pick_package_data_dir("", &|_p: &str| false), None);
 
-        std::fs::remove_dir_all(&base).expect("временная раскладка убрана");
+        std::fs::remove_dir_all(&base).expect("temporary layout removed");
     }
 }
 
@@ -3840,7 +3840,7 @@ mod first_run_tests {
                 assert!(system_blocked.is_some());
                 assert!(!forced);
             }
-            other => panic!("ожидалось предложение, получено {other:?}"),
+            other => panic!("expected an offer, got {other:?}"),
         }
     }
 
@@ -4028,7 +4028,7 @@ mod first_run_tests {
                 assert!(system_blocked.is_some());
                 assert!(forced);
             }
-            other => panic!("ожидалось предложение, получено {other:?}"),
+            other => panic!("expected an offer, got {other:?}"),
         }
     }
 
@@ -4102,7 +4102,7 @@ mod first_run_tests {
             skip(FirstRunSkip::Declined),
         ];
         let lines: HashSet<String> = cases.iter().map(FirstRunOffer::log_line).collect();
-        assert_eq!(lines.len(), cases.len(), "у каждой причины своя строка");
+        assert_eq!(lines.len(), cases.len(), "every reason has its own line");
         assert!(cases[1].log_line().contains("force"));
         assert!(cases[4].log_line().contains("/usr/bin/rexon"));
         assert!(cases[5].log_line().contains("SteamAppId"));
@@ -4115,7 +4115,7 @@ mod first_run_tests {
         let dir = std::env::temp_dir()
             .join(format!("rexon-first-run-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("временный каталог создан");
+        std::fs::create_dir_all(&dir).expect("temporary directory created");
         let file = dir.join("settings.json");
         let mut manager = crate::settings::SettingsManager {
             config_dir: dir.clone(),
@@ -4123,11 +4123,11 @@ mod first_run_tests {
             settings: crate::settings::load_settings(&file),
         };
 
-        session_first_run_decline(&mut manager, false).expect("без отметки — без ошибки");
-        assert!(!file.exists(), "без отметки файл не пишется");
+        session_first_run_decline(&mut manager, false).expect("no mark — no error");
+        assert!(!file.exists(), "without the mark no file is written");
         assert!(first_run_offer(&FakeProbe::plain(), &manager.settings).is_offer());
 
-        session_first_run_decline(&mut manager, true).expect("отказ сохранён");
+        session_first_run_decline(&mut manager, true).expect("refusal saved");
         let reloaded = crate::settings::load_settings(&file);
         assert!(first_run_declined_from(&reloaded));
         assert_eq!(
@@ -4135,7 +4135,7 @@ mod first_run_tests {
             skip(FirstRunSkip::Declined)
         );
 
-        std::fs::remove_dir_all(&dir).expect("временный каталог убран");
+        std::fs::remove_dir_all(&dir).expect("temporary directory removed");
     }
 }
 
@@ -4155,10 +4155,12 @@ mod wizard_texts_tests {
 
     /// Jargon words the user must not see. Compared in lowercase.
     const JARGON: &[&str] = &[
+        // i18n-exempt-begin: jargon words the guard looks for in Russian texts too
         "pkexec", "polkit", "helper", "хелпер", "лаунчер", "launcher", ".desktop", "$path",
         "bashrc", "zshrc", "config.fish", "pyside", "qt6-webengine", "layer-shell",
         "user-install", "user-режим", "portable", "extensions", "sudo", "из терминала",
         "/usr/", "~/.local",
+        // i18n-exempt-end
     ];
 
     /// Jargon in the text; paths are allowed in tooltips (`allow_paths`).
@@ -4184,7 +4186,7 @@ mod wizard_texts_tests {
                 w.starts_with('/') || w.starts_with("~/")
             });
             if let Some(p) = path {
-                return Some(format!("путь {p}"));
+                return Some(format!("path {p}"));
             }
         }
         None
@@ -4322,18 +4324,18 @@ mod wizard_texts_tests {
             assert!(core.contains(want), "{want}");
         }
         assert!(!core.contains(crate::system_plan::LIGHTDM_GREETER_CONF));
-        assert!(!core.contains("50-rexon-greeter"), "приветствие LightDM не трогаем");
+        assert!(!core.contains("50-rexon-greeter"), "the LightDM greeter is not touched");
         for word in [" start", " stop", "restart", "--now", "isolate"] {
-            assert!(!core.contains(word), "служба в живом сеансе: {word}");
+            assert!(!core.contains(word), "service in the live session: {word}");
         }
         let install = include_str!("../../../packaging/aur/rexon-git.install");
         let body = install
             .split_once("post_remove() {\n")
             .and_then(|(_, rest)| rest.split_once("\n}\n"))
             .map(|(body, _)| body)
-            .expect("post_remove в rexon-git.install");
+            .expect("post_remove in rexon-git.install");
         let lines = |t: &str| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect::<Vec<_>>();
-        assert_eq!(lines(body), lines(&core), "post_remove пакета разошёлся с ядром");
+        assert_eq!(lines(body), lines(&core), "the package post_remove diverged from the core");
         assert!(include_str!("../../../packaging/aur/PKGBUILD").contains("\ninstall=rexon-git.install\n"));
     }
 
@@ -4345,7 +4347,7 @@ mod wizard_texts_tests {
             detail: "rm: cannot remove '/usr/local/lib/rexon': Read-only file system".into(),
         };
         let line = uninstall_failure_line(&step, Lang::En);
-        let (words, raw) = line.split_once("\n\nDetails for the developer:\n").expect("хвост подробностей");
+        let (words, raw) = line.split_once("\n\nDetails for the developer:\n").expect("details tail");
         assert!(raw.contains("Read-only file system"));
         assert!(jargon_in(words, false).is_none(), "{words}");
         for (_, t) in all_texts(Lang::En) {
@@ -4358,10 +4360,10 @@ mod wizard_texts_tests {
         // Russian is checked word for word by the `installer_parity::russian_installer_texts_as_before` snapshot.
         let (kept, gone) = (uninstall_done_line(true, Lang::En), uninstall_done_line(false, Lang::En));
         for w in ["settings", "backups", "wallpapers", "themes", "add-ons", "kept", "temporary files were deleted"] {
-            assert!(kept.contains(w), "итог «сохранить» молчит про «{w}»: {kept}");
+            assert!(kept.contains(w), "the \"keep\" summary does not mention \"{w}\": {kept}");
         }
         for w in ["settings", "backups", "wallpapers", "themes", "add-ons", "temporary files"] {
-            assert!(gone.contains(w), "итог «удалить всё» молчит про «{w}»: {gone}");
+            assert!(gone.contains(w), "the \"remove everything\" summary does not mention \"{w}\": {gone}");
         }
         assert!(jargon_in(&kept, false).is_none() && jargon_in(&gone, false).is_none());
         // No "cache" jargon in the words for the person.
@@ -4407,7 +4409,7 @@ mod wizard_texts_tests {
                 (Content, "/h/.local/share/rexon".into()),
             ]
         );
-        assert_eq!(user_data_roots("/h", "conf", "data", "cache"), plain, "относительный XDG не учитывается");
+        assert_eq!(user_data_roots("/h", "conf", "data", "cache"), plain, "a relative XDG path is ignored");
         assert!(user_data_roots("", "", "", "").is_empty());
         assert!(user_data_roots("h", "/x", "/x", "/x").is_empty());
     }
@@ -4422,14 +4424,14 @@ mod wizard_texts_tests {
         let instruction = prompt_missing_instruction();
         assert!(instruction.starts_with("Install the polkit package "), "{instruction}");
         let texts = all_texts(Lang::En);
-        assert!(texts.len() > 100, "собрано подозрительно мало строк: {}", texts.len());
+        assert!(texts.len() > 100, "suspiciously few strings collected: {}", texts.len());
         for (key, text) in texts {
             // The same instruction can be the tail of an uninstall refusal.
             if text.contains(&instruction) {
                 continue;
             }
             if let Some(word) = jargon_in(&text, key == "hint") {
-                panic!("жаргон «{word}» в поле «{key}»: {text}");
+                panic!("jargon \"{word}\" in field \"{key}\": {text}");
             }
         }
     }
@@ -4437,6 +4439,7 @@ mod wizard_texts_tests {
     /// The guard checks itself on the old Python strings.
     #[test]
     fn jargon_guard_catches_python_wizard_strings() {
+        // i18n-exempt-begin: test data, the old Russian wizard strings the guard must catch
         for bad in [
             "🛡  Системно  (/usr/local/, требуется пароль администратора)",
             "👤  В мою папку  (~/.local/, без пароля)",
@@ -4452,10 +4455,11 @@ mod wizard_texts_tests {
             "Установка отменена пользователем (pkexec)",
             "Таймаут установки — попробуйте выполнить из терминала",
         ] {
-            assert!(jargon_in(bad, false).is_some(), "сторож не заметил: {bad}");
+            assert!(jargon_in(bad, false).is_some(), "the guard missed: {bad}");
         }
         assert!(jargon_in("Файлы программы: /usr/local/lib/rexon", true).is_none());
         assert!(jargon_in("Файл: /usr/x — через pkexec", true).is_some());
+        // i18n-exempt-end
     }
 
     /// In the English interface not a single Russian letter — and not a single
@@ -4466,7 +4470,7 @@ mod wizard_texts_tests {
         english();
         let cyrillic = |s: &str| s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'));
         for (key, text) in all_texts(Lang::En) {
-            assert!(!cyrillic(&text), "в английской строке кириллица ({key}): {text}");
+            assert!(!cyrillic(&text), "Cyrillic in an English string ({key}): {text}");
         }
     }
 
@@ -4558,14 +4562,14 @@ mod wizard_texts_tests {
         let lang = Lang::En;
         let titles: std::collections::HashSet<String> =
             failures.iter().map(|f| f.title(lang)).collect();
-        assert_eq!(titles.len(), failures.len(), "у каждого исхода свой заголовок");
+        assert_eq!(titles.len(), failures.len(), "every outcome has its own title");
         for f in &failures {
             let r = result_texts(&WizardOutcome::Failed(f.clone()), lang);
             assert!(!r.ok);
             assert_eq!(r.primary_button, retry_button(lang));
             assert_eq!(r.secondary_button, continue_without_install_button(lang));
             assert_eq!(r.unavailable, without_install_limits(lang));
-            assert!(!r.notes.is_empty(), "что делать — сказано: {f:?}");
+            assert!(!r.notes.is_empty(), "what to do is said: {f:?}");
             let all = format!("{} {}", r.title, r.description).to_lowercase();
             assert!(!all.contains("cancel"), "{all}");
         }
@@ -4605,7 +4609,7 @@ mod wizard_texts_tests {
         let item = crate::window_menu::menu_items()
             .into_iter()
             .find(|i| i.id == crate::window_menu::ID_UNINSTALL)
-            .expect("пункт удаления в меню есть")
+            .expect("the uninstall menu item exists")
             .label;
         assert!(item.contains("Uninstall Rexon"), "{item}");
         assert!(c.undo.contains(&format!("“{item}”")), "{}", c.undo);
@@ -4642,7 +4646,7 @@ mod wizard_texts_tests {
             crate::steamos_sysext::SESSION_HELPER_PATH,
             crate::steamos_sysext::SESSION_POLICY_PATH,
         ] {
-            assert!(paths.contains(&p.to_string()), "{p} не снимается");
+            assert!(paths.contains(&p.to_string()), "{p} is not removed");
             assert!(uninstall_system_script(&sys).contains(&format!("rm -rf {p}\n")), "{p}");
         }
     }
@@ -4707,7 +4711,7 @@ mod system_helper_tests {
     /// The helper text before the install, then a "checks passed" mark.
     fn validation_part() -> String {
         let full = system_helper_script();
-        let cut = full.find("# ── Установка").expect("раздел установки в помощнике");
+        let cut = full.find("# ── Install").expect("раздел установки в помощнике");
         format!("{}echo REXON_VALIDATED\nexit 0\n", &full[..cut])
     }
 
@@ -4744,8 +4748,8 @@ mod system_helper_tests {
         let (ok, err) = run_helper(category, theme_id, &dir, &uid());
         let early = system_theme_problem(category, &dir, Some(theme_id));
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(!ok, "{tag}: помощник пропустил тему");
-        assert!(early.is_some(), "{tag}: проверка до пароля пропустила тему");
+        assert!(!ok, "{tag}: the helper let the theme through");
+        assert!(early.is_some(), "{tag}: the pre-password check let the theme through");
         err
     }
 
@@ -4863,7 +4867,7 @@ mod system_helper_tests {
         good_plymouth(&dir);
         for bad in ["-R", ".", "..", "a/b", "", ".hidden", "a b"] {
             let (ok, _) = run_helper("plymouth", bad, &dir, &uid());
-            assert!(!ok, "имя {bad:?} пропущено");
+            assert!(!ok, "name {bad:?} let through");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4879,7 +4883,7 @@ mod system_helper_tests {
         }
         // The helper executes nothing from the theme and doesn't accept a destination path.
         for banned in ["eval ", "source ", "bash -c", "sh -c"] {
-            assert!(!text.contains(banned), "{banned} в помощнике");
+            assert!(!text.contains(banned), "{banned} in the helper");
         }
     }
 
@@ -4959,9 +4963,9 @@ mod system_helper_tests {
         symlink(&outside, neon.join("out")).unwrap();
         let (ok, err) = sb.remove("remove-plymouth", "neon", "-");
         assert!(ok, "{err}");
-        assert!(!neon.exists(), "тема не снята");
-        assert!(other.is_dir(), "соседняя тема задета");
-        assert!(outside.join("keep.txt").is_file(), "удаление прошло по ссылке наружу");
+        assert!(!neon.exists(), "theme not removed");
+        assert!(other.is_dir(), "neighbouring theme touched");
+        assert!(outside.join("keep.txt").is_file(), "removal followed a link outside");
         let sddm = sb.theme("sddm", "sugar");
         let (ok, err) = sb.remove("remove-sddm", "sugar", "-");
         assert!(ok && !sddm.exists(), "{err}");
@@ -5018,7 +5022,7 @@ mod system_helper_tests {
         assert!(!ok && keep.is_dir());
         for bad in ["..", ".", "-R", "a/b", "../themes", "", "neon/.."] {
             let (ok, _) = sb.remove("remove-plymouth", bad, "-");
-            assert!(!ok, "имя {bad:?} пропущено");
+            assert!(!ok, "name {bad:?} let through");
         }
         let (ok, _) = sb.remove("remove-gtk", "neon", "-");
         assert!(!ok && keep.is_dir());

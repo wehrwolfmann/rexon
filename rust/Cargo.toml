@@ -1,32 +1,32 @@
-# Rexon — Rust workspace (миграция с Python).
+# Rexon — Rust workspace (migration from Python).
 #
-# rexon-core — ядро без Qt (DE-логика, парсеры, API-клиенты, настройки).
-# Прежний PyO3-мост rexon-py ушёл в архив вместе с Python (_archived/rexon-py,
-# 02.10.2026): Python в проекте — только архив, не эталон и не мост.
+# rexon-core — the core without Qt (DE logic, parsers, API clients, settings).
+# The former PyO3 bridge rexon-py went to the archive together with Python (_archived/rexon-py,
+# 02.10.2026): Python in the project is only an archive, neither a reference nor a bridge.
 [workspace]
 resolver = "2"
 members = ["rexon-core", "rexon-gui", "rexon-qt-filter", "rexon-splash-overlay", "rexon-swf"]
 
-# Вендорный крейт движка перевода (`vendor/fxtranslate/`) — ЗАВИСИМОСТЬ, а
-# не участник мастерской. Cargo делает участником любую зависимость-путь,
-# лежащую внутри каталога мастерской, а участнику он записывает в замок ВСЕ
-# необязательные зависимости, включённых фич не разбирая: молча приехало 330
-# строк в `Cargo.lock` — ureq, rustls, ring, icu_segmenter, dirs,
-# wasm-bindgen-test. Ни одна из них не собирается (фичи `net`/`discovery`/
-# `icu-segmenter` мы намеренно НЕ включаем, см. rexon-core/Cargo.toml), но в
-# замке они выглядят как состав продукта — а по нему сверяют лицензии.
-# С `exclude` замок прирастает ровно одной записью: самим крейтом.
+# The vendored translation engine crate (`vendor/fxtranslate/`) is a DEPENDENCY, not
+# a workspace member. Cargo makes any path dependency lying inside the workspace
+# directory a member, and for a member it writes ALL optional dependencies into the lock,
+# without looking at the enabled features: 330 lines silently arrived
+# in `Cargo.lock` — ureq, rustls, ring, icu_segmenter, dirs,
+# wasm-bindgen-test. None of them is built (we deliberately do NOT enable the `net`/`discovery`/
+# `icu-segmenter` features, see rexon-core/Cargo.toml), but in
+# the lock they look like the product's contents — and licenses are checked against it.
+# With `exclude` the lock grows by exactly one entry: the crate itself.
 exclude = ["vendor/fxtranslate/crate"]
-# rexon-qt-filter и rexon-gui (cxx-qt, требуют Qt6) собираются только явно
-# (-p) — чтобы голый `cargo test` ядра оставался независимым от Qt.
+# rexon-qt-filter and rexon-gui (cxx-qt, require Qt6) are built only explicitly
+# (-p) — so that a bare `cargo test` of the core stays independent of Qt.
 #
-# ⚠️ ОБРАТНАЯ СТОРОНА, НЕ НАСТУПИ: из-за этой строки голый
-# `cargo build --release` собирает ОДНО ядро и рапортует «Finished» за
-# считанные секунды, а окно `rexon-main-window` с вкладками на QML —
-# остаётся СТАРЫМ. Замер после такой «сборки» показывает
-# вчерашний день. Собирать приложение — `cargo build-app`, заставку входа —
-# `cargo build-splash` (псевдонимы в rust/.cargo/config.toml, там же
-# объяснено, почему это две разные команды; список — `cargo --list`).
+# ⚠️ THE FLIP SIDE, DO NOT STEP ON IT: because of this line a bare
+# `cargo build --release` builds ONE core and reports «Finished» within
+# seconds, while the `rexon-main-window` window with the QML tabs
+# stays OLD. A measurement after such a «build» shows
+# yesterday. Build the application with `cargo build-app`, the login splash with
+# `cargo build-splash` (aliases in rust/.cargo/config.toml, which also
+# explains why these are two different commands; the list — `cargo --list`).
 default-members = ["rexon-core"]
 
 [workspace.package]
@@ -37,3 +37,10 @@ license = "Apache-2.0"
 [profile.release]
 opt-level = 3
 lto = true
+
+# Tests: line tables only (file:line in backtraces and panics) instead of full
+# debug info. Test binaries get several times smaller and link much faster;
+# variables in gdb are gone for test runs only. The package does not run
+# `cargo test`, so it is not affected.
+[profile.test]
+debug = "line-tables-only"

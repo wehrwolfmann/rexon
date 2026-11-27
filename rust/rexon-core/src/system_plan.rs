@@ -1165,11 +1165,11 @@ pub fn install_batch_plan_with_deps(
             // window sets to its language: gettext does not read it under the C locale.
             "export LC_ALL=C LANG=C".into(),
             String::new(),
-            "# ── Шаг 1: Отключение read-only ──".into(),
+            "# ── Step 1: disabling read-only ──".into(),
             echo_line(&tr("🔓 Turning off steamos-readonly…")),
             "steamos-readonly disable".into(),
             String::new(),
-            "# ── Шаг 2: Инициализация ключей pacman ──".into(),
+            "# ── Step 2: initializing pacman keys ──".into(),
             echo_line(&tr("🔑 Setting up the pacman keys…")),
             "pacman-key --init 2>/dev/null || true".into(),
             "pacman-key --populate archlinux 2>/dev/null || true".into(),
@@ -1178,7 +1178,7 @@ pub fn install_batch_plan_with_deps(
         ];
         if update_first {
             if let Some(upd) = &update {
-                script_lines.push("# ── Шаг 3: Обновление БД пакетов ──".into());
+                script_lines.push("# ── Step 3: updating the package database ──".into());
                 script_lines.push(upd.join(" "));
                 script_lines.push(String::new());
             }
@@ -1188,7 +1188,7 @@ pub fn install_batch_plan_with_deps(
             "--noconfirm --noprogressbar --color never",
         );
         script_lines.extend([
-            "# ── Шаг 4: Установка пакетов ──".to_string(),
+            "# ── Step 4: installing packages ──".to_string(),
             // TRANSLATORS: %1 is a number of packages.
             echo_line(&trf("📦 Installing packages: %1…", &[&packages.len()])),
             install_line,
@@ -1196,7 +1196,7 @@ pub fn install_batch_plan_with_deps(
         script_lines.extend(mark_deps.clone());
         script_lines.extend([
             String::new(),
-            "# ── Шаг 5: Включение read-only обратно ──".to_string(),
+            "# ── Step 5: enabling read-only again ──".to_string(),
             echo_line(&tr("🔒 Turning steamos-readonly back on…")),
             "steamos-readonly enable".to_string(),
             String::new(),
@@ -1217,11 +1217,11 @@ pub fn install_batch_plan_with_deps(
              ) >> {tmp_log} 2>&1\n\
              EXIT_CODE=$?\n\
              echo \"__REXON_EXIT__$EXIT_CODE\" >> {tmp_log}\n\
-             # Всегда включаем readonly обратно при ошибке\n\
+             # Always turn readonly back on on error\n\
              if [ $EXIT_CODE -ne 0 ]; then\n\
              \x20 steamos-readonly enable 2>/dev/null || true\n\
              fi\n\
-             # Возвращаем владельца, чтобы user мог удалить tmp-файлы\n\
+             # Give the ownership back, so the user can delete the tmp files\n\
              chown $PKEXEC_UID:$PKEXEC_UID {tmp_log} {tmp_sh} 2>/dev/null\n\
              exit $EXIT_CODE\n"
         );
@@ -1379,7 +1379,7 @@ pub fn install_batch_plan_with_deps(
                      ) >> {tmp_log} 2>&1\n\
                      EXIT_CODE=$?\n\
                      echo \"__REXON_EXIT__$EXIT_CODE\" >> {tmp_log}\n\
-                     # Возвращаем владельца, чтобы user мог удалить tmp-файлы\n\
+                     # Give the ownership back, so the user can delete the tmp files\n\
                      chown $PKEXEC_UID:$PKEXEC_UID {tmp_log} {tmp_sh} 2>/dev/null\n\
                      exit $EXIT_CODE\n"
                 );
@@ -2341,9 +2341,9 @@ pub fn passwordless_rules_js(family: PkgFamily) -> String {
         .collect::<Vec<_>>()
         .join(" || ");
     format!(
-        "// Rexon — без повторного пароля только для перечисленных действий\n\
-         // (администратор в активной локальной сессии). Поставлено с согласия\n\
-         // при установке Rexon. Установка и удаление пакетов сюда не входят.\n\
+        "// Rexon — no repeated password only for the listed actions\n\
+         // (an administrator in an active local session). Installed with consent\n\
+         // when installing Rexon. Installing and removing packages is not included.\n\
          var rexonActions = [{actions}];\n\
          polkit.addRule(function(action, subject) {{\n\
          \x20   if (rexonActions.indexOf(action.id) >= 0 &&\n\
@@ -2483,27 +2483,27 @@ pub fn de_helper_script() -> String {
 
 /// The rexon-de-helper template (text for text with Python's `_de_helper_script`).
 const DE_HELPER_SCRIPT_TMPL: &str = r#"#!/bin/bash
-# Rexon DE helper — привилегированная установка/восстановление DE.
-# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.de-install,
-# auth_admin_keep: подтверждённый пароль держится несколько минут для окна
-# Rexon). Принимает только строго валидируемые de_id + family (+ опц.
-# log_path под /tmp). Имена пакетов берёт из ВСТРОЕННОЙ таблицы. НЕ выполняет произвольный код.
+# Rexon DE helper — privileged install/repair of a DE.
+# Run EXCLUSIVELY through pkexec (polkit action org.rexon.de-install,
+# auth_admin_keep: a confirmed password is kept for a few minutes for the
+# Rexon window). Accepts only strictly validated de_id + family (+ opt.
+# log_path under /tmp). Package names come from the EMBEDDED table. Does NOT run arbitrary code.
 set -euo pipefail
 
-# Стабильная C-локаль: вывод pacman/apt/… всегда по-английски, чтобы
-# Python-парсер прогресса (_RE_SKIP «is up to date -- skipping» и т.п.)
-# ловил пропуски/прогресс на ЛЮБОЙ системной локали (иначе на русской
-# pacman пишет «не устарел -- пропускается» и «✓ уже установлено» не
-# срабатывает).
+# A stable C locale: pacman/apt/… output is always in English, so that
+# the progress parser (_RE_SKIP «is up to date -- skipping» etc.)
+# catches skips/progress on ANY system locale (otherwise on a Russian one
+# pacman writes «не устарел -- пропускается» and «✓ уже установлено»
+# does not fire).
 export LC_ALL=C LANG=C
 
-# ⚠️ Никакого ввода с клавиатуры. Пакетный менеджер задаёт вопросы сам себе
-# (члены группы, выбор поставщика) и при --noconfirm отвечает на них по
-# умолчанию, не читая stdin. Но если завтра в какой-то ветке --noconfirm
-# потеряется, а stdin окажется живым (терминал, из которого запустили Rexon,
-# или незакрытая труба), вопрос ЗАВИСНЕТ — молча, до самого таймаута в
-# полчаса. Отрезаем stdin один раз здесь: тогда худшее, что может случиться,
-# — быстрый отказ вместо вечного ожидания.
+# ⚠️ No keyboard input. The package manager asks itself questions
+# (group members, provider choice) and with --noconfirm answers them by
+# default without reading stdin. But if one day --noconfirm gets lost in
+# some branch while stdin turns out alive (the terminal Rexon was started from,
+# or an unclosed pipe), the question will HANG — silently, up to the
+# half-hour timeout. We cut stdin off once here: then the worst that can happen
+# is a quick refusal instead of waiting forever.
 exec </dev/null
 
 __L10N__
@@ -2514,26 +2514,26 @@ de_id="$1"
 family="$2"
 log_path="${3:-}"
 
-# de_id / family — строгий формат (allowlist символов). Реальная проверка
-# валидности пары — через таблицу ниже (неизвестная пара → die).
+# de_id / family — a strict format (a character allowlist). The real
+# validity check of the pair is the table below (unknown pair → die).
 printf '%s' "$de_id"  | grep -Eq '^[A-Za-z0-9._-]+$' || die bad_de_id "$de_id"
 printf '%s' "$family" | grep -Eq '^[a-z]+$'          || die bad_family_arg "$family"
 
-# log_path (если задан): журнал хода установки для окна Rexon. Файл создаёт
-# Rexon заранее (mkstemp), и принадлежит он ВЫЗВАВШЕМУ. Поэтому и пишет его
-# процесс С ПРАВАМИ ВЫЗВАВШЕГО (setpriv), а не root: какой бы файл ни
-# оказался по этому пути к моменту записи, root туда не пишет и владельца
-# не меняет.
+# log_path (if given): the install progress log for the Rexon window. Rexon
+# creates the file in advance (mkstemp), and it belongs to the CALLER. So it is
+# written by a process WITH THE CALLER'S RIGHTS (setpriv), not by root: whatever
+# file turns up at this path by the time of writing, root does not write there
+# and does not change the owner.
 #
-# ⛔ Дыра, которую это закрыло (28.09.2026). Прежде: realpath, затем
-# `chown root` + запись root'ом + в конце `chown $PKEXEC_UID` — по строке
-# пути, через минуты установки. Каталог в пути принадлежит пользователю, и
-# подменить его ссылкой (/tmp/a/b → /etc) можно было в любой момент до
-# конца установки: в конце root отдавал пользователю, скажем, /etc/shadow.
-# Действие org.rexon.de-install при этом стояло в правиле «без пароля» —
-# молчаливый root для любого процесса сеанса.
+# ⛔ The hole this closed (28.09.2026). Before: realpath, then
+# `chown root` + writing as root + at the end `chown $PKEXEC_UID` — by the path
+# string, minutes into the install. A directory in the path belongs to the user,
+# and it could be replaced with a link (/tmp/a/b → /etc) at any moment before
+# the install ended: at the end root handed the user, say, /etc/shadow.
+# The org.rexon.de-install action stood in the «passwordless» rule at the time —
+# a silent root for any session process.
 #
-# exit-маркер __REXON_EXIT__ фильтруется tail-парсером Rexon.
+# the exit marker __REXON_EXIT__ is filtered by Rexon's tail parser.
 if [ -n "$log_path" ]; then
     case "$log_path" in
         /tmp/?*|/var/tmp/?*) : ;;
@@ -2549,12 +2549,12 @@ if [ -n "$log_path" ]; then
         log_pid=$!
         trap 'ec=$?; echo "__REXON_EXIT__$ec"; exec >&- 2>&-; wait "$log_pid" 2>/dev/null || true; exit "$ec"' EXIT
     else
-        # Без setpriv журнал не ведём вовсе: писать чужой файл от root нельзя.
+        # Without setpriv we keep no log at all: writing someone else's file as root is not allowed.
         rx_say no_setpriv >&2
     fi
 fi
 
-# Пакеты для пары de_id|family — ТОЛЬКО из встроенной таблицы (allowlist).
+# Packages for the de_id|family pair — ONLY from the embedded table (allowlist).
 pkgs="$(
   case "$de_id|$family" in
 __PKG_TABLE__
@@ -2563,42 +2563,42 @@ __PKG_TABLE__
 )"
 [ -n "$pkgs" ] || die empty_pkg_list "$de_id|$family"
 
-# Команды менеджера пакетов по семейству (--needed = restore/repair:
-# установленное пропускается).
+# Package manager commands per family (--needed = restore/repair:
+# what is installed is skipped).
 case "$family" in
 __FAM_CASES__
     *) die unsupported_family "$family" ;;
 esac
 
-# ⛔ Никакого `eval`: команды — МАССИВЫ аргументов, список пакетов
-# разбивается на слова РОВНО один раз и оболочке на разбор не отдаётся.
-# Прежнее `eval "${PKG_CMD/'{PKGS}'/$pkgs}"` держало дверь открытой: стоило
-# в таблицу попасть имени с метасимволом, и это была команда, а не пакет.
+# ⛔ No `eval`: commands are ARRAYS of arguments, the package list
+# is split into words EXACTLY once and is never handed to the shell to parse.
+# The former `eval "${PKG_CMD/'{PKGS}'/$pkgs}"` kept the door open: had a name
+# with a metacharacter got into the table, it would be a command, not a package.
 
-# 1) Обновление БД (иначе --needed может упасть на устаревшей БД).
+# 1) Update the DB (otherwise --needed may fail on a stale DB).
 "${UPD_CMD[@]}" || die db_update_failed
 
-# 2) Установка пакетов DE (имена — только из встроенной таблицы выше).
+# 2) Install the DE packages (names — only from the embedded table above).
 read -r -a pkg_list <<<"$pkgs"
 [ "${#pkg_list[@]}" -gt 0 ] || die empty_pkg_list "$de_id|$family"
 "${PKG_CMD[@]}" "${pkg_list[@]}"
 
-# 3) Экран входа в ТОМ ЖЕ сеансе авторизации (без 2-го пароля). Только при
-# systemd. Имя DM берётся ТОЛЬКО из встроенного списка И обязано
-# присутствовать в $pkgs данного DE.
+# 3) The login screen in THE SAME authorization session (no 2nd password). Only
+# with systemd. The DM name is taken ONLY from the embedded list AND must
+# be present in $pkgs of this DE.
 #
-# ⚠️ Чужой экран входа НЕ трогаем. Подмена экрана входа — заметное для
-# человека вмешательство в общесистемную сущность, и делать её молча,
-# «заодно» с установкой стола, нельзя: у человека может стоять plasmalogin,
-# gdm, greetd. Включаем DM этого стола ТОЛЬКО когда включённого экрана входа
-# в системе нет вовсе (иначе после перезагрузки не будет входа в графику).
+# ⚠️ We do NOT touch someone else's login screen. Replacing the login screen is
+# an intervention in a system-wide entity that the person notices, and doing it
+# silently, «along the way» with a desktop install, is not allowed: the person may
+# have plasmalogin, gdm, greetd. We enable this desktop's DM ONLY when the system
+# has no enabled login screen at all (otherwise after a reboot there is no graphical login).
 #
-# ⚠️ И в любом исходе говорим правду: сделал — что сделал, не смог — почему.
-# Раньше ошибка systemctl уходила в /dev/null, а «включён» печаталось
-# безусловно — вывод сообщал об успехе там, где ничего не произошло.
+# ⚠️ And in any outcome we tell the truth: did it — what was done, could not — why.
+# Previously a systemctl error went to /dev/null, and «enabled» was printed
+# unconditionally — the output reported success where nothing happened.
 if command -v systemctl >/dev/null 2>&1; then
-    # Что стоит сейчас: цель симлинка display-manager.service, а если
-    # симлинка нет — первый включённый юнит из известного списка.
+    # What is set now: the target of the display-manager.service symlink, and if
+    # there is no symlink — the first enabled unit from the known list.
     cur_dm=""
     if [ -L "__DM_SYMLINK__" ]; then
         cur_target="$(readlink -f "__DM_SYMLINK__" 2>/dev/null || true)"
@@ -2617,8 +2617,8 @@ if command -v systemctl >/dev/null 2>&1; then
     if [ -n "$cur_dm" ]; then
         rx_say dm_already "$cur_dm"
     else
-        # Маппинг ИМЯ-ЮНИТА → ИМЯ-ПАКЕТА (имена обычно совпадают; исключение —
-        # Plasma Login Manager: юнит plasmalogin, пакет plasma-login-manager).
+        # Mapping UNIT-NAME → PACKAGE-NAME (the names usually match; the exception is
+        # Plasma Login Manager: unit plasmalogin, package plasma-login-manager).
         pkg_for_dm() {
             case "$1" in
 __DM_PKGMAP__
@@ -2632,11 +2632,11 @@ __DM_PKGMAP__
                 *) continue ;;
             esac
             dm_pkg="$(pkg_for_dm "$dm")"
-            # dm-ПАКЕТ должен быть в пакет-листе ЭТОГО DE (точное слово).
+            # the dm PACKAGE must be in the package list of THIS DE (exact word).
             printf ' %s ' "$pkgs" | grep -q " $dm_pkg " || continue
-            # И юнит реально установлен (unit-файл существует).
+            # And the unit is really installed (the unit file exists).
             systemctl cat "$dm.service" >/dev/null 2>&1 || continue
-            # --force для DM, не Provides display-manager.service (PLM).
+            # --force for a DM that does not Provide display-manager.service (PLM).
             force=""
             case "$dm" in
                 __DM_FORCE__) force="--force" ;;
@@ -2988,42 +2988,42 @@ systemctl start --no-block display-manager.service
 "#;
 
 const PKG_HELPER_SCRIPT_TMPL: &str = r#"#!/bin/bash
-# Rexon pkg helper — привилегированные операции пакетного менеджера.
+# Rexon pkg helper — privileged package manager operations.
 #
-# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.pkg).
-# Принимает операцию и ИМЕНА пакетов. Команды — из ВСТРОЕННЫХ таблиц,
-# семейство пакетного менеджера помощник определяет САМ по ЭТОЙ машине.
-# Ни оболочки, ни `eval`, ни путей: произвольный код не выполняется.
-# Единственный файл, который помощник принимает, — пакет, собранный
-# пересборкой Rexon от пользователя (операция install-built, только из
-# каталога пересборок вызвавшего; см. её раздел ниже).
+# Run EXCLUSIVELY through pkexec (polkit action org.rexon.pkg).
+# Accepts an operation and package NAMES. Commands come from EMBEDDED tables,
+# the helper determines the package manager family ITSELF from THIS machine.
+# No shell, no `eval`, no paths: arbitrary code is not run.
+# The only file the helper accepts is a package built by the user's
+# Rexon rebuild (the install-built operation, only from the caller's
+# rebuild directory; see its section below).
 #
-# ⛔ ДЫРА, КОТОРУЮ ЭТО ЗАКРЫЛО (25.09.2026)
-# Прежний помощник (1) брал семейство из АРГУМЕНТА, (2) разрешал в именах
-# пакетов символ '/' (allowlist '^[A-Za-z0-9@._+:/-]+$') и (3) собирал
-# команду через eval. Любой процесс сеанса мог позвать
+# ⛔ THE HOLE THIS CLOSED (25.09.2026)
+# The former helper (1) took the family from an ARGUMENT, (2) allowed the
+# character '/' in package names (allowlist '^[A-Za-z0-9@._+:/-]+$') and (3) built
+# the command through eval. Any session process could call
 #     pkexec rexon-pkg-helper debian install /tmp/evil.deb
-# и apt-get (а равно dnf, zypper) поставил бы ЛОКАЛЬНЫЙ ФАЙЛ, сценарии
-# установки которого идут ОТ ROOT. Семейство при этом не обязано было
-# совпадать с машиной — хватало любого установленного менеджера.
-# Вторая половина дыры — 'remove': имя не проверялось ничем, кроме
-# символов, и 'remove linux' сносил ядро.
+# and apt-get (as well as dnf, zypper) would install a LOCAL FILE whose install
+# scripts run AS ROOT. The family did not even have to match
+# the machine — any installed manager was enough.
+# The second half of the hole — 'remove': the name was checked by nothing but
+# its characters, and 'remove linux' took down the kernel.
 set -euo pipefail
 export LC_ALL=C LANG=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-# Ни ввода с клавиатуры (вопрос менеджера завис бы молча до таймаута), ни
-# чужого рабочего каталога: pkexec его НЕ меняет, а 'dnf install evil.rpm'
-# ищет файл именно в нём.
+# Neither keyboard input (a manager question would hang silently until the timeout)
+# nor someone else's working directory: pkexec does NOT change it, and 'dnf install evil.rpm'
+# looks for the file exactly there.
 exec </dev/null
 cd /
 
 __L10N__
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# ── Семейство пакетного менеджера: ТОЛЬКО по этой машине ─────────────
-# Порядок тот же, что у ядра (DistroDetector.family): ID из os-release →
-# ID_LIKE → наличие бинарников. os-release не исполняется и в оболочку не
-# подаётся — значение вынимает sed.
+# ── Package manager family: ONLY from this machine ───────────────────
+# The order is the same as in the core (DistroDetector.family): ID from os-release →
+# ID_LIKE → presence of binaries. os-release is not executed and is not fed
+# to the shell — sed extracts the value.
 osr_field() {
     local f v
     for f in /etc/os-release /usr/lib/os-release; do
@@ -3049,7 +3049,7 @@ detect_family() {
     for like in $(osr_field ID_LIKE); do
         if family_of_id "$like"; then return 0; fi
     done
-    # APT-RPM (ALT): apt-get есть, dpkg нет.
+    # APT-RPM (ALT): apt-get is there, dpkg is not.
     if have apt-get; then
         if have dpkg; then printf '%s' debian; return 0; fi
         if have rpm; then printf '%s' alt; return 0; fi
@@ -3059,11 +3059,11 @@ __BIN_PROBE__
     return 1
 }
 
-# ── Аргументы ────────────────────────────────────────────────────────
-# argv прежний (family op [pkg...]) — по нему зовёт движок, — но ПЕРВЫЙ
-# аргумент больше ничего не решает: команду выбирает только определённое
-# выше семейство. Расхождение не отказ, а запись в журнал: подсунуть через
-# него чужой менеджер пакетов уже нельзя.
+# ── Arguments ────────────────────────────────────────────────────────
+# argv is as before (family op [pkg...]) — the engine calls with it — but the FIRST
+# argument no longer decides anything: the command is chosen only by the family
+# determined above. A mismatch is not a refusal but a journal entry: slipping
+# someone else's package manager through it is no longer possible.
 [ "$#" -ge 2 ] || die pkg_args
 claimed="$1"; op="$2"; shift 2
 
@@ -3082,31 +3082,31 @@ case "$op" in
     *) die bad_op "$op" ;;
 esac
 
-# ── Пересборка по рецепту Arch: две узкие операции ───────────────────
-# Пересборка Rexon (repo_rebuild) собирает пакет ОТ ПОЛЬЗОВАТЕЛЯ и
-# зовёт помощник дважды, под тем же действием polkit, что и установка
-# остального, — пароль спрашивают один раз:
-#   build-deps dep...                         недостающее для сборки,
-#       pacman -S --needed --asdeps; строка — имя и, возможно,
-#       ограничение версии ('cmake>=3.20'), как её отдаёт 'pacman -T';
-#   install-built plain|replace file [pkg...] собранный файл, pacman -U
-#       (replace — '--ask=4': заменить конфликтующий установленный), затем
-#       'pacman -Rns' сборочных pkg; не снялись — не ошибка.
-# ⛔ Снять install-built может ТОЛЬКО то, что поставил предыдущий
-# build-deps этого же вызвавшего: build-deps записывает новые пакеты
-# (разница 'pacman -Qq' до и после) в свой файл root под __REBUILD_REC_DIR__,
-# install-built снимает пересечение переданного списка с записью, и лишь
-# пакеты с пометкой «зависимость» ('pacman -Qqd'); запись после установки
-# стирается. Нет записи — не снимается ничего: иначе через install-built
-# можно было бы снять любой пакет системы, кроме вечного списка.
-# ⛔ file — НЕ «любой файл»: только из каталога пересборок вызвавшего
-# (~/.cache/rexon/rebuild/<подкаталог>, домашний каталог — из passwd по
-# PKEXEC_UID, не из окружения), обычный файл вызвавшего, не ссылка, имя
-# файла makepkg (*.pkg.tar[.сжатие]). pacman получает СВОЮ копию в
-# каталоге 0700 root, снятую с проверенного файла (cp без разыменования
-# ссылок отказывает, если файл подменили во время копии), — подмена
-# после проверки ничего не меняет. Так помощник не поставит ни системный
-# файл, ни старую версию из кэша pacman, ни чужой файл.
+# ── Rebuild from the Arch recipe: two narrow operations ──────────────
+# The Rexon rebuild (repo_rebuild) builds a package AS THE USER and
+# calls the helper twice, under the same polkit action as installing
+# everything else — the password is asked once:
+#   build-deps dep...                         what is missing for the build,
+#       pacman -S --needed --asdeps; a line is a name and possibly
+#       a version constraint ('cmake>=3.20'), as 'pacman -T' gives it;
+#   install-built plain|replace file [pkg...] the built file, pacman -U
+#       (replace — '--ask=4': replace a conflicting installed one), then
+#       'pacman -Rns' of the build pkgs; failing to remove them is not an error.
+# ⛔ install-built may remove ONLY what the previous build-deps of the same
+# caller installed: build-deps records the new packages
+# (the 'pacman -Qq' difference before and after) in its own root file under __REBUILD_REC_DIR__,
+# install-built removes the intersection of the passed list with the record, and only
+# packages marked «dependency» ('pacman -Qqd'); the record is erased after
+# the install. No record — nothing is removed: otherwise install-built could be
+# used to remove any system package except the permanent list.
+# ⛔ file is NOT «any file»: only from the caller's rebuild directory
+# (~/.cache/rexon/rebuild/<subdirectory>, the home directory comes from passwd by
+# PKEXEC_UID, not from the environment), a regular file of the caller, not a link, a
+# makepkg file name (*.pkg.tar[.compression]). pacman gets ITS OWN copy in a
+# 0700 root directory, taken from the checked file (cp without dereferencing
+# links refuses if the file was replaced during the copy) — a replacement
+# after the check changes nothing. This way the helper installs neither a system
+# file, nor an old version from the pacman cache, nor someone else's file.
 if [ "$op" = build-deps ] || [ "$op" = install-built ]; then
     [ "$family" = arch ] || die rebuild_arch_only "$op"
 fi
@@ -3120,12 +3120,12 @@ if [ "$op" = install-built ]; then
     esac
 fi
 
-# ── Имя пакета — ИМЯ, а не путь ──────────────────────────────────────
-# '/' запрещён везде, кроме атома Gentoo «категория/имя»; ведущий '-' —
-# подмена пакета на флаг; ведущая точка и '..' — всегда путь; хвост файла
-# пакета ('.deb', '.rpm', …) — файл даже без '/'; '@' законно только как
-# группа dnf на Fedora (набор Portage '@world' в 'emerge --unmerge' снёс
-# бы систему). Правило то же, что у ядра в is_safe_pkg_arg.
+# ── A package name is a NAME, not a path ─────────────────────────────
+# '/' is forbidden everywhere except the Gentoo atom «category/name»; a leading '-' is
+# a package swapped for a flag; a leading dot and '..' are always a path; a package
+# file tail ('.deb', '.rpm', …) is a file even without '/'; '@' is legitimate only as
+# a dnf group on Fedora (the Portage set '@world' in 'emerge --unmerge' would wipe
+# the system). The rule is the same as the core's is_safe_pkg_arg.
 atom_ok() {
     printf '%s' "$1" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._+:-]*$'
 }
@@ -3148,8 +3148,8 @@ pkg_ok() {
     esac
 }
 
-# Строка зависимости для build-deps: имя (то же правило) и, возможно,
-# ограничение версии.
+# A dependency line for build-deps: a name (the same rule) and possibly
+# a version constraint.
 dep_ok() {
     local nm="${1%%[<>=]*}" ver
     ver="${1#"$nm"}"
@@ -3168,15 +3168,15 @@ for a in "$@"; do
     fi
 done
 
-# ── Удаление: жизненно важное не сносим никогда ──────────────────────
-# 'remove' идёт от root и с «не спрашивай»: 'remove linux' оставил бы
-# машину без загрузки, 'remove polkit' — без механизма подтверждения. Ни
-# одно из этих имён не входит ни в один рабочий стол базы Rexon, поэтому
-# честному удалению стола список не мешает.
-# ⛔ 28.10.2026: не только точные имена, но и семейства — ядра
-# ('linux-cachyos', 'linux-image-…'), драйверы ('nvidia-…', 'mesa'),
-# прошивки и микрокод ('*-firmware', '*-ucode'), сборщики initramfs.
-# Шаблон — то же правило, что у ядра (is_vital_package); без eval.
+# ── Removal: we never remove anything vital ──────────────────────────
+# 'remove' runs as root and with «do not ask»: 'remove linux' would leave the
+# machine unbootable, 'remove polkit' — without the confirmation mechanism. None
+# of these names is in any desktop of the Rexon database, so the list
+# does not get in the way of an honest desktop removal.
+# ⛔ 28.10.2026: not only exact names but families too — kernels
+# ('linux-cachyos', 'linux-image-…'), drivers ('nvidia-…', 'mesa'),
+# firmware and microcode ('*-firmware', '*-ucode'), initramfs builders.
+# The pattern is the same rule as the core's (is_vital_package); no eval.
 is_vital() {
     local k="${1#@}"
     k="${k##*/}"
@@ -3192,8 +3192,8 @@ if [ "$op" = "remove" ]; then
         fi
     done
 fi
-# install-built: прежний точный список (сборочные вроде 'linux-headers'
-# снимаются законно; их границы — у раздела install-built).
+# install-built: the former exact list (build ones like 'linux-headers'
+# are removed legitimately; their bounds are in the install-built section).
 VITAL="__VITAL__"
 if [ "$op" = install-built ]; then
     for a in "$@"; do
@@ -3205,20 +3205,20 @@ if [ "$op" = install-built ]; then
     done
 fi
 
-# ── Удаление: стол, в котором сидят, и его экран входа — не снимаются ─
-# Окну помощник не верит: что держать, он узнаёт сам, от root.
-#   1. Активный экран входа: цель ссылки display-manager.service (нет
-#      ссылки — первый включённый юнит из известного списка); держится
-#      имя юнита, его пакет по таблице ядра и владелец файла юнита у
-#      пакетного менеджера. У LightDM — ещё и приветствия
-#      ('lightdm-*greeter*'): lightdm от них не зависит.
-#   2. Графические сеансы logind (Type x11/wayland/mir, Class user — любого
-#      пользователя, не только вызвавшего): стол — по 'Desktop=' сеанса
-#      (XDG_SESSION_DESKTOP) той же таблицей, что у ядра; пакеты стола — из
-#      таблицы ядра, группы Arch раскрываются ('pacman -Qqg').
-# Ограничения: без systemd/elogind ('loginctl') пункт 2 молчит; сеанс без
-# 'Desktop=' (startx, часть входов через greetd) стола не называет —
-# держится только экран входа.
+# ── Removal: the desktop in use and its login screen are not removed ─
+# The helper does not trust the window: it learns what to keep itself, as root.
+#   1. The active login screen: the target of the display-manager.service link (no
+#      link — the first enabled unit from the known list); what is kept is the
+#      unit name, its package by the core's table and the owner of the unit file per
+#      the package manager. For LightDM — also the greeters
+#      ('lightdm-*greeter*'): lightdm does not depend on them.
+#   2. logind graphical sessions (Type x11/wayland/mir, Class user — of any
+#      user, not only the caller): the desktop — by the session's 'Desktop='
+#      (XDG_SESSION_DESKTOP) with the same table as the core's; the desktop packages — from
+#      the core's table, Arch groups are expanded ('pacman -Qqg').
+# Limits: without systemd/elogind ('loginctl') item 2 is silent; a session without
+# 'Desktop=' (startx, some logins through greetd) does not name a desktop —
+# only the login screen is kept.
 dm_unit_now() {
     local link="__DM_SYMLINK__" tgt known state
     if [ -L "$link" ]; then
@@ -3263,7 +3263,7 @@ de_of_desktop() {
     local d t
     d="$(printf '%s' "$1" | tr 'A-Z' 'a-z')"
     [ -n "$d" ] || return 1
-    # Токены через read, не через разбиение слов: ни одного раскрытия шаблона.
+    # Tokens through read, not through word splitting: not a single pattern expansion.
     while IFS= read -r t; do
         case "$t" in
 __DESKTOP_EXACT__
@@ -3312,7 +3312,7 @@ if [ "$op" = "remove" ]; then
     held="$(held_packages | sed 's|.*/||' | LC_ALL=C sort -u || true)"
     for a in "$@"; do
         b="${a##*/}"
-        # here-string, не конвейер (pipefail и SIGPIPE).
+        # a here-string, not a pipeline (pipefail and SIGPIPE).
         if grep -Fxq -- "$b" <<<"$held"; then
             die current_de_pkg "$a"
         fi
@@ -3322,12 +3322,12 @@ if [ "$op" = "remove" ]; then
     done
 fi
 
-# ── Установка: только пакеты из таблиц ядра ──────────────────────────
-# Белый список вшит при генерации помощника: столы (основные и AUR),
-# экраны входа, починка соответствия, видеозависимости обоев, yt-dlp,
-# оболочки, программы виджетов Conky и распаковщик 7z, части раскладок
-# MATE, значки и курсоры тем, образы «Как в дистрибутиве». Имя вне списка
-# помощник от root не ставит, что бы ни прислал вызывающий.
+# ── Install: only packages from the core's tables ────────────────────
+# The allowlist is embedded when the helper is generated: desktops (main and AUR),
+# login screens, compliance repair, wallpaper video dependencies, yt-dlp,
+# shells, Conky widget programs and the 7z unpacker, parts of the MATE
+# layouts, theme icons and cursors, «Distro looks» images. A name outside the list
+# the helper does not install as root, whatever the caller sends.
 install_allowed() {
     local list=""
     case "$family" in
@@ -3344,7 +3344,7 @@ if [ "$op" = install ]; then
     done
 fi
 
-# Команда — массив аргументов; исполняется напрямую, без оболочки.
+# The command is an argument array; it runs directly, without a shell.
 cmd=()
 run_cmd() {
     [ "${#cmd[@]}" -gt 0 ] || die no_cmd "$family"
@@ -3397,13 +3397,13 @@ if [ "$op" = install-built ]; then
         /?*) : ;;
         *) die built_no_home "$PKEXEC_UID" ;;
     esac
-    # Корень пересборок — свой у вызвавшего; ~/.cache может быть ссылкой
-    # на другой диск, поэтому сравниваются настоящие пути.
+    # The rebuild root is the caller's own; ~/.cache may be a link
+    # to another disk, so the real paths are compared.
     rebuild_root="$(cd -P -- "$home/.cache/rexon/rebuild" 2>/dev/null && pwd -P)" \
         || die built_outside "$built"
     [ "$(stat -c %u -- "$rebuild_root")" = "$PKEXEC_UID" ] || die built_outside "$built"
-    # Сначала ВХОДИМ в каталог файла: дальше имя без '/' считается от него,
-    # и подмена части пути ссылкой уже ничего не меняет.
+    # First ENTER the file's directory: from then on a name without '/' counts from it,
+    # and replacing part of the path with a link changes nothing anymore.
     cd -P -- "${built%/*}" 2>/dev/null || die built_unreachable "$built"
     here="$(pwd -P)"
     case "$here" in
@@ -3411,7 +3411,7 @@ if [ "$op" = install-built ]; then
         *) die built_outside "$built" ;;
     esac
     [ "$(stat -c %u .)" = "$PKEXEC_UID" ] || die built_not_callers "$built"
-    # Предварительно — чтобы cp не повис на FIFO; решает проверка копии.
+    # Preliminary — so cp does not hang on a FIFO; the copy check decides.
     { [ -f "./$name" ] && [ ! -L "./$name" ]; } || die built_not_file "$built"
     work="$(mktemp -d /var/tmp/rexon-pkg-helper.XXXXXXXX)" || die no_work_dir
     trap 'rm -rf -- "$work"' EXIT
@@ -3437,8 +3437,8 @@ if [ "$op" = install-built ]; then
             asdeps="$(pacman -Qqd 2>/dev/null || true)"
         fi
         for a in "$@"; do
-            # here-string, не конвейер: при pipefail ранний выход grep -q
-            # мог бы уронить printf (SIGPIPE) и «не найти» найденное.
+            # a here-string, not a pipeline: with pipefail an early exit of grep -q
+            # could take down printf (SIGPIPE) and «not find» what was found.
             if grep -Fxq -- "$a" <<<"$ours" && grep -Fxq -- "$a" <<<"$asdeps"; then
                 drop+=("$a")
             else
@@ -3470,8 +3470,8 @@ if [ "$op" = "enable-dm" ]; then
         *) die bad_dm "$dm" ;;
     esac
     have systemctl || die no_systemctl
-    # --force для DM, не Provides display-manager.service (Plasma Login
-    # Manager: иначе enable отказывается из-за alias-конфликта).
+    # --force for a DM that does not Provide display-manager.service (Plasma Login
+    # Manager: otherwise enable refuses because of an alias conflict).
     cmd=(systemctl enable)
     case "$dm" in
         __DM_FORCE__) cmd+=(--force) ;;
@@ -3481,14 +3481,14 @@ if [ "$op" = "enable-dm" ]; then
     exit $?
 fi
 
-# ── switch-dm: «Сделать основным» экран входа ────────────────────────
-# Только systemd. Помощник САМ определяет прежний экран входа и механизм
-# выбора, САМ повторяет критичные проверки (между пробой интерфейса и
-# паролем мог пройти час) и сверяет результат; при расхождении — откат.
-# ⛔ Только enable: никаких запусков и остановок служб в живом сеансе —
-# новый экран входа появится после перезагрузки. Запускает
-# display-manager.service лишь служба-откат, и только при загрузке,
-# когда новый экран входа упал.
+# ── switch-dm: «Make default» for a login screen ─────────────────────
+# systemd only. The helper ITSELF determines the previous login screen and the selection
+# mechanism, ITSELF repeats the critical checks (an hour may have passed between probing
+# the interface and the password) and verifies the result; on a mismatch — a rollback.
+# ⛔ Only enable: no starting or stopping of services in a live session —
+# the new login screen appears after a reboot. display-manager.service is
+# started only by the rollback service, and only at boot,
+# when the new login screen has failed.
 if [ "$op" = "switch-dm" ]; then
     [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die switch_dm_args
     new="$1"; greeter="${2:-}"
@@ -3502,7 +3502,7 @@ if [ "$op" = "switch-dm" ]; then
     GREETER_CONF="__LIGHTDM_GREETER_CONF__"
     REXON_ETC="__DM_FALLBACK_DIR__"
 
-    # Механизм выбора — по этой машине (то же решение, что dm_switch_backend).
+    # The selection mechanism — per this machine (the same decision as dm_switch_backend).
     backend=systemd
     for p in "$DM_LINK" /usr/lib/systemd/system/display-manager.service; do
         if [ -f "$p" ] && [ "$(basename "$(readlink -f "$p")")" = display-manager.service ]; then
@@ -3527,7 +3527,7 @@ if [ "$op" = "switch-dm" ]; then
     [ "$(readlink -f "$unit_file")" != /dev/null ] || die dm_masked "$new"
     unit_real="$(readlink -f "$unit_file")"
 
-    # Программа из ExecStart (префиксы systemd -@:+! снимаются).
+    # The program from ExecStart (the systemd prefixes -@:+! are stripped).
     exec_line="$(sed -n 's/^[[:space:]]*ExecStart=//p' "$unit_real" | tail -n1)"
     exec_bin="$(printf '%s\n' "$exec_line" | sed 's/^[-@:+!]*//' | awk '{print $1}')"
     [ -n "$exec_bin" ] || die dm_no_program "$new"
@@ -3542,8 +3542,8 @@ __DM_SWITCH_PAM__
         die dm_no_pam "$pam"
     fi
 
-    # greetd и всё, что идёт через него (cosmic-greeter): приветствие — из
-    # СВОЕГО конфига. Текстовый вход (agreety, голая оболочка) не годится.
+    # greetd and everything that goes through it (cosmic-greeter): the greeter — from
+    # ITS OWN config. A text login (agreety, a bare shell) does not qualify.
     if [ "$(basename "$exec_bin")" = greetd ]; then
         cfg="$(printf '%s\n' "$exec_line" | sed -n 's/.*\(--config\|-c\)[= ]\([^ ]*\).*/\2/p')"
         [ -n "$cfg" ] || cfg=/etc/greetd/config.toml
@@ -3579,7 +3579,7 @@ __DM_SWITCH_PAM__
         { have Xorg || [ -x /usr/lib/Xorg ]; } || die dm_no_xorg
     fi
 
-    # Прежний экран входа — только по живой ссылке.
+    # The previous login screen — only by a live link.
     old=""; old_real=""
     if [ -L "$DM_LINK" ] && [ -e "$DM_LINK" ]; then
         old_real="$(readlink -f "$DM_LINK")"
@@ -3603,7 +3603,7 @@ __DM_DEBIAN_PKG__
         [ -z "$old" ] || old_pkg="$(debian_pkg "$old")"
     fi
 
-    # Прежняя страховка снимается: она относилась к прошлому переключению.
+    # The previous safety net is removed: it belonged to the past switch.
     for f in /etc/systemd/system/*.service.d/__DM_FALLBACK_DROPIN__; do
         [ -e "$f" ] || continue
         rm -f "$f"
@@ -3646,8 +3646,8 @@ __DM_DEBIAN_PKG__
         debconf_set "$new_pkg"
         printf '%s\n' "$bin_path" > /etc/X11/default-display-manager
         if have dpkg-reconfigure; then
-            # policy-rc.d: сценарий пакета не должен запустить службу в
-            # живом сеансе.
+            # policy-rc.d: the package's script must not start the service in
+            # a live session.
             own_policy=0
             if [ ! -e /usr/sbin/policy-rc.d ]; then
                 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
@@ -3664,7 +3664,7 @@ __DM_DEBIAN_PKG__
         die dm_switch_failed "$new" "$out"
     fi
 
-    # Проверка «после»: ссылка, состояние юнита, на Debian — файл выбора.
+    # The «after» check: the link, the unit state, on Debian — the selection file.
     ok=1
     [ "$(readlink -f "$DM_LINK" 2>/dev/null || true)" = "$unit_real" ] || ok=0
     case "$(systemctl is-enabled "$new.service" 2>/dev/null || true)" in
@@ -3679,14 +3679,14 @@ __DM_DEBIAN_PKG__
         die dm_switch_mismatch "$new"
     fi
 
-    # Прежний с WantedBy= (самодельный юнит) иначе поднялся бы вторым.
+    # Otherwise the previous one with WantedBy= (a home-made unit) would come up second.
     if [ -n "$old" ] && grep -Eq '^[[:space:]]*WantedBy=' "$old_real" 2>/dev/null; then
         systemctl disable "$old.service" >/dev/null 2>&1 || true
     fi
 
-    # Страховка: новый экран входа упал при загрузке (в том числе
-    # start-limit-hit) — служба-откат вернёт прежний. Только когда есть,
-    # к чему возвращаться.
+    # Safety net: the new login screen failed at boot (including
+    # start-limit-hit) — the rollback service brings back the previous one. Only when there is
+    # something to go back to.
     mkdir -p "$REXON_ETC"
     if [ -n "$old" ]; then
         {
@@ -3712,7 +3712,7 @@ REXON_DM_FALLBACK_UNIT
         else
             back="sudo systemctl enable --force $old.service && sudo reboot"
         fi
-        # Строки для человека — без имени помощника в начале.
+        # Lines for the person — without the helper name at the start.
         line() { printf '%s\n' "${1#__PKG_HELPER_NAME__: }"; }
         {
             line "$(rx_say prev_dm_header "$old" "$new")"
@@ -3728,7 +3728,7 @@ REXON_DM_FALLBACK_UNIT
     exit 0
 fi
 
-# install / remove — нужен хотя бы один пакет.
+# install / remove — at least one package is needed.
 [ "$#" -ge 1 ] || die op_needs_pkg "$op"
 case "$op" in
     install)
@@ -3744,36 +3744,36 @@ run_cmd "$@"
 exit $?
 "#;
 
-/// XML polkit-политики PKG_ACTION — порт `_pkg_policy_xml` (путь ручной
-/// установки; пакет печатает [`pkg_policy_xml_for`]).
+/// The polkit policy XML of PKG_ACTION — a port of `_pkg_policy_xml` (the
+/// manual install path; the package prints [`pkg_policy_xml_for`]).
 pub fn pkg_policy_xml() -> String {
     pkg_policy_xml_for(PKG_HELPER_PATH)
 }
 
-/// Действия, которые покрывает подтверждённое `org.rexon.pkg` —
-/// аннотация polkit `org.freedesktop.policykit.imply` («зонтик»).
+/// Actions covered by a confirmed `org.rexon.pkg` — the polkit annotation
+/// `org.freedesktop.policykit.imply` (the «umbrella»).
 ///
-/// Как это работает (polkit, `check_authorization_sync`): спрашивая
-/// разрешение на действие X, polkit смотрит и действия, в чьём `imply`
-/// стоит X, и проверяет их БЕЗ окна пароля — неявное разрешение и
-/// временное (`auth_admin_keep`) для того же процесса. Значит, пароль,
-/// введённый окном Rexon для `org.rexon.pkg`, пять минут покрывает и
-/// установку стола, и раскладку файлов экрана входа, и темы
-/// SDDM/Plymouth — одно окно вместо четырёх.
+/// How it works (polkit, `check_authorization_sync`): when asked for
+/// authorization of action X, polkit also looks at the actions whose `imply`
+/// lists X and checks them WITHOUT a password window — both an implicit
+/// authorization and a temporary one (`auth_admin_keep`) for the same process.
+/// So the password entered in the Rexon window for `org.rexon.pkg` covers for
+/// five minutes the desktop install, the login screen file layout and the
+/// SDDM/Plymouth themes as well — one window instead of four.
 ///
-/// Направление одно и выбрано намеренно: зонтик держит самое сильное
-/// действие (установка и удаление пакетов по имени), и оно НИКОГДА не
-/// бывает «без пароля» ([`PASSWORDLESS_ACTIONS`]). Обратное (`imply` у
-/// действия из правила «без пароля») отдало бы пакеты без пароля любому
-/// процессу сеанса — это дыра, закрытая 25.09.2026. Сторож —
-/// `imply_umbrella_never_hangs_on_passwordless_action`.
+/// There is only one direction, and it was chosen on purpose: the umbrella is
+/// held by the strongest action (installing and removing packages by name),
+/// and it is NEVER «passwordless» ([`PASSWORDLESS_ACTIONS`]). The reverse
+/// (`imply` on an action from the «passwordless» rule) would give packages
+/// without a password to any session process — a hole closed on 25.09.2026.
+/// The guard is `imply_umbrella_never_hangs_on_passwordless_action`.
 pub const PKG_IMPLIES: &[&str] = &[
     DE_INSTALL_ACTION,
     STAGE_ACTION,
     crate::installer::SYSTEM_INSTALL_ACTION,
 ];
 
-/// XML той же политики для помощника, лежащего по заданному пути.
+/// XML of the same policy for a helper located at the given path.
 pub fn pkg_policy_xml_for(helper_path: &str) -> String {
     let implies = PKG_IMPLIES.join(" ");
     format!(
@@ -3805,7 +3805,7 @@ pub fn pkg_policy_xml_for(helper_path: &str) -> String {
     )
 }
 
-/// Тело rexon-stage-helper — порт `_stage_helper_script`.
+/// The body of rexon-stage-helper — a port of `_stage_helper_script`.
 pub fn stage_helper_script() -> String {
     let cat_list = STAGE_CATEGORIES.join("|");
     let webkit_root = table_get(STAGE_DIR_ROOT, "lightdm-webkit").unwrap();
@@ -3819,12 +3819,12 @@ pub fn stage_helper_script() -> String {
 }
 
 const STAGE_HELPER_SCRIPT_TMPL: &str = r#"#!/bin/bash
-# Rexon stage helper — привилегированный file-staging в /usr/share.
-# Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.stage,
-# auth_admin_keep: подтверждённый пароль держится несколько минут для окна
-# Rexon; в правило «без пароля» не входит с 28.09.2026). Копирует
-# ВАЛИДИРОВАННЫЙ staged-каталог в ФИКСИРОВАННЫЙ путь по category. НЕ
-# принимает произвольный dest. НЕ выполняет произвольный код.
+# Rexon stage helper — privileged file-staging into /usr/share.
+# Run EXCLUSIVELY through pkexec (polkit action org.rexon.stage,
+# auth_admin_keep: a confirmed password is kept for a few minutes for the
+# Rexon window; not in the «passwordless» rule since 28.09.2026). Copies a
+# VALIDATED staged directory to a FIXED path by category. Does NOT
+# accept an arbitrary dest. Does NOT run arbitrary code.
 set -euo pipefail
 export LC_ALL=C LANG=C
 
@@ -3833,26 +3833,26 @@ __L10N__
 [ "$#" -eq 3 ] || die stage_args
 category="$1"; name="$2"; staged="$3"
 
-# 1) category — строгий allowlist.
+# 1) category — a strict allowlist.
 case "$category" in
     __CAT_LIST__) : ;;
     *) die bad_category "$category" ;;
 esac
 
-# 2) name — только безопасные символы; без / .. и ведущего '-'/'.'/пустоты.
+# 2) name — only safe characters; no / .. and no leading '-'/'.'/emptiness.
 case "$name" in
     ""|-*|.*|*/*|*..*) die bad_name "$name" ;;
 esac
 printf '%s' "$name" | grep -Eq '^[A-Za-z0-9._-]+$' \
     || die bad_name_chars "$name"
 
-# 3) staged — каталог вызвавшего под /tmp|/var/tmp (Rexon создаёт его через
-#    mkdtemp). Сначала ВХОДИМ в него: дальше работаем с тем самым каталогом,
-#    и подмена части пути ссылкой уже ничего не меняет. Место и владельца
-#    проверяем у входа, копию «.» кладём в свой каталог 0700 и дальше
-#    работаем ТОЛЬКО с ней — её пользователь не тронет. Прежде: realpath,
-#    затем cp по строке пути — окно подменить путь и унести root'ом чужой
-#    каталог в общедоступный /usr/share.
+# 3) staged — the caller's directory under /tmp|/var/tmp (Rexon creates it with
+#    mkdtemp). First we ENTER it: from then on we work with that very directory,
+#    and replacing part of the path with a link changes nothing anymore. The place and
+#    the owner are checked at the entry, the copy of «.» goes into our own 0700 directory and from
+#    then on we work ONLY with it — the user will not touch it. Before: realpath,
+#    then cp by the path string — a window to replace the path and carry someone else's
+#    directory as root into the world-readable /usr/share.
 [ -n "${PKEXEC_UID:-}" ] || die not_via_pkexec
 [ -d "$staged" ] || die staged_not_dir "$staged"
 cd -P -- "$staged" 2>/dev/null || die staged_unreachable "$staged"
@@ -3870,11 +3870,11 @@ cd /
 odd="$(find "$real_staged" -mindepth 1 ! -type f ! -type d -print -quit)"
 [ -z "$odd" ] || die staged_odd "${odd#"$real_staged"/}"
 
-# ── Обработка по category ────────────────────────────────────────────
+# ── Handling by category ─────────────────────────────────────────────
 case "$category" in
     gdm-bg|lightdm-bg|cosmic-greeter|login-bg)
-        # staged содержит РОВНО один файл-картинку. Имя файла берём из
-        # каталога, расширение нормализуем (только [A-Za-z0-9]).
+        # staged holds EXACTLY one image file. The file name is taken from the
+        # directory, the extension is normalized (only [A-Za-z0-9]).
         img="$(find "$real_staged" -maxdepth 1 -type f \
             \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \
                -o -iname '*.webp' -o -iname '*.bmp' \) | head -n1)"
@@ -3883,7 +3883,7 @@ case "$category" in
         printf '%s' "$ext" | grep -Eq '^[A-Za-z0-9]+$' || ext="png"
         dest_bg="/usr/share/backgrounds/rexon-login.$ext"
         install -d /usr/share/backgrounds
-        # Удаляем прошлые rexon-login.* (расширение могло смениться).
+        # Remove past rexon-login.* (the extension may have changed).
         rm -f /usr/share/backgrounds/rexon-login.* 2>/dev/null || true
         cp -f "$img" "$dest_bg"
         chmod 644 "$dest_bg"
@@ -3922,9 +3922,9 @@ REXON_EOF
         rx_say bg_installed "$dest_bg"
         ;;
     lightdm-webkit)
-        # Корень выбираем по факту: тот, который в системе реально есть
-        # (оба пути фиксированы здесь же — произвольный dest по-прежнему
-        # не принимается).
+        # The root is chosen by fact: the one that really exists in the system
+        # (both paths are fixed right here — an arbitrary dest is still
+        # not accepted).
         if [ -d "__WEBKIT_ROOT__" ]; then
             root="__WEBKIT_ROOT__"
         elif [ -d "__WEB_GREETER_ROOT__" ]; then
@@ -3939,13 +3939,13 @@ REXON_EOF
         rx_say webkit_theme "$name"
         ;;
     mate-layouts)
-        # staged = каталог с .layout/.dock (+ опц. sed-адаптация snap-путей
-        # выполнена Rexon ДО staging, helper только копирует). Файлы кладём
-        # прямо в корень layouts (без <name>-подкаталога). name здесь —
-        # технический маркер ('rexon'), уже провалидирован выше.
+        # staged = a directory with .layout/.dock (+ an opt. sed adaptation of snap paths
+        # is done by Rexon BEFORE staging, the helper only copies). The files go
+        # straight into the layouts root (without a <name> subdirectory). name here is
+        # a technical marker ('rexon'), already validated above.
         dst="__LAYOUTS_ROOT__"
         install -d "$dst"
-        # Копируем ТОЛЬКО .layout/.dock (anti-«лишние файлы»).
+        # Copy ONLY .layout/.dock (against «extra files»).
         found=0
         for f in "$real_staged"/*.layout "$real_staged"/*.dock; do
             [ -e "$f" ] || continue
@@ -12830,6 +12830,18 @@ pub const MATE_EXTRA_PACKAGES: &[(&str, &str, &[&str])] = &[
         // Not the common `vala-panel-appmenu`: it pulls in budgie-desktop and vala-panel.
         &["vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"],
     ),
+    // The MATE Menu (the Ubuntu MATE menu) — in place of the Brisk menu, which
+    // Rexon no longer installs (Wehrwolfmann, 24.11.2026). A group of its own on
+    // purpose: the AUR package has been failing to install (26.10.1 ships
+    // `gschemas.compiled`, which conflicts with the file on disk), and in a shared
+    // transaction its failure would take the other packages down with it. If it
+    // fails, nothing is lost: the stock MATE panel uses the built-in menu, and
+    // the layouts put the built-in menu button in its place (`mate_panel::prepare`).
+    (
+        "mate-menu",
+        n_("📋 Checking the MATE Menu (mate-menu)…"),
+        &["mate-menu"],
+    ),
 ];
 
 /// Log lines about the written look: they list what was really written, not
@@ -13361,6 +13373,132 @@ listener {{\n    timeout = 300\n    on-timeout = loginctl lock-session\n}}\n"
     )
 }
 
+// ── Lock screen look: swaylock and hyprlock ────────────────────────────────
+//
+// Without a config swaylock shows a plain white screen (its default color is
+// `ffffff`) and the ring appears only while typing; hyprlock shows a blurred
+// screenshot. Rexon writes its own look only when there is no config at all:
+// neither the user's nor the distribution's (`/etc`), so a chosen look is
+// never replaced. The background is the dark color of the `steam_dark` skin:
+// on the tiling desktops Rexon does not keep the path of the current
+// wallpaper (swaybg/swww hold it only while running), so there is no picture
+// to show.
+
+/// Mark of a lock look file written by Rexon.
+const LOOK_HEADER: &str = "Lock screen look (written by Rexon; change freely)";
+
+/// A `steam_dark` skin color as bare `rrggbb` (the form both lockers take).
+/// The source is [`crate::ui_base::APPEARANCE_STEAM_COLORS`].
+fn skin_hex(token: &str) -> &'static str {
+    crate::ui_base::APPEARANCE_STEAM_COLORS
+        .iter()
+        .find(|(k, _)| *k == token)
+        .map(|(_, v)| v.trim_start_matches('#'))
+        .unwrap_or("000000")
+}
+
+/// Every file swaylock reads its options from, in its own search order
+/// (swaylock(1), FILES): `~/.swaylock/config`, `$XDG_CONFIG_HOME/swaylock/config`,
+/// `/etc/swaylock/config`. Any of them present — the look is someone's choice.
+pub fn swaylock_config_paths(home: &str, config_home: &str) -> Vec<String> {
+    vec![
+        format!("{}/.swaylock/config", home.trim_end_matches('/')),
+        format!("{}/swaylock/config", config_home.trim_end_matches('/')),
+        "/etc/swaylock/config".to_string(),
+    ]
+}
+
+/// Every file hyprlock may take as its config: `$XDG_CONFIG_HOME/hypr/hyprlock.conf`
+/// and the system one in `XDG_CONFIG_DIRS` (`/etc/xdg/hypr/hyprlock.conf`).
+pub fn hyprlock_config_paths(config_home: &str) -> Vec<String> {
+    vec![
+        format!("{}/hypr/hyprlock.conf", config_home.trim_end_matches('/')),
+        "/etc/xdg/hypr/hyprlock.conf".to_string(),
+    ]
+}
+
+/// `~/.config/swaylock/config`: the dark skin background and a ring that is
+/// visible all the time (`indicator-idle-visible`), so the locked screen
+/// clearly asks for the password. Lines are swaylock's long options without
+/// `--`; only options plain swaylock has had since 1.5 are used (an unknown
+/// option makes swaylock refuse to start, and the screen would not lock).
+pub fn swaylock_config() -> String {
+    let bg = skin_hex("bg_primary");
+    let inside = skin_hex("bg_secondary");
+    let ring = skin_hex("border");
+    let accent = skin_hex("accent");
+    let ok = skin_hex("accent_green");
+    // `author_self` is the skin's red.
+    let wrong = skin_hex("author_self");
+    let caps = skin_hex("rating_star");
+    let text = skin_hex("text_primary");
+    format!(
+        "# {LOOK_HEADER}\n\
+# Options are swaylock's long options without \"--\", see swaylock(1).\n\
+color={bg}\n\
+indicator-idle-visible\n\
+indicator-radius=100\n\
+indicator-thickness=10\n\
+show-failed-attempts\n\
+ignore-empty-password\n\
+inside-color={inside}\n\
+inside-clear-color={inside}\n\
+inside-caps-lock-color={inside}\n\
+inside-ver-color={inside}\n\
+inside-wrong-color={inside}\n\
+ring-color={ring}\n\
+ring-clear-color={accent}\n\
+ring-caps-lock-color={caps}\n\
+ring-ver-color={ok}\n\
+ring-wrong-color={wrong}\n\
+key-hl-color={accent}\n\
+bs-hl-color={wrong}\n\
+caps-lock-key-hl-color={caps}\n\
+caps-lock-bs-hl-color={wrong}\n\
+line-uses-inside\n\
+separator-color=00000000\n\
+text-color={text}\n\
+text-clear-color={text}\n\
+text-caps-lock-color={text}\n\
+text-ver-color={text}\n\
+text-wrong-color={text}\n"
+    )
+}
+
+/// `~/.config/hypr/hyprlock.conf`: the dark skin background, the clock and
+/// the date above a password field, as in the hyprlock example config. The
+/// placeholder is in the person's language at install time.
+pub fn hyprlock_conf() -> String {
+    let bg = skin_hex("bg_primary");
+    let inside = skin_hex("bg_secondary");
+    let ring = skin_hex("border");
+    let accent = skin_hex("accent");
+    let wrong = skin_hex("author_self");
+    let caps = skin_hex("rating_star");
+    let text = skin_hex("text_primary");
+    // TRANSLATORS: placeholder in the password field of the lock screen (hyprlock).
+    // `#` starts a comment in hyprlock.conf, a newline ends the value.
+    let placeholder: String = tr("Password…").chars().filter(|c| *c != '#' && *c != '\n').collect();
+    format!(
+        "# {LOOK_HEADER}\n\
+# Reference: https://wiki.hypr.land/Hypr-Ecosystem/hyprlock/\n\
+general {{\n    hide_cursor = true\n}}\n\n\
+background {{\n    monitor =\n    color = rgb({bg})\n}}\n\n\
+label {{\n    monitor =\n    text = $TIME\n    color = rgb({text})\n    font_size = 72\n    position = 0, 160\n    halign = center\n    valign = center\n}}\n\n\
+label {{\n    monitor =\n    text = cmd[update:60000] date +\"%A, %d %B\"\n    color = rgb({accent})\n    font_size = 20\n    position = 0, 80\n    halign = center\n    valign = center\n}}\n\n\
+input-field {{\n    monitor =\n    size = 320, 56\n    outline_thickness = 3\n    rounding = 8\n    dots_size = 0.25\n    dots_spacing = 0.3\n\
+    outer_color = rgb({ring})\n    inner_color = rgb({inside})\n    font_color = rgb({text})\n    check_color = rgb({accent})\n\
+    fail_color = rgb({wrong})\n    capslock_color = rgb({caps})\n    fade_on_empty = false\n    placeholder_text = <i>{placeholder}</i>\n\
+    position = 0, -40\n    halign = center\n    valign = center\n}}\n"
+    )
+}
+
+/// Log line: the lock screen look was written.
+pub fn lock_look_written(locker: &str, path: &str) -> String {
+    // TRANSLATORS: %1 is a lock program (swaylock, hyprlock), %2 a file path.
+    trf("🎨 %1: the lock screen got a dark background and a visible password field (%2) — change it freely", &[&locker, &path])
+}
+
 /// swayidle autostart for niri (`spawn-at-startup` takes one argument per
 /// word; swayidle passes its lock commands to `sh -c` itself).
 fn niri_swayidle_node() -> String {
@@ -13438,6 +13576,41 @@ pub fn lock_setup_failed(desktop: &str, path: &str, why: &str) -> String {
 #[cfg(test)]
 mod lock_setup_tests {
     use super::*;
+
+    /// The lock look files: the skin's dark background instead of swaylock's
+    /// white screen and hyprlock's blurred screenshot, a visible password
+    /// field, only options both lockers know.
+    #[test]
+    fn lock_look_is_dark_skin_with_visible_input() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let sway = swaylock_config();
+        assert!(sway.starts_with(&format!("# {LOOK_HEADER}\n")), "{sway}");
+        assert!(sway.contains("\ncolor=1b2838\n"), "{sway}");
+        assert!(sway.contains("\nindicator-idle-visible\n") && sway.contains("\nkey-hl-color=66c0f4\n"), "{sway}");
+        for line in sway.lines().filter(|l| !l.starts_with('#')) {
+            // Every line is a bare long option, values are rrggbb[aa].
+            let (opt, value) = line.split_once('=').unwrap_or((line, ""));
+            assert!(!opt.starts_with('-') && opt.chars().all(|c| c.is_ascii_lowercase() || c == '-'), "{line}");
+            assert!(value.is_empty() || value.parse::<u32>().is_ok() || (matches!(value.len(), 6 | 8) && value.chars().all(|c| c.is_ascii_hexdigit())), "{line}");
+        }
+
+        let hypr = hyprlock_conf();
+        assert!(hypr.contains("background {\n    monitor =\n    color = rgb(1b2838)\n}"), "{hypr}");
+        assert!(!hypr.contains("screenshot") && !hypr.contains("blur"), "{hypr}");
+        assert!(hypr.contains("text = $TIME") && hypr.contains("input-field {") && hypr.contains("fade_on_empty = false"), "{hypr}");
+        assert!(hypr.contains("placeholder_text = <i>Password…</i>"), "{hypr}");
+        // Braces balance: every block is closed.
+        assert_eq!(hypr.matches('{').count(), hypr.matches('}').count(), "{hypr}");
+    }
+
+    #[test]
+    fn lock_look_config_paths_follow_lockers_search_order() {
+        assert_eq!(
+            swaylock_config_paths("/home/u/", "/home/u/.config"),
+            ["/home/u/.swaylock/config", "/home/u/.config/swaylock/config", "/etc/swaylock/config"]
+        );
+        assert_eq!(hyprlock_config_paths("/x/cfg/"), ["/x/cfg/hypr/hyprlock.conf", "/etc/xdg/hypr/hyprlock.conf"]);
+    }
 
     #[test]
     fn wayfire_gets_lock_key_and_idle_once() {
@@ -13979,7 +14152,7 @@ mod pkg_arg_security_tests {
     /// here: the refusal happens before any package manager call, and the honest
     /// run goes to fake binaries from its own directory.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn помощник_живьём_отказывает_на_пути() {
         use std::io::Write;
         use std::process::Command;
@@ -14288,7 +14461,7 @@ mod de_helper_log_tests {
     /// "run the rest").
     fn run_log_part(tag: &str, log_path: &str) -> (i32, String) {
         let full = de_helper_script();
-        let cut = full.find("# Пакеты для пары").expect("раздел пакетов в помощнике");
+        let cut = full.find("# Packages for the de_id|family pair").expect("раздел пакетов в помощнике");
         let script = format!("{}echo REXON_BODY\nexit 3\n", &full[..cut]);
         let dir = std::env::temp_dir().join(format!("rexon-de-log-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -14373,7 +14546,7 @@ mod stage_helper_copy_tests {
     /// nothing is written into the system.
     fn run(staged: &Path, pkexec_uid: &str) -> (bool, String) {
         let full = stage_helper_script();
-        let cut = full.find("# ── Обработка по category").expect("раздел раскладки");
+        let cut = full.find("# ── Handling by category").expect("раздел раскладки");
         let script = format!(
             "{}[ -f \"$real_staged/bg.png\" ] && echo REXON_VALIDATED\nexit 0\n",
             &full[..cut]
@@ -14547,7 +14720,7 @@ mod pkg_helper_rebuild_tests {
     }
 
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn свой_собранный_файл_ставится_копией_и_сборочные_снимаются() {
         let st = stand("ok");
         let file = st.rebuild().join("foo-1:2.0-1-x86_64.pkg.tar.zst");
@@ -14585,7 +14758,7 @@ mod pkg_helper_rebuild_tests {
     /// Nothing but its own makepkg file from its own rebuild directory: each
     /// refusal is code 2 and not a single pacman call.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn чужой_внешний_ссылка_и_не_пакет_отвергнуты() {
         let st = stand("bad");
         let good = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
@@ -14650,7 +14823,7 @@ mod pkg_helper_rebuild_tests {
     /// installed for THIS caller, and only with the "dependency" mark. Without a
     /// record nothing is removed.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn посторонний_пакет_не_снимается() {
         let st = stand("foreign");
         let file = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
@@ -14681,7 +14854,7 @@ mod pkg_helper_rebuild_tests {
     }
 
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn сборочные_зависимости_только_по_именам() {
         let st = stand("deps");
         let (code, out, err) = st.run(&["arch", "build-deps", "cmake>=3.20", "vala", "libfoo.so=1-64", "base-devel"]);
@@ -14701,7 +14874,7 @@ mod pkg_helper_rebuild_tests {
 
     /// Not Arch: both operations refuse right away.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn шаги_пересборки_только_на_arch() {
         let st = stand("deb");
         std::fs::write(st.root.join("os-release"), "ID=debian\n").unwrap();

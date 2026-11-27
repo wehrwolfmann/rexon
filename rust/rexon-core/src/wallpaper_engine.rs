@@ -2015,15 +2015,15 @@ pub fn host_session_lock_path(runtime_dir: &str, wayland_display: &str, display:
 
 /// Whether this host launch takes the session lock. Only showing a wallpaper
 /// on the desktop: the waywallen scene output is a different role (the daemon
-/// holds it), and the self-check and the debug window (`--windowed`) are not
-/// wallpapers and must not stop the real ones.
+/// holds it), and the self-check, the debug window (`--windowed`) and the
+/// full-screen page preview (`--preview`) are not wallpapers and must not stop the real ones.
 pub fn host_takes_session_lock(mode: HostMode, args: &[String]) -> bool {
     if mode == HostMode::Waywallen {
         return false;
     }
     !args
         .iter()
-        .any(|a| a == "-w" || a == "--windowed" || a == "--selftest" || a.starts_with("--selftest="))
+        .any(|a| a == "-w" || a == "--windowed" || a == "--preview" || a == "--selftest" || a.starts_with("--selftest="))
 }
 
 /// Is the process command line (`/proc/<pid>/cmdline`, NULs between words)
@@ -2164,6 +2164,7 @@ mod host_session_tests {
         assert!(!host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "-w"])));
         assert!(!host_takes_session_lock(HostMode::Web, &s(&["/i.html", "--selftest"])));
         assert!(!host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "--selftest=500"])));
+        assert!(!host_takes_session_lock(HostMode::Web, &s(&["--preview", "/i.html"])), "a preview must not stop the wallpaper");
     }
 
     #[test]

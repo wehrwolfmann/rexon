@@ -175,9 +175,177 @@ pub fn display_package_candidates(data_dir: Option<&str>, home: &str) -> Vec<Str
     out
 }
 
+// ── the output element from the waywallen-display package (X11 host) ────
+//
+// The X11 output host client needs only the `Waywallen.Display` QML module, not
+// Plasma: the distribution package `waywallen-display` installs it into the Qt QML
+// directory, and then a wrapper of three lines that imports it BY NAME is enough.
+// Owner's decision of 25.11.2026: the packaged module first, the bundled plasmoid
+// (the bundled-engine build) and the copy in `~/.local` as fallbacks — so that the
+// output on XFCE/MATE does not disappear when the package build carries no bundle.
+
+/// `qmldir` of the packaged module, relative to a QML import directory.
+pub const DISPLAY_MODULE_QMLDIR_REL: &str = "Waywallen/Display/qmldir";
+
+/// The wrapper for the packaged module (the same as upstream's `Wrapper/PluginDisplay.qml`
+/// of a system build). The host writes it into a file of its own
+/// ([`system_display_wrapper_path`]): the Loader of the host page takes an address.
+pub const SYSTEM_DISPLAY_WRAPPER_QML: &str = "import QtQuick\nimport Waywallen.Display as WW\n\nWW.WaywallenDisplay {}\n";
+
+/// QML import directories where the packaged module may lie: `$QML_IMPORT_PATH`,
+/// `$QML2_IMPORT_PATH` (absolute entries, in order), then the distribution locations
+/// of Qt 6 ([`crate::kdecoration::QML_IMPORT_DIRS`]).
+pub fn qml_import_dirs(qml_import_path: &str, qml2_import_path: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let env_dirs = qml_import_path.split(':').chain(qml2_import_path.split(':'));
+    for dir in env_dirs.chain(crate::kdecoration::QML_IMPORT_DIRS.iter().copied()) {
+        let dir = dir.trim_end_matches('/');
+        if dir.starts_with('/') && !out.iter().any(|d| d == dir) {
+            out.push(dir.to_string());
+        }
+    }
+    out
+}
+
+/// Where the host keeps the wrapper of the packaged module: the session's runtime
+/// directory, otherwise the user's cache. `None` — neither is known.
+pub fn system_display_wrapper_path(xdg_runtime_dir: &str, home: &str) -> Option<String> {
+    let name = "rexon-waywallen-display.qml";
+    if xdg_runtime_dir.starts_with('/') {
+        return Some(join(&[xdg_runtime_dir.trim_end_matches('/'), name]));
+    }
+    home.starts_with('/').then(|| join(&[home.trim_end_matches('/'), ".cache/rexon", name]))
+}
+
+/// Where the X11 host takes the output element from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DisplayItemSource {
+    /// The packaged `Waywallen.Display` module through our wrapper (write
+    /// [`SYSTEM_DISPLAY_WRAPPER_QML`] to this path first).
+    SystemModule { wrapper: String },
+    /// `PluginDisplay.qml` of a plasmoid (bundled, or the copy in `~/.local`).
+    Plasmoid { qml: String },
+}
+
+impl DisplayItemSource {
+    /// The address for the Loader.
+    pub fn qml(&self) -> &str {
+        match self {
+            DisplayItemSource::SystemModule { wrapper } => wrapper,
+            DisplayItemSource::Plasmoid { qml } => qml,
+        }
+    }
+}
+
+/// Pick the output element: the packaged module if its `qmldir` is in one of
+/// `import_dirs` and there is a place for the wrapper; otherwise the first plasmoid
+/// wrapper that exists (`plasmoid_wrappers` — in the order of
+/// [`display_package_candidates`]). `is_file` is the executor's FS probe.
+pub fn pick_display_item(
+    import_dirs: &[String],
+    wrapper_path: Option<&str>,
+    plasmoid_wrappers: &[String],
+    is_file: &dyn Fn(&str) -> bool,
+) -> Option<DisplayItemSource> {
+    let module = import_dirs.iter().any(|d| is_file(&join(&[d, DISPLAY_MODULE_QMLDIR_REL])));
+    if let (true, Some(wrapper)) = (module, wrapper_path) {
+        return Some(DisplayItemSource::SystemModule { wrapper: wrapper.to_string() });
+    }
+    plasmoid_wrappers
+        .iter()
+        .find(|qml| is_file(qml))
+        .map(|qml| DisplayItemSource::Plasmoid { qml: qml.clone() })
+}
+
+/// Wrappers of the output element of the plasmoids that are there (the order of
+/// [`display_package_candidates`]); whether the wrapper file itself exists is checked
+/// by [`pick_display_item`]. Shared by the X11 host and the Rexon window (which
+/// decides whether the X11 output needs the `waywallen-display` package).
+pub fn plasmoid_display_wrappers(data_dir: Option<&str>, home: &str) -> Vec<String> {
+    display_package_candidates(data_dir, home)
+        .iter()
+        .filter_map(|base| find_runtime_so(base, Some(RUNTIME_SO_REL)))
+        .filter_map(|so| display_item_qml_of(&so))
+        .collect()
+}
+
 /// The package's metadata.json — presence is determined by it (bundle/installed).
 pub fn metadata_json_path(base: &str) -> String {
     join(&[base, "metadata.json"])
+}
+
+// ── the packaged (system) plugin ────────────────────────────────────────
+//
+// Distributions ship the plugin as a package of its own: in Arch it is the AUR
+// split package `plasma-wallpaper-waywallen` (base `waywallen-display`), which puts
+// the plasmoid into `/usr/share/plasma/wallpapers/org.waywallen.kde/` and the QML
+// module `Waywallen.Display` into the Qt QML directory (package `waywallen-display`).
+// A copy with the same Id in `~/.local/share/plasma/wallpapers/` HIDES the packaged
+// one in Plasma, so Rexon never installs its own copy over a packaged plugin
+// (owner's decision of 25.11.2026).
+
+/// Distribution package with the plasmoid (Arch: AUR, ZhangHua).
+pub const PACKAGE_NAME: &str = "plasma-wallpaper-waywallen";
+
+/// Distribution package with the `Waywallen.Display` QML module alone (no Plasma):
+/// enough for the X11 output host client.
+pub const DISPLAY_MODULE_PACKAGE: &str = "waywallen-display";
+
+/// Where packaged plugins may lie: `<dir>/plasma/wallpapers/org.waywallen.kde` for every
+/// directory of `$XDG_DATA_DIRS` (by the specification's default when it is empty),
+/// in order. The user's own data directory is skipped even if a session puts it
+/// into `$XDG_DATA_DIRS`: that is the copy, not the package.
+pub fn system_install_dirs(xdg_data_dirs: &str, home: &str) -> Vec<String> {
+    let user = (!home.is_empty()).then(|| install_dir(home.trim_end_matches('/')));
+    let mut out: Vec<String> = Vec::new();
+    for dir in crate::plugin_journal::data_dirs(xdg_data_dirs) {
+        let candidate = join(&[&dir, "plasma/wallpapers", PLUGIN_ID]);
+        if Some(&candidate) != user.as_ref() && !out.contains(&candidate) {
+            out.push(candidate);
+        }
+    }
+    out
+}
+
+/// What is visible about the packaged plugin (the executor reads the FS and asks the
+/// package manager).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SystemPlugin {
+    /// A packaged plasmoid with `metadata.json` was found.
+    pub present: bool,
+    /// Its directory (for the log).
+    pub dir: Option<String>,
+    /// Upstream version from the package manager (`0.4.6`, without epoch and pkgrel).
+    pub version: Option<String>,
+    /// Name of the owning package.
+    pub package: Option<String>,
+}
+
+/// argv asking pacman which package owns `file`. The executor runs it under `LANG=C`:
+/// the answer is parsed by [`parse_pacman_owner`], and a localized pacman says it in
+/// other words.
+pub fn pacman_owner_argv(pacman: &str, file: &str) -> Vec<String> {
+    vec![pacman.to_string(), "-Qo".to_string(), file.to_string()]
+}
+
+/// Strip the epoch (`1:`) and the package release (`-2`) from a pacman version.
+pub fn upstream_version(pkgver: &str) -> Option<String> {
+    let v = pkgver.trim();
+    let v = v.split_once(':').map_or(v, |(_, rest)| rest);
+    let v = v.rsplit_once('-').map_or(v, |(ver, _)| ver);
+    (!v.is_empty()).then(|| v.to_string())
+}
+
+/// Parse `pacman -Qo` (`LANG=C`): «<file> is owned by <package> <version>» →
+/// (package, upstream version). «No package owns», errors and empty output → `None`.
+pub fn parse_pacman_owner(stdout: &str) -> Option<(String, String)> {
+    stdout.lines().find_map(|line| {
+        let (_, rest) = line.split_once(" is owned by ")?;
+        let mut words = rest.split_whitespace();
+        let package = words.next()?.to_string();
+        let version = upstream_version(words.next()?)?;
+        Some((package, version))
+    })
 }
 
 // ── environment ─────────────────────────────────────────────────────────
@@ -555,6 +723,9 @@ pub enum RefreshDecision {
     /// The version guard is against it (the installed one is newer, a foreign one of unknown version,
     /// the bundle does not suit the daemon) — we do not touch it silently.
     Skip(PluginAction),
+    /// The packaged plugin is installed and our copy in `~/.local` hides it — move the
+    /// copy to a backup (never `-u` over a packaged plugin).
+    RemoveUserCopy,
 }
 
 impl RefreshDecision {
@@ -574,6 +745,10 @@ impl RefreshDecision {
 pub fn refresh_decision(check: &PluginCheck, tool_found: bool, bundle_valid: bool) -> RefreshDecision {
     if !check.installed.present {
         return RefreshDecision::NotInstalled;
+    }
+    if check.system.present {
+        let ours = check.installed.vendor_version.is_some() || check.installed.marker;
+        return if ours { RefreshDecision::RemoveUserCopy } else { RefreshDecision::UpToDate };
     }
     if check.bundle_sha.is_some() && check.installed.runtime_sha == check.bundle_sha {
         return RefreshDecision::UpToDate;
@@ -1144,7 +1319,8 @@ pub fn version_from_runtime_sha(sha: &str) -> Option<&'static str> {
 /// 19.10.2026 — the same constant, the wire did not change, changes only inside the
 /// library: EGL frame synchronisation, #76; v0.4.3 checked 23.10.2026 —
 /// the same constant, only an optional "tagged" display role field
-/// added; v0.4.4 and v0.4.5 checked 08.11.2026 — the same constant, v9).
+/// added; v0.4.4 and v0.4.5 checked 08.11.2026 — the same constant, v9; v0.4.6
+/// checked 25.11.2026 by the tag's `include/waywallen_display.h` — still v9).
 pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
     ("0.4.0", 9),
     ("0.3.0", 8),
@@ -1157,7 +1333,7 @@ pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
 
 /// Up to which plugin version the table above is verified. For newer ones we do not
 /// guess the protocol (a new release could have changed it).
-pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.5";
+pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.6";
 
 /// Which display protocols a waywallen daemon of a given version accepts
 /// (`MIN/MAX_SUPPORTED_CLIENT_VERSION`), in descending version order. Taken from the
@@ -1245,8 +1421,17 @@ pub struct PluginCheck {
     pub installed: InstalledPlugin,
     /// Version of the waywallen daemon (bus or `--version`); `None` — cannot be learned.
     pub daemon_version: Option<String>,
-    /// The person pressed «Install Rexon's Version» themselves.
+    /// The person pressed the banner button themselves («Install Rexon's Version»,
+    /// «Use the Packaged Version», «Install the Plugin Package»).
     pub consent: bool,
+    /// The packaged plugin ([`system_install_dirs`]).
+    pub system: SystemPlugin,
+    /// This Rexon build has no bundled plugin (the distribution package: the plugin
+    /// comes as [`PACKAGE_NAME`]). `false` keeps the bundled-plugin rules.
+    pub bundle_missing: bool,
+    /// Installing [`PACKAGE_NAME`] already failed in this process: it is not retried
+    /// by itself (a password window on every tab opening), only by the button.
+    pub package_failed: bool,
 }
 
 /// What to do with the plugin.
@@ -1264,6 +1449,16 @@ pub enum PluginAction {
     AskForeign,
     /// The bundle does not suit the daemon — do not install (do not break what works).
     Blocked,
+    /// The packaged plugin is there and nothing hides it — nothing to install.
+    UseSystem,
+    /// A copy in `~/.local` hides the packaged plugin — move it to a backup
+    /// ([`user_copy_backup_dir`]); ours automatically, a foreign one by consent.
+    RemoveUserCopy,
+    /// No plugin and no bundle — install [`PACKAGE_NAME`] (without a Yes/No
+    /// question: the password window is the protection).
+    InstallPackage,
+    /// No plugin, no bundle, and installing the package already failed — only say so.
+    NeedPackage,
 }
 
 impl PluginAction {
@@ -1281,8 +1476,19 @@ impl PluginAction {
             PluginAction::KeepNewer => "keep_newer",
             PluginAction::AskForeign => "ask_foreign",
             PluginAction::Blocked => "blocked",
+            PluginAction::UseSystem => "use_system",
+            PluginAction::RemoveUserCopy => "remove_user_copy",
+            PluginAction::InstallPackage => "install_package",
+            PluginAction::NeedPackage => "need_package",
         }
     }
+}
+
+/// Where a copy that hides the packaged plugin is moved: next to waywallen's own data,
+/// OUTSIDE `plasma/wallpapers` (Plasma would still see a renamed directory there by
+/// its `metadata.json`). `stamp` — local time (`qt_app::Timestamp::file_stamp`).
+pub fn user_copy_backup_dir(home: &str, stamp: &str) -> String {
+    join(&[home.trim_end_matches('/'), ".local/share/waywallen", &format!("plasmoid-{PLUGIN_ID}.bak-{stamp}")])
 }
 
 /// Message to the person about the wallpaper plugin (the decision is here, showing it is the tab's job).
@@ -1306,16 +1512,50 @@ pub enum PluginNotice {
         /// The bundle is older than the daemon — update Rexon; otherwise — update waywallen.
         bundle_older: bool,
     },
+    /// The packaged plugin does not suit the daemon (the system has mismatching
+    /// package versions) — Rexon installs nothing over it.
+    SystemIncompatible {
+        plugin_version: String,
+        daemon_version: String,
+        /// The plugin's protocol is older than what the daemon accepts.
+        plugin_older: bool,
+    },
+    /// A foreign copy in `~/.local` (KDE Store, by hand) hides the packaged plugin.
+    ShadowsSystem,
+    /// Rexon is installing a package for live wallpapers ([`PACKAGE_NAME`] on KDE,
+    /// [`DISPLAY_MODULE_PACKAGE`] for the X11 output); `stage` — the human label of
+    /// the build stage (empty — not known yet).
+    PackageInstalling { package: String, stage: String },
+    /// The package is missing and installing it failed. `reason` — what went wrong
+    /// (empty — unknown). The button retries only the Plasma plugin package: the
+    /// banner button goes through the KDE preparation.
+    PackageMissing { package: String, reason: String },
 }
 
 impl PluginNotice {
-    /// Whether to offer the «Install Rexon's Version» button.
+    /// Whether to offer a button (see [`PluginNotice::button_label`]).
     pub fn offers_install(&self) -> bool {
         match self {
-            PluginNotice::ForeignUnknown => true,
+            PluginNotice::ForeignUnknown | PluginNotice::ShadowsSystem => true,
+            PluginNotice::PackageMissing { package, .. } => package == PACKAGE_NAME,
             PluginNotice::InstalledIncompatible { offer_install, .. } => *offer_install,
-            PluginNotice::BundleIncompatible { .. } => false,
+            PluginNotice::BundleIncompatible { .. }
+            | PluginNotice::SystemIncompatible { .. }
+            | PluginNotice::PackageInstalling { .. } => false,
         }
+    }
+
+    /// Label of the banner button; `None` — no button. Every button is the same
+    /// consent (`PluginCheck::consent`); what it does follows from [`plan_plugin`].
+    pub fn button_label(&self) -> Option<String> {
+        if !self.offers_install() {
+            return None;
+        }
+        Some(match self {
+            PluginNotice::ShadowsSystem => crate::i18n::tr("Use the Packaged Version"),
+            PluginNotice::PackageMissing { .. } => crate::i18n::tr("Install the Plugin Package"),
+            _ => install_rexon_version_label(),
+        })
     }
 
     /// A sign for the log and checks.
@@ -1324,6 +1564,10 @@ impl PluginNotice {
             PluginNotice::ForeignUnknown => "foreign_unknown",
             PluginNotice::InstalledIncompatible { .. } => "installed_incompatible",
             PluginNotice::BundleIncompatible { .. } => "bundle_incompatible",
+            PluginNotice::SystemIncompatible { .. } => "system_incompatible",
+            PluginNotice::ShadowsSystem => "shadows_system",
+            PluginNotice::PackageInstalling { .. } => "package_installing",
+            PluginNotice::PackageMissing { .. } => "package_missing",
         }
     }
 
@@ -1373,8 +1617,60 @@ impl PluginNotice {
                     )
                 }
             }
+            PluginNotice::SystemIncompatible { plugin_version, daemon_version, plugin_older } => {
+                let head = trf(
+                    "The installed %1 package (version %2) does not work with the waywallen \
+                     engine %3, so live wallpapers are not shown.",
+                    &[&PACKAGE_NAME, plugin_version, daemon_version],
+                );
+                let tail = if *plugin_older {
+                    trf("Update the %1 package.", &[&PACKAGE_NAME])
+                } else {
+                    tr("Update waywallen.")
+                };
+                format!("{head} {tail}")
+            }
+            PluginNotice::ShadowsSystem => trf(
+                "A copy of the Plasma wallpaper plugin for waywallen in your home folder \
+                 (from the KDE Store or installed by hand) hides the %1 package. Rexon left \
+                 the copy as is. If live wallpapers do not appear, use the packaged version — \
+                 the copy is kept as a backup.",
+                &[&PACKAGE_NAME],
+            ),
+            PluginNotice::PackageInstalling { package, stage } => {
+                let head = trf(
+                    "Rexon is installing the %1 package for live wallpapers. It is built from \
+                     source, which can take several minutes.",
+                    &[package],
+                );
+                if stage.is_empty() {
+                    head
+                } else {
+                    format!("{head} {}", trf("Stage: %1", &[stage]))
+                }
+            }
+            PluginNotice::PackageMissing { package, reason } => {
+                if reason.is_empty() {
+                    trf(
+                        "Live wallpapers need the %1 package. Install it, and the wallpapers \
+                         will appear.",
+                        &[package],
+                    )
+                } else {
+                    trf(
+                        "Live wallpapers need the %1 package, and Rexon could not install it: %2",
+                        &[package, reason],
+                    )
+                }
+            }
         }
     }
+}
+
+/// Why Rexon cannot install [`PACKAGE_NAME`] itself on this system (it builds it only
+/// through an AUR helper on Arch-based systems) — the reason in [`PluginNotice::PackageMissing`].
+pub fn package_unsupported_reason() -> String {
+    crate::i18n::tr("on this system Rexon cannot install it by itself — install it with the system's package manager")
 }
 
 /// Label of the consent button.
@@ -1467,6 +1763,84 @@ pub fn plan_plugin(c: &PluginCheck) -> PluginPlan {
             plan(PluginAction::Upgrade, None, reason)
         }
     };
+
+    // The packaged plugin comes first: Rexon never installs a copy over it.
+    if c.system.present {
+        let sys_ok = compatible_with_daemon(c.system.version.as_deref(), daemon);
+        let sys_notice = (sys_ok == Some(false)).then(|| PluginNotice::SystemIncompatible {
+            plugin_version: c.system.version.clone().unwrap_or_default(),
+            daemon_version: c.daemon_version.clone().unwrap_or_default(),
+            plugin_older: c
+                .system
+                .version
+                .as_deref()
+                .and_then(plugin_protocol)
+                .zip(daemon.and_then(daemon_protocols))
+                .is_some_and(|(p, (lo, _))| p < lo),
+        });
+        let packaged = |action, notice, reason: &str| PluginPlan {
+            action,
+            installed_version: installed_version.clone(),
+            notice,
+            select: sys_ok != Some(false),
+            reason: reason.to_string(),
+        };
+        if inst.present && ours {
+            return packaged(
+                PluginAction::RemoveUserCopy,
+                sys_notice,
+                "packaged plugin present, our copy in ~/.local hides it: moving the copy to a backup",
+            );
+        }
+        if inst.present && c.consent {
+            return packaged(
+                PluginAction::RemoveUserCopy,
+                sys_notice,
+                "by consent: a foreign copy in ~/.local hides the packaged plugin, moving it to a backup",
+            );
+        }
+        if inst.present {
+            // The foreign copy is what Plasma loads: its compatibility decides the selection.
+            return plan(
+                PluginAction::Keep,
+                Some(PluginNotice::ShadowsSystem),
+                "a foreign copy in ~/.local hides the packaged plugin: not touched without consent",
+            );
+        }
+        return packaged(PluginAction::UseSystem, sys_notice, "packaged plugin: nothing to install");
+    }
+
+    // A distribution build of Rexon carries no plugin: the package brings it.
+    if c.bundle_missing {
+        let package = |action, notice, reason: &str| PluginPlan {
+            action,
+            installed_version: installed_version.clone(),
+            notice,
+            select: inst.present && installed_ok != Some(false),
+            reason: reason.to_string(),
+        };
+        let needs = !inst.present || ours || c.consent;
+        if needs && c.package_failed && !c.consent {
+            return package(
+                PluginAction::NeedPackage,
+                Some(PluginNotice::PackageMissing { package: PACKAGE_NAME.to_string(), reason: String::new() }),
+                "no packaged plugin, installing the package already failed: not retried by itself",
+            );
+        }
+        if needs {
+            return package(
+                PluginAction::InstallPackage,
+                None,
+                if inst.present {
+                    "no packaged plugin, only a copy Rexon can no longer update: installing the package"
+                } else {
+                    "no plugin and no bundle: installing the package"
+                },
+            );
+        }
+        let notice = (installed_ok == Some(false)).then(|| PluginNotice::PackageMissing { package: PACKAGE_NAME.to_string(), reason: String::new() });
+        return plan(PluginAction::Keep, notice, "a foreign copy and no bundle: not touched without consent");
+    }
 
     if !inst.present {
         if bundle_ok == Some(false) {

@@ -1,5 +1,5 @@
 /target
 **/*.rs.bk
 
-# сборочные артефакты cxx-qt (.so собирается локально)
+# cxx-qt build artifacts (the .so is built locally)
 *.so

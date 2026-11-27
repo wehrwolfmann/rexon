@@ -1,94 +1,96 @@
-//! `vendor-check` — проверка свежести ЧУЖИХ кусков, которые едут в поставке.
+//! `vendor-check` — a freshness check of the THIRD-PARTY pieces that ship in the package.
 //!
-//! Зачем
-//! -----
-//! Забандленный KDE-плагин `org.waywallen.kde` протух молча: уехал в поставку
-//! 24 июня, апстрим потом сменил протокол с v7 на v8, и никто не заметил —
-//! ни ошибки, ни предупреждения, у пользователя просто пустой список
-//! мониторов. Обновление бандла лечит тот случай, но не причину: любой
-//! следующий вложенный кусок протухнет так же тихо. Эта проверка — сторож.
+//! Why
+//! ---
+//! The bundled KDE plugin `org.waywallen.kde` went stale silently: it shipped
+//! on 24 June, upstream then changed the protocol from v7 to v8, and nobody
+//! noticed — no error, no warning, the user simply had an empty list of
+//! monitors. Updating the bundle fixes that case, but not the cause: any next
+//! embedded piece would go stale just as quietly. This check is the guard.
 //!
-//! Как звать
-//! ---------
+//! How to call
+//! -----------
 //! ```text
-//! cargo run -q -p rexon-core --bin vendor-check          # с сетью
-//! cargo run -q -p rexon-core --bin vendor-check -- --offline   # без сети
-//! cargo run -q -p rexon-core --bin vendor-check -- --выкачать  # скачать архивы кусков
-//! cargo run -q -p rexon-core --bin vendor-check -- --корень ПУТЬ
+//! cargo run -q -p rexon-core --bin vendor-check          # with network
+//! cargo run -q -p rexon-core --bin vendor-check -- --offline   # without network
+//! cargo run -q -p rexon-core --bin vendor-check -- --выкачать  # download the pieces' archives
+//! cargo run -q -p rexon-core --bin vendor-check -- --корень PATH
 //! ```
-//! Коды возврата (для CI):
-//!   0 — все куски свежие, ЛИБО проверить не удалось (нет сети, неизвестное
-//!       происхождение) — это НЕ повод валить сборку;
-//!   1 — хотя бы один кусок отстал от апстрима;
-//!   2 — беда с самими описаниями: битый `vendor.toml`, содержимое куска
-//!       разошлось с записанным, сумма архива разошлась с выпуском апстрима
-//!       или с рецептом пакета.
-//! Без сети проверка честно пишет «проверить не смог» и выходит с 0 — она не
-//! имеет права ни ломать сборку, ни врать «всё хорошо».
+//! Exit codes (for CI):
+//!   0 — all pieces are fresh, OR the check could not be done (no network,
+//!       unknown origin) — that is NOT a reason to fail the build;
+//!   1 — at least one piece is behind upstream;
+//!   2 — trouble with the descriptions themselves: a broken `vendor.toml`, a
+//!       piece's contents diverged from the recorded ones, an archive's sum
+//!       diverged from the upstream release or from the package recipe.
+//! Without network the check honestly writes «проверить не смог» and exits
+//! with 0 — it has no right either to break the build or to lie «all good».
 //!
-//! ФОРМАТ ОПИСАНИЯ (один на все куски)
-//! -----------------------------------
-//! Каталог куска объявляет лежащий в нём `vendor.toml` (проверка просто ищет
-//! эти файлы по дереву):
+//! DESCRIPTION FORMAT (one for all pieces)
+//! ---------------------------------------
+//! A piece's directory is declared by the `vendor.toml` lying in it (the
+//! check simply looks for these files across the tree):
 //!
 //! ```toml
-//! name        = "org.waywallen.kde"          # имя куска (короткое)
-//! description = "Плагин обоев waywallen"     # что это, по-русски
+//! name        = "org.waywallen.kde"          # piece name (short)
+//! description = "Плагин обоев waywallen"     # what it is, in Russian
 //! upstream    = "https://github.com/waywallen/waywallen-display"
-//! source      = "github-release"             # откуда узнавать свежесть
-//! version     = "0.4.1"                      # версия куска
-//! tag         = "v0.4.1"                     # тег апстрима
-//! asset       = "waywallen-kde-0.4.1-x86_64-embed.zip"  # имя ассета (опц.)
-//! vendored    = "2026-10-09"                 # когда приняли (ISO-дата)
-//! license     = "MIT"                        # лицензия куска
-//! checksum    = "sha256:<64 hex>"            # см. ниже
-//! tree        = "sha256-tree:<64 hex>"       # (опц.) содержимое распакованного
-//! pkgbuild_var = "_wwd_ver"                  # (опц.) переменная версии в PKGBUILD
-//! note        = "..."                        # свободный текст (опц.)
+//! source      = "github-release"             # where to learn freshness from
+//! version     = "0.4.1"                      # piece version
+//! tag         = "v0.4.1"                     # upstream tag
+//! asset       = "waywallen-kde-0.4.1-x86_64-embed.zip"  # asset name (opt.)
+//! vendored    = "2026-10-09"                 # when accepted (ISO date)
+//! license     = "MIT"                        # piece license
+//! checksum    = "sha256:<64 hex>"            # see below
+//! tree        = "sha256-tree:<64 hex>"       # (opt.) unpacked contents
+//! pkgbuild_var = "_wwd_ver"                  # (opt.) version variable in PKGBUILD
+//! note        = "..."                        # free text (opt.)
 //! ```
 //!
-//! `source` понимает:
-//!   * `github-release` — свежесть берётся из релизов GitHub;
-//!   * `unknown` — происхождение НЕ установлено. Это законное значение и
-//!     само по себе находка: проверка о таком куске честно скажет «проверить
-//!     нечем», а не промолчит. Причину писать в `note`.
+//! `source` understands:
+//!   * `github-release` — freshness is taken from GitHub releases;
+//!   * `unknown` — the origin is NOT established. This is a legitimate value
+//!     and a finding in itself: the check will honestly say «nothing to check
+//!     with» about such a piece rather than stay silent. Write the reason in
+//!     `note`.
 //!
-//! `checksum` бывает двух видов:
-//!   * `sha256:<hex>` — кусок НЕ лежит в git, а скачивается архивом `asset`
-//!     выпуска `tag` (пакет — при сборке, разработчик — `--выкачать`). Сумма —
-//!     у самого архива; с сетью она сверяется с `digest` ассета в API выпусков
-//!     GitHub, а при заданном `pkgbuild_var` — ещё и с рецептом пакета
-//!     (`packaging/aur/PKGBUILD`: строка `<pkgbuild_var>=<version>` и та же
-//!     сумма в `sha256sums`), чтобы две записи не разъехались. Если каталог
-//!     распакован, его содержимое сверяется с `tree` — так ловится ручная
-//!     правка скачанного.
-//!   * `sha256-tree:<hex>` — кусок лежит в дереве; сумма — от «оглавления»
-//!     каталога (см. ниже).
+//! `checksum` comes in two kinds:
+//!   * `sha256:<hex>` — the piece does NOT lie in git but is downloaded as the
+//!     `asset` archive of release `tag` (the package at build time, a developer
+//!     with `--выкачать`). The sum is that of the archive itself; with network
+//!     it is compared with the asset's `digest` in the GitHub releases API, and
+//!     with `pkgbuild_var` set — also with the package recipe
+//!     (`packaging/aur/PKGBUILD`: the line `<pkgbuild_var>=<version>` and the
+//!     same sum in `sha256sums`), so the two records do not drift apart. If the
+//!     directory is unpacked, its contents are compared with `tree` — that is
+//!     how a manual edit of the download is caught.
+//!   * `sha256-tree:<hex>` — the piece lies in the tree; the sum is of the
+//!     directory's «table of contents» (see below).
 //!
-//! «Оглавление» (`sha256-tree:`): для каждого файла каталога (кроме самого
-//! `vendor.toml`), по возрастанию относительного пути, в хэш идёт
-//! `<путь>\0<sha256 файла в hex>\n`. Так сумма не зависит от порядка обхода
-//! и ловит любую позднейшую правку. Пересчитать после осознанной правки:
-//! `--пересчитать` (переписывает `tree` у скачиваемых кусков и `checksum` у
-//! лежащих в дереве).
+//! «Table of contents» (`sha256-tree:`): for every file of the directory
+//! (except `vendor.toml` itself), in ascending order of relative path, the
+//! hash receives `<path>\0<sha256 of the file in hex>\n`. That way the sum
+//! does not depend on the walk order and catches any later edit. To recompute
+//! after a deliberate edit: `--пересчитать` (rewrites `tree` of downloaded
+//! pieces and `checksum` of pieces lying in the tree).
 
 use rexon_core::net::{NetIo, UreqNet};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Имя файла-описания. Он же — объявление куска: проверка ищет именно его.
+/// Name of the description file. It is also the declaration of a piece: the check looks exactly for it.
 const MANIFEST: &str = "vendor.toml";
-/// Приставка суммы содержимого каталога (см. описание формата).
+/// Prefix of the directory contents sum (see the format description).
 const SUM_PREFIX: &str = "sha256-tree:";
-/// Приставка суммы скачиваемого архива.
+/// Prefix of the downloaded archive's sum.
 const ARCHIVE_PREFIX: &str = "sha256:";
-/// Рецепт пакета, с которым сверяется сумма архива (от корня репозитория).
+/// The package recipe the archive sum is compared with (from the repository root).
 const PKGBUILD_REL: &str = "packaging/aur/PKGBUILD";
 const UA: &str = "rexon-vendor-check";
 const HTTP_TIMEOUT: u64 = 20;
 
-/// Каталоги, в которые обход не заходит: сборочный мусор и архивы.
+/// Directories the walk does not enter: build junk and archives.
 const SKIP_DIRS: &[&str] = &[
     ".git",
     "target",
@@ -98,7 +100,7 @@ const SKIP_DIRS: &[&str] = &[
     ".venv",
 ];
 
-// ── описание куска ──────────────────────────────────────────────────────
+// ── piece description ───────────────────────────────────────────────────
 
 struct Piece {
     dir: PathBuf,
@@ -117,7 +119,7 @@ struct Piece {
 }
 
 impl Piece {
-    /// sha256 скачиваемого архива (hex), если кусок такого вида.
+    /// sha256 of the downloaded archive (hex), if the piece is of that kind.
     fn archive_sum(&self) -> Option<&str> {
         self.checksum.strip_prefix(ARCHIVE_PREFIX)
     }
@@ -158,7 +160,7 @@ fn read_piece(manifest: &Path) -> Result<Piece, String> {
     })
 }
 
-// ── обход дерева ────────────────────────────────────────────────────────
+// ── tree walk ───────────────────────────────────────────────────────────
 
 fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -180,8 +182,8 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Оглавление каталога: относительный путь → sha256 файла. `vendor.toml`
-/// в сумму не входит — иначе запись суммы меняла бы саму сумму.
+/// Table of contents of a directory: relative path → sha256 of the file.
+/// `vendor.toml` is not in the sum — otherwise writing the sum would change the sum itself.
 fn tree_files(dir: &Path, base: &Path, acc: &mut BTreeMap<String, String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -211,7 +213,7 @@ fn hex(bytes: &[u8]) -> String {
     s
 }
 
-/// Сумма оглавления и число файлов в нём (без `vendor.toml`).
+/// Sum of the table of contents and the number of files in it (without `vendor.toml`).
 fn tree_checksum(dir: &Path) -> (String, usize) {
     let mut files = BTreeMap::new();
     tree_files(dir, dir, &mut files);
@@ -225,10 +227,10 @@ fn tree_checksum(dir: &Path) -> (String, usize) {
     (format!("{SUM_PREFIX}{}", hex(&h.finalize())), files.len())
 }
 
-// ── свежесть у апстрима ─────────────────────────────────────────────────
+// ── upstream freshness ──────────────────────────────────────────────────
 
-/// Релиз апстрима: тег, дата публикации (для счёта «на сколько отстали») и
-/// суммы ассетов (`имя` → `sha256:<hex>` из поля `digest` API).
+/// An upstream release: tag, publication date (to count «how far behind»)
+/// and asset sums (`name` → `sha256:<hex>` from the API's `digest` field).
 struct Release {
     tag: String,
     published: String,
@@ -279,21 +281,21 @@ fn github_releases(net: &mut UreqNet, repo: &str) -> Result<Vec<Release>, String
         .collect())
 }
 
-/// Итог по одному куску.
+/// The result for one piece.
 enum Verdict {
-    /// Свежий: тег совпал с последним релизом.
+    /// Fresh: the tag matches the latest release.
     Fresh { latest: String, date: String },
-    /// Отстали: сколько релизов вышло после нашего и какой сейчас последний.
+    /// Behind: how many releases came out after ours and which one is latest now.
     Behind {
         count: usize,
         latest: String,
         date: String,
     },
-    /// Проверить не смогли — с причиной (нет сети, нет происхождения, …).
+    /// Could not check — with the reason (no network, no origin, …).
     Unknown { why: String },
 }
 
-/// Релизы апстрима куска либо причина, по которой их не узнать.
+/// The piece's upstream releases, or the reason they cannot be learned.
 fn upstream_releases(piece: &Piece, net: Option<&mut UreqNet>) -> Result<Vec<Release>, String> {
     if piece.source != "github-release" {
         return Err(if piece.source == "unknown" || piece.source.is_empty() {
@@ -345,7 +347,7 @@ fn date_only(iso: &str) -> String {
     iso.split('T').next().unwrap_or(iso).to_string()
 }
 
-/// «релиз / релиза / релизов» — иначе вывод читается как машинный.
+/// «релиз / релиза / релизов» — otherwise the output reads as machine-made.
 fn releases_word(n: usize) -> &'static str {
     let (n10, n100) = (n % 10, n % 100);
     if n10 == 1 && n100 != 11 {
@@ -357,10 +359,10 @@ fn releases_word(n: usize) -> &'static str {
     }
 }
 
-// ── скачиваемый архив ───────────────────────────────────────────────────
+// ── downloaded archive ──────────────────────────────────────────────────
 
-/// Сверка с рецептом пакета: версия в `<pkgbuild_var>=…` и сумма архива в
-/// `sha256sums`. `Ok(None)` — сверять не с чем (поле не задано).
+/// Comparison with the package recipe: the version in `<pkgbuild_var>=…` and
+/// the archive sum in `sha256sums`. `Ok(None)` — nothing to compare with (field not set).
 fn check_pkgbuild(root: &Path, piece: &Piece, sum: &str) -> Result<Option<String>, String> {
     if piece.pkgbuild_var.is_empty() {
         return Ok(None);
@@ -395,10 +397,10 @@ fn check_pkgbuild(root: &Path, piece: &Piece, sum: &str) -> Result<Option<String
     Ok(Some(format!("{prefix}{} и сумма архива совпадают", piece.version)))
 }
 
-/// Скачать архив куска, сверить сумму и распаковать в его каталог (всё
-/// прежнее, кроме `vendor.toml`, сносится). Корень архива обязан быть
-/// каталогом с тем же именем, что у куска: его содержимое и ложится в
-/// каталог куска.
+/// Download a piece's archive, check the sum and unpack it into its directory
+/// (everything previous except `vendor.toml` is removed). The archive root must
+/// be a directory with the same name as the piece: its contents go into the
+/// piece's directory.
 fn fetch_archive(net: &mut UreqNet, piece: &Piece, sum: &str) -> Result<usize, String> {
     let repo = github_repo(&piece.upstream)
         .ok_or_else(|| format!("не разобрать адрес апстрима: {}", piece.upstream))?;
@@ -428,7 +430,7 @@ fn fetch_archive(net: &mut UreqNet, piece: &Piece, sum: &str) -> Result<usize, S
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    // Сначала убедиться, что архив целиком наш по раскладке, потом сносить.
+    // First make sure the archive's layout is entirely ours, then remove.
     let mut plan = Vec::new();
     for i in 0..zip.len() {
         let f = zip.by_index_raw(i).map_err(|e| format!("архив не читается: {e}"))?;
@@ -475,7 +477,7 @@ fn fetch_archive(net: &mut UreqNet, piece: &Piece, sum: &str) -> Result<usize, S
     Ok(plan.len())
 }
 
-// ── точка входа ─────────────────────────────────────────────────────────
+// ── entry point ─────────────────────────────────────────────────────────
 
 fn usage() {
     println!(
@@ -584,7 +586,7 @@ fn main() {
         );
 
         if let Some(sum) = piece.archive_sum() {
-            // ── кусок скачивается архивом ──
+            // ── the piece is downloaded as an archive ──
             println!("    архив        : {} (sha256 {}…)", piece.asset, &sum[..sum.len().min(16)]);
             match check_pkgbuild(&root, &piece, sum) {
                 Ok(Some(ok)) => println!("    PKGBUILD     : {ok}"),
@@ -630,9 +632,9 @@ fn main() {
                 println!("    содержимое   : распакованное совпадает с архивом выпуска");
             }
         } else {
-            // ── кусок лежит в дереве ──
-            // Содержимое не должно меняться незаметно: сумма записана при
-            // вкладывании и пересчитывается здесь.
+            // ── the piece lies in the tree ──
+            // The contents must not change unnoticed: the sum is recorded when the piece
+            // is embedded and recomputed here.
             let (now, _) = tree_checksum(&piece.dir);
             if rewrite {
                 if let Err(e) = rewrite_field(path, "checksum", &now) {
@@ -743,8 +745,8 @@ fn short(sum: &str) -> String {
     format!("{SUM_PREFIX}{}…", &body[..body.len().min(16)])
 }
 
-/// Переписать строку `key = "…"` в существующем описании, не трогая
-/// остального (нет строки — дописать в конец).
+/// Rewrite the line `key = "…"` in an existing description without touching
+/// the rest (no line — append it at the end).
 fn rewrite_field(manifest: &Path, key: &str, sum: &str) -> Result<(), String> {
     let text = std::fs::read_to_string(manifest).map_err(|e| e.to_string())?;
     let mut out = String::with_capacity(text.len());

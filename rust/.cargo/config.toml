@@ -1,99 +1,99 @@
-# Псевдонимы сборки Rexon.
+# Rexon build aliases.
 #
-# ЗАЧЕМ. В `Cargo.toml` стоит `default-members = ["rexon-core"]` —
-# намеренно, чтобы голый `cargo test` ядра не тянул за собой Qt6
-# (rexon-gui, rexon-qt-filter на cxx-qt).
-# Плата за это — ловушка: голый `cargo build --release` рапортует
-# «Finished» за секунды, собрав ОДНО ядро, а окно `rexon-main-window` с
-# вкладками на QML остаётся старым. Человек
-# уверен, что собрал сегодняшний день, а меряет позавчерашний. Наступили
-# на это 2026-08-29: «сборка прошла успешно», .so двухдневной давности.
-# Замер после правки исходника вкладки: `cargo build --release` — «Finished
-# in 0.05s», .so не тронута; `cargo build-app` — 1 мин 45 с, .so свежая.
+# WHY. `Cargo.toml` has `default-members = ["rexon-core"]` —
+# on purpose, so that a bare `cargo test` of the core does not drag Qt6 along
+# (rexon-gui, rexon-qt-filter on cxx-qt).
+# The price is a trap: a bare `cargo build --release` reports
+# «Finished» within seconds, having built ONE core, while the `rexon-main-window` window with
+# the QML tabs stays old. A person
+# is sure they built today's state but measures the one from the day before yesterday. We stepped
+# on this on 2026-08-29: «the build succeeded», a .so two days old.
+# A measurement after editing a tab's source: `cargo build --release` — «Finished
+# in 0.05s», the .so untouched; `cargo build-app` — 1 min 45 s, the .so fresh.
 #
-# Ловушку убираем не отменой `default-members` (ядро потеряло бы
-# независимость от Qt), а именованными командами: у каждой свой
-# честный набор пакетов, и ни одна не собирает меньше, чем обещает.
-# Список видно без чтения этого файла — `cargo --list` печатает псевдонимы
-# вместе с разворотом.
+# The trap is removed not by dropping `default-members` (the core would lose its
+# independence from Qt) but with named commands: each has its own
+# honest set of packages, and none builds less than it promises.
+# The list is visible without reading this file — `cargo --list` prints the aliases
+# together with their expansion.
 #
-# ⚠️ Псевдонимы читаются по ТЕКУЩЕМУ каталогу, а не по `--manifest-path`:
-# работают, когда cargo запущен из `rust/` или изнутри крейта. Из корня
-# репозитория (`cargo build --manifest-path rust/Cargo.toml`) этого файла
-# cargo не увидит — там набор пакетов пишем через `-p` руками.
+# ⚠️ Aliases are read from the CURRENT directory, not from `--manifest-path`:
+# they work when cargo is run from `rust/` or from inside a crate. From the
+# repository root (`cargo build --manifest-path rust/Cargo.toml`) cargo will not see
+# this file — there the package set is written with `-p` by hand.
 #
-# Моста в Python больше нет: rexon-py ушёл в архив (_archived/, 02.10.2026).
+# There is no Python bridge anymore: rexon-py went to the archive (_archived/, 02.10.2026).
 
 [alias]
-# Приложение целиком: ядро + `rexon-main-window` (вкладки на QML) +
-# `librexon_qt_filter.so` (модель редактора фильтров). Это то, что грузит
-# живой Rexon, и то, что обязано быть свежим перед ЛЮБЫМ замером UI.
-# Требует Qt6. Команда «собрать проект» — она, а НЕ голый `cargo build`.
+# The whole application: the core + `rexon-main-window` (the QML tabs) +
+# `librexon_qt_filter.so` (the filter editor model). This is what the
+# live Rexon loads, and what must be fresh before ANY UI measurement.
+# Requires Qt6. The «build the project» command is this one, NOT a bare `cargo build`.
 build-app = "build --release -p rexon-core -p rexon-gui -p rexon-qt-filter"
 
-# То же в debug — для отладочных прогонов вкладок. ⚠️ release и debug живут
-# в разных каталогах target: собрал debug — release осталась старой.
+# The same in debug — for debug runs of the tabs. ⚠️ release and debug live
+# in different target directories: build debug — and release stays old.
 build-app-debug = "build -p rexon-core -p rexon-gui -p rexon-qt-filter"
 
-# Бинарь заставки входа. ОТДЕЛЬНОЙ командой, и это не небрежность:
-# rexon-splash-overlay тянет свой стек (wayland/EGL), и когда он попадает в
-# ОДИН прогон cargo вместе с rexon-gui, объединение фич общих зависимостей
-# (libc, rustix, bitflags, log…) меняется — rexon-gui пересобирается
-# целиком. Замерено: чередование «всё одним прогоном» и `build-app` жгло по
-# 1 мин 40 с на ровном месте. Разными прогонами — 0,1 с, набор фич каждой
-# команды стабилен. Заставка правится редко, вкладки — каждый день.
+# The login splash binary. As a SEPARATE command, and that is not carelessness:
+# rexon-splash-overlay pulls in its own stack (wayland/EGL), and when it gets into
+# ONE cargo run together with rexon-gui, the feature unification of shared dependencies
+# (libc, rustix, bitflags, log…) changes — rexon-gui is rebuilt
+# entirely. Measured: alternating «everything in one run» and `build-app` burned
+# 1 min 40 s each out of nothing. In separate runs — 0.1 s, each command's feature set
+# is stable. The splash is edited rarely, the tabs every day.
 build-splash = "build --release -p rexon-splash-overlay"
 
-# Тесты ядра: явное имя того, что делает голый `cargo test`, — без Qt и без
-# Python. Ради этой независимости default-members и сужен до rexon-core.
+# Core tests: an explicit name for what a bare `cargo test` does — without Qt and without
+# Python. For this independence default-members was narrowed down to rexon-core.
 test-core = "test -p rexon-core"
 
-# То же без сверок, которым нужна ЖИВАЯ машина (живой PATH, `lrelease`,
-# объектная база git): они помечены `#[cfg_attr(feature = "isolated-checks",
-# ignore = "…")]` и libtest напечатает их отдельной строкой «ignored» с
-# причиной, а не молча зачтёт зелёными. Зачем именно признак сборки —
-# в `rexon-core/Cargo.toml`, раздел `[features]`.
-# ⚠️ Переключение фичи пересобирает набор сверок (другой cfg) — это минуты,
-# а не секунды; для обычной работы нужен `test-core`.
+# The same without the checks that need a LIVE machine (the live PATH, `lrelease`,
+# the git object database): they are marked `#[cfg_attr(feature = "isolated-checks",
+# ignore = "…")]` and libtest will print them on a separate «ignored» line with
+# the reason instead of silently counting them green. Why exactly a build feature —
+# see `rexon-core/Cargo.toml`, the `[features]` section.
+# ⚠️ Switching the feature rebuilds the set of checks (a different cfg) — that is minutes,
+# not seconds; for ordinary work `test-core` is what you need.
 test-core-isolated = "test -p rexon-core --features isolated-checks"
 
-# ── Сборка движка перевода: четыре ядра в файле, выбор по CPUID ──────
+# ── Building the translation engine: four kernels in one file, chosen by CPUID ──
 #
-# ЗАЧЕМ. Вендорный `fxtranslate` (rust/vendor/fxtranslate/) умеет собирать
-# своё ядро умножения матриц ПОД НЕСКОЛЬКО наборов инструкций сразу —
-# avx2, avxvnni, avx512bw, avx512vnni — и выбирать набор один раз при
-# первом обращении по флагам процессора (`is_x86_feature_detected!`). Это
-# наша правка, её нет у апстрима: в 0.4.2 набор прибивается НА СБОРКЕ
-# (`-mavx2` в их build.rs) и проверки CPUID нет нигде.
+# WHY. The vendored `fxtranslate` (rust/vendor/fxtranslate/) can build
+# its matrix multiplication kernel FOR SEVERAL instruction sets at once —
+# avx2, avxvnni, avx512bw, avx512vnni — and choose the set once on
+# first use by the processor flags (`is_x86_feature_detected!`). This is
+# our edit, upstream does not have it: in 0.4.2 the set is nailed down AT BUILD TIME
+# (`-mavx2` in their build.rs) and there is no CPUID check anywhere.
 #
-# ЧЕМ ГРОЗИТ ЗАБЫТЬ. Собранное под один набор ядро на процессоре без него
-# даёт SIGILL, причём не на старте: замер стенда — «загрузка модели:
-# 0.031 с», окно уже показано, и код возврата 132 = 128 + 4 на ПЕРВОМ
-# умножении матриц. То есть покупатель со старым процессором (Intel до
-# Haswell, AMD до Zen, младшие Celeron/Pentium/Atom) увидит рухнувшую
-# программу на первом переводе описания. Поэтому переменная стоит здесь, в
-# конфиге мастерской, а не в памяти человека, который собирает.
+# WHAT FORGETTING IT RISKS. A kernel built for one set gives SIGILL on a processor
+# without it, and not at start: the stand measurement — «model load:
+# 0.031 s», the window already shown, and exit code 132 = 128 + 4 on the FIRST
+# matrix multiplication. So a buyer with an old processor (Intel before
+# Haswell, AMD before Zen, low-end Celeron/Pentium/Atom) will see the program
+# crash on the first description translation. That is why the variable lives here, in
+# the workspace config, and not in the memory of the person who builds.
 #
-# ЦЕНА. Четыре копии ядра в одном файле — 10–20 КБ (0,90 против 0,89 МБ):
-# ядро это компактный шаблонный код, вся модель лежит во внешнем файле.
-# Многоарочная сборка идёт ровно как выделенная VNNI-сборка (0,071 против
-# 0,069 с на абзаце — шум). `-C target-cpu=native` не ставим намеренно: он
-# привязал бы сборку к машине разработчика, а выигрыш его правка
-# округления активаций в вендоре уже забрала.
+# THE PRICE. Four copies of the kernel in one file — 10–20 KB (0.90 against 0.89 MB):
+# the kernel is compact template code, the whole model lives in an external file.
+# The multi-arch build runs exactly like a dedicated VNNI build (0.071 against
+# 0.069 s per paragraph — noise). `-C target-cpu=native` is deliberately not set: it
+# would tie the build to the developer's machine, and the gain was already taken by its
+# activation rounding edit in the vendor.
 #
-# REQUIRE_SIMD. Второй гвоздь: без него крейт при неудаче сборки шима
-# МОЛЧА уходит на скалярное ядро — это в 9 раз медленнее, и заметить
-# подмену можно только замером. Пусть лучше сборка честно встанет.
+# REQUIRE_SIMD. The second nail: without it, if building the shim fails, the crate
+# SILENTLY falls back to the scalar kernel — that is 9 times slower, and the swap
+# can only be noticed by measuring. Better that the build honestly stops.
 #
-# ⚠️ Читается по ТЕКУЩЕМУ каталогу, как и псевдонимы выше: работает из
-# `rust/` и изнутри крейтов. Собирая из корня репозитория
-# (`--manifest-path rust/Cargo.toml`), обе переменные надо задать руками —
-# иначе получится одноарочная сборка под AVX2.
-# ⚠️ Многоарочная ветка требует GNU binutils (`objcopy --localize-hidden`,
-# `ar`) и написана под x86-64; aarch64 идёт прежним одноарочным путём
-# (i8mm), MSVC не поддержан.
-# Приоритет у окружения (force не ставим): `FXT_GEMM_X86_MULTI=0 cargo …`
-# вернёт одноарочную сборку, если это зачем-то понадобится.
+# ⚠️ Read from the CURRENT directory, like the aliases above: it works from
+# `rust/` and from inside the crates. When building from the repository root
+# (`--manifest-path rust/Cargo.toml`), both variables must be set by hand —
+# otherwise you get a single-arch build for AVX2.
+# ⚠️ The multi-arch branch requires GNU binutils (`objcopy --localize-hidden`,
+# `ar`) and is written for x86-64; aarch64 goes the former single-arch way
+# (i8mm), MSVC is not supported.
+# The environment takes priority (force is not set): `FXT_GEMM_X86_MULTI=0 cargo …`
+# brings back the single-arch build if that is ever needed.
 [env]
 FXT_GEMM_X86_MULTI = "1"
 FXTRANSLATE_REQUIRE_SIMD = "1"

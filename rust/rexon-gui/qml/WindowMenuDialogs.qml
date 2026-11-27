@@ -60,7 +60,7 @@ Item {
             // output stream they cannot see.
             const found = root.menuModel.recoverForks();
             if (found.forks.length > 0) {
-                console.info("найдены пакеты-замены Plasma: " + found.forks.join(", "));
+                console.info("Plasma replacement packages found: " + found.forks.join(", "));
                 forksDialog.title = found.title;
                 forksBody.text = found.text;
                 forksRemoveButton.text = found.removeLabel;
@@ -84,7 +84,7 @@ Item {
         } else {
             // An item with nothing behind it is a promise nobody will keep. Let it be
             // visible in the log.
-            console.warn("пункт меню «" + id + "» никуда не ведёт");
+            console.warn("menu item \"" + id + "\" leads nowhere");
         }
     }
 
@@ -180,7 +180,7 @@ Item {
         const out = [];
         for (const b of [keepButton, deleteButton, cancelButton])
             if (b.implicitContentWidth > b.availableWidth + 0.5)
-                out.push(b.text + " (" + Math.round(b.availableWidth) + " из "
+                out.push(b.text + " (" + Math.round(b.availableWidth) + " of "
                          + Math.ceil(b.implicitContentWidth) + ")");
         return out;
     }
@@ -456,7 +456,7 @@ Item {
             if (root.menuModel.forksRemoveRun())
                 root.say(forksConfirmDialog.runningTitle, forksConfirmDialog.runningText);
             else
-                console.warn("снятие замен Plasma уже идёт");
+                console.warn("removing the Plasma replacements is already in progress");
         }
 
         ColumnLayout {
@@ -577,7 +577,7 @@ Item {
     function startUninstall(keepProfile) {
         uninstallDialog.close();
         if (!root.menuModel.uninstallRun(keepProfile))
-            console.warn("удаление уже идёт");
+            console.warn("uninstalling is already in progress");
     }
 
     Connections {

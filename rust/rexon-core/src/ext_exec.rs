@@ -2308,7 +2308,7 @@ mod tests {
 
     /// The body of the end-to-end guard — only in the child process (see above).
     #[test]
-    #[ignore = "запускается дочерним процессом install_announces_to_bridge_and_list_follows_without_restart"]
+    #[ignore = "run as a child process by install_announces_to_bridge_and_list_follows_without_restart"]
     fn bridge_e2e_child() {
         let base = PathBuf::from(std::env::var_os(E2E_BASE_ENV).expect("только дочерний прогон"));
         let home = PathBuf::from(home());

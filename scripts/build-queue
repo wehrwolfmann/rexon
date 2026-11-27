@@ -23,7 +23,10 @@
 #   * lowest CPU and disk priority (nice 19, ionice idle) and
 #     a separate systemd group with a memory cap — the desktop always
 #     gets served first;
-#   * 4 threads per build (4 × 4 = 16), a shared memory cap for the slice;
+#   * one token bank for all runs (24.11.2026, Wehrwolfmann's decision): a GNU make
+#     jobserver shared by cargo, make and ninja of every slot, smaller under I/O
+#     or memory pressure — see "Token bank" below; without it — a fixed
+#     BUILD_QUEUE_JOBS per build; a shared memory cap for the slice;
 #   * git worktree (14.11.2026, Wehrwolfmann's decision): there is ONE queue for all
 #     copies — locks and tickets live in the main tree, not in the copy root
 #     (previously each copy had its own queue, and on 14.11 up to ten
@@ -42,12 +45,21 @@
 #   scripts/build-queue test -p rexon-gui
 # While work is in progress, `check` is enough; build/test — when you need to run it or
 # take a snapshot.
+#   scripts/build-queue --exec make -C …           # any heavy command, same queue and pool
+#   scripts/build-queue --pool-status              # tokens: size, held back, pressure
 #
-# Variables (optional): BUILD_QUEUE_SLOTS (4), BUILD_QUEUE_JOBS (2),
+# Variables (optional): BUILD_QUEUE_SLOTS (4), BUILD_QUEUE_JOBS (cap per cargo build;
+# 2 when the pool is off), BUILD_QUEUE_POOL (1; 0 = no pool), BUILD_QUEUE_POOL_TOKENS
+# (nproc - slots), BUILD_QUEUE_IO_HIGH/LOW (60/30) and BUILD_QUEUE_MEM_HIGH_PSI/LOW_PSI
+# (10/3) — PSI "some avg10" % to hold tokens back / give them back,
+# BUILD_QUEUE_BANK_IDLE (120 s before an idle keeper exits), BUILD_QUEUE_ROOT and
+# BUILD_QUEUE_POOL_DIR (a separate queue and pool, for tests),
 # BUILD_QUEUE_MEM_HIGH (8G) and BUILD_QUEUE_MEM_MAX (12G) per build,
 # BUILD_QUEUE_SLICE_HIGH (18G) and BUILD_QUEUE_SLICE_MAX (22G) for all at once,
 # BUILD_QUEUE_TARGET (own build directory; a slot is taken anyway;
 # in a git worktree the shared target-shared is replaced by the copy's target-wt).
+# BUILD_QUEUE_FAST (1; 0 = the exact release profile with LTO) and BUILD_QUEUE_MOLD (1)
+# — see "Fast agent builds" below.
 
 set -euo pipefail
 
@@ -58,18 +70,22 @@ common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/de
 if [ -n "$common" ] && [ "${common##*/}" = ".git" ] && [ -d "${common%/.git}" ]; then
     QROOT="${common%/.git}"
 fi
+# BUILD_QUEUE_ROOT: a separate queue (locks, tickets, slots file) — for testing the
+# script without touching the live queue of the main tree.
+QROOT="${BUILD_QUEUE_ROOT:-$QROOT}"
 SHARED="$QROOT/target-shared"
 if [ -z "${SLOTS:-}" ]; then
-    SLOTS="$(tr -dc '0-9' < "$QROOT/.build-queue.slots" 2>/dev/null || true)"
+    SLOTS="$(tr -dc '0-9' 2>/dev/null <"$QROOT/.build-queue.slots" || true)"
     [ -n "$SLOTS" ] && [ "$SLOTS" -ge 1 ] || SLOTS=4
 fi
 # The second and further slots are taken only while the disk is not choking: with
 # I/O pressure above 80 % over a minute (avg60) the queue works as with
 # one slot (14.11.2026, Wehrwolfmann's decision; kept as a safety net after the
 # move to the fast disk).
+PSI_DIR="${BUILD_QUEUE_PSI_DIR:-/proc/pressure}"
 io_busy() {
     awk '/^some/ { for (i = 1; i <= NF; i++) if ($i ~ /^avg60=/) { split($i, a, "="); exit !(a[2] + 0 > 80) } exit 1 }' \
-        /proc/pressure/io 2>/dev/null
+        "$PSI_DIR/io" 2>/dev/null
 }
 # Four slots (24.11.2026, Wehrwolfmann's decision): the system moved off the slow
 # Crucial P2, on which four builds at once drove I/O pressure up to 82 %
@@ -103,6 +119,270 @@ fi
 # is released by the kernel when the build has finished or died.
 lock_of() { if [ "$1" -eq 0 ]; then echo "$QROOT/.build-queue.lock"; else echo "$QROOT/.build-queue.lock.$1"; fi; }
 
+# ---------------------------------------------------------------------------
+# Token bank: one GNU make jobserver (named pipe) shared by every run.
+#
+# WHY. Each slot used to get a fixed share (BUILD_QUEUE_JOBS=2): a lone build
+# used 2 of 16 threads, four builds could not borrow from each other, and
+# make/ninja run through --exec took the whole machine for themselves. With a
+# shared jobserver cargo, rustc, cc-rs, make and ninja >= 1.13 take a token per
+# job from one pool, so all running builds together stay within the machine.
+#
+# How it works:
+#   * the pool is a FIFO 0600 in $XDG_RUNTIME_DIR/rexon-build-queue (per user,
+#     tmpfs); every run gets MAKEFLAGS/CARGO_MAKEFLAGS=--jobserver-auth=fifo:…;
+#   * a small keeper (`build-queue --bank`, started on demand, one per pool)
+#     keeps the FIFO open — a FIFO forgets its bytes when the last descriptor
+#     closes — and exits after BUILD_QUEUE_BANK_IDLE seconds without builds;
+#   * pressure: while I/O or memory pressure (PSI some avg10) is high the keeper
+#     reads tokens out of the pool and holds them, and writes them back once the
+#     pressure is gone. It is an ordinary jobserver client doing that, so no
+#     tool sees anything unusual — builds just start fewer new jobs;
+#   * lost tokens: a client killed with SIGKILL never writes its tokens back.
+#     Whenever no slot is taken (the keeper holds every slot lock for the few
+#     milliseconds it needs, so nobody can start meanwhile), the keeper empties
+#     the pool and refills it to the exact size minus what it holds itself;
+#   * size: every jobserver client runs one job without a token (the "implicit
+#     slot" of the GNU make protocol), and each slot is one top-level client.
+#     So the pool holds nproc - SLOTS tokens: SLOTS implicit jobs plus the pool
+#     add up to nproc, the same total as before but shared;
+#   * BUILD_QUEUE_POOL=0 turns the pool off (old fixed -j per build).
+# Measured on 24.11.2026: make, ninja 1.13.2 and cargo 1.100 all obey the pool;
+# an explicit -jN makes make and ninja start their own pool instead, so -jN is
+# dropped for them below.
+POOL_ON="${BUILD_QUEUE_POOL:-1}"
+# One pool per queue root (all copies of the tree share the main tree's queue,
+# so in practice one per user); a test queue gets a pool of its own.
+POOL="${BUILD_QUEUE_POOL_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/rexon-build-queue-$(printf '%s' "$QROOT" | md5sum | cut -c1-8)}"
+FIFO="$POOL/jobserver.fifo"
+# The keeper runs the main tree's script, so copies on older branches do not
+# start an older keeper; a queue root without the script uses this one.
+SELF="$QROOT/scripts/build-queue"
+grep -q -- '--bank' "$SELF" 2>/dev/null || SELF="$ROOT/scripts/build-queue"
+
+current_slots() {
+    local s="${BUILD_QUEUE_SLOTS:-}"
+    [ -n "$s" ] || s="$(tr -dc '0-9' 2>/dev/null <"$QROOT/.build-queue.slots" || true)"
+    [ -n "$s" ] && [ "$s" -ge 1 ] || s=4
+    echo "$s"
+}
+pool_tokens() {
+    local n="${BUILD_QUEUE_POOL_TOKENS:-}"
+    if [ -z "$n" ]; then n=$(( $(nproc) - $(current_slots) )); fi
+    [ "$n" -ge 1 ] || n=1
+    echo "$n"
+}
+# "some avg10" of a PSI file as a whole percent; 0 when unreadable.
+psi_avg10() {
+    awk '/^some/ { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { split($i, a, "="); printf "%d\n", a[2]; exit } }' \
+        "$PSI_DIR/$1" 2>/dev/null || true
+}
+
+bank_log() { echo "$(date '+%F %T') bank[$$]: $*" >>"$POOL/bank.log"; }
+
+# Take every slot lock without waiting; on success the fds stay open in
+# SLOT_FDS (release with release_slots), on failure nothing is held.
+SLOT_FDS=()
+grab_all_slots() {
+    local f fd n
+    n="$(current_slots)"
+    SLOT_FDS=()
+    # Two descriptions of one file would block each other: de-duplicate.
+    local -A seen=()
+    local files=()
+    for ((i = 0; i < n; i++)); do files+=("$(lock_of "$i")"); done
+    for f in "$QROOT"/.build-queue.lock.[0-9]*; do [ -e "$f" ] && files+=("$f"); done
+    for f in "${files[@]}"; do
+        [ -z "${seen[$f]:-}" ] || continue
+        seen[$f]=1
+        exec {fd}>>"$f"
+        if ! flock -n "$fd"; then
+            exec {fd}>&-
+            release_slots
+            return 1
+        fi
+        SLOT_FDS+=("$fd")
+    done
+    return 0
+}
+release_slots() {
+    local fd
+    for fd in "${SLOT_FDS[@]}"; do exec {fd}>&-; done
+    SLOT_FDS=()
+}
+
+# Is the FIFO open in any other process (a build still running from a keeper
+# that died)? Then the pool still has its old tokens and must not be seeded again.
+fifo_in_use() {
+    [ -n "$(find /proc/[0-9]*/fd -maxdepth 1 -lname "$FIFO" -print -quit 2>/dev/null)" ]
+}
+
+bank_main() {
+    umask 077
+    mkdir -p "$POOL"
+    local lockfd
+    exec {lockfd}>>"$POOL/bank.lock"
+    flock -w 3 "$lockfd" || exit 0               # another keeper already runs
+    # A signal ends the keeper after the current step, not in the middle of it.
+    trap 'bank_log "stopped by a signal"; exit 0' TERM INT HUP
+    [ -p "$FIFO" ] || { rm -f "$FIFO"; mkfifo -m 600 "$FIFO"; }
+    local seed=1
+    fifo_in_use && seed=0
+    exec 3<>"$FIFO"
+    local size held="" c drained want=0 step tick idle=0 dirty=1 lost=0
+    local io mem
+    local io_hi="${BUILD_QUEUE_IO_HIGH:-60}" io_lo="${BUILD_QUEUE_IO_LOW:-30}"
+    local mem_hi="${BUILD_QUEUE_MEM_HIGH_PSI:-10}" mem_lo="${BUILD_QUEUE_MEM_LOW_PSI:-3}"
+    local idle_exit="${BUILD_QUEUE_BANK_IDLE:-120}"
+    tick="${BUILD_QUEUE_BANK_TICK:-1}"
+    size="$(pool_tokens)"
+    if [ "$seed" -eq 1 ]; then
+        printf "%${size}s" "" | tr ' ' '+' >&3
+        bank_log "started: $size tokens"
+    else
+        bank_log "started: pool still open by running builds, not seeded (refill when idle)"
+    fi
+    while :; do
+        # The queue or the pool was removed (a test tree, logout): nothing to serve.
+        [ -d "$QROOT" ] && [ -p "$FIFO" ] || { bank_log "queue root or pool gone: exiting"; exit 0; }
+        # Pressure: decide how many tokens to keep out of the pool.
+        io="$(psi_avg10 io)"; io="${io:-0}"
+        mem="$(psi_avg10 memory)"; mem="${mem:-0}"
+        step=$(( size / 4 )); [ "$step" -ge 1 ] || step=1
+        if [ "$io" -ge "$io_hi" ] || [ "$mem" -ge "$mem_hi" ]; then
+            want=$(( want + step )); [ "$want" -le "$size" ] || want="$size"
+        elif [ "$io" -le "$io_lo" ] && [ "$mem" -le "$mem_lo" ]; then
+            want=$(( want - step )); [ "$want" -ge 0 ] || want=0
+        fi
+        while [ "${#held}" -lt "$want" ] && IFS= read -r -N1 -t 0.01 -u 3 c; do held+="$c"; done
+        if [ "${#held}" -gt "$want" ]; then
+            printf '%s' "${held:want}" >&3
+            held="${held:0:want}"
+        fi
+        # Refill: only while no slot is taken, holding all slot locks.
+        if grab_all_slots; then
+            if [ "$dirty" -eq 1 ]; then
+                size="$(pool_tokens)"
+                held="${held:0:size}"           # the pool shrank: drop the extra
+                drained=0
+                while IFS= read -r -N1 -t 0.01 -u 3 c; do drained=$((drained + 1)); done
+                if [ "$drained" -ne $(( size - ${#held} )) ]; then
+                    lost=$(( lost + 1 ))
+                    bank_log "refill: found $drained tokens, expected $(( size - ${#held} )); pool restored"
+                fi
+                printf "%$(( size - ${#held} ))s" "" | tr ' ' '+' >&3
+                dirty=0
+            fi
+            idle=$(( idle + tick ))
+            if [ "$idle" -ge "$idle_exit" ]; then
+                local pl
+                exec {pl}>>"$POOL/pool.lock"
+                if flock -n "$pl"; then
+                    bank_log "idle ${idle}s: exiting"
+                    exit 0                      # closes the FIFO with all locks held
+                fi
+                exec {pl}>&-
+            fi
+            release_slots
+        else
+            idle=0; dirty=1
+        fi
+        printf 'size=%s held=%s io=%s mem=%s restores=%s updated=%s\n' \
+            "$size" "${#held}" "$io" "$mem" "$lost" "$(date +%T)" >"$POOL/state.tmp" &&
+            mv -f "$POOL/state.tmp" "$POOL/state"
+        # sleep must not inherit the lock or the pool: if the keeper is killed,
+        # an orphaned sleep would pass for a live keeper (lock) or for a running
+        # build (open pool) for up to a tick.
+        sleep "$tick" {lockfd}>&- 3>&-
+    done
+}
+
+# Make sure a keeper serves the pool; called with a slot already taken, so the
+# keeper cannot decide to exit meanwhile. Returns non-zero when there is no pool.
+ensure_bank() {
+    [ "$POOL_ON" = 1 ] || return 1
+    command -v flock >/dev/null && command -v mkfifo >/dev/null || return 1
+    (umask 077; mkdir -p "$POOL") || return 1
+    local pl k
+    exec {pl}>>"$POOL/pool.lock"
+    flock -w 10 "$pl" || { exec {pl}>&-; return 1; }
+    if flock -n "$POOL/bank.lock" true 2>/dev/null; then
+        # The keeper outlives this run: it must not inherit this run's slot
+        # count (priv-stand runs with BUILD_QUEUE_SLOTS=1), only an explicit
+        # BUILD_QUEUE_BANK_SLOTS (tests) or the slots file.
+        BUILD_QUEUE_ROOT="$QROOT" BUILD_QUEUE_POOL_DIR="$POOL" BUILD_QUEUE_SLOTS="${BUILD_QUEUE_BANK_SLOTS:-}" \
+            setsid -f bash "$SELF" --bank </dev/null >>"$POOL/bank.log" 2>&1 7>&- 8>&- 9>&- {pl}>&-
+        for ((k = 0; k < 30; k++)); do
+            flock -n "$POOL/bank.lock" true 2>/dev/null || break
+            sleep 0.1
+        done
+    fi
+    exec {pl}>&-
+    [ -p "$FIFO" ] && ! flock -n "$POOL/bank.lock" true 2>/dev/null
+}
+
+# MAKEFLAGS of the caller without -j/--jobs/--jobserver-*, plus the pool.
+pool_env() {
+    local w out=""
+    for w in ${MAKEFLAGS:-}; do
+        case "$w" in -j*|--jobs*|--jobserver-*) ;; *) out+="$w " ;; esac
+    done
+    export MAKEFLAGS="${out}--jobserver-auth=fifo:$FIFO"
+    export CARGO_MAKEFLAGS="$MAKEFLAGS"
+    unset MFLAGS CMAKE_BUILD_PARALLEL_LEVEL
+}
+
+# makepkg reads MAKEFLAGS from makepkg.conf AFTER the environment, so a plain
+# variable loses. MAKEPKG_CONF points it at a file that reads the usual
+# configuration in the usual order and only then sets the pool.
+pool_makepkg_conf() {
+    local base="${MAKEPKG_CONF:-/etc/makepkg.conf}" out="$POOL/makepkg.conf"
+    {
+        printf 'source %q\n' "$base"
+        printf 'for _c in %q/*.conf; do [ -r "$_c" ] && source "$_c"; done; unset _c\n' "$base.d"
+        if [ "$base" = /etc/makepkg.conf ]; then
+            printf 'if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf" ]; then source "${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf"; elif [ -r "$HOME/.makepkg.conf" ]; then source "$HOME/.makepkg.conf"; fi\n'
+        fi
+        printf 'MAKEFLAGS=%q\n' "--jobserver-auth=fifo:$FIFO"
+    } >"$out.$$" && mv -f "$out.$$" "$out" && export MAKEPKG_CONF="$out"
+}
+
+# Drop -j options that would switch make/ninja/cmake --build away from the pool.
+# The result is in CMD.
+CMD=()
+strip_jobs() {
+    CMD=()
+    local base="${1##*/}" a skip=0 build=0
+    case "$base" in
+        make|gmake|ninja|samu) ;;
+        cmake) for a in "$@"; do [ "$a" = --build ] && build=1; done
+               [ "$build" -eq 1 ] || { CMD=("$@"); return; } ;;
+        *) CMD=("$@"); return ;;
+    esac
+    CMD=("$1"); shift
+    for a in "$@"; do
+        if [ "$skip" -eq 1 ]; then
+            skip=0
+            [[ "$a" =~ ^[0-9]+$ ]] && continue
+        fi
+        case "$a" in
+            -j|--jobs|--parallel) skip=1; continue ;;
+            -j[0-9]*|--jobs=*|--parallel=*) continue ;;
+        esac
+        CMD+=("$a")
+    done
+}
+
+if [ "${1:-}" = "--bank" ]; then
+    bank_main
+    exit 0
+fi
+if [ "${1:-}" = "--pool-status" ]; then
+    echo "pool: $FIFO"
+    cat "$POOL/state" 2>/dev/null || echo "no keeper running"
+    exit 0
+fi
+
 # The queue is tickets in .build-queue.d: the number is taken under a lock from a counter,
 # each waiter holds a flock on its ticket (descriptor 8). A live
 # waiter's ticket is locked; a dead one's (kill -9, disconnect) is free — it is skipped and
@@ -129,15 +409,20 @@ mv -f "$QDIR/next.tmp" "$QDIR/next"
 # First the lock, then the name: the queue never has a ticket without an owner.
 exec 8>"$QDIR/new.$$"
 flock -n 8
+# A one-slot run (heavy-run) waits for slot 0 only; mark its ticket so the
+# runs behind it may still take slots 1..N instead of queueing behind it.
+[ "$SLOTS" -ne 1 ] || echo s0 >&8
 mv -f "$QDIR/new.$$" "$QDIR/t$ticket"
 ticket_file="$QDIR/t$ticket"
 exec 7>&-
 
 # How many live tickets are ahead and how many in total; dead ones are erased.
 ahead=0
+ahead_any=0
 total=0
 scan_queue() {
     ahead=0
+    ahead_any=0
     total=0
     local f n fd
     for f in "$QDIR"/t*; do
@@ -153,7 +438,10 @@ scan_queue() {
             exec {fd}<&-
         fi
         total=$((total + 1))
-        [ "$n" -ge "$ticket" ] || ahead=$((ahead + 1))
+        if [ "$n" -lt "$ticket" ]; then
+            ahead=$((ahead + 1))
+            [ "$(head -c 2 "$f" 2>/dev/null)" = "s0" ] || ahead_any=$((ahead_any + 1))
+        fi
     done
 }
 
@@ -178,6 +466,17 @@ while :; do
             done
             [ -z "$slot" ] || break
         fi
+    elif [ "$SLOTS" -gt 1 ] && [ "$ahead_any" -eq 0 ]; then
+        # Only one-slot runs are ahead: they wait for slot 0, which they get in
+        # order; slots 1..N must not stay idle behind them (24.11.2026: seven
+        # runs stood still with three free slots behind one heavy-run).
+        for ((i = 1; i < SLOTS; i++)); do
+            io_busy && break
+            exec 9>"$(lock_of "$i")"
+            if flock -n 9; then slot=$i; break; fi
+            exec 9>&-
+        done
+        [ -z "$slot" ] || break
     fi
     pos="$((ahead + 1)) of $total"
     if [ "$waited" -eq 0 ]; then
@@ -196,7 +495,19 @@ exec 8>&-
 trap - EXIT INT TERM HUP
 [ "$waited" -eq 0 ] || echo "build-queue: slot $slot is free" >&2
 
+# The slot is ours, so the keeper cannot retire while we set up the pool.
+POOL_READY=0
+if ensure_bank; then
+    POOL_READY=1
+    pool_env
+fi
+
 if [ "$RAW" -eq 1 ]; then
+    if [ "$POOL_READY" -eq 1 ]; then
+        strip_jobs "$@"
+        set -- "${CMD[@]}"
+        [ -n "${BUILD_QUEUE_KEEP_MAKEPKG_CONF:-}" ] || pool_makepkg_conf || true
+    fi
     if command -v systemd-run >/dev/null && systemd-run --user --scope --quiet true 2>/dev/null; then
         exec systemd-run --user --scope --quiet --collect --slice=rexon-build.slice nice -n 15 "$@"
     fi
@@ -250,7 +561,45 @@ else
 fi
 mkdir -p "$TARGET"
 
-export CARGO_TARGET_DIR="$TARGET" CARGO_BUILD_JOBS="$JOBS"
+export CARGO_TARGET_DIR="$TARGET"
+# With the pool cargo takes as many jobs as there are tokens; -j (CARGO_BUILD_JOBS)
+# would only cap it. Without the pool — the old fixed share per build.
+if [ "$POOL_READY" -eq 1 ] && [ -z "${BUILD_QUEUE_JOBS:-}" ]; then
+    unset CARGO_BUILD_JOBS
+else
+    export CARGO_BUILD_JOBS="$JOBS"
+fi
+# Fast agent builds (25.11.2026, Wehrwolfmann's decision). The release profile
+# in rust/Cargo.toml (fat LTO) is what the package ships; for agent builds and
+# tests it was the main cost — one changed line in rexon-core meant minutes of
+# LTO. So here, and only here, the release profile is overridden through
+# CARGO_PROFILE_RELEASE_* (the output stays in target*/release/, which the tree
+# looks up in many places: installer, splash, wallpaper host, QML modules):
+#   * lto = false (thin-local), codegen-units = 16, incremental for our crates;
+#   * mold as the linker (target rustflags: a caller's RUSTFLAGS still wins).
+# sccache was tried and dropped: across target directories it got 0 % Rust
+# hits, and a cold build with a full cache was slower (1:58 vs 1:29).
+# The package is not affected: makepkg calls cargo itself (heavy-run goes
+# through --exec, not this path) and none of this lives in Cargo.toml or
+# rust/.cargo/config.toml. Measurements: commit message of this change.
+# BUILD_QUEUE_FAST=0 restores the exact release profile, BUILD_QUEUE_MOLD=0
+# turns off the linker.
+# Every run of one build directory must use the same settings, otherwise cargo
+# rebuilds everything when they change.
+if [ "${BUILD_QUEUE_FAST:-1}" = 1 ]; then
+    export CARGO_PROFILE_RELEASE_LTO="${CARGO_PROFILE_RELEASE_LTO:-false}"
+    export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="${CARGO_PROFILE_RELEASE_CODEGEN_UNITS:-16}"
+    export CARGO_PROFILE_RELEASE_INCREMENTAL="${CARGO_PROFILE_RELEASE_INCREMENTAL:-true}"
+    if [ "${BUILD_QUEUE_MOLD:-1}" = 1 ] && command -v mold >/dev/null; then
+        host="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
+        case "$host" in
+            *-linux-gnu*)
+                var="CARGO_TARGET_$(printf '%s' "$host" | tr 'a-z.-' 'A-Z__')_RUSTFLAGS"
+                [ -n "${!var:-}" ] || export "$var=-C link-arg=-fuse-ld=mold"
+                ;;
+        esac
+    fi
+fi
 # Builds and tests do not need the live screen (windows for snapshots — xvfb-run with its own
 # DISPLAY). On 25.10.2026 a test started `cinnamon --replace` on the live MATE screen
 # and brought the machine down — without DISPLAY such a program cannot reach the desktop.

@@ -426,7 +426,7 @@ mod bus {
     }
 
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен dbus-daemon машины")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the machine's dbus-daemon")]
     fn вызов_по_настоящей_шине() {
         let mut daemon = std::process::Command::new("dbus-daemon")
             .args(["--session", "--nofork", "--print-address=1"])
@@ -481,7 +481,7 @@ mod bus {
 /// the working machine: `REXON_PLM_LIVE=bg:/path.jpg | bg-reset | sync:kde |
 /// reset cargo test --test plasma_login -- --ignored живой_вызов`.
 #[test]
-#[ignore = "пишет в систему через помощник PLM — только в ВМ стенда"]
+#[ignore = "writes to the system through the PLM helper — only in the stand VM"]
 fn живой_вызов_помощника_в_вм() {
     let step = std::env::var("REXON_PLM_LIVE").expect("REXON_PLM_LIVE");
     let res = if let Some(p) = step.strip_prefix("bg:") {

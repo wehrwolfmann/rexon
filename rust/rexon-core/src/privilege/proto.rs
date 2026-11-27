@@ -215,14 +215,14 @@ pub enum ProtoError {
 impl fmt::Display for ProtoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(e) => write!(f, "сокет сеанса прав: {e}"),
-            Self::TooLarge(n) => write!(f, "кадр {n} байт больше предела {MAX_FRAME}"),
-            Self::Malformed(e) => write!(f, "порченый кадр: {e}"),
+            Self::Io(e) => write!(f, "privilege session socket: {e}"),
+            Self::TooLarge(n) => write!(f, "frame of {n} bytes exceeds the limit {MAX_FRAME}"),
+            Self::Malformed(e) => write!(f, "malformed frame: {e}"),
             Self::Version(Some(v)) => {
-                write!(f, "версия протокола {v}, ожидалась {PROTO_VERSION}")
+                write!(f, "protocol version {v}, expected {PROTO_VERSION}")
             }
-            Self::Version(None) => write!(f, "в кадре нет версии протокола"),
-            Self::Fds(e) => write!(f, "дескрипторы кадра: {e}"),
+            Self::Version(None) => write!(f, "the frame has no protocol version"),
+            Self::Fds(e) => write!(f, "frame descriptors: {e}"),
         }
     }
 }
@@ -267,7 +267,7 @@ pub fn decode<M: DeserializeOwned>(bytes: &[u8]) -> Result<M, ProtoError> {
     let value: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|e| ProtoError::Malformed(e.to_string()))?;
     let serde_json::Value::Object(mut obj) = value else {
-        return Err(ProtoError::Malformed("кадр не объект".into()));
+        return Err(ProtoError::Malformed("the frame is not an object".into()));
     };
     let version = obj.get("v").and_then(serde_json::Value::as_u64);
     if version != Some(u64::from(PROTO_VERSION)) {
@@ -275,12 +275,12 @@ pub fn decode<M: DeserializeOwned>(bytes: &[u8]) -> Result<M, ProtoError> {
     }
     if let Some(extra) = obj.keys().find(|k| *k != "v" && *k != "msg") {
         return Err(ProtoError::Malformed(format!(
-            "лишнее поле конверта `{extra}`"
+            "unexpected envelope field `{extra}`"
         )));
     }
     let msg = obj
         .remove("msg")
-        .ok_or_else(|| ProtoError::Malformed("нет поля `msg`".into()))?;
+        .ok_or_else(|| ProtoError::Malformed("no `msg` field".into()))?;
     serde_json::from_value(msg).map_err(|e| ProtoError::Malformed(e.to_string()))
 }
 
@@ -333,7 +333,7 @@ pub fn send_frame(fd: BorrowedFd<'_>, frame: &[u8]) -> Result<(), ProtoError> {
             } else {
                 Err(ProtoError::Io(io::Error::new(
                     io::ErrorKind::WriteZero,
-                    "кадр записан не целиком",
+                    "the frame was not written completely",
                 )))
             };
         }
@@ -423,11 +423,11 @@ pub fn send_frame_with_fds(
         return send_frame(fd, frame);
     }
     if fds.len() > MAX_FDS {
-        return Err(ProtoError::Fds(format!("{} дескрипторов больше предела {MAX_FDS}", fds.len())));
+        return Err(ProtoError::Fds(format!("{} descriptors exceed the limit {MAX_FDS}", fds.len())));
     }
     if frame.is_empty() {
         // The peer would read an empty frame as EOF, and the fds would be lost with it.
-        return Err(ProtoError::Malformed("пустой кадр с дескрипторами".into()));
+        return Err(ProtoError::Malformed("an empty frame with descriptors".into()));
     }
     if frame.len() > MAX_FRAME {
         return Err(ProtoError::TooLarge(frame.len()));
@@ -468,7 +468,7 @@ pub fn send_frame_with_fds(
             } else {
                 Err(ProtoError::Io(io::Error::new(
                     io::ErrorKind::WriteZero,
-                    "кадр записан не целиком",
+                    "the frame was not written completely",
                 )))
             };
         }
@@ -550,14 +550,14 @@ pub fn recv_frame_with_fds(
             }
         }
         if msg.msg_flags & libc::MSG_CTRUNC != 0 {
-            return Err(ProtoError::Fds("служебные данные обрезаны (MSG_CTRUNC)".into()));
+            return Err(ProtoError::Fds("control data truncated (MSG_CTRUNC)".into()));
         }
         if foreign {
-            return Err(ProtoError::Fds("служебные данные не SCM_RIGHTS".into()));
+            return Err(ProtoError::Fds("control data is not SCM_RIGHTS".into()));
         }
         if owned.len() > MAX_FDS {
             return Err(ProtoError::Fds(format!(
-                "{} дескрипторов больше предела {MAX_FDS}",
+                "{} descriptors exceed the limit {MAX_FDS}",
                 owned.len()
             )));
         }
@@ -618,7 +618,7 @@ mod tests {
             },
             HelperMsg::Progress {
                 id: 1,
-                line: "(1/3) установка «пакета»…".into(),
+                line: "(1/3) установка «пакета»…".into(), // i18n-exempt: non-ASCII progress text must survive the frame
             },
             HelperMsg::Done {
                 id: 1,
@@ -760,7 +760,7 @@ mod tests {
         .unwrap();
         for cut in 1..good.len() {
             let r = decode::<Client>(&good[..cut]);
-            assert!(r.is_err(), "обрыв на {cut} байте принят: {r:?}");
+            assert!(r.is_err(), "a cut at byte {cut} was accepted: {r:?}");
         }
         for junk in [
             &b""[..],
@@ -853,7 +853,7 @@ mod tests {
         let h = std::thread::spawn(move || {
             let fd = helper.as_fd();
             let Some(Client::Hello(hello)) = recv_msg::<Client>(fd).unwrap() else {
-                panic!("первым должен прийти Hello");
+                panic!("Hello must come first");
             };
             check_hello(&hello, &build_id()).unwrap();
             send_msg(
@@ -870,7 +870,7 @@ mod tests {
                         fd,
                         &HelperMsg::Progress {
                             id: *id,
-                            line: "шаг".into(),
+                            line: "step".into(),
                         },
                     )
                     .unwrap();
@@ -914,7 +914,7 @@ mod tests {
             recv_msg::<HelperMsg>(fd).unwrap(),
             Some(HelperMsg::Progress {
                 id: 5,
-                line: "шаг".into()
+                line: "step".into()
             })
         );
         assert_eq!(
@@ -1062,7 +1062,7 @@ mod tests {
         let (got, fds) = recv_frame_with_fds(b.as_fd()).unwrap().unwrap();
         assert_eq!(decode::<Client>(&got).unwrap(), Client::Cancel { id: 7 });
         assert_eq!(fds.len(), 2);
-        assert!(fds.iter().all(|f| is_cloexec(f.as_fd())), "полученные fd обязаны быть CLOEXEC");
+        assert!(fds.iter().all(|f| is_cloexec(f.as_fd())), "received fds must be CLOEXEC");
         let mut f = std::fs::File::from(fds.into_iter().next().unwrap());
         let mut s = String::new();
         std::io::Read::read_to_string(&mut f, &mut s).unwrap();
@@ -1117,7 +1117,7 @@ mod tests {
         let r = recv_frame_with_fds(b.as_fd());
         assert!(matches!(r, Err(ProtoError::Fds(ref e)) if e.contains("MSG_CTRUNC")), "{r:?}");
         let _a = writer.join().unwrap();
-        assert!(pipe_sees_eof(pr.as_fd()), "полученные fd обязаны закрыться");
+        assert!(pipe_sees_eof(pr.as_fd()), "received fds must be closed");
     }
 
     /// A frame over the limit together with fds is an error, the fds are closed.

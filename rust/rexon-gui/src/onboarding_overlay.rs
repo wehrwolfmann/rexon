@@ -163,7 +163,7 @@ fn start_map(start: &ob::Start) -> VMap {
 /// know why.
 fn report(saved: std::io::Result<()>) {
     if let Err(e) = saved {
-        rexon_core::log_warn!("onboarding", "прогресс не сохранён в настройки: {e}");
+        rexon_core::log_warn!("onboarding", "progress not saved to the settings: {e}");
     }
 }
 
@@ -173,7 +173,7 @@ fn settings() -> Option<SettingsManager> {
     match SettingsManager::new() {
         Ok(m) => Some(m),
         Err(e) => {
-            rexon_core::log_warn!("onboarding", "настройки не открылись: {e}");
+            rexon_core::log_warn!("onboarding", "settings did not open: {e}");
             None
         }
     }
@@ -198,7 +198,7 @@ fn registry() -> &'static Mutex<(u64, Vec<(u64, Notify)>)> {
 /// is open in the Python host or as a standalone window), and the caller is
 /// obliged to tell the user so.
 pub fn request_replay() -> bool {
-    let mut reg = registry().lock().expect("реестр обучения не отравлен");
+    let mut reg = registry().lock().expect("the onboarding registry is not poisoned");
     let mut told = 0usize;
     reg.1.retain(|(_, notify)| match notify() {
         Ok(()) => {
@@ -224,7 +224,7 @@ impl Drop for OnboardingModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
         if self.replay_watch != 0 {
-            let mut reg = registry().lock().expect("реестр обучения не отравлен");
+            let mut reg = registry().lock().expect("the onboarding registry is not poisoned");
             reg.1.retain(|(id, _)| *id != self.replay_watch);
         }
     }
@@ -238,7 +238,7 @@ impl cxx_qt::Initialize for qobject::OnboardingModel {
         );
         let handle = self.as_ref().get_ref().qt_thread();
         let replay = {
-            let mut reg = registry().lock().expect("реестр обучения не отравлен");
+            let mut reg = registry().lock().expect("the onboarding registry is not poisoned");
             reg.0 += 1;
             let id = reg.0;
             reg.1.push((

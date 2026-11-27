@@ -52,8 +52,8 @@ distribución conocida: ahora mismo «Como en SteamOS» y «Como en Garuda Linux
 - **🔧 Comprobar mi escritorio**: lo mismo que «Comprobar / Reparar», pero
   para el escritorio en el que estás trabajando ahora;
 - **🛟 Guardar el panel** y **↩️ Restaurar el panel**: una copia de los
-  ajustes del panel por si tus pruebas con temas lo estropean. Estos botones
-  solo existen en KDE Plasma, MATE y XFCE.
+  ajustes del panel por si tus pruebas con temas lo estropean. Todas las
+  copias están en **Ajustes → 🛡️ Protección del panel**.
 
 ![Tarjeta de un escritorio instalado con los botones «Cambiar», «Comprobar / Reparar» y «Desinstalar»](../images/desktops-installed.png)
 
@@ -180,7 +180,7 @@ XFCE ↔ KDE). Para volver, usa el botón **← Escritorios**.
   Btrfs Assistant).
 - **Después de cambiar ha desaparecido el panel de KDE Plasma.** Antes de
   cambiar desde Plasma, Rexon guarda su panel; puedes recuperarlo en
-  **Ajustes → 🛡️ Protección del panel de KDE Plasma**. Si el nuevo escritorio
+  **Ajustes → 🛡️ Protección del panel**. Si el nuevo escritorio
   se ha quedado con el navegador o el reproductor predeterminado, mira en
   **Ajustes → 🔒 Protección de aplicaciones predeterminadas**.
 

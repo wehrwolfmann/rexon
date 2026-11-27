@@ -54,8 +54,8 @@ Linux (Dr460nized) ». Une fois une allure appliquée, le bouton
 - **🔧 Vérifier mon bureau** — comme « Vérifier / Réparer », mais pour le
   bureau dans lequel vous travaillez en ce moment ;
 - **🛟 Sauvegarder le panneau** et **↩️ Rétablir le panneau** — une copie des
-  réglages du panneau, au cas où vos essais de thèmes le casseraient. Ces
-  boutons n'existent que dans KDE Plasma, MATE et XFCE.
+  réglages du panneau, au cas où vos essais de thèmes le casseraient. Toutes
+  les copies sont dans **Paramètres → 🛡️ Protection du panneau**.
 
 ![Fiche d'un bureau installé avec « Basculer », « Vérifier / Réparer » et « Supprimer »](../images/desktops-installed.png)
 
@@ -182,7 +182,7 @@ exemple XFCE ↔ KDE). Pour revenir, utilisez le bouton **← Bureaux**.
   snapper (par exemple Btrfs Assistant).
 - **Après un changement de bureau, le panneau de KDE Plasma a disparu.**
   Avant de quitter Plasma, Rexon sauvegarde son panneau ; vous pouvez le
-  rétablir dans **Paramètres → 🛡️ Protection du panneau KDE Plasma**. Si le
+  rétablir dans **Paramètres → 🛡️ Protection du panneau**. Si le
   nouveau bureau s'est approprié le navigateur ou le lecteur par défaut,
   regardez dans **Paramètres → 🔒 Protection des applications par défaut**.
 

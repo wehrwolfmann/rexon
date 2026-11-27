@@ -562,7 +562,7 @@ Item {
         case "soundThemeGroup": return cSound;
         case "fontsGroup": return cFonts;
         case "protGroup": return cProtection;
-        case "plasmaGroup": return cPlasma;
+        case "panelGroup": return cPanel;
         case "aeroGroup": return cAero;
         }
         console.warn("вкладка «Настройки» не умеет строить раздел «" + id
@@ -2648,19 +2648,25 @@ Item {
         }
     }
 
-    // ══ 🛡 KDE Plasma panel protection ════════════════════════════════════
+    // ══ 🛡 Panel protection ═════════════════════════════════════════════
+    //
+    // Every desktop Rexon knows (25.11.2026): the copies of the current
+    // desktop on top, the copies of the other desktops in a folded block
+    // below; a copy of another desktop can be restored from here too.
 
     Component {
-        id: cPlasma
+        id: cPanel
 
         ColumnLayout {
-            id: plasmaBody
+            id: panelBody
             width: parent ? parent.width : 0
             height: implicitHeight
             spacing: root.sty.group.spacing
 
-            readonly property var plasma: root.st.plasma || ({})
-            readonly property var backups: plasmaBody.plasma.backups || []
+            readonly property var panel: root.st.panel || ({})
+            readonly property var backups: panelBody.panel.backups || []
+            readonly property var others: panelBody.panel.others || []
+            property bool othersOpen: false
 
             RowLayout {
                 Layout.fillWidth: true
@@ -2672,56 +2678,97 @@ Item {
 
                     RexonText {
                         Layout.fillWidth: true
-                        text: root.txt["plasma.backup_title"]
+                        text: root.txt["panel.backup_title"]
                         color: root.colText
                     }
 
                     RexonText {
                         Layout.fillWidth: true
-                        text: root.txt["plasma.backup_sub"]
+                        text: panelBody.panel.supported === false
+                              ? (panelBody.panel.unsupported || "")
+                              : root.txt["panel.backup_sub"]
                         wrapMode: Text.WordWrap
                         color: root.colTextSecondary
                         font.weight: root.pal.text_secondary_weight
-                        ToolTip.visible: plasmaSubHover.hovered
-                        ToolTip.text: root.txt["plasma.backup_tip"]
-                        HoverHandler { id: plasmaSubHover }
+                        ToolTip.visible: panelSubHover.hovered && (panelBody.panel.tip || "") !== ""
+                        ToolTip.text: panelBody.panel.tip || ""
+                        HoverHandler { id: panelSubHover }
                     }
                 }
 
                 RexonButton {
-                    id: plasmaBackup
+                    id: panelBackup
+                    visible: panelBody.panel.supported !== false
                     pal: root.pal
                     tone: root.sty.primary
-                    text: root.txt["plasma.backup"]
-                    onClicked: root.did(root.actions.plasmaBackup())
+                    text: root.txt["panel.backup"]
+                    onClicked: root.did(root.actions.panelBackup())
                     onActiveFocusChanged: if (activeFocus)
-                        root.ensureVisible(plasmaBackup)
+                        root.ensureVisible(panelBackup)
                 }
             }
 
             RexonText {
                 Layout.fillWidth: true
-                visible: plasmaBody.backups.length > 0
-                text: plasmaBody.plasma.header || ""
+                visible: panelBody.backups.length > 0
+                text: panelBody.panel.header || ""
                 color: root.colText
             }
 
             RexonText {
                 Layout.fillWidth: true
-                visible: plasmaBody.backups.length === 0
-                text: root.txt["plasma.no_backups"]
+                visible: panelBody.backups.length === 0 && panelBody.panel.supported !== false
+                text: root.txt["panel.no_backups"]
                 color: root.colTextSecondary
                 font.weight: root.pal.text_secondary_weight
             }
 
             Repeater {
-                model: plasmaBody.backups
+                model: panelBody.backups
+                delegate: panelRowDelegate
+            }
 
-                delegate: RowLayout {
+            // Copies of other desktops: folded until asked for.
+            RexonButton {
+                id: panelOthers
+                visible: panelBody.others.length > 0
+                pal: root.pal
+                text: (panelBody.othersOpen ? "▾ " : root.arrows.collapsed + " ") + (panelBody.panel.othersHeader || "")
+                onClicked: panelBody.othersOpen = !panelBody.othersOpen
+                onActiveFocusChanged: if (activeFocus)
+                    root.ensureVisible(panelOthers)
+            }
+
+            Repeater {
+                model: panelBody.othersOpen ? panelBody.others : []
+
+                delegate: ColumnLayout {
+                    id: otherDesktop
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: root.sty.spacing.panelRow
+
+                    RexonText {
+                        Layout.fillWidth: true
+                        text: "<b>" + (otherDesktop.modelData.title || "") + "</b>"
+                        color: root.colText
+                    }
+
+                    Repeater {
+                        model: otherDesktop.modelData.backups || []
+                        delegate: panelRowDelegate
+                    }
+                }
+            }
+
+            Component {
+                id: panelRowDelegate
+
+                RowLayout {
                     id: backupRow
                     required property var modelData
                     Layout.fillWidth: true
-                    spacing: root.sty.spacing.plasmaRow
+                    spacing: root.sty.spacing.panelRow
 
                     RexonText {
                         Layout.fillWidth: true
@@ -2737,8 +2784,8 @@ Item {
                         id: backupRestore
                         pal: root.pal
                         tone: root.sty.primary
-                        text: root.txt["plasma.restore"]
-                        onClicked: root.askPlasmaRestore(backupRow.modelData.ts || "")
+                        text: root.txt["panel.restore"]
+                        onClicked: root.askPanelRestore(backupRow.modelData.id || "")
                         onActiveFocusChanged: if (activeFocus)
                             root.ensureVisible(backupRestore)
                     }
@@ -2787,11 +2834,11 @@ Item {
 
     // ── Confirming the restore of a panel copy ────────────────────────────
 
-    function askPlasmaRestore(ts) {
-        if (!root.actions || !ts)
+    function askPanelRestore(id) {
+        if (!root.actions || !id)
             return;
-        const confirm = JSON.parse(root.actions.plasmaConfirm(ts));
-        confirmDialog.timestamp = ts;
+        const confirm = JSON.parse(root.actions.panelConfirm(id));
+        confirmDialog.copyId = id;
         confirmDialog.heading = confirm.title;
         confirmDialog.question = confirm.question;
         confirmDialog.open();
@@ -2800,7 +2847,7 @@ Item {
     Popup {
         id: confirmDialog
 
-        property string timestamp: ""
+        property string copyId: ""
         property string heading: ""
         property string question: ""
 
@@ -2860,9 +2907,9 @@ Item {
                     highlighted: true
                     text: root.txt["dialog.yes"]
                     onClicked: {
-                        const ts = confirmDialog.timestamp;
+                        const id = confirmDialog.copyId;
                         confirmDialog.close();
-                        root.did(root.actions.plasmaRestore(ts));
+                        root.did(root.actions.panelRestore(id));
                     }
                 }
 

@@ -250,9 +250,9 @@ QtObject {
     readonly property string yesText: tone(5, "Yes")
     readonly property string noText: tone(6, "No")
 
-    // Ответ принят — второй раз не меняется. Закрытие окна само зовёт
-    // `answer(false)` (крестик — это «Нет»); без этой защёлки оно
-    // перезаписывало только что данное «Да».
+    // The answer is accepted — it does not change a second time. Closing the window itself calls
+    // `answer(false)` (the close button means «Нет»); without this latch it
+    // overwrote the «Да» just given.
     property bool answered: false
 
     function answer(yes) {
@@ -270,9 +270,9 @@ QtObject {
         modality: Qt.ApplicationModal
         flags: Qt.Dialog
         color: root.colBg
-        // Высота — по тексту. Пределы привязаны к той же величине, а не к
-        // `height`: привязка «предел = высота» замыкалась сама на себя, и
-        // окно застревало высотой в одну строку.
+        // The height follows the text. The limits are bound to the same value, not to
+        // `height`: the binding «limit = height» looped on itself, and
+        // the window got stuck one line high.
         readonly property int wantHeight: body.implicitHeight + 40
         width: 480
         height: wantHeight
@@ -280,7 +280,7 @@ QtObject {
         maximumWidth: 480
         minimumHeight: wantHeight
         maximumHeight: wantHeight
-        // Закрыли крестиком — это «Нет»: молчаливое «да» недопустимо.
+        // Closed with the close button — that is «Нет»: a silent «yes» is not allowed.
         onClosing: root.answer(false)
 
         Column {
@@ -317,8 +317,8 @@ QtObject {
                         border.color: btn.activeFocus ? root.colText : root.colBorder
                         border.width: btn.activeFocus ? 2 : 1
                         activeFocusOnTab: true
-                        // Фокус при открытии — на «Нет»: случайный Enter
-                        // ничего не удалит.
+                        // Focus on opening — on «Нет»: an accidental Enter
+                        // deletes nothing.
                         focus: !btn.modelData.yes
                         Keys.onReturnPressed: root.answer(btn.modelData.yes)
                         Keys.onEnterPressed: root.answer(btn.modelData.yes)
@@ -382,9 +382,9 @@ QtObject {
     property FontDialog dlg: FontDialog {
         title: root.dlgTitle
         parentWindow: root.win
-        // Семейство, кегль, жирность и наклон склеиваются здесь, а
-        // разбирает их ядро (`parse_font_spec`, `parse_font_face`): своего
-        // разбора шрифтовой строки в шиме не заводится.
+        // The family, size, weight and slant are joined here, while
+        // the core parses them (`parse_font_spec`, `parse_font_face`): the shim does not get
+        // its own font string parsing.
         onAccepted: {
             root.chosen = selectedFont.family + "," + selectedFont.pointSize
                 + "," + selectedFont.weight + "," + (selectedFont.italic ? 1 : 0);
@@ -394,8 +394,8 @@ QtObject {
         onRejected: { root.ok = false; root.finished = true; }
     }
 
-    // Нынешнее начертание (жирность по шкале Qt 6, наклон) — выбранным
-    // при открытии: иначе окно предлагало бы обычный вместо жирного.
+    // The current face (weight on the Qt 6 scale, slant) — selected
+    // on opening: otherwise the window would offer regular instead of bold.
     function start() {
         if (root.famIn !== "") {
             var spec = { family: root.famIn };

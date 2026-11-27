@@ -365,7 +365,6 @@
    ],
    "aur": [
     "mate-tweak",
-    "brisk-menu",
     "mate-indicator-applet",
     "ayatana-indicator-application",
     "ayatana-indicator-session",
@@ -2036,7 +2035,6 @@
    "is_available": true,
    "get_aur_packages": [
     "mate-tweak",
-    "brisk-menu",
     "mate-indicator-applet",
     "ayatana-indicator-application",
     "ayatana-indicator-session",

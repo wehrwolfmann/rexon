@@ -933,19 +933,19 @@ pub const AUTOSTART_DESKTOP: &str = "rexon-wallpaper-engine.desktop";
 const AUTOSTART_UNIT_TMPL: &str = "\
 [Unit]
 Description=Rexon: wallpaper engine (waywallen)
-# Файл управляется Rexon (вкладка WE → «Start at login»); правки затрутся.
+# The file is managed by Rexon (WE tab → «Start at login»); edits will be overwritten.
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
-# Демон уже жив вне службы (поднят окном waywallen или вручную) — второй
-# копии не будет: служба честно пропускается с причиной в журнале, а не
-# выходит «успешно» со словами «already running».
+# The daemon is already alive outside the service (started by the waywallen window or by hand) — there will be
+# no second copy: the service is honestly skipped with the reason in the journal rather than
+# exiting «successfully» with the words «already running».
 ExecCondition=/bin/sh -c \"if busctl --user status {bus} >/dev/null 2>&1; then echo 'waywallen is already running outside this service; not starting a second copy' >&2; exit 1; fi\"
 ExecStart=\"{binary}\" --no-ui --no-tray{plugin}
-# Демон живёт в AppImage: FUSE-монтирование держит соседний процесс той же
-# cgroup. SIGTERM только главному — иначе образ размонтируется под работающим
-# демоном и завершение падает с SIGBUS.
+# The daemon lives in an AppImage: the FUSE mount is held by a neighbouring process of the same
+# cgroup. SIGTERM only to the main one — otherwise the image is unmounted under the running
+# daemon and shutdown fails with SIGBUS.
 KillMode=mixed
 Restart=on-failure
 RestartSec=3

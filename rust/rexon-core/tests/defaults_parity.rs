@@ -145,7 +145,7 @@ fn get_current_terminal_parity() {
 // ── our own terminal walk + the xdg-terminal-exec warning ─────────────────
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn pick_terminal_parity() {
     // The Python golden value is the Russian text of the warning.
     let _lang = i18n_pin::ru();
@@ -571,14 +571,172 @@ fn mimeapps_serialize_parity() {
     }
 }
 
+/// Rexon recognises its own per-desktop list by the English marker and by the
+/// Russian header of older versions; a file of the person is not "ours".
+#[test]
+fn rexon_mimeapps_recognised_by_marker_and_old_header() {
+    let new = D::serialize_mimeapps_list(&[("a/b".into(), "x.desktop".into())], "2026-11-25T10:00:00");
+    assert!(new.starts_with("# Rexon: per-desktop defaults\n# Updated: 2026-11-25T10:00:00\n"), "{new}");
+    assert!(!new.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)), "{new}");
+    assert!(D::is_rexon_mimeapps(&new));
+    let old = "# Автоматически создан Rexon для изоляции DE\n# Обновлён: 2026-11-25T00:09:01\n\n\
+               [Default Applications]\nimage/jpeg=xviewer.desktop\n";
+    assert!(D::is_rexon_mimeapps(old));
+    assert!(!D::is_rexon_mimeapps("[Default Applications]\nimage/jpeg=gimp.desktop\n"));
+    assert!(!D::is_rexon_mimeapps("# my own notes about Rexon DE\n[Default Applications]\n"));
+}
+
+/// Neither generator of per-desktop lists ever writes a browser type
+/// (`text/html`, `x-scheme-handler/http(s)` …), for any desktop, even when
+/// every program is installed; a browser line already in the file stays as is.
+#[test]
+fn per_desktop_lists_never_write_browser_types() {
+    let all: Vec<String> = D::DE_NATIVE_APPS.iter().map(|(k, _)| k.to_string()).collect();
+    let out = D::protect_de_mimeapps("kde", &all, "/H/.config", "ts", &|_| true, &|_| None);
+    assert!(!out.writes.is_empty());
+    for (path, text) in &out.writes {
+        for (mime, _) in D::parse_mimeapps_list(text) {
+            assert!(!D::is_browser_mime(&mime), "{path}: {mime}");
+        }
+    }
+    let ids = [
+        "kde", "gnome", "mate", "cosmic", "cinnamon-mint", "xfce", "budgie", "pantheon",
+        "deepin", "lxqt", "hyprland", "niri", "sway", "river", "wayfire", "unknown-wm",
+    ];
+    for de in ids {
+        if let rexon_core::appdefaults::ProfileOutcome::Write { content, .. } =
+            rexon_core::appdefaults::generate_profile(de, &|_| true)
+        {
+            for (mime, _) in D::parse_mimeapps_list(&content) {
+                assert!(!D::is_browser_mime(&mime), "{de}: {mime}");
+            }
+        }
+    }
+    // The person's (hand-fixed) browser line survives a rewrite untouched.
+    let kept = D::protect_de_mimeapps(
+        "kde",
+        &["kde".to_string()],
+        "/H/.config",
+        "ts",
+        &|_| true,
+        &|_| Some("[Default Applications]\ntext/html=firefox.desktop\n".to_string()),
+    );
+    assert!(kept.writes[0].1.contains("\ntext/html=firefox.desktop\n"), "{}", kept.writes[0].1);
+}
+
+/// The person's choice stays first in their desktop.
+#[test]
+fn person_choice_is_not_hidden_by_desktop_list() {
+    let ours = D::serialize_mimeapps_list(
+        &[("image/jpeg".into(), "org.kde.gwenview.desktop".into()), ("text/html".into(), "org.kde.kate.desktop".into())],
+        "ts",
+    );
+    // (a) «Restore as it was» / a choice in Settings follows into our list…
+    let next = D::follow_choice_in_desktop_list(&ours, "image/jpeg", "gimp.desktop").unwrap();
+    assert!(next.contains("\nimage/jpeg=gimp.desktop\n") && next.starts_with("# Rexon: per-desktop defaults\n"), "{next}");
+    // …but not a browser type, not a type that is not there, not the person's own file.
+    assert_eq!(D::follow_choice_in_desktop_list(&ours, "text/html", "firefox.desktop"), None);
+    assert_eq!(D::follow_choice_in_desktop_list(&ours, "video/mp4", "vlc.desktop"), None);
+    assert_eq!(D::follow_choice_in_desktop_list(&next, "image/jpeg", "gimp.desktop"), None);
+    assert_eq!(
+        D::follow_choice_in_desktop_list("[Default Applications]\nimage/jpeg=a.desktop\n", "image/jpeg", "b.desktop"),
+        None
+    );
+    assert_eq!(D::session_desktop_lists("Budgie:GNOME"), vec!["budgie-mimeapps.list", "gnome-mimeapps.list"]);
+    assert_eq!(D::session_desktop_lists("X-Cinnamon"), vec!["x-cinnamon-mimeapps.list"]);
+    assert!(D::session_desktop_lists("").is_empty());
+
+    // (b) a change of the shared list during the session is adopted.
+    let before = vec![("image/jpeg".to_string(), "org.kde.gwenview.desktop".to_string())];
+    let after = vec![
+        ("image/jpeg".to_string(), "gimp.desktop".to_string()),
+        ("text/html".to_string(), "firefox.desktop".to_string()),
+    ];
+    let adopted = D::adopt_session_choices(&ours, &before, &after).unwrap();
+    assert!(adopted.contains("\nimage/jpeg=gimp.desktop\n") && adopted.contains("\ntext/html=org.kde.kate.desktop\n"), "{adopted}");
+    assert_eq!(D::adopt_session_choices(&ours, &before, &before), None);
+    let seen = D::ChoicesSeen { list: "kde-mimeapps.list".into(), general: after.clone() };
+    assert_eq!(D::parse_choices_seen(&D::serialize_choices_seen(&seen)), Some(seen));
+    assert_eq!(D::parse_choices_seen("{\"list\":\"../x\",\"general\":{}}"), None);
+
+    // (c) the install step keeps an installed program already in the list.
+    let existing = vec![("image/jpeg".to_string(), "gimp.desktop".to_string()), ("image/png".to_string(), "gone.desktop".to_string())];
+    let native = vec![
+        ("image/jpeg".to_string(), "org.kde.gwenview.desktop".to_string()),
+        ("image/png".to_string(), "org.kde.gwenview.desktop".to_string()),
+        ("image/gif".to_string(), "org.kde.gwenview.desktop".to_string()),
+        ("text/html".to_string(), "org.kde.kate.desktop".to_string()),
+    ];
+    let merged = D::merge_native_entries(&existing, &native, &|d| d != "gone.desktop");
+    assert_eq!(
+        merged,
+        vec![
+            ("image/jpeg".to_string(), "gimp.desktop".to_string()),
+            ("image/png".to_string(), "org.kde.gwenview.desktop".to_string()),
+            ("image/gif".to_string(), "org.kde.gwenview.desktop".to_string()),
+        ]
+    );
+}
+
 // ── protect_de_mimeapps ───────────────────────────────────────────────────
 
+/// `XDG_CURRENT_DESKTOP` each desktop sets (its session file `DesktopNames=` or
+/// the compositor itself): GLib and `xdg-mime` read `<first, lowercase>-mimeapps.list`.
+const XDG_NAMES: &[(&str, &str)] = &[
+    ("cinnamon-mint", "X-Cinnamon"),
+    ("xfce", "XFCE"),
+    ("mate", "MATE"),
+    ("gnome", "GNOME"),
+    ("kde", "KDE"),
+    ("budgie", "Budgie:GNOME"),
+    ("pantheon", "Pantheon"),
+    ("deepin", "DDE"),
+    ("cosmic", "COSMIC"),
+    ("lxqt", "LXQt"),
+    ("wayfire", "wayfire"),
+    ("hyprland", "Hyprland"),
+    ("sway", "sway"),
+    ("niri", "niri"),
+    ("river", "river"),
+];
+
+/// One naming rule for both generators, for every desktop Rexon installs.
+/// Before 25.11.2026 the install step wrote `cinnamon-mimeapps.list`, which no
+/// program reads under `X-Cinnamon`.
+#[test]
+fn mimeapps_name_follows_xdg_current_desktop_for_every_desktop() {
+    for meta in rexon_core::system::DE_META {
+        let xdg = XDG_NAMES
+            .iter()
+            .find(|(id, _)| *id == meta.id)
+            .unwrap_or_else(|| panic!("{}: no XDG_CURRENT_DESKTOP in the test table", meta.id))
+            .1;
+        let want = format!("{}-mimeapps.list", xdg.split(':').next().unwrap().to_lowercase());
+        assert_eq!(rexon_core::appdefaults::resolve_mimeapps_filename(meta.id), want, "{}", meta.id);
+        // The install step (protect_de_mimeapps) writes the same name.
+        let out = D::protect_de_mimeapps("kde", &[meta.id.to_string()], "/H", "ts", &|_| true, &|_| None);
+        for (path, _) in &out.writes {
+            assert_eq!(path, &format!("/H/{want}"), "{}", meta.id);
+        }
+    }
+}
+
+/// A Rexon list under the old Cinnamon name moves to the right name; the
+/// person's own file under the old name is never touched.
+#[test]
+fn misnamed_cinnamon_list_is_moved() {
+    assert_eq!(D::MISNAMED_MIMEAPPS, &[("cinnamon-mimeapps.list", "x-cinnamon-mimeapps.list")]);
+    let ours = D::serialize_mimeapps_list(&[("image/jpeg".into(), "xviewer.desktop".into())], "ts");
+    assert_eq!(D::misnamed_mimeapps_fix(Some(&ours), None), D::MisnamedFix::Move { content: ours.clone() });
+    assert_eq!(D::misnamed_mimeapps_fix(Some(&ours), Some("[Default Applications]\n")), D::MisnamedFix::DropOld);
+    assert_eq!(D::misnamed_mimeapps_fix(Some("[Default Applications]\nimage/jpeg=gimp.desktop\n"), None), D::MisnamedFix::Nothing);
+    assert_eq!(D::misnamed_mimeapps_fix(None, None), D::MisnamedFix::Nothing);
+}
+
 fn desktop_name_for_test(de_id: &str) -> String {
-    D::DE_DESKTOP_NAMES
-        .iter()
-        .find(|(k, _)| *k == de_id)
-        .map(|(_, v)| v.to_string())
-        .unwrap_or_else(|| de_id.to_string())
+    rexon_core::appdefaults::resolve_mimeapps_filename(de_id)
+        .trim_end_matches("-mimeapps.list")
+        .to_string()
 }
 
 #[test]
@@ -655,18 +813,9 @@ fn tables_match_python() {
         D::MIME_TYPES.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     assert_eq!(got_mime, mime, "MIME_TYPES");
 
-    let names: Vec<(String, String)> = t["DE_DESKTOP_NAMES"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| {
-            let a = p.as_array().unwrap();
-            (a[0].as_str().unwrap().to_string(), a[1].as_str().unwrap().to_string())
-        })
-        .collect();
-    let got_names: Vec<(String, String)> =
-        D::DE_DESKTOP_NAMES.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-    assert_eq!(got_names, names, "DE_DESKTOP_NAMES");
+    // The former DE_DESKTOP_NAMES table is gone: one naming rule
+    // (`mimeapps_name_follows_xdg_current_desktop_for_every_desktop`).
+    assert!(t.get("DE_DESKTOP_NAMES").is_none());
 
     // DE_NATIVE_APPS: the keys and contents of each DE.
     let want_native = t["DE_NATIVE_APPS"].as_object().unwrap();
@@ -707,7 +856,7 @@ const RU_BEFORE: &[(&str, &str)] = &[
 ];
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_texts_as_before() {
     let _lang = i18n_pin::ru();
     for (key, want) in RU_BEFORE {

@@ -21,7 +21,7 @@
   "splash_qml": "import QtQuick\n\nRectangle {\n    id: root\n    color: \"black\"\n\n    property int stage\n\n    Image {\n        anchors.fill: parent\n        fillMode: Image.PreserveAspectFit\n        asynchronous: false\n        cache: false\n        source: \"images/poster.png\"\n    }\n}\n",
   "runtime_dir": "/HOME/run",
   "launcher_exec_rexon": "/usr/local/bin/rexon --session-splash",
-  "systemd_unit_content": "[Unit]\nDescription=Rexon Session Splash (startup movie at login, Steam style)\nPartOf=graphical-session.target\nAfter=plasma-kwin_wayland.service plasma-kwin_x11.service\nBefore=plasma-plasmashell.service\n\n[Service]\nType=notify\nExecStart=/usr/local/bin/rexon --session-splash\nSlice=session.slice\n# страховки: сломанный mpv задержит вход максимум на ~15 с\n# (overlay-порог 6 c + фолбэк-mpv 6 c = 12 c до READY, + слак).\nTimeoutStartSec=15\nTimeoutStopSec=5\n\n[Install]\nWantedBy=plasma-workspace.target\n",
+  "systemd_unit_content": "[Unit]\nDescription=Rexon Session Splash (startup movie at login, Steam style)\nPartOf=graphical-session.target\nAfter=plasma-kwin_wayland.service plasma-kwin_x11.service\nBefore=plasma-plasmashell.service\n\n[Service]\nType=notify\nExecStart=/usr/local/bin/rexon --session-splash\nSlice=session.slice\n# safety nets: a broken mpv delays login by at most ~15 s\n# (overlay threshold 6 s + fallback mpv 6 s = 12 s until READY, + slack).\nTimeoutStartSec=15\nTimeoutStopSec=5\n\n[Install]\nWantedBy=plasma-workspace.target\n",
   "launcher_exec_fallback": "/usr/bin/python3 -m rexon.app --session-splash",
   "python_executable": "/usr/bin/python3",
   "steam_root": "/HOME/.local/share/Steam",

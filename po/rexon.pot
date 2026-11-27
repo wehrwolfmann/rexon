@@ -1472,7 +1472,8 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_installer.rs
 #: rust/rexon-core/src/conky_preview.rs rust/rexon-core/src/conky_safety.rs
-#: rust/rexon-core/src/de_apply.rs
+#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/session_splash.rs
+#: rust/rexon-core/src/splash_exec.rs
 msgid "Rexon can't install programs on this system by itself."
 msgstr ""
 
@@ -2430,6 +2431,28 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Kvantum themes (Kvantum engine)"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Orientation:"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgctxt "orientation filter"
+msgid "All"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Horizontal and vertical wallpapers together"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Wallpapers wider than tall — for a regular monitor"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Wallpapers taller than wide — for a screen turned upright or for a phone"
 msgstr ""
 
 #: rust/rexon-core/src/aur.rs
@@ -3444,6 +3467,25 @@ msgid "AVAILABLE FOR SYNC"
 msgstr ""
 
 #: rust/rexon-core/src/axon_window.rs
+msgid ""
+"Available in your Razer account, but not downloaded to this computer. Only "
+"Razer Axon can download them."
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Open Razer Axon"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Razer Axon is starting…"
+msgstr ""
+
+#. TRANSLATORS: %1 is the reason from the system, e.g. "No such file or directory".
+#: rust/rexon-core/src/axon_window.rs
+msgid "Couldn't start Razer Axon: %1"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
 msgctxt "Razer Axon"
 msgid "No items"
 msgstr ""
@@ -3571,6 +3613,12 @@ msgid "There is no saved panel copy yet."
 msgstr ""
 
 #: rust/rexon-core/src/backup.rs
+msgid "%n keyboard shortcut will take effect after you log in again."
+msgid_plural "%n keyboard shortcuts will take effect after you log in again."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/backup.rs
 msgid ""
 "“%1” is a system extension and isn't on this computer — it comes with a "
 "distribution package."
@@ -3586,6 +3634,16 @@ msgstr ""
 
 #: rust/rexon-core/src/backup.rs
 msgid "“%1” wasn't installed: %2"
+msgstr ""
+
+#: rust/rexon-core/src/backup.rs
+msgid ""
+"This copy was made by an earlier version of Rexon with xfce4-panel-profiles; "
+"install that program to restore it. (%1)"
+msgstr ""
+
+#: rust/rexon-core/src/backup.rs rust/rexon-core/src/mate_panel.rs
+msgid "⚠️ There is no saved panel to restore."
 msgstr ""
 
 #: rust/rexon-core/src/categories.rs
@@ -4471,6 +4529,10 @@ msgid "MATE panel add-ons and system tray icons (from the AUR)"
 msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
+msgid "MATE Menu in place of the Brisk menu (from the AUR)"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
 msgid "COSMIC wallpapers"
 msgstr ""
 
@@ -4661,6 +4723,34 @@ msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
 msgid "⚠️ Translation file mate-utils.mo is missing"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid "🧭 Checking the panel menu..."
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid "⚠️ The panel has the Brisk menu, which is no longer supported"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid ""
+"ℹ️ The MATE Menu couldn't be installed — the standard MATE menu button is "
+"used instead"
+msgstr ""
+
+#: rust/rexon-core/src/compliance.rs
+msgid "⚠️ Couldn't replace the Brisk menu on the panel"
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/compliance.rs
+msgid "✅ Fixed: Brisk menu → MATE Menu"
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/compliance.rs
+msgid "✅ Fixed: Brisk menu → standard MATE menu"
 msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
@@ -6488,6 +6578,13 @@ msgid ""
 "style.conf to its environment yourself."
 msgstr ""
 
+#. TRANSLATORS: Appended to the Qt-style caveat on window managers Rexon can't pass environment variables to, while KDE Plasma, LXQt or Deepin is also installed. %1 is the window manager (sway, river…), %2 a file path.
+#: rust/rexon-core/src/de_customization.rs
+msgid ""
+"%1 is the exception: it has no setting Rexon could put this in. Add the "
+"lines from %2 to its environment yourself."
+msgstr ""
+
 #. TRANSLATORS: %1 is a GNOME version number.
 #: rust/rexon-core/src/de_customization.rs
 msgid ""
@@ -6500,7 +6597,7 @@ msgid "Remembering your default apps…"
 msgstr ""
 
 #: rust/rexon-core/src/de_progress.rs
-msgid "Saving a copy of the KDE Plasma panel…"
+msgid "Saving copies of desktop panels…"
 msgstr ""
 
 #: rust/rexon-core/src/de_progress.rs
@@ -7529,16 +7626,16 @@ msgid "there is no AUR helper (yay or paru)"
 msgstr ""
 
 #: rust/rexon-core/src/distro_looks.rs
+msgid "couldn't download %1"
+msgstr ""
+
+#: rust/rexon-core/src/distro_looks.rs
 msgid ""
 "the file from %1 does not match its pinned checksum — Rexon won't use it"
 msgstr ""
 
 #: rust/rexon-core/src/distro_looks.rs
 msgid "couldn't unpack %1"
-msgstr ""
-
-#: rust/rexon-core/src/distro_looks.rs
-msgid "couldn't download %1"
 msgstr ""
 
 #: rust/rexon-core/src/distro_looks.rs
@@ -10386,6 +10483,13 @@ msgstr[1] ""
 msgid "The “%1” layout wasn't applied: couldn't install %2: %3."
 msgstr ""
 
+#. TRANSLATORS: %1 is the reason the install failed.
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The MATE Menu couldn't be installed (%1) — the standard MATE menu button is "
+"used instead."
+msgstr ""
+
 #: rust/rexon-core/src/mate_panel.rs
 msgid ""
 "%1 is not installed — the standard MATE menu button will be used instead."
@@ -10397,6 +10501,17 @@ msgstr ""
 
 #: rust/rexon-core/src/mate_panel.rs
 msgid "Not installed and will be left out: %1."
+msgstr ""
+
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The Brisk menu is no longer supported — the MATE Menu will be used instead."
+msgstr ""
+
+#: rust/rexon-core/src/mate_panel.rs
+msgid ""
+"The Brisk menu is no longer supported — the standard MATE menu button will "
+"be used instead."
 msgstr ""
 
 #: rust/rexon-core/src/mate_panel.rs
@@ -10479,10 +10594,6 @@ msgstr ""
 
 #: rust/rexon-core/src/mate_panel.rs
 msgid "✅ MATE panel: layout “%1” applied."
-msgstr ""
-
-#: rust/rexon-core/src/mate_panel.rs
-msgid "⚠️ There is no saved panel to restore."
 msgstr ""
 
 #: rust/rexon-core/src/mate_panel.rs
@@ -12249,29 +12360,7 @@ msgid "Removing %1"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"A saved copy of the panel already exists — the same one “Restore previous "
-"panel” brings back. The new copy will replace it."
-msgstr ""
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"A saved copy of the panel already exists — the new copy will replace it."
-msgstr ""
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid "Replace the saved panel copy?"
-msgstr ""
-
-#: rust/rexon-core/src/qt_desktops.rs
 msgid "Restore Panel?"
-msgstr ""
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid ""
-"Restore the panel from the last saved copy?\n"
-"\n"
-"Your current panel settings will be replaced with the saved ones."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -14522,7 +14611,23 @@ msgstr ""
 msgid "manually"
 msgstr ""
 
+#. TRANSLATORS: why a copy of the panel was made.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "automatically, before switching desktops"
+msgstr ""
+
+#. TRANSLATORS: why a copy of the panel was made: a panel layout was applied.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "automatically, before changing the layout"
+msgstr ""
+
+#. TRANSLATORS: why a copy of the panel was made: an earlier Rexon version took it.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "by an earlier version of Rexon"
+msgstr ""
+
 #. TRANSLATORS: number of files in a saved copy of the Plasma panel.
+#. TRANSLATORS: number of items in a saved panel copy.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "%n file"
 msgid_plural "%n files"
@@ -14876,13 +14981,13 @@ msgid ""
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "🛡️ KDE Plasma Panel Protection"
+msgid "🛡️ Panel Protection"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Saves the panel layout, widgets and keyboard shortcuts — and brings them "
-"back if something breaks after installing another desktop"
+"Saves the panel layout, applets and keyboard shortcuts of your desktop and "
+"brings them back if something broke after installing another desktop"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -15682,14 +15787,28 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Rexon will make a copy of the panel layout, widgets and keyboard shortcuts — "
-"you can bring it back in one click"
+"Rexon will make a copy of the panels, applets and keyboard shortcuts of your "
+"desktop — you can bring it back in one click"
 msgstr ""
 
+#. TRANSLATORS: %1 lists what a copy holds: "panels and applets, keyboard shortcuts".
 #: rust/rexon-core/src/qt_settings.rs
-msgid ""
-"Settings files that get copied: plasma-org.kde.plasma.desktop-appletsrc, "
-"plasmashellrc, kglobalshortcutsrc"
+msgid "What gets copied: %1"
+msgstr ""
+
+#. TRANSLATORS: a part of a panel copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "panels and applets"
+msgstr ""
+
+#. TRANSLATORS: a part of a panel copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "keyboard shortcuts"
+msgstr ""
+
+#. TRANSLATORS: the desktop's very first copy, kept for good.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "⭐ the original, before Rexon"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -15704,6 +15823,15 @@ msgstr ""
 msgid "No saved copies yet"
 msgstr ""
 
+#. TRANSLATORS: %1 is how many other desktops have copies.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Copies of other desktops (%1)"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Rexon can't make copies of this desktop's panel yet."
+msgstr ""
+
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Restore"
 msgstr ""
@@ -15716,12 +15844,42 @@ msgstr ""
 msgid "Restore?"
 msgstr ""
 
-#. TRANSLATORS: %1 is the date and time of the saved copy.
+#. TRANSLATORS: %1 is the desktop name, %2 the date and time of the saved copy.
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"Restore the Plasma panel from the copy made %1?\n"
+"Restore the panel of %1 from the copy made %2?\n"
 "\n"
 "The current panel layout will be replaced."
+msgstr ""
+
+#. TRANSLATORS: %1 lists other desktops (Budgie, Pantheon).
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Keyboard shortcuts of %1 will change too: they use the same settings."
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Keyboard shortcuts will take effect after you log in again."
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"The desktop's services restart for a moment: the theme, the wallpaper "
+"slideshow and power settings may blink."
+msgstr ""
+
+#. TRANSLATORS: %1 is the desktop name.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "%1 will pick the copy up the next time you log in to it."
+msgstr ""
+
+#. TRANSLATORS: %1 lists what was saved: "panels and applets, keyboard shortcuts".
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Copy saved: %1"
+msgstr ""
+
+#. TRANSLATORS: %1 is the date and time of the copy.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Restored the copy of %1"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -15874,12 +16032,16 @@ msgstr ""
 msgid "🔍 Search by title, game or event…"
 msgstr ""
 
+#. TRANSLATORS: button: add the user's own video as a startup movie.
 #: rust/rexon-core/src/qt_steam.rs
-msgid "📁 Choose File…"
+msgid "➕ Add Your Own Movie…"
 msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs
-msgid "Choose your own video (webm/mp4) from disk"
+msgid ""
+"Choose a video on disk. Rexon keeps a copy of it in Steam's folder for your "
+"own startup movies (converting it if Steam can't play it), so it shows up in "
+"Steam too. The original stays as it is."
 msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs
@@ -15888,7 +16050,37 @@ msgstr ""
 
 #. TRANSLATORS: file dialog filter: translate only the group names ("Video", "All files"); keep the patterns in parentheses and the ";;" separator as they are.
 #: rust/rexon-core/src/qt_steam.rs
-msgid "Video (*.webm *.mp4 *.mkv);;All files (*)"
+msgid "Video (*.webm *.mp4 *.mkv *.mov *.avi *.m4v);;All files (*)"
+msgstr ""
+
+#. TRANSLATORS: button: stop converting a startup movie that is being added.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "✖ Cancel"
+msgstr ""
+
+#. TRANSLATORS: tooltip of the delete mark on the user's own startup movie card.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Delete this movie of yours"
+msgstr ""
+
+#. TRANSLATORS: title of the confirmation window before deleting the user's own startup movie.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Delete the startup movie?"
+msgstr ""
+
+#. TRANSLATORS: button in the confirmation window: delete the startup movie.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "🗑 Delete"
+msgstr ""
+
+#. TRANSLATORS: button in the confirmation window: keep the startup movie (do not delete).
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Keep"
+msgstr ""
+
+#. TRANSLATORS: tooltip of the mark on the startup movie card that Steam itself currently plays at startup.
+#: rust/rexon-core/src/qt_steam.rs
+msgid "Steam plays this movie at startup (the Customization section)"
 msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs
@@ -15978,7 +16170,8 @@ msgstr ""
 #: rust/rexon-core/src/qt_steam.rs
 msgid ""
 "No startup movies found. Steam isn't installed or the movies haven't been "
-"downloaded yet — you can pick your own video with the “Choose File…” button."
+"downloaded yet — you can add your own video with the “Add Your Own Movie…” "
+"button."
 msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs
@@ -16790,6 +16983,749 @@ msgstr ""
 msgid "The rebuilt %1 couldn't be installed. Details are in the log above."
 msgstr ""
 
+#. TRANSLATORS: the lines of the BonziBuddy mascot (a purple gorilla,
+#. he speaks of himself as "he") about the desktop the person is in.
+#. Keep the playful tone and the jokes, not the exact words.
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, KDE! It's so pretty here that I forgot why I came."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "KDE? So you love tweaking everything. We'll get along!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! What a beautiful desktop you have."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "KDE! It's cozy here. Just like home."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many settings here that even I got lost!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Pretty windows, pretty buttons... And me? Am I pretty too?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "They say you can tweak absolutely everything here. Even me?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"I wandered around the settings for a bit... came back three hours later."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, a new desktop! It's pretty here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! I like it here, lots of buttons and panels."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, everything's new! Let me look around..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just got used to these pretty windows..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fine, we're moving. I hope it's pretty there too!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, I like it here. Nice and cozy."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "And these desktop widgets are a neat thing!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The panel at the bottom, like in Windows. Almost like home!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You can even set animated wallpapers here. Cool!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, everything here is so... simple and clean!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A minimalist desktop, I like it."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So roomy here! No extra buttons at all."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Hi! Where's the taskbar here? Ah, got it, things work differently here..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is so simple that even the settings are simple!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Minimalism is fewer buttons and more beauty."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I'm the brightest thing on this desktop!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's gray and stylish. And I'm purple. I stand out!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So clean and tidy here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's roomy here. Plenty of space to stroll around."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new home! Unfamiliar, but pretty."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just got used to this simplicity!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fine, let's move on. I wonder what's over there."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, sometimes simple is good. Nothing extra."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so quiet and calm here... Not like on the last desktop!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "And I like that there isn't a million buttons here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh! A classic desktop! Nostalgia!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! It's just like the good old days here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Two panels! Top and bottom! Just like it used to be!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So familiar here... Like I'm back in 2005."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Retro style! I'm retro too, so we're a match!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Classics never go out of style. Just like me!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Two panels mean twice as much room for me!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "This desktop reminds me of my youth..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a classic desktop! Like the good old days!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's cozy here, like at grandma's."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Finally, proper panels! Top and bottom!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the classics? Oh well, but I'll miss it."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Farewell, cozy desktop! It was nice."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I feel right at home here. Everything's in its place."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The classic look is the easiest to understand. No surprises!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here works. Just works. And that's good!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Xfce! Fast and light! I like it!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything runs so snappy here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, there's a mouse on the icon! Cute."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A light desktop. The computer isn't even breaking a sweat!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything opens so fast here that I can barely keep up!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "This desktop runs even on weak computers. Respect!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Light, fast, simple. Three qualities I'm missing."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It uses so few resources that I'm ashamed of myself."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! Everything's so fast here! Whoosh!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! The computer just came back to life!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I hope it's fast there too..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Fast, simple, reliable. What else do you need?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything opens instantly here. Lovely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A simple, handy desktop. Nothing extra."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! This looks very familiar... Kind of like Windows!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a handy desktop! The Start menu — I mean, the \"Menu\"!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Cinnamon! Everything here makes sense at first glance."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty and handy desktop. I like it!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's like Windows, only better. And free!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Taskbar at the bottom, menu on the left... Just like home!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The friendliest desktop for beginners. And for gorillas!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Even grandma could figure it out here. Tested!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new desktop! Cozy here, everything's familiar."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved! It's just like Windows here, only better."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? But it was so handy here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "You know, this is the handiest desktop for people coming from Windows."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's in its place. Panel, menu, clock. Lovely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Pantheon — quiet, clean, nothing extra."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, elementary! Even I try to behave myself here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A pantheon is a temple! Can I be a god here?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Dock at the bottom, panel at the top. Almost like the apple folks, only "
+"without the apples."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So peaceful!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the temple? It was cozy..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so quiet here you can hear the processor thinking."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Minimalism. There's nothing for me to even knock over."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Deepin — round corners and glass, lovely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, Deepin! Even the windows are transparent here, like my intentions."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The corners are so round I'm afraid I'll roll away."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"The blur behind the windows isn't my bad eyesight, it's meant to be that way."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So smooth!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving Deepin? The glass was pretty..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"If you stare into the transparent panel long enough, it seems to stare back."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is so soft that even errors seem polite."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty, modern desktop!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Budgie! Simple, stylish, nothing extra."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, it's pretty here! I like this design."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A budgie is a parakeet! Hello, fellow animal!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A stylish desktop! Even I'm embarrassed to walk around in pajamas here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Simple and pretty. Like me. Well, pretty for sure."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! So stylish here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? It was pretty..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's nice to be here. Everything's neat."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Modern design. I like it!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "COSMIC! This is something new! Interesting!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new desktop! Looks futuristic!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything here is so... cosmic!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A cosmic desktop! And I'm a cosmic gorilla!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"It's still in development, but already prettier than many finished ones!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The future is here! And it looks pretty good."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "We moved into the future! Cool!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "COSMIC! We're pioneers!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving the future? Oh well, back to the present."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Not everything's ready here yet, but the potential is huge!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, the windows snap into place by themselves here! Magic!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! A pretty desktop with animations!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything arranges itself automatically here. Handy!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows arrange themselves! I wish life worked like that..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many animations! It's prettier than the movies here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything's on the keyboard here. The mouse gets a rest. I don't!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows snap into place by themselves here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? But the animations here were so pretty!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything moves so smoothly here. Mesmerizing!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, LXQt! Modest and fast — respect."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Everything's light here, even I feel light as a feather."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "LXQt? So you appreciate it when nothing lags."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "It's so light here that I almost floated away!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "No unnecessary animations. So I'll do the moving for everyone!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "An old computer, and it flies. I wish I could do that!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! And such a fast one!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? It was so snappy here..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Quiet, fast, nothing in the way. Lovely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, the windows lined up in a strip! Never seen anything like it."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Hi! The desktop slides off to the side here — I'm following it with my eyes."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "niri? So you love horizontal order."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Windows in a row, like train cars. Then I'll be the locomotive!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The desktop rides left and right here. I'm already getting dizzy!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I scrolled the desktop and lost a window. It'll come back, right?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! Everything lines up in a strip here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I just learned how to scroll!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Watching the windows slide off the edge. Mesmerizing."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, sway! The windows share the screen here without fighting."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! You can hide the mouse, everything's done from the keyboard here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "sway? So you know what you're doing. Respect!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Everything here is hotkeys. I remembered three and forgot the rest."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows split the screen fairly. Save a piece for me too!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I pressed the wrong thing and a window ran off. Please bring it back."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows share the space by themselves here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I only learned half the keys..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Not a single wasted pixel. You keep it tidy here."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, River! The windows flow like a river — and each one in its place."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! Windows are sorted by tags here, not by desktops."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "River? Quiet, fast, all from the keyboard. Respect!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A window with tag three, a window with tag five... And what tag am I?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The river flows, the windows float. I think I'm drifting off too."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid ""
+"Super and a number — and the window's already here. I wish bananas worked "
+"like that!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows go with the flow by themselves here!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I had just figured out the tags..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Watching the windows share the screen. Calm, like a river."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, Wayfire! Any second now the desktop will spin into a cube!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Hi! The windows wobble like jelly here. Lovely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Wayfire? So you love effects. Me too!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "I shook a window — it wobbles. I shook myself — I wobble too!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A cube desktop! Can I sit inside?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "So many effects that I forgot why I came."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop! The windows wiggle here like they're alive!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Leaving? I never finished spinning the cube..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The windows float, the lights glow. Cozy here."
+msgstr ""
+
+#. TRANSLATORS: the BonziBuddy mascot (a purple gorilla) reacts to an
+#. event in Rexon. Keep the playful tone, not the exact words.
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Whoa, a new desktop got installed! I want to see it!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop? I wonder what it's like there!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new desktop is installed! We can switch over and take a look."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Removed a desktop? Farewell, old friend..."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "One desktop fewer. Oh well!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Oh, a new theme! Pretty!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Changed the look? I like it!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "New colors! I hope I fit in."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A new extension! What does it do?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Installed something new? Cool!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Backup created! Great, we're covered."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "A good person is one who makes backups. Like you!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Ooh, live wallpaper! It moves so nicely!"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "Live wallpaper? Can I move around too?"
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "The wallpaper stopped. Back to staring at a boring desktop."
+msgstr ""
+
+#: rust/rexon-core/src/rexon_bridge.rs
+msgid "That's it, the picture doesn't move anymore. Oh well."
+msgstr ""
+
 #: rust/rexon-core/src/rxn_manifest.rs
 msgid "This package needs %1, and it is not installed."
 msgstr ""
@@ -17410,6 +18346,66 @@ msgid ""
 "The desktop couldn't show this effect (%1), so the screen was left as it was."
 msgstr ""
 
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Restore the screen saver?"
+msgstr ""
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Restoring the screen saver"
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name, e.g. "MATE Screensaver".
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"The screen saver of this desktop (%1) is not running, so the screen will not "
+"lock by itself when you step away."
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name, e.g. "XScreenSaver".
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"A screen saver from another desktop (%1) is running in this session. It can "
+"replace or switch off the desktop's own screen lock."
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Rexon will close %1 in this session only — nothing is uninstalled."
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Rexon will start %1 again."
+msgstr ""
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "Your screen saver settings are not changed."
+msgstr ""
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"Rexon found a problem with the screen saver and will offer to fix it when "
+"you close this window."
+msgstr ""
+
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"The other screen saver has been closed. The desktop's own screen lock works "
+"as before."
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid ""
+"Could not start %1. Log out and log in again — the desktop starts it by "
+"itself."
+msgstr ""
+
+#. TRANSLATORS: %1 is a screen saver product name.
+#: rust/rexon-core/src/screensaver_guard.rs
+msgid "%1 is running again: the screen will lock by itself as before."
+msgstr ""
+
 #: rust/rexon-core/src/screenshots.rs
 msgid "YOUR DESKTOP"
 msgstr ""
@@ -17615,6 +18611,92 @@ msgstr ""
 msgid ""
 "The video will be converted to WebM so Steam can play it. The original file "
 "stays as it is."
+msgstr ""
+
+#. TRANSLATORS: progress while adding a startup movie: the video tools (ffmpeg) are being installed.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Installing the video tools (ffmpeg)…"
+msgstr ""
+
+#. TRANSLATORS: progress while adding a startup movie: the chosen file is being checked.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Checking the video…"
+msgstr ""
+
+#. TRANSLATORS: progress while adding a startup movie: the file is being copied.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Copying the video…"
+msgstr ""
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Converting the video for Steam…"
+msgstr ""
+
+#. TRANSLATORS: progress while converting a startup movie; %1 is the percentage done.
+#: rust/rexon-core/src/session_splash.rs
+msgid "⏳ Converting the video for Steam… %1%"
+msgstr ""
+
+#. TRANSLATORS: a startup movie was added; %1 is its name. Steam lists it too.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"✅ Added “%1” — it's chosen for login and also appears in Steam (the "
+"Customization section)."
+msgstr ""
+
+#. TRANSLATORS: a startup movie was added (Steam isn't installed); %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid "✅ Added “%1” — it's chosen for login."
+msgstr ""
+
+#. TRANSLATORS: adding a startup movie was cancelled by the user.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Adding the video was cancelled."
+msgstr ""
+
+#. TRANSLATORS: a startup movie couldn't be added; %1 is the system's reason.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Couldn't add the video: %1"
+msgstr ""
+
+#. TRANSLATORS: adding a startup movie needs ffmpeg, and installing it failed; %1 is the reason.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Adding a video needs the video tools (ffmpeg), and they couldn't be "
+"installed: %1"
+msgstr ""
+
+#. TRANSLATORS: the startup movie chosen earlier was copied into Rexon's folder so it keeps working if the original is moved; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The startup movie “%1” is now kept as a copy — it keeps working even if the "
+"original file is moved or deleted."
+msgstr ""
+
+#. TRANSLATORS: confirmation before deleting the user's own startup movie; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Delete the startup movie “%1”? The copy is removed from disk; the original "
+"video you added it from is not touched."
+msgstr ""
+
+#. TRANSLATORS: extra warning in the delete confirmation: Steam currently uses this movie.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"⚠️ Steam currently plays this movie at startup — after deleting, Steam goes "
+"back to its standard one."
+msgstr ""
+
+#. TRANSLATORS: the user's own startup movie was deleted; %1 is its name.
+#: rust/rexon-core/src/session_splash.rs
+msgid "🗑 Deleted “%1”."
+msgstr ""
+
+#. TRANSLATORS: refusal to delete a startup movie that is built into Steam or bought in the Points Shop.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"Only your own movies can be deleted — the ones built into Steam and bought "
+"in the Points Shop stay."
 msgstr ""
 
 #. TRANSLATORS: Description of Rexon's splash theme in KDE System Settings (Splash Screen). KSplash and mpv are program names.
@@ -17832,6 +18914,19 @@ msgstr ""
 
 #: rust/rexon-core/src/session_splash.rs
 msgid "Couldn't start mpv: %1"
+msgstr ""
+
+#. TRANSLATORS: %1 is a program name (ffmpeg/ffprobe) that is still missing after its package was installed.
+#: rust/rexon-core/src/session_splash.rs
+msgid "%1 is still not found after installing"
+msgstr ""
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "the converter stopped with code %1"
+msgstr ""
+
+#: rust/rexon-core/src/session_splash.rs
+msgid "the converter didn't start"
 msgstr ""
 
 #: rust/rexon-core/src/session_splash.rs
@@ -18137,8 +19232,15 @@ msgid "Couldn't download the theme to preview it"
 msgstr ""
 
 #: rust/rexon-core/src/splash_exec.rs rust/rexon-core/src/utils.rs
-#: rust/rexon-core/src/wallpaper_exec.rs rust/rexon-gui/src/window_menu.rs
+#: rust/rexon-core/src/wallpaper_exec.rs rust/rexon-gui/src/axon_actions.rs
+#: rust/rexon-gui/src/window_menu.rs
 msgid "empty command"
+msgstr ""
+
+#. TRANSLATORS: %1 is a program name (ffmpeg) that Rexon can't install from the official repositories.
+#: rust/rexon-core/src/splash_exec.rs
+msgid ""
+"Install the package with %1 by hand: it isn't in this system's repositories."
 msgstr ""
 
 #. TRANSLATORS: name shown for a Steam profile background that has none.
@@ -18277,6 +19379,69 @@ msgstr ""
 
 #: rust/rexon-core/src/steam_screensaver.rs
 msgid "Not in the list? Close Steam completely and start it again."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Game Slideshow"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Bouncing Logo"
+msgstr ""
+
+#. TRANSLATORS: %1 is the folder name of a screensaver the person added to Steam themselves.
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "%1 (User Created)"
+msgstr ""
+
+#. TRANSLATORS: card badge of a screensaver the person put into Steam themselves (not built into Steam).
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Added by you"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "✅ Selected in Steam"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Installed in Steam"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"Steam is showing this screensaver now. Rexon doesn't change your choice in "
+"Steam."
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them. %1 is the screensaver name as Steam lists it.
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"Steam shows this screensaver itself — there is nothing to install. To use "
+"it, open Steam Big Picture → Settings → Customization → Screensaver and "
+"choose «%1»."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Steam is showing this screensaver now."
+msgstr ""
+
+#. TRANSLATORS: %1 is the name of the Rexon screensaver in the Steam list, e.g. «rexon (User Created)».
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Installed — choose «%1» in Steam to see it there."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Press «Install Screensaver» — Rexon puts it into Steam."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"There's nothing to show the screensaver with: the rexon-wallpaper-host "
+"program wasn't found. It's installed together with Rexon — reinstall Rexon."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "No preview picture: install Firefox or Chromium so Rexon can take one."
 msgstr ""
 
 #: rust/rexon-core/src/steam_showcase.rs
@@ -18950,7 +20115,7 @@ msgid "🔒 Remembering your default apps"
 msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
-msgid "🛡️ Saving a copy of the KDE Plasma panel"
+msgid "🛡️ Saving copies of the panels of installed desktops"
 msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
@@ -18973,8 +20138,9 @@ msgstr ""
 msgid "Couldn't remember the default apps: %1"
 msgstr ""
 
+#. TRANSLATORS: %1 is a desktop name, %2 what went wrong.
 #: rust/rexon-core/src/system_de_exec.rs
-msgid "The KDE panel copy wasn't saved: %1"
+msgid "The panel copy of %1 wasn't saved: %2"
 msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
@@ -21359,6 +22525,10 @@ msgid "📋 Checking the global menu in the panel (vala-panel-appmenu)…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
+msgid "📋 Checking the MATE Menu (mate-menu)…"
+msgstr ""
+
+#: rust/rexon-core/src/system_plan.rs
 msgid "✅ The MATE look was saved to your user settings:"
 msgstr ""
 
@@ -21437,6 +22607,19 @@ msgstr ""
 msgid ""
 "⚠️ River: couldn't write the starter settings (%1): %2. Without them River "
 "starts with no keyboard shortcuts."
+msgstr ""
+
+#. TRANSLATORS: placeholder in the password field of the lock screen (hyprlock).
+#. `#` starts a comment in hyprlock.conf, a newline ends the value.
+#: rust/rexon-core/src/system_plan.rs
+msgid "Password…"
+msgstr ""
+
+#. TRANSLATORS: %1 is a lock program (swaylock, hyprlock), %2 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"🎨 %1: the lock screen got a dark background and a visible password field "
+"(%2) — change it freely"
 msgstr ""
 
 #. TRANSLATORS: %1 is a desktop (Hyprland…), %2 program names (“hyprlock, hypridle”).
@@ -23232,6 +24415,34 @@ msgstr ""
 msgid "Nothing new in the Razer Axon queue."
 msgstr ""
 
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgctxt "wallpaper orientation"
+msgid "Horizontal"
+msgstr ""
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgctxt "wallpaper orientation"
+msgid "Vertical"
+msgstr ""
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid "Orientation"
+msgstr ""
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid ""
+"⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a "
+"regular landscape screen it fills the width, so only the middle part of the "
+"frame is visible — the top and bottom are cut off."
+msgstr ""
+
+#: rust/rexon-core/src/wallpaper_screens.rs
+msgid ""
+"⚠️ Vertical wallpaper: made for a screen turned upright or for a phone. On a "
+"regular landscape screen the desktop either cuts off the top and bottom or "
+"adds bars at the sides — it depends on its wallpaper settings."
+msgstr ""
+
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid "kpackagetool6 was not found — KDE Plasma 6 is required"
 msgstr ""
@@ -23282,6 +24493,14 @@ msgid ""
 msgstr ""
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Use the Packaged Version"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Install the Plugin Package"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
 "The Plasma wallpaper plugin for waywallen was installed by someone other "
 "than Rexon, and its version could not be determined. Rexon left it as is. If "
@@ -23317,6 +24536,50 @@ msgstr ""
 msgid ""
 "The Plasma wallpaper plugin in Rexon (%2) needs a newer waywallen engine "
 "than the installed one (%1). Update waywallen."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"The installed %1 package (version %2) does not work with the waywallen "
+"engine %3, so live wallpapers are not shown."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Update the %1 package."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"A copy of the Plasma wallpaper plugin for waywallen in your home folder "
+"(from the KDE Store or installed by hand) hides the %1 package. Rexon left "
+"the copy as is. If live wallpapers do not appear, use the packaged version — "
+"the copy is kept as a backup."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Rexon is installing the %1 package for live wallpapers. It is built from "
+"source, which can take several minutes."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Stage: %1"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Live wallpapers need the %1 package. Install it, and the wallpapers will "
+"appear."
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Live wallpapers need the %1 package, and Rexon could not install it: %2"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"on this system Rexon cannot install it by itself — install it with the "
+"system's package manager"
 msgstr ""
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
@@ -24403,6 +25666,15 @@ msgid ""
 msgstr ""
 
 #: rust/rexon-core/src/window_menu.rs
+msgid ""
+"Whichever you choose, a few small Rexon fixes stay in place, because they "
+"keep your desktops from getting in each other's way: for example, they stop "
+"one desktop's programs (such as the fcitx5 keyboard helper) from starting in "
+"all the others, and they make labwc use its own file chooser. They don't "
+"need Rexon to work. If you delete them, those problems come back:"
+msgstr ""
+
+#: rust/rexon-core/src/window_menu.rs
 msgid "Where it is stored:"
 msgstr ""
 
@@ -24556,14 +25828,6 @@ msgstr ""
 msgid "Already working — please wait."
 msgstr ""
 
-#: rust/rexon-gui/src/steam_screensaver_actions.rs
-msgid "Install the screensaver first."
-msgstr ""
-
-#: rust/rexon-gui/src/steam_screensaver_actions.rs
-msgid "Could not open the browser."
-msgstr ""
-
 #: rust/rexon-gui/src/steam_showcase_actions.rs
 msgid "A video background needs ffmpeg to take a frame from it."
 msgstr ""
@@ -24655,6 +25919,47 @@ msgstr ""
 
 #: rust/rexon-gui/src/we_update_workers.rs
 msgid "could not create the staging directory"
+msgstr ""
+
+#. TRANSLATORS: stands in for the system loader's error text when it gives none.
+#: rust/rexon-gui/src/web_host.rs
+msgid "no reason given"
+msgstr ""
+
+#. TRANSLATORS: printed to the terminal. %1 — the loader's error,
+#. %2 — the library file name.
+#: rust/rexon-gui/src/web_host.rs
+msgid ""
+"QtWebEngine failed to load (%1): web wallpapers need %2 from the qt6-"
+"webengine package"
+msgstr ""
+
+#. TRANSLATORS: printed to the terminal. %1 — the library file name,
+#. %2 — the loader's error.
+#: rust/rexon-gui/src/web_host.rs
+msgid "%1 has no QtWebEngineQuick::initialize (%2)"
+msgstr ""
+
+#. TRANSLATORS: a command line error; %1 — the option, "video" is a mode name.
+#: rust/rexon-gui/src/web_host.rs
+msgid "the %1 option is only available in video mode"
+msgstr ""
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "--selftest= needs a number of milliseconds"
+msgstr ""
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "unknown option: %1"
+msgstr ""
+
+#. TRANSLATORS: a command line error: a second address after the first one.
+#: rust/rexon-gui/src/web_host.rs
+msgid "extra address: %1"
+msgstr ""
+
+#: rust/rexon-gui/src/web_host.rs
+msgid "no link, HTML file or wallpaper directory given"
 msgstr ""
 
 #: rust/rexon-gui/qml/AnimationsSection.qml
@@ -24896,14 +26201,33 @@ msgstr ""
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid ""
-"Rexon makes a screensaver for Steam Big Picture: Steam shows it when you "
-"leave your Steam Deck, Steam Machine, TV or computer idle for a while. It "
-"shows the artwork of your recently played games and your screenshots, or a "
-"bouncing logo."
+"Steam shows a screensaver when you leave your Steam Deck, Steam Machine, TV "
+"or computer idle in Big Picture. Here are the screensavers of your Steam and "
+"the ones Rexon can make for it."
 msgstr ""
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Show:"
+msgid "Update Screensaver"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Install Screensaver"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Collects fresh artwork and screenshots and applies the settings above."
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Click again to remove"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Preparing the pictures…"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Press «Update Screensaver» to apply the changes."
 msgstr ""
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
@@ -24932,38 +26256,6 @@ msgstr ""
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "Show the clock"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Update Screensaver"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Install Screensaver"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Collects fresh artwork and screenshots and applies the settings above."
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "👁️ Preview"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Opens the screensaver in your web browser."
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Click again to remove"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Preparing the pictures…"
-msgstr ""
-
-#: rust/rexon-gui/qml/SteamScreensaverSection.qml
-msgid "Press «Update Screensaver» to apply the changes."
 msgstr ""
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml

@@ -976,7 +976,7 @@ fn reset_sddm_reports_failure_with_manual_command() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn reset_sddm_denial_shows_manual_command() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -1149,7 +1149,7 @@ fn remove_plasma_forks_takes_the_shown_set_without_asking_again() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn remove_plasma_forks_memoizes_repo_probe() {
     // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();

@@ -207,8 +207,8 @@ pub fn result_footer_kind(ok: bool) -> FooterKind {
 pub fn snapshot_message() -> String {
     tr("🔒 Remembering your default apps")
 }
-pub fn plasma_backup_message() -> String {
-    tr("🛡️ Saving a copy of the KDE Plasma panel")
+pub fn panel_backup_message() -> String {
+    tr("🛡️ Saving copies of the panels of installed desktops")
 }
 pub fn post_install_message() -> String {
     tr("🔧 Post-install setup")
@@ -227,8 +227,9 @@ fn snapshot_failed(e: &str) -> String {
     trf("Couldn't remember the default apps: %1", &[&e])
 }
 
-fn plasma_backup_failed(e: &str) -> String {
-    trf("The KDE panel copy wasn't saved: %1", &[&e])
+fn panel_backup_failed(de: &str, e: &str) -> String {
+    // TRANSLATORS: %1 is a desktop name, %2 what went wrong.
+    trf("The panel copy of %1 wasn't saved: %2", &[&de, &e])
 }
 
 fn install_intro(main: usize, aur: usize) -> String {
@@ -565,8 +566,11 @@ pub trait DeOpsIo: SystemIo {
         kind: LogTailKind,
         emit: Arc<dyn Fn(&str, &str) + Send + Sync>,
     ) -> Option<plan::LogTail>;
-    /// Full copy of the Plasma settings (`PlasmaProtector.backup_panel(full=True)`).
-    fn plasma_backup(&self, reason: &str) -> Result<(bool, String), String>;
+    /// Panel copies of every installed desktop that has one (Wehrwolfmann's
+    /// decision of 25.11.2026: installing or switching desktops most often
+    /// breaks ANOTHER desktop's panel, through branches they share) ->
+    /// `(desktop key, outcome)` per desktop.
+    fn panel_snapshots(&self, reason: &str) -> Vec<(String, Result<(), String>)>;
     /// Default applications for the desktop (`DEAppSwitcher.on_switch_de`).
     fn app_defaults_switch(&self, de_id: &str) -> (bool, Vec<String>);
     /// Copy of the desktop configs (`BackupManager.create_backup`) → the copy
@@ -726,6 +730,18 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
     fn warn(&self, message: &str) {
         self.emit(de_progress::STAGE_WARNING, message, None);
+    }
+
+    /// Copies of the panels of all installed desktops. A copy that failed is
+    /// a warning, never a reason to stop the installation.
+    fn panel_snapshots(&self, reason: &str, progress: f64) {
+        self.emit("panel_backup", &panel_backup_message(), Some(progress));
+        for (de, outcome) in self.io.panel_snapshots(reason) {
+            if let Err(msg) = outcome {
+                let name = system::DE_META.iter().find(|m| m.id == de).map_or(de.as_str(), |m| m.display_name);
+                self.warn(&panel_backup_failed(name, &msg));
+            }
+        }
     }
 
     fn raw(&self, message: &str) {
@@ -1094,13 +1110,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         if let Err(e) = self.defaults_snapshot() {
             self.warn(&snapshot_failed(&e));
         }
-        if backup::is_plasma_desktop(&self.io.env("XDG_CURRENT_DESKTOP")) {
-            self.emit("plasma_backup", &plasma_backup_message(), Some(0.04));
-            match self.io.plasma_backup("before_install") {
-                Ok((true, _)) => {}
-                Ok((false, msg)) | Err(msg) => self.warn(&plasma_backup_failed(&msg)),
-            }
-        }
+        self.panel_snapshots("before_install", 0.04);
         self.checkpoint()?;
 
         // 3. Packages. If the desktop is already installed, this is «Check /
@@ -1373,13 +1383,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         self.set_cancellable(true);
 
-        if backup::is_plasma_desktop(&self.io.env("XDG_CURRENT_DESKTOP")) {
-            self.emit("plasma_backup", &plasma_backup_message(), Some(0.10));
-            match self.io.plasma_backup("before_switch") {
-                Ok((true, _)) => {}
-                Ok((false, msg)) | Err(msg) => self.warn(&plasma_backup_failed(&msg)),
-            }
-        }
+        self.panel_snapshots("before_switch", 0.10);
         self.checkpoint()?;
 
         if let Some(current) = system::DE_META.iter().find(|m| m.id == current_de) {
@@ -1510,6 +1514,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         self.io
             .bridge_notify(&BridgeEvent::DeRemoved(de_id.to_string()));
+        self.remove_desktop_leftovers(de_id);
         self.emit("done", &removed_message(meta.display_name), Some(1.0));
         Ok(de_progress::MSG_OK.to_string())
     }
@@ -2160,6 +2165,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             "sway" | "hyprland" | "niri" => self.post_install_tiling_lock(de_id),
             _ => (true, String::new()),
         };
+        self.post_install_lock_look(de_id);
         // A layout failure is a warning, not a failure: the desktop is already installed.
         let keyboard = crate::keyboard_layout::ensure_after_install(self.io, de_id, &self.home());
         match &keyboard {
@@ -2271,6 +2277,34 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             _ => plan::sway_lock_edit(main, &cfg.included, idle_elsewhere),
         };
         self.write_lock_setup(desktop, keys, &cfg.path, text)
+    }
+
+    /// Lock screen look for the desktops whose lock is swaylock (sway, niri,
+    /// Wayfire, River, LXQt Wayland) or hyprlock (Hyprland): without a config
+    /// swaylock is a white screen and hyprlock a blurred screenshot. Written
+    /// only when the locker is installed and no config exists anywhere it
+    /// looks ([`plan::swaylock_config_paths`], [`plan::hyprlock_config_paths`]):
+    /// the user's or the distribution's own look is never replaced. A failure
+    /// is a warning: locking itself still works.
+    fn post_install_lock_look(&self, de_id: &str) {
+        let config_home = self.config_home();
+        // `own` is the user's file among the paths: the one in `config_home`.
+        let (locker, paths, own, text) = match de_id {
+            "hyprland" => (plan::HYPR_LOCK_COMMAND, plan::hyprlock_config_paths(&config_home), 0, plan::hyprlock_conf()),
+            "sway" | "niri" | "wayfire" | "river" | "lxqt" => {
+                ("swaylock", plan::swaylock_config_paths(&self.home(), &config_home), 1, plan::swaylock_config())
+            }
+            _ => return,
+        };
+        if !self.io.which(locker) || paths.iter().any(|p| self.io.exists(p)) {
+            return;
+        }
+        let path = &paths[own];
+        let dir = path.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
+        match self.io.make_dirs(dir).and_then(|()| self.io.write_text(path, &text)) {
+            Ok(()) => self.post(&plan::lock_look_written(locker, path)),
+            Err(e) => self.warn(&plan::lock_setup_failed(locker, path, &e)),
+        }
     }
 
     fn write_lock_setup(&self, desktop: &str, keys: &str, path: &str, text: Option<String>) -> (bool, String) {
@@ -2824,6 +2858,26 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             dfl::SetDefault::Xdg(cmds) => {
                 for argv in cmds {
                     let _ = self.io.run(&argv, None, false);
+                    // `xdg-mime default` writes only the shared list; our list of the
+                    // current desktop is read before it and would hide the choice.
+                    if let [_, _, desktop, mime] = argv.as_slice() {
+                        self.follow_choice(mime, desktop);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Carry a just-made choice into Rexon's lists of the current session
+    /// ([`dfl::follow_choice_in_desktop_list`]).
+    fn follow_choice(&self, mime: &str, desktop: &str) {
+        let cfg = self.config_home();
+        for name in dfl::session_desktop_lists(&self.io.env("XDG_CURRENT_DESKTOP")) {
+            let path = format!("{cfg}/{name}");
+            let Some(text) = self.io.read_text(&path) else { continue };
+            if let Some(next) = dfl::follow_choice_in_desktop_list(&text, mime, desktop) {
+                if self.io.write_text(&path, &next).is_ok() {
+                    crate::log_info!("desktops", "{name}: {mime} -> {desktop} (follows the choice)");
                 }
             }
         }
@@ -2884,6 +2938,43 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(outcome.results)
     }
 
+    /// What a removed desktop leaves behind in the home directory and nobody
+    /// reads any more:
+    ///   * Rexon's `<desktop>-mimeapps.list` and `<desktop>-xdg-terminals.list`
+    ///     of that desktop (only files with a Rexon mark);
+    ///   * dangling links in `~/.config/systemd/user/*.wants` — units the
+    ///     removed packages took with them (a live case: Deepin's calendar
+    ///     timer link kept pointing into nowhere for weeks).
+    ///
+    /// Our confined autostart copies and the labwc portals file follow their
+    /// system files at the next login (`appdefaults_exec`). Silent for the
+    /// person: each removal goes to the Rexon log.
+    fn remove_desktop_leftovers(&self, de_id: &str) {
+        let cfg = self.config_home();
+        for name in dfl::desktop_owned_files(de_id) {
+            let path = format!("{cfg}/{name}");
+            if self.io.read_text(&path).is_some_and(|t| dfl::is_rexon_desktop_file(&t)) {
+                self.io.remove_file(&path);
+                crate::log_info!("desktops", "{de_id} removed: removed our {path}");
+            }
+        }
+        let units = format!("{cfg}/systemd/user");
+        for dir in self.io.list_dir(&units).unwrap_or_default() {
+            if !dir.ends_with(".wants") {
+                continue;
+            }
+            let wants = format!("{units}/{dir}");
+            for link in self.io.list_dir(&wants).unwrap_or_default() {
+                let path = format!("{wants}/{link}");
+                // `exists` follows the link: false means its target is gone.
+                if !self.io.exists(&path) {
+                    self.io.remove_file(&path);
+                    crate::log_info!("desktops", "{de_id} removed: removed dangling unit link {path}");
+                }
+            }
+        }
+    }
+
     /// Port of `protect_de_mimeapps` → lines for the progress log.
     fn protect_de_mimeapps(&self, current_de: &str, installed: &[String]) -> Vec<String> {
         let config_dir = self.config_home();
@@ -2901,11 +2992,11 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let mut writes = outcome.writes.iter().zip(outcome.valid_counts.iter());
         for (de_id, action) in &outcome.results {
             match action.as_str() {
-                "skipped" => crate::log_info!("desktops", "mimeapps {de_id}: нет установленных приложений"),
+                "skipped" => crate::log_info!("desktops", "mimeapps {de_id}: no installed applications"),
                 "created" | "updated" => {
                     if let Some(((path, content), count)) = writes.next() {
                         let _ = self.io.write_text(path, content);
-                        crate::log_info!("desktops", "mimeapps {de_id}: {action} (записей: {count}) → {path}");
+                        crate::log_info!("desktops", "mimeapps {de_id}: {action} (entries: {count}) -> {path}");
                         let name = system::DE_META
                             .iter()
                             .find(|m| m.id == de_id.as_str())
@@ -2917,6 +3008,29 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                     }
                 }
                 _ => {}
+            }
+        }
+        // A list older versions wrote under a name no desktop reads
+        // (`cinnamon-mimeapps.list`): the right one was just written, the old one
+        // is junk. Only Rexon's own file is removed.
+        for (old, right) in dfl::MISNAMED_MIMEAPPS {
+            let old_path = format!("{config_dir}/{old}");
+            let right_path = format!("{config_dir}/{right}");
+            match dfl::misnamed_mimeapps_fix(
+                self.io.read_text(&old_path).as_deref(),
+                self.io.read_text(&right_path).as_deref(),
+            ) {
+                dfl::MisnamedFix::Nothing => {}
+                dfl::MisnamedFix::Move { content } => {
+                    if self.io.write_text(&right_path, &content).is_ok() {
+                        self.io.remove_file(&old_path);
+                        crate::log_info!("desktops", "moved {old_path} -> {right_path}");
+                    }
+                }
+                dfl::MisnamedFix::DropOld => {
+                    self.io.remove_file(&old_path);
+                    crate::log_info!("desktops", "removed unread {old_path} ({right} exists)");
+                }
             }
         }
         if written.is_empty() {
@@ -4322,20 +4436,17 @@ impl DeOpsIo for LiveDeOpsIo {
         Some(plan::tail_log(path, kind, move |s: &str, m: &str| emit(s, m)))
     }
 
-    fn plasma_backup(&self, reason: &str) -> Result<(bool, String), String> {
-        let home = self.env("HOME");
-        let xdg_config = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
-        let xdg_data = std::env::var("XDG_DATA_HOME").ok().filter(|v| !v.is_empty());
-        let configs = backup::expand_tilde_xdg(backup::FULL_CONFIGS, &home, xdg_config.as_deref());
-        let dir = format!(
-            "{}/rexon/backups/plasma-panel",
-            utils::data_home(xdg_data.as_deref(), &home)
-        );
-        let stamp = crate::qt_app::Timestamp::now_local()
-            .unwrap_or_default()
-            .file_stamp();
-        let outcome = backup::plasma_backup_run(&dir, &configs, reason, true, &stamp);
-        if matches!(outcome, Ok((true, _))) {
+    fn panel_snapshots(&self, reason: &str) -> Vec<(String, Result<(), String>)> {
+        let mut out = Vec::new();
+        for meta in system::DE_META {
+            let bins = system::de_installed_binaries(meta.id);
+            if bins.is_empty() || !bins.iter().all(|b| system::binary_in_path(b)) || !backup::panel_supported_live(meta.id) {
+                continue;
+            }
+            let outcome = backup::panel_save_live(meta.id, reason).map(|_| ());
+            out.push((meta.id.to_string(), outcome));
+        }
+        if out.iter().any(|(_, o)| o.is_ok()) {
             let bridge = crate::rexon_bridge::RexonBridge::new_default();
             let clock = self.clock();
             let _ = bridge
@@ -4343,7 +4454,7 @@ impl DeOpsIo for LiveDeOpsIo {
                 .and_then(|_| bridge.notify_backup_created(&clock.iso, clock.epoch_ms));
             bridge.cleanup_commands(300.0, clock.epoch_ms as f64 / 1000.0);
         }
-        outcome
+        out
     }
 
     fn app_defaults_switch(&self, de_id: &str) -> (bool, Vec<String>) {
@@ -4636,9 +4747,13 @@ pub(crate) mod tests {
         ) -> Option<plan::LogTail> {
             None
         }
-        fn plasma_backup(&self, reason: &str) -> Result<(bool, String), String> {
-            self.note(format!("plasma_backup: {reason}"));
-            Ok((true, "ok".to_string()))
+        fn panel_snapshots(&self, reason: &str) -> Vec<(String, Result<(), String>)> {
+            self.note(format!("panel_snapshots: {reason}"));
+            let mut out = vec![("kde".to_string(), Ok(()))];
+            if self.env.contains_key("FAKE_PANEL_COPY_FAILS") {
+                out.push(("mate".to_string(), Err("disk full".to_string())));
+            }
+            out
         }
         fn app_defaults_switch(&self, de_id: &str) -> (bool, Vec<String>) {
             self.note(format!("app_defaults: {de_id}"));
@@ -4711,6 +4826,24 @@ pub(crate) mod tests {
         let sink: Arc<dyn DeOpSink> = rec.clone();
         let outcome = DeOpsExec::new(io, sink, cancel).install_de(de, "kde");
         (outcome, rec)
+    }
+
+    /// Panel copies of all installed desktops are taken before the package
+    /// manager, from any session (not only Plasma), and a failed copy is a
+    /// warning that does not stop the installation.
+    #[test]
+    fn install_copies_every_panel_and_survives_a_failed_copy() {
+        let mut io = FakeIo::arch(Box::new(healthy));
+        io.env.insert("XDG_CURRENT_DESKTOP".into(), "MATE".into());
+        io.env.insert("FAKE_PANEL_COPY_FAILS".into(), "1".into());
+        let (outcome, rec) = run_install(&io, "xfce", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let copies = io.index_of("panel_snapshots: before_install").expect("copies taken");
+        let run = io.index_of("run: pkexec bash").unwrap();
+        assert!(copies < run, "copies come before the package manager");
+        let warnings = rec.messages(de_progress::STAGE_WARNING);
+        assert!(warnings.iter().any(|w| w.contains("MATE") && w.contains("disk full")), "{warnings:#?}");
+        assert_eq!(rec.messages("panel_backup"), vec![panel_backup_message()]);
     }
 
     /// Success: the lock is checked BEFORE the password, one main step, temporary
@@ -5195,7 +5328,7 @@ pub(crate) mod tests {
         assert!(!outcome.ok);
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
         assert!(io.index_of("write").is_none(), "{:#?}", io.calls.borrow());
-        assert!(io.index_of("plasma_backup").is_none());
+        assert!(io.index_of("panel_snapshots").is_none());
         assert!(io.runs().is_empty(), "{:#?}", io.runs());
     }
 
@@ -5356,6 +5489,32 @@ pub(crate) mod tests {
         let set = session_install_set(&io);
         assert!(!set.iter().any(|p| p == "wayfire"), "{set:?}");
         assert!(!io.runs().iter().any(|r| r.contains("mate-wayland-session")), "{:#?}", io.runs());
+    }
+
+    /// The MATE Menu is built in a transaction of its own (24.11.2026): the AUR
+    /// package has been failing to install, and its failure must neither take the
+    /// other MATE add-ons down nor fail the desktop install. Brisk is not built
+    /// at all.
+    #[test]
+    fn install_mate_builds_mate_menu_alone_and_survives_its_failure() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let menu_fails = |argv: &[String]| -> RunOut {
+            if argv.first().map(String::as_str) == Some("paru") && argv.iter().any(|a| a == "mate-menu") {
+                return out(1, "error: failed to commit transaction (conflicting files)", "");
+            }
+            healthy(argv)
+        };
+        let mut io = with_session(FakeIo::arch(Box::new(menu_fails)), out(0, "", ""));
+        io.bins.insert("paru".to_string());
+        let (outcome, _) = run_install_session(&io, "mate", Some(system::SessionKind::X11));
+        assert!(outcome.ok, "{outcome:?}");
+        let runs = io.runs();
+        let paru: Vec<&String> = runs.iter().filter(|r| r.contains("paru ")).collect();
+        let menu: Vec<&&String> = paru.iter().filter(|r| r.contains("mate-menu")).collect();
+        assert_eq!(menu.len(), 1, "{paru:#?}");
+        assert!(menu[0].trim_end().ends_with(" mate-menu"), "mate-menu goes in a transaction of its own: {}", menu[0]);
+        assert!(paru.iter().any(|r| r.contains("ayatana-indicator-application")), "{paru:#?}");
+        assert!(!runs.iter().any(|r| r.contains("brisk")), "{runs:#?}");
     }
 
     /// The "no login screen" guard through the session: SDDM from the login
@@ -5652,6 +5811,75 @@ pub(crate) mod tests {
         assert_eq!(io.files.borrow().get("/home/t/.config/niri/config.kdl"), Some(&out));
     }
 
+    /// Lock screen look after install: swaylock's config for every desktop
+    /// that locks with swaylock, hyprlock's for Hyprland. A config of the
+    /// user's own (any of the paths the locker reads, the system one too)
+    /// stays byte for byte and nothing is added next to it; without the
+    /// locker nothing is written.
+    #[test]
+    fn lockers_get_own_look_unless_configured() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let with_bins = |bins: &[&str]| {
+            let mut io = FakeIo::arch(Box::new(healthy));
+            io.bins.extend(bins.iter().map(|b| b.to_string()));
+            io
+        };
+        let sway_conf = "/home/t/.config/swaylock/config";
+        let hypr_conf = "/home/t/.config/hypr/hyprlock.conf";
+
+        for de in ["sway", "niri", "wayfire", "river", "lxqt"] {
+            let io = with_bins(&["swaylock", "swayidle"]);
+            let (outcome, rec) = run_install(&io, de, CancelToken::new());
+            assert!(outcome.ok, "{de}: {outcome:?}");
+            assert_eq!(io.files.borrow().get(sway_conf), Some(&plan::swaylock_config()), "{de}");
+            assert!(rec.messages("post").iter().any(|m| m.contains("the lock screen got a dark background")), "{de}: {:#?}", rec.messages("post"));
+        }
+
+        // The user's own config (each place swaylock reads): kept, no second file.
+        for own in [sway_conf, "/home/t/.swaylock/config", "/etc/swaylock/config"] {
+            let io = with_bins(&["swaylock", "swayidle"]);
+            io.files.borrow_mut().insert(own.into(), "color=ff00ff\n".into());
+            let (outcome, _) = run_install(&io, "sway", CancelToken::new());
+            assert!(outcome.ok, "{outcome:?}");
+            assert_eq!(io.files.borrow().get(own).map(String::as_str), Some("color=ff00ff\n"), "{own}");
+            if own != sway_conf {
+                assert!(!io.files.borrow().contains_key(sway_conf), "{own}");
+            }
+        }
+
+        // No swaylock — nothing is written.
+        let io = FakeIo::arch(Box::new(healthy));
+        let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert!(!io.files.borrow().contains_key(sway_conf));
+
+        // Hyprland: hyprlock.conf next to hypridle.conf; own one is kept.
+        let io = with_bins(&["hyprlock", "hypridle"]);
+        io.files.borrow_mut().insert("/home/t/.config/hypr/hyprland.conf".into(), "input {\n    kb_layout = de\n}\n".into());
+        let (outcome, _) = run_install(&io, "hyprland", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get(hypr_conf), Some(&plan::hyprlock_conf()));
+        assert!(!io.files.borrow().contains_key(sway_conf));
+
+        for own in [hypr_conf, "/etc/xdg/hypr/hyprlock.conf"] {
+            let io = with_bins(&["hyprlock", "hypridle"]);
+            io.files.borrow_mut().insert(own.into(), "background {\n    path = screenshot\n}\n".into());
+            let (outcome, _) = run_install(&io, "hyprland", CancelToken::new());
+            assert!(outcome.ok, "{outcome:?}");
+            assert_eq!(io.files.borrow().get(own).map(String::as_str), Some("background {\n    path = screenshot\n}\n"), "{own}");
+            if own != hypr_conf {
+                assert!(!io.files.borrow().contains_key(hypr_conf), "{own}");
+            }
+        }
+
+        // A second run changes nothing: the file is ours now, but it is a file.
+        let io = with_bins(&["swaylock", "swayidle"]);
+        run_install(&io, "sway", CancelToken::new());
+        io.files.borrow_mut().insert(sway_conf.into(), "color=000000\n".into());
+        run_install(&io, "sway", CancelToken::new());
+        assert_eq!(io.files.borrow().get(sway_conf).map(String::as_str), Some("color=000000\n"));
+    }
+
     /// An unknown desktop does not reach a single command.
     #[test]
     fn unknown_desktop_is_refused() {
@@ -5702,7 +5930,7 @@ pub(crate) mod tests {
         io.env.insert("XDG_SESSION_ID".into(), "7".into());
         let (outcome, rec) = run_switch(&io, "xfce", "kde");
         assert!(outcome.ok, "{outcome:?}");
-        let plasma = io.index_of("plasma_backup: before_switch").unwrap();
+        let plasma = io.index_of("panel_snapshots: before_switch").unwrap();
         let config = io.index_of("config_backup: kde").unwrap();
         let apps = io.index_of("app_defaults: xfce").unwrap();
         let bridge = io.index_of("bridge: DeSwitch").unwrap();
@@ -5791,6 +6019,60 @@ pub(crate) mod tests {
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
     }
 
+    /// MATE on Wayfire is gone from the product (16.11.2026), but a
+    /// `mate-wayland-session` that an earlier release installed is still removed
+    /// with MATE: it holds MATE's packages as a dependency, and left behind it
+    /// would make `-Rns` refuse the removal. Not installed — not asked for.
+    #[test]
+    fn remove_mate_takes_the_old_wayland_session_bundle_along() {
+        let io = FakeIo::arch(Box::new(removable));
+        let (outcome, _) = run_remove(&io, "mate", "kde");
+        assert!(outcome.ok, "{outcome:?}");
+        let runs = io.runs();
+        let remove = runs.iter().find(|r| r.starts_with("pkexec pacman -Rns --noconfirm")).unwrap_or_else(|| panic!("{runs:#?}"));
+        assert!(remove.split_whitespace().any(|w| w == "mate-wayland-session"), "{remove}");
+
+        let not_there = |argv: &[String]| -> RunOut {
+            let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+            match a.as_slice() {
+                ["pacman", "-Q", "mate-wayland-session"] => out(1, "", "error: package was not found"),
+                _ => removable(argv),
+            }
+        };
+        let io = FakeIo::arch(Box::new(not_there));
+        let (outcome, _) = run_remove(&io, "mate", "kde");
+        assert!(outcome.ok, "{outcome:?}");
+        let runs = io.runs();
+        let remove = runs.iter().find(|r| r.starts_with("pkexec pacman -Rns --noconfirm")).unwrap_or_else(|| panic!("{runs:#?}"));
+        assert!(!remove.contains("mate-wayland-session"), "{remove}");
+    }
+
+    /// After the desktop is removed, Rexon's own per-desktop files of it go;
+    /// the person's file of the same name and other desktops' files stay.
+    #[test]
+    fn remove_takes_our_desktop_files_along() {
+        let io = FakeIo::arch(Box::new(removable));
+        let ours = dfl::serialize_mimeapps_list(&[("inode/directory".into(), "thunar.desktop".into())], "ts");
+        let cfg = "/home/t/.config";
+        io.files.borrow_mut().insert(format!("{cfg}/xfce-mimeapps.list"), ours.clone());
+        io.files.borrow_mut().insert(
+            format!("{cfg}/xfce-xdg-terminals.list"),
+            dfl::desktop_terminals_list_text("xfce4-terminal.desktop", false),
+        );
+        io.files.borrow_mut().insert(format!("{cfg}/kde-mimeapps.list"), ours.clone());
+        let (outcome, _rec) = run_remove(&io, "xfce", "kde");
+        assert!(outcome.ok, "{outcome:?}");
+        assert!(!io.files.borrow().contains_key(&format!("{cfg}/xfce-mimeapps.list")));
+        assert!(!io.files.borrow().contains_key(&format!("{cfg}/xfce-xdg-terminals.list")));
+        assert!(io.files.borrow().contains_key(&format!("{cfg}/kde-mimeapps.list")));
+
+        // The person's own list under the same name is not ours to remove.
+        let io = FakeIo::arch(Box::new(removable));
+        io.files.borrow_mut().insert(format!("{cfg}/xfce-mimeapps.list"), "[Default Applications]\n".into());
+        run_remove(&io, "xfce", "kde");
+        assert!(io.files.borrow().contains_key(&format!("{cfg}/xfce-mimeapps.list")));
+    }
+
     /// Sitting in Xfce, removing Cinnamon does not remove the shared login
     /// screen `lightdm` and the LightDM greeters (the hole of 28.10.2026).
     #[test]
@@ -5868,6 +6150,10 @@ pub(crate) mod tests {
         bins: HashSet<String>,
         env: HashMap<String, String>,
         runs: Vec<String>,
+        /// `dconf dump /org/mate/panel/` answer and applet descriptions
+        /// (`/usr/share/mate-panel/applets/<name>` → text); none by default.
+        panel: Option<String>,
+        applets: Vec<(String, String)>,
     }
 
     impl FakeChecks {
@@ -5879,6 +6165,8 @@ pub(crate) mod tests {
                 bins: bins.iter().map(|s| s.to_string()).collect(),
                 env,
                 runs: Vec::new(),
+                panel: None,
+                applets: Vec::new(),
             }
         }
     }
@@ -5887,6 +6175,9 @@ pub(crate) mod tests {
         fn run(&mut self, argv: &[String], _timeout: Option<u64>) -> Option<comp::RunResult> {
             self.runs.push(argv.join(" "));
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+            if let (["dconf", "dump", _], Some(panel)) = (a.as_slice(), &self.panel) {
+                return Some(comp::RunResult { ok: true, stdout: panel.clone() });
+            }
             let ok = match a.as_slice() {
                 ["pacman", "-Q", pkg] => self.installed.contains(*pkg),
                 _ => true,
@@ -5911,13 +6202,17 @@ pub(crate) mod tests {
         fn is_dir(&mut self, _: &str) -> bool {
             false
         }
-        fn read_text(&mut self, _: &str) -> Option<String> {
-            None
+        fn read_text(&mut self, path: &str) -> Option<String> {
+            let name = path.strip_prefix(crate::mate_panel::SYSTEM_APPLETS_DIR)?.trim_start_matches('/');
+            self.applets.iter().find(|(n, _)| n == name).map(|(_, t)| t.clone())
         }
         fn scandir(&mut self, _: &str) -> Option<Vec<ScanEntry>> {
             None
         }
-        fn listdir(&mut self, _: &str) -> Vec<String> {
+        fn listdir(&mut self, path: &str) -> Vec<String> {
+            if path == crate::mate_panel::SYSTEM_APPLETS_DIR {
+                return self.applets.iter().map(|(n, _)| n.clone()).collect();
+            }
             Vec::new()
         }
         fn makedirs(&mut self, _: &str) {}
@@ -6162,6 +6457,12 @@ pub(crate) mod tests {
         for de in ["mate", "kde", "gnome", "cosmic", "xfce", "cinnamon-mint", "budgie", "hyprland"] {
             assert!(comp::has_checks(de), "{de}");
             let mut checks = FakeChecks::with(&[], &["git", "yay"]);
+            // A panel that still has a working Brisk menu (an earlier release put it there).
+            checks.panel = Some(
+                "[general]\nobject-id-list=['brisk']\n\n[objects/brisk]\napplet-iid='BriskMenuFactory::BriskMenu'\n".into(),
+            );
+            checks.applets =
+                vec![("brisk.mate-panel-applet".into(), "[Applet Factory]\nId=BriskMenuFactory\n\n[BriskMenu]\n".into())];
             let mut log = Vec::new();
             let results = comp::Compliance::new(&mut checks, "/home/t", PkgFamily::Arch, false, false, false)
                 .run_for_de(de, &mut log);
@@ -6195,13 +6496,13 @@ pub(crate) mod tests {
             dialog_cancel(),
             awaiting_answer("Install KDE Plasma"),
             snapshot_message(),
-            plasma_backup_message(),
+            panel_backup_message(),
             post_install_message(),
             dm_step_message(),
             restore_message(),
             mime_message(),
             snapshot_failed(e),
-            plasma_backup_failed(e),
+            panel_backup_failed("MATE", e),
             install_intro(1, 0),
             install_intro(5, 2),
             post_install_failed(e),

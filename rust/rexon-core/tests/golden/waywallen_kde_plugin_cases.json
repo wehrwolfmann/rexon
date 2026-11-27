@@ -745,5 +745,443 @@
       }
     }
   },
-  "version_guard_note": "Сторож версии плагина (дефект 02.10.2026: r1062 поставил 0.3.3/v8 поверх 0.4.0/v9). Python-эталона у этого раздела нет: случаи записаны руками из правил plan_plugin и таблиц протоколов апстрима (теги 02.10.2026)."
+  "version_guard_note": "Сторож версии плагина (дефект 02.10.2026: r1062 поставил 0.3.3/v8 поверх 0.4.0/v9). Python-эталона у этого раздела нет: случаи записаны руками из правил plan_plugin и таблиц протоколов апстрима (теги 02.10.2026).",
+  "system_package_cases": {
+    "packaged_alone_used_as_is": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "use_system",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "packaged_never_gets_bundle_even_with_consent": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": true,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "use_system",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "packaged_without_bundle_used_as_is": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": true,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "use_system",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "packaged_version_unknown_selected": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "use_system",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "packaged_incompatible_named_no_button": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.3.3",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "use_system",
+        "installed_version": null,
+        "notice": "system_incompatible",
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "our_copy_hides_package_moved_to_backup": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.5",
+          "marker": true,
+          "runtime_sha": "4d90629e44055113"
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "remove_user_copy",
+        "installed_version": "0.4.5",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "our_copy_hides_package_without_bundle": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.5",
+          "marker": true,
+          "runtime_sha": "4d90629e44055113"
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": true,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "remove_user_copy",
+        "installed_version": "0.4.5",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "foreign_copy_hides_package_untouched": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "ffffffffffffffff"
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "keep",
+        "installed_version": null,
+        "notice": "shadows_system",
+        "offers_install": true,
+        "select": true
+      }
+    },
+    "foreign_copy_hides_package_by_consent": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "ffffffffffffffff"
+        },
+        "daemon_version": "0.6.1",
+        "consent": true,
+        "system": {
+          "present": true,
+          "dir": "/usr/share/plasma/wallpapers/org.waywallen.kde",
+          "version": "0.4.6",
+          "package": "plasma-wallpaper-waywallen"
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "remove_user_copy",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "no_plugin_no_bundle_installs_package": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": true,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "install_package",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "no_plugin_no_bundle_after_failure_waits_for_button": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": true,
+        "package_failed": true
+      },
+      "expected": {
+        "action": "need_package",
+        "installed_version": null,
+        "notice": "package_missing",
+        "offers_install": true,
+        "select": false
+      }
+    },
+    "no_plugin_no_bundle_button_retries": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": true,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": true,
+        "package_failed": true
+      },
+      "expected": {
+        "action": "install_package",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": false
+      }
+    },
+    "our_stale_copy_no_bundle_installs_package": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": true,
+          "vendor_version": "0.4.5",
+          "marker": true,
+          "runtime_sha": "4d90629e44055113"
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": true,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "install_package",
+        "installed_version": "0.4.5",
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "foreign_copy_no_bundle_untouched": {
+      "input": {
+        "bundle_version": null,
+        "bundle_sha": null,
+        "installed": {
+          "present": true,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": "ffffffffffffffff"
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": true,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "keep",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    },
+    "bundled_variant_unchanged_without_package": {
+      "input": {
+        "bundle_version": "0.4.5",
+        "bundle_sha": "4d90629e44055113",
+        "installed": {
+          "present": false,
+          "vendor_version": null,
+          "marker": false,
+          "runtime_sha": null
+        },
+        "daemon_version": "0.6.1",
+        "consent": false,
+        "system": {
+          "present": false,
+          "dir": null,
+          "version": null,
+          "package": null
+        },
+        "bundle_missing": false,
+        "package_failed": false
+      },
+      "expected": {
+        "action": "install",
+        "installed_version": null,
+        "notice": null,
+        "offers_install": false,
+        "select": true
+      }
+    }
+  },
+  "system_package_note": "Packaged plugin plasma-wallpaper-waywallen (owner's decision of 25.11.2026): it is never overwritten, our copy in ~/.local is moved to a backup, a foreign one only by consent; without a package and a bundle Rexon installs the package itself. Written by hand from the plan_plugin rules."
 }

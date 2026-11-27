@@ -93,7 +93,7 @@ impl TourConfig {
     /// How the tour is named in the report.
     pub fn target_label(&self) -> String {
         match (&self.section, &self.sub) {
-            (None, _) => "всё окно".to_string(),
+            (None, _) => "the whole window".to_string(),
             (Some(s), None) => s.clone(),
             (Some(s), Some(sub)) => format!("{s}/{sub}"),
         }
@@ -113,7 +113,7 @@ fn flag_value(args: &[String], flag: &str) -> Result<Option<String>, String> {
         if a == flag {
             return match it.next() {
                 Some(v) if !v.starts_with("--") => Ok(Some(v.clone())),
-                _ => Err(format!("у ключа {flag} нет значения")),
+                _ => Err(format!("the {flag} option has no value")),
             };
         }
         if let Some(v) = a.strip_prefix(&eq) {
@@ -144,18 +144,18 @@ pub fn parse_args(
     };
     if !section.is_empty() && !crate::qt_main::SECTIONS.contains(&section) {
         return Err(format!(
-            "раздела «{section}» нет; есть: {}",
+            "there is no section \"{section}\"; there are: {}",
             crate::qt_main::SECTIONS.join(", ")
         ));
     }
     if !sub.is_empty() && section != "appearance" {
         return Err(format!(
-            "подразделы обход знает только у «appearance», а не у «{section}»"
+            "the tour knows subsections only of \"appearance\", not of \"{section}\""
         ));
     }
     let query = flag_value(args, QUERY_FLAG)?.unwrap_or_else(|| DEFAULT_QUERY.to_string());
     if query.trim().is_empty() {
-        return Err("слово поиска пустое".to_string());
+        return Err("the search word is empty".to_string());
     }
     let timeout_secs = match flag_value(args, TIMEOUT_FLAG)? {
         Some(v) => v
@@ -163,12 +163,12 @@ pub fn parse_args(
             .parse::<u64>()
             .ok()
             .filter(|n| *n > 0)
-            .ok_or_else(|| format!("{TIMEOUT_FLAG}: ждали число секунд, а не «{v}»"))?,
+            .ok_or_else(|| format!("{TIMEOUT_FLAG}: expected a number of seconds, not \"{v}\""))?,
         None => DEFAULT_TIMEOUT_SECS,
     };
     let out_dir = match flag_value(args, OUT_FLAG)? {
         Some(v) if !v.trim().is_empty() => PathBuf::from(v.trim()),
-        Some(_) => return Err(format!("{OUT_FLAG}: пустой путь")),
+        Some(_) => return Err(format!("{OUT_FLAG}: empty path")),
         None => default_out(),
     };
     Ok(Some(TourConfig {
@@ -354,7 +354,7 @@ pub struct Report {
 impl Report {
     pub fn from_json(text: &str) -> Self {
         serde_json::from_str(text).unwrap_or_else(|e| Self {
-            error: format!("ответ исполнителя не разобран: {e}"),
+            error: format!("the executor's answer could not be parsed: {e}"),
             ..Self::default()
         })
     }
@@ -621,7 +621,7 @@ impl Tour {
             // the executor at all.
             if let Some(m) = cmd.method() {
                 if !call_allowed(m) {
-                    self.note("обход", format!("вызов «{m}» запрещён — пропущен"));
+                    self.note("tour", format!("call \"{m}\" is forbidden — skipped"));
                     continue;
                 }
             }
@@ -636,14 +636,14 @@ impl Tour {
                 Command::Capture { file, .. } => file.clone(),
                 _ => self.place(),
             };
-            self.note(place, format!("исполнитель: {}", rep.error));
+            self.note(place, format!("executor: {}", rep.error));
         }
         match cmd {
             Command::OpenSection { section, .. } => {
                 self.section = section.clone();
                 self.category.clear();
                 if !rep.built {
-                    self.note(format!("раздел {section}"), "страница раздела не построилась");
+                    self.note(format!("section {section}"), "the section page was not built");
                     return;
                 }
                 if rep.kind == "appearance" {
@@ -651,9 +651,9 @@ impl Tour {
                         Some(sub) if rep.categories.contains(sub) => vec![sub.clone()],
                         Some(sub) => {
                             self.note(
-                                format!("раздел {section}"),
+                                format!("section {section}"),
                                 format!(
-                                    "подраздела «{sub}» нет среди доступных: {}",
+                                    "subsection \"{sub}\" is not among the available ones: {}",
                                     rep.categories.join(", ")
                                 ),
                             );
@@ -662,7 +662,7 @@ impl Tour {
                         None => rep.categories.clone(),
                     };
                     if cats.is_empty() && self.cfg.sub.is_none() {
-                        self.note(format!("раздел {section}"), "боковая панель пуста");
+                        self.note(format!("section {section}"), "the sidebar is empty");
                     }
                     for key in cats.iter().rev() {
                         self.queue.push_front(Planned::Do(Command::select_category(key)));
@@ -681,7 +681,7 @@ impl Tour {
             Command::SelectCategory { key, .. } => {
                 self.category = key.clone();
                 if !rep.ok {
-                    self.note(self.place(), "раздел боковой панели не открылся");
+                    self.note(self.place(), "the sidebar section did not open");
                     return;
                 }
                 let plan = plan_category(&self.section, &key, &rep.sources, rep.search, &self.cfg.query);
@@ -691,14 +691,14 @@ impl Tour {
             }
             Command::SetSource { key, .. } => {
                 if !rep.ok {
-                    self.note(self.place(), format!("магазин «{key}» не выбрался"));
+                    self.note(self.place(), format!("store \"{key}\" was not selected"));
                 } else if !rep.source.is_empty() && rep.source != key {
-                    self.note(self.place(), format!("просили магазин «{key}», а действует «{}»", rep.source));
+                    self.note(self.place(), format!("asked for store \"{key}\", but \"{}\" is active", rep.source));
                 }
             }
             Command::TypeQuery { .. } | Command::ClearQuery { .. } => {
                 if !rep.ok {
-                    self.note(self.place(), "поле поиска не нашлось");
+                    self.note(self.place(), "the search field was not found");
                 }
             }
             Command::Capture { file, .. } => {
@@ -712,7 +712,7 @@ impl Tour {
 
     fn place(&self) -> String {
         if self.category.is_empty() {
-            format!("раздел {}", self.section)
+            format!("section {}", self.section)
         } else {
             format!("{}/{}", self.section, self.category)
         }
@@ -727,13 +727,13 @@ impl Tour {
         for scr in &self.screens {
             let to = line_end(journal, scr.seen.log_offset as usize).max(from);
             let piece = journal.get(from..to).unwrap_or("");
-            let place = if from == 0 { "запуск и " .to_string() + &scr.file } else { scr.file.clone() };
+            let place = if from == 0 { "startup and ".to_string() + &scr.file } else { scr.file.clone() };
             journal_findings(&place, piece, &mut out);
             from = to;
             screen_findings(scr, &mut out);
         }
         if from < journal.len() {
-            journal_findings("после последнего снимка", journal.get(from..).unwrap_or(""), &mut out);
+            journal_findings("after the last screenshot", journal.get(from..).unwrap_or(""), &mut out);
         }
         layout_findings(&self.screens, &mut out);
         out
@@ -745,10 +745,10 @@ impl Tour {
         let mut findings = self.findings(journal);
         if let Some(why) = interrupted {
             let at = match &self.current {
-                Some((cmd, _)) => format!("на команде {}", cmd_label(cmd)),
-                None => "между командами".to_string(),
+                Some((cmd, _)) => format!("at command {}", cmd_label(cmd)),
+                None => "between commands".to_string(),
             };
-            findings.insert(0, Finding { place: "обход".into(), text: format!("ПРЕРВАН: {why} ({at})") });
+            findings.insert(0, Finding { place: "tour".into(), text: format!("INTERRUPTED: {why} ({at})") });
         }
         let code = if interrupted.is_some() {
             EXIT_TIMEOUT
@@ -763,13 +763,13 @@ impl Tour {
 
 fn cmd_label(cmd: &Command) -> String {
     match cmd {
-        Command::OpenSection { section, .. } => format!("«открыть раздел {section}»"),
-        Command::SelectCategory { key, .. } => format!("«раздел панели {key}»"),
-        Command::SetSource { key, .. } => format!("«магазин {key}»"),
-        Command::TypeQuery { text, .. } => format!("«поиск {text}»"),
-        Command::ClearQuery { .. } => "«очистить поиск»".to_string(),
-        Command::Capture { file, .. } => format!("«снимок {file}»"),
-        Command::Finish { .. } => "«конец»".to_string(),
+        Command::OpenSection { section, .. } => format!("\"open section {section}\""),
+        Command::SelectCategory { key, .. } => format!("\"sidebar section {key}\""),
+        Command::SetSource { key, .. } => format!("\"store {key}\""),
+        Command::TypeQuery { text, .. } => format!("\"search {text}\""),
+        Command::ClearQuery { .. } => "\"clear search\"".to_string(),
+        Command::Capture { file, .. } => format!("\"screenshot {file}\""),
+        Command::Finish { .. } => "\"finish\"".to_string(),
     }
 }
 
@@ -778,40 +778,40 @@ fn cmd_label(cmd: &Command) -> String {
 // ============================================================================
 
 fn secs(ms: u64) -> String {
-    format!("{},{} с", ms / 1000, (ms % 1000) / 100)
+    format!("{}.{} s", ms / 1000, (ms % 1000) / 100)
 }
 
 fn screen_findings(scr: &Screen, out: &mut Vec<Finding>) {
     let s = &scr.seen;
     let mut add = |text: String| out.push(Finding { place: scr.file.clone(), text });
     if !s.saved {
-        add("снимок не сохранился".into());
+        add("the screenshot was not saved".into());
     }
     if s.load_timed_out {
-        add(format!("выдача не загрузилась за {}", secs(LOAD_TIMEOUT_MS)));
+        add(format!("the results did not load within {}", secs(LOAD_TIMEOUT_MS)));
     } else if s.load_ms > SLOW_LOAD_MS {
-        add(format!("загрузка {} (дольше {})", secs(s.load_ms), secs(SLOW_LOAD_MS)));
+        add(format!("load took {} (longer than {})", secs(s.load_ms), secs(SLOW_LOAD_MS)));
     }
     if scr.meta.grid && s.screen == "grid" {
         if s.tiles == 0 && !s.load_timed_out {
-            add("пустая выдача (0 плиток)".into());
+            add("empty results (0 tiles)".into());
         } else if s.no_preview > 0 {
-            add(format!("плитки без превью: {} из {}", s.no_preview, s.tiles));
+            add(format!("tiles without a preview: {} of {}", s.no_preview, s.tiles));
         }
     }
     if let Some(q) = &scr.meta.expect_query {
         if !s.search_visible {
-            add(format!("поля поиска нет — слово «{q}» проверить негде"));
+            add(format!("no search field — nowhere to check the word \"{q}\""));
         } else if s.search_text.trim() != q {
-            add(format!("текст поиска пропал: в поле «{}», ждали «{q}»", s.search_text));
+            add(format!("the search text is lost: the field has \"{}\", expected \"{q}\"", s.search_text));
         } else if s.model_query.trim() != q {
-            add(format!("поле показывает «{q}», а страница ищет «{}»", s.model_query));
+            add(format!("the field shows \"{q}\", but the page searches for \"{}\"", s.model_query));
         }
     }
     if s.status_warn && !s.status.trim().is_empty() {
-        add(format!("строка состояния: «{}»", s.status.trim()));
+        add(format!("status line: \"{}\"", s.status.trim()));
     } else if is_network_error(&s.status) {
-        add(format!("ошибка сети в строке состояния: «{}»", s.status.trim()));
+        add(format!("network error in the status line: \"{}\"", s.status.trim()));
     }
 }
 
@@ -825,9 +825,9 @@ fn layout_findings(screens: &[Screen], out: &mut Vec<Finding>) {
     for ((section, cat), list) in by_cat {
         let header = |s: &Screen| {
             if s.seen.search_visible {
-                format!("поиск ({}, {})", s.seen.search_x, s.seen.search_y)
+                format!("search ({}, {})", s.seen.search_x, s.seen.search_y)
             } else {
-                "без поиска".to_string()
+                "no search".to_string()
             }
         };
         let mut variants: Vec<(String, Vec<String>)> = Vec::new();
@@ -847,7 +847,7 @@ fn layout_findings(screens: &[Screen], out: &mut Vec<Finding>) {
             let desc: Vec<String> = variants.iter().map(|(h, st)| format!("{}: {h}", st.join(", "))).collect();
             out.push(Finding {
                 place: format!("{section}/{cat}"),
-                text: format!("шапка разная между магазинами — {}", desc.join("; ")),
+                text: format!("the header differs between stores — {}", desc.join("; ")),
             });
         }
     }
@@ -873,7 +873,10 @@ pub fn is_network_error(line: &str) -> bool {
         "urlopen error", "http error", "error sending request", "dns error", "failed to lookup",
         "connection refused", "connection reset", "timed out", "network is unreachable",
         "temporary failure in name resolution", "certificate", "ssl", "tls handshake",
-        "ошибка сети", "нет сети", "нет соединения", "сервер не ответил", "http 4", "http 5",
+        "http 4", "http 5",
+        // i18n-exempt-begin: Russian network error words looked for in older Russian log lines
+        "ошибка сети", "нет сети", "нет соединения", "сервер не ответил",
+        // i18n-exempt-end
     ];
     MARKS.iter().any(|m| l.contains(m))
 }
@@ -900,14 +903,14 @@ fn journal_findings(place: &str, piece: &str, out: &mut Vec<Finding>) {
             net.push(line);
         }
     }
-    for (kind, list) in [("ошибка сети", net), ("предупреждение QML", qml)] {
+    for (kind, list) in [("network error", net), ("QML warning", qml)] {
         for line in list.iter().take(LINES_PER_PLACE) {
             out.push(Finding { place: place.to_string(), text: format!("{kind}: {line}") });
         }
         if list.len() > LINES_PER_PLACE {
             out.push(Finding {
                 place: place.to_string(),
-                text: format!("{kind}: и ещё {} разных строк (journal.log)", list.len() - LINES_PER_PLACE),
+                text: format!("{kind}: and {} more distinct lines (journal.log)", list.len() - LINES_PER_PLACE),
             });
         }
     }
@@ -921,40 +924,40 @@ fn journal_findings(place: &str, piece: &str, out: &mut Vec<Finding>) {
 /// by line.
 pub fn format_report(cfg: &TourConfig, screens: &[Screen], findings: &[Finding]) -> String {
     let mut out = String::new();
-    out.push_str("Обход главного окна Rexon (rexon-main-window --tour)\n");
+    out.push_str("Rexon main window tour (rexon-main-window --tour)\n");
     out.push_str(&format!(
-        "Что обходили: {} | слово поиска: «{}» | снимков: {} | подозрительного: {}\n",
+        "Toured: {} | search word: \"{}\" | screenshots: {} | suspicious: {}\n",
         cfg.target_label(),
         cfg.query,
         screens.len(),
         findings.len()
     ));
-    out.push_str(&format!("Папка: {}\n\n", cfg.out_dir.display()));
-    out.push_str("== Подозрительное ==\n");
+    out.push_str(&format!("Folder: {}\n\n", cfg.out_dir.display()));
+    out.push_str("== Suspicious ==\n");
     if findings.is_empty() {
-        out.push_str("ничего\n");
+        out.push_str("nothing\n");
     }
     for f in findings {
         out.push_str(&format!("{}: {}\n", f.place, f.text));
     }
-    out.push_str("\n== Экраны ==\n");
+    out.push_str("\n== Screens ==\n");
     for s in screens {
         let r = &s.seen;
         let mut parts = vec![
             s.file.clone(),
-            format!("вид {}", if r.screen.is_empty() { "—" } else { &r.screen }),
-            if r.load_timed_out { "загрузка: НЕ дождались".to_string() } else { format!("загрузка {}", secs(r.load_ms)) },
+            format!("view {}", if r.screen.is_empty() { "—" } else { &r.screen }),
+            if r.load_timed_out { "load: NOT finished in time".to_string() } else { format!("load {}", secs(r.load_ms)) },
         ];
         if s.meta.grid {
-            parts.push(format!("плиток {}, без превью {}", r.tiles, r.no_preview));
+            parts.push(format!("tiles {}, without a preview {}", r.tiles, r.no_preview));
             parts.push(if r.search_visible {
-                format!("поиск ({}, {}) «{}»", r.search_x, r.search_y, r.search_text)
+                format!("search ({}, {}) \"{}\"", r.search_x, r.search_y, r.search_text)
             } else {
-                "поиска нет".to_string()
+                "no search".to_string()
             });
         }
         if !r.status.trim().is_empty() {
-            parts.push(format!("состояние «{}»", r.status.trim()));
+            parts.push(format!("status \"{}\"", r.status.trim()));
         }
         out.push_str(&parts.join(" | "));
         out.push('\n');
@@ -1026,7 +1029,7 @@ mod tests {
             assert!(call_allowed(m), "{m}");
         }
         for m in ["install", "applyTheme", "tourApply", "uninstall", "removeItem", "openSectionAndInstall", "setSource"] {
-            assert!(!call_allowed(m), "{m} обязан быть запрещён");
+            assert!(!call_allowed(m), "{m} must be forbidden");
         }
     }
 
@@ -1035,7 +1038,7 @@ mod tests {
         let plan = plan_category("appearance", "wallpapers", &args(&["ocs", "wallhaven", "axon"]), true, "girl");
         for p in plan {
             if let Planned::Do(cmd) = p {
-                let m = cmd.method().expect("у команды хода есть вызов");
+                let m = cmd.method().expect("a step command has a call");
                 assert!(call_allowed(m), "{m}");
             }
         }
@@ -1088,12 +1091,12 @@ mod tests {
     #[test]
     fn wait_rules() {
         let load = |elapsed, busy| WaitSample { phase: "load".into(), elapsed_ms: elapsed, timeout_ms: 1000, busy, ..Default::default() };
-        assert_eq!(wait_verdict(&load(100, false)), WaitVerdict::Wait, "до паузы набора — рано");
+        assert_eq!(wait_verdict(&load(100, false)), WaitVerdict::Wait, "before the typing pause — too early");
         assert_eq!(wait_verdict(&load(500, false)), WaitVerdict::Ready);
         assert_eq!(wait_verdict(&load(500, true)), WaitVerdict::Wait);
         assert_eq!(wait_verdict(&load(1000, true)), WaitVerdict::Timeout);
         let mut busy_status = load(500, false);
-        busy_status.status = "⏳ что-то".into();
+        busy_status.status = "⏳ something".into();
         assert_eq!(wait_verdict(&busy_status), WaitVerdict::Wait);
         let pv = |no, pending, stable| WaitSample {
             phase: "preview".into(), elapsed_ms: 100, timeout_ms: 1000, no_preview: no,
@@ -1171,12 +1174,12 @@ mod tests {
         );
         let Command::Finish { exit_code, report } = cmd else { unreachable!() };
         assert_eq!(exit_code, EXIT_SUSPICIOUS);
-        assert!(report.contains("01-wallpapers-ocs-browse.png: плитки без превью: 3 из 24"), "{report}");
-        assert!(report.contains("04-wallpapers-wallhaven-search.png: текст поиска пропал"), "{report}");
-        assert!(report.contains("шапка разная между магазинами"), "{report}");
-        assert!(report.contains("предупреждение QML: warning: qrc:/x/AppearancePage.qml"), "{report}");
-        assert!(report.contains("ошибка сети: info: rexon: <urlopen error timed out>"), "{report}");
-        assert!(!report.contains("REXON-TOUR"), "console.log — не предупреждение: {report}");
+        assert!(report.contains("01-wallpapers-ocs-browse.png: tiles without a preview: 3 of 24"), "{report}");
+        assert!(report.contains("04-wallpapers-wallhaven-search.png: the search text is lost"), "{report}");
+        assert!(report.contains("the header differs between stores"), "{report}");
+        assert!(report.contains("QML warning: warning: qrc:/x/AppearancePage.qml"), "{report}");
+        assert!(report.contains("network error: info: rexon: <urlopen error timed out>"), "{report}");
+        assert!(!report.contains("REXON-TOUR"), "console.log is not a warning: {report}");
     }
 
     #[test]
@@ -1184,14 +1187,14 @@ mod tests {
         let mut t = Tour::new(cfg(Some("appearance"), Some("nope")));
         t.next(None, "");
         let open = Report { ok: true, built: true, kind: "appearance".into(), categories: args(&["icons"]), ..Default::default() };
-        let Command::Finish { report, exit_code } = t.next(Some(open), "") else { panic!("обход обязан кончиться") };
+        let Command::Finish { report, exit_code } = t.next(Some(open), "") else { panic!("the tour must finish") };
         assert_eq!(exit_code, EXIT_SUSPICIOUS);
-        assert!(report.contains("подраздела «nope» нет"), "{report}");
+        assert!(report.contains("subsection \"nope\" is not"), "{report}");
 
         let mut t = Tour::new(cfg(Some("steam"), None));
         t.next(None, "");
         let Command::Finish { report, .. } = t.next(Some(Report::default()), "") else { panic!() };
-        assert!(report.contains("страница раздела не построилась"), "{report}");
+        assert!(report.contains("the section page was not built"), "{report}");
     }
 
     #[test]
@@ -1213,9 +1216,9 @@ mod tests {
         }
         assert_eq!(opened, crate::qt_main::SECTIONS.to_vec());
         let Command::Finish { report, .. } = cmd else { unreachable!() };
-        assert!(report.contains("загрузка 7,0 с (дольше 5,0 с)"), "{report}");
+        assert!(report.contains("load took 7.0 s (longer than 5.0 s)"), "{report}");
         // Other window sections have no tiles — there are no "empty results" there.
-        assert!(!report.contains("пустая выдача"), "{report}");
+        assert!(!report.contains("empty results"), "{report}");
     }
 
     #[test]
@@ -1225,12 +1228,12 @@ mod tests {
         t.next(Some(Report { built: true, kind: "appearance".into(), categories: args(&["icons"]), ..Default::default() }), "");
         let cmd = t.next(Some(Report { ok: true, ..Default::default() }), "");
         assert!(matches!(cmd, Command::Capture { .. }));
-        let (report, code) = t.report("", Some("общий тайм-аут 60 с"));
+        let (report, code) = t.report("", Some("overall timeout 60 s"));
         assert_eq!(code, EXIT_TIMEOUT);
-        assert!(report.contains("ПРЕРВАН: общий тайм-аут 60 с (на команде «снимок 01-icons-main-browse.png»)"), "{report}");
+        assert!(report.contains("INTERRUPTED: overall timeout 60 s (at command \"screenshot 01-icons-main-browse.png\")"), "{report}");
         t.next(Some(Report { saved: true, screen: "grid".into(), ..Default::default() }), "");
         let (report, _) = t.report("", None);
-        assert!(report.contains("пустая выдача"), "{report}");
+        assert!(report.contains("empty results"), "{report}");
     }
 
     #[test]
@@ -1239,6 +1242,6 @@ mod tests {
         assert_eq!(j, r#"{"cmd":"setSource","method":"tourSetSource","key":"aur"}"#);
         let r = Report::from_json(r#"{"ok":true,"sources":["ocs"],"search":true,"unknown":1}"#);
         assert!(r.ok && r.search && r.sources == vec!["ocs".to_string()]);
-        assert!(!Report::from_json("не json").error.is_empty());
+        assert!(!Report::from_json("not json").error.is_empty());
     }
 }

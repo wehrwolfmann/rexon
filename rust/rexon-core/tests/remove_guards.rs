@@ -188,7 +188,7 @@ mod helper {
 /// Permanent things per family: kernels, drivers, firmware, microcode — a refusal with code 2
 /// and not a single package manager call; an ordinary package is removed.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
 fn помощник_не_снимает_вечное_по_семействам() {
     let st = helper::stand("vital");
     for v in [
@@ -208,7 +208,7 @@ fn помощник_не_снимает_вечное_по_семействам()
 /// display-manager.service link (unit name, file owner, LightDM greeters)
 /// and the graphical session's desktop by logind's `Desktop=` (groups expanded).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
 fn помощник_не_снимает_текущий_стол_и_экран_входа() {
     let st = helper::stand("current");
     let xfce = [("FAKE_DESKTOP", "XFCE"), ("FAKE_OWNER", "lightdm-owner")];
@@ -234,7 +234,7 @@ fn помощник_не_снимает_текущий_стол_и_экран_в
 /// Installing — only from the core's tables: a foreign name is rejected without calling
 /// pacman, the names of every table pass.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
 fn помощник_ставит_только_из_таблиц() {
     let st = helper::stand("install");
     let (code, out, _) = st.run(&["arch", "install", "evil-tool"], &[]);

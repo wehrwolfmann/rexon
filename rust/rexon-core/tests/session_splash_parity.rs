@@ -55,7 +55,7 @@ const SOCK: &str = "/HOME/run/rexon-splash-mpv.sock";
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn constants_and_paths() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -146,7 +146,7 @@ fn fix_paths_honor_xdg_config_home() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn launcher_and_unit_texts() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -207,7 +207,7 @@ fn vdf_names() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn scan_startup_movies() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -286,7 +286,7 @@ fn hybrid_flags() {
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn lnf_theme_texts() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -372,7 +372,7 @@ fn backup_rollback_decisions() {
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_texts() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -383,7 +383,7 @@ fn kwin_rule_texts() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_create_empty() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -395,7 +395,7 @@ fn kwin_rule_create_empty() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_append_to_existing() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -407,7 +407,7 @@ fn kwin_rule_append_to_existing() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_uptodate_untouched() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -421,7 +421,7 @@ fn kwin_rule_uptodate_untouched() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_migrate_old() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -433,7 +433,7 @@ fn kwin_rule_migrate_old() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_number_gaps() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -445,7 +445,7 @@ fn kwin_rule_number_gaps() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_broken_general_fixed() {
     // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
@@ -486,7 +486,7 @@ fn general(rules: &str, count: usize) -> String {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_title_follows_language() {
     {
         let _lang = i18n_pin::en();
@@ -520,7 +520,7 @@ fn kwin_rule_old_russian_found_and_renamed() {
 
 /// A rule with an English name for a person with the Russian language.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn kwin_rule_english_found_under_russian() {
     let _lang = i18n_pin::ru();
     let en = "Rexon: startup movie on top of everything";
@@ -534,7 +534,7 @@ fn kwin_rule_english_found_under_russian() {
 /// is found by the translation even without `wmclass` (edited by hand), no second
 /// block appears.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/de.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/de.po with the real msgfmt")]
 fn kwin_rule_german_found_by_title() {
     let dir = std::env::temp_dir().join(format!("rexon-kwin-de-{}", std::process::id()));
     let mo = rexon_core::i18n::catalog_file(&dir, "de", "mo");
@@ -751,7 +751,7 @@ fn mpv_argv_x11_window() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn mpv_argv_x11_overlay() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -772,7 +772,7 @@ fn mpv_argv_x11_overlay() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn helper_fallback_chain() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -791,7 +791,7 @@ fn helper_fallback_chain() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn play_messages() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -830,7 +830,7 @@ fn play_route_decisions() {
 // ============================================================================
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn autostart_routes() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -990,7 +990,7 @@ fn appinfo_names_binary_vdf() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn enrich_movies_showcase_fields() {
     let _lang = i18n_pin::ru();
     let g = sc();
@@ -1017,7 +1017,7 @@ fn enrich_movies_showcase_fields() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn describe_custom_record() {
     let _lang = i18n_pin::ru();
     let g = sc();
@@ -1604,7 +1604,7 @@ fn flow_play_wayland_helper_relay_order() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_play_helper_dead_falls_back_to_window_mpv() {
     let _lang = i18n_pin::ru();
     // The helper died before the IPC socket → a transparent fallback to windowed mpv + the KWin rule.
@@ -1666,7 +1666,7 @@ fn flow_play_x11_overlay_poster_before_map() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_play_x11_cold_start_waits_for_compositor() {
     let _lang = i18n_pin::ru();
     // A cold login: there is no compositor yet — we wait for it under a black layer.
@@ -1745,7 +1745,7 @@ fn heal_ksplashrc_decision() {
 /// the customer must choose. We check ALL branches of the decision: silence in either
 /// direction is exactly the defect here.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn splash_slot_conflict_branches() {
     let _lang = i18n_pin::ru();
     // No hybrid — the slot is free, nothing to ask about, whatever the kind.
@@ -1786,7 +1786,7 @@ fn splash_slot_conflict_branches() {
 /// The texts of both outcomes are human and jargon-free: technology names
 /// in Latin letters, "KSplash hybrid" is not shown to the customer.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn splash_slot_texts_are_human() {
     let _lang = i18n_pin::ru();
     let c = ss::splash_slot_conflict("splash", "Breeze", true).unwrap();
@@ -1809,7 +1809,7 @@ fn splash_slot_texts_are_human() {
 /// only then the video jumped out. The real run must restore the binding
 /// ITSELF, before showing, and move the foreign theme into a backup for an honest rollback.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_play_heals_foreign_ksplashrc_theme() {
     let _lang = i18n_pin::ru();
     let mut io = heal_fixture(Some("[KSplash]\nTheme=org.kde.breezedark.desktop\nEngine=KSplashQML\n"));
@@ -1837,7 +1837,7 @@ fn flow_play_heals_foreign_ksplashrc_theme() {
 /// The key was lost entirely (a live case: ksplashrc turned out EMPTY) — then an
 /// empty string goes into the backup, and rollback restores the "there was no key" state.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_play_heals_empty_ksplashrc() {
     let _lang = i18n_pin::ru();
     let mut io = heal_fixture(Some(""));
@@ -1910,7 +1910,7 @@ fn flow_play_nonblocking_does_not_touch_ksplashrc() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_install_hybrid_writes_theme_unit_and_config() {
     let _lang = i18n_pin::ru();
     let mut io = with_config(
@@ -1968,7 +1968,7 @@ fn flow_install_hybrid_without_kwriteconfig_stops_with_reason() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_uninstall_hybrid_restores_previous_theme() {
     let _lang = i18n_pin::ru();
     let unit = "/HOME/.config/systemd/user/rexon-session-splash.service";
@@ -2005,7 +2005,7 @@ fn flow_uninstall_hybrid_restores_previous_theme() {
 /// and the autostart `.desktop` call the window binary — without an interpreter, even when
 /// the `rexon` launcher is in PATH. With the Python entry — the old lines.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_login_hooks_follow_launch_entry() {
     let _lang = i18n_pin::ru();
     use rexon_core::installer::LaunchEntry;
@@ -2067,7 +2067,7 @@ fn flow_login_hooks_follow_launch_entry() {
 /// has no `rexon` package: nothing was shown at login, and
 /// there was no way to find out.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_login_hooks_refuse_when_nothing_to_launch() {
     let _lang = i18n_pin::ru();
     // There is NO `rexon` launcher in PATH (`with_bin("rexon")` not called).
@@ -2103,7 +2103,7 @@ fn flow_login_hooks_refuse_when_nothing_to_launch() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_install_autostart_routes_through_steps() {
     let _lang = i18n_pin::ru();
     // Hybrid possible and installed → the .desktop is removed.
@@ -2159,7 +2159,7 @@ fn flow_hybrid_supported_short_circuits() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_scan_reads_steam_tree() {
     let _lang = i18n_pin::ru();
     let root = "/HOME/.local/share/Steam";
@@ -2186,7 +2186,7 @@ fn flow_scan_reads_steam_tree() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_preview_frame_retries_first_frame_and_caches() {
     let _lang = i18n_pin::ru();
     let video = "/видео.webm";
@@ -2219,7 +2219,7 @@ fn flow_preview_frame_retries_first_frame_and_caches() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_rotation_picks_next_and_saves() {
     let _lang = i18n_pin::ru();
     let a = "/a.webm";
@@ -2273,7 +2273,7 @@ fn slot_fixture() -> FakeIo {
 /// (the Rust window and the Python owner of the live product): the branching "Yes/No → what
 /// to do" lives in the core, and every branch is checked here.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_resolve_splash_slot_all_answers() {
     let _lang = i18n_pin::ru();
     let unit_rm = "rm /HOME/.config/systemd/user/rexon-session-splash.service";
@@ -2326,7 +2326,7 @@ fn flow_resolve_splash_slot_all_answers() {
 
 /// Finishing the plan: the slot goes back to the video, the note is only added on success.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_finish_splash_slot_heals_and_notes() {
     let _lang = i18n_pin::ru();
     assert_eq!(ss::msg_with_slot_note("Готово.", "Ролик на месте.", true), "Готово. Ролик на месте.");
@@ -2448,7 +2448,7 @@ fn english_phrases_read_naturally() {
 /// The same texts in Russian — verbatim as before moving to the catalog (snapshot
 /// `ca42e74^`), with «guillemets».
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_slot_texts_as_before() {
     let _lang = i18n_pin::ru();
     assert_eq!(ss::origin_label(ss::ORIGIN_BUILTIN), "Встроенная в Steam");
@@ -2483,7 +2483,7 @@ fn splash_none_tile_asks_in_own_words() {
 /// Built-in videos — exactly those lying in the client's `steamui/movies`
 /// (November 2026), in the old order and with Valve's new devices at the end.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn builtin_names_cover_new_steam_devices() {
     let keys: Vec<&str> = ss::BUILTIN_NAMES.iter().map(|(k, _)| *k).collect();
     assert_eq!(
@@ -2529,7 +2529,7 @@ fn builtin_names_cover_new_steam_devices() {
 /// `config/uioverrides/movies/*.webm` — as in Steam itself: only `.webm`
 /// (case-sensitive), hidden ones are skipped, a `.jpg` thumbnail next to it.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn scan_reads_custom_movies_like_steam() {
     let _lang = i18n_pin::ru();
     let custom: Vec<String> = [
@@ -2587,7 +2587,7 @@ fn scan_reads_custom_movies_like_steam() {
 
 /// The live scan route: the executor lists `uioverrides/movies`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_scan_reads_custom_movies_dir() {
     let _lang = i18n_pin::ru();
     let root = "/HOME/.local/share/Steam";
@@ -2628,7 +2628,7 @@ fn astream(codec: &str) -> Value {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn movie_probe_verdicts() {
     let _lang = i18n_pin::ru();
     use ss::MovieVerdict::{AsIs, Reject, Transcode};
@@ -2712,7 +2712,7 @@ fn movie_probe_verdicts() {
 
 /// The video is checked by the same ffprobe as the duration for the showcase.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn flow_probe_movie_runs_ffprobe() {
     let _lang = i18n_pin::ru();
     let out = probe_json("matroska,webm", Some("4.0"), json!([vstream("vp9", 1280, 720)]));
@@ -2732,7 +2732,7 @@ fn flow_probe_movie_runs_ffprobe() {
 /// Real small videos made by ffmpeg in a temporary directory — parsing
 /// live ffprobe output, not only samples.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: ffmpeg и ffprobe")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: ffmpeg and ffprobe")]
 fn movie_probe_on_real_clips() {
     use std::process::Command;
     let have = |b: &str| Command::new(b).arg("-version").output().map(|o| o.status.success()).unwrap_or(false);
@@ -2788,4 +2788,456 @@ fn custom_movie_texts_in_english() {
         assert!(!text.is_empty() && !has_cyrillic(&text), "{text}");
     }
     assert!(ss::msg_movie_too_small(320, 240).contains("(320×240)"));
+}
+
+// ============================================================================
+// Own clips: copy into our folder, conversion, Steam's choice, deletion
+// ============================================================================
+
+/// A copied clip gets a safe Latin name: Steam builds an address from it,
+/// and how it copes with Cyrillic and spaces was not checked.
+#[test]
+fn own_movie_names_are_safe_latin() {
+    assert_eq!(ss::safe_movie_stem("Мой ролик 2024"), "moy-rolik-2024");
+    assert_eq!(ss::safe_movie_stem("Days Gone — Intro!"), "days-gone-intro");
+    assert_eq!(ss::safe_movie_stem("Щедрий вечір"), "shchedriy-vechir");
+    let cjk = ss::safe_movie_stem("和风");
+    assert!(cjk.starts_with("movie-") && cjk.len() == "movie-".len() + 8, "{cjk}");
+    assert_eq!(cjk, ss::safe_movie_stem("和风"), "the same name — the same file name");
+    assert_eq!(ss::safe_movie_stem("   "), "startup-movie");
+    assert!(ss::safe_movie_stem("Мой ролик")
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+
+    let existing: Vec<String> = ["intro.webm", "Intro-2.webm", "x.jpg"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(ss::unique_movie_file_name("new", ".webm", &existing), "new.webm");
+    assert_eq!(ss::unique_movie_file_name("intro", ".webm", &existing), "intro-3.webm");
+    assert_eq!(ss::movie_part_name("intro.webm"), ".intro.webm.part");
+    assert_eq!(ss::split_name("/a/Мой ролик.WebM"), ("Мой ролик.WebM".to_string(), "Мой ролик".to_string()));
+    assert_eq!(ss::split_name("/a/.hidden"), (".hidden".to_string(), ".hidden".to_string()));
+}
+
+/// `-progress pipe:1` lines → seconds done; the share needs a known duration.
+#[test]
+fn ffmpeg_progress_lines() {
+    assert_eq!(ss::parse_ffmpeg_progress("out_time_us=2500000"), Some(2.5));
+    assert_eq!(ss::parse_ffmpeg_progress("out_time_ms=1000000"), Some(1.0));
+    assert_eq!(ss::parse_ffmpeg_progress("out_time=00:01:02.500000"), Some(62.5));
+    assert_eq!(ss::parse_ffmpeg_progress("out_time_us=N/A"), None);
+    assert_eq!(ss::parse_ffmpeg_progress("progress=continue"), None);
+    assert_eq!(ss::progress_fraction(2.0, 4.0), Some(0.5));
+    assert_eq!(ss::progress_fraction(9.0, 4.0), Some(1.0));
+    assert_eq!(ss::progress_fraction(1.0, 0.0), None);
+    let argv = ss::transcode_argv("/usr/bin/ffmpeg", "/in.mp4", "/out/.a.webm.part");
+    let line = argv.join(" ");
+    for needle in ["libvpx-vp9", "libopus", "-progress pipe:1", "-f webm", "-map 0:a:0?"] {
+        assert!(line.contains(needle), "{needle}: {line}");
+    }
+    assert_eq!(argv.last().map(String::as_str), Some("/out/.a.webm.part"));
+}
+
+/// Steam's own choice from `config.vdf`: at any depth, «Shuffle» means none.
+#[test]
+fn steam_choice_from_config_vdf() {
+    let vdf = "\"InstallConfigStore\"\n{\n\t\"Software\"\n\t{\n\t\t\"Valve\"\n\t\t{\n\t\t\t\"Steam\"\n\t\t\t{\n\
+               \t\t\t\t\"Customization\"\n\t\t\t\t{\n\t\t\t\t\t\"StartupMovie\"\n\t\t\t\t\t{\n\
+               \t\t\t\t\t\t\"MovieID\"\t\t\"0\"\n\t\t\t\t\t\t\"LocalPath\"\t\t\"/uioverrides/movies/intro.webm\"\n\
+               \t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n";
+    assert_eq!(ss::parse_steam_startup_movie(vdf).as_deref(), Some("/uioverrides/movies/intro.webm"));
+    let top = "\"Customization\" { \"StartupMovie\" { \"LocalPath\" \"/communityitemscache/startupmovies/1_a.webM\" } }";
+    assert_eq!(
+        ss::parse_steam_startup_movie(top).as_deref(),
+        Some("/communityitemscache/startupmovies/1_a.webM")
+    );
+    let shuffle = "\"Customization\" { \"StartupMovie\" { \"LocalPath\" \"/x.webm\" \"Shuffle\" \"1\" } }";
+    assert_eq!(ss::parse_steam_startup_movie(shuffle), None);
+    assert_eq!(ss::parse_steam_startup_movie("\"InstallConfigStore\" { }"), None);
+    assert_eq!(ss::parse_steam_startup_movie(""), None);
+    assert_eq!(
+        ss::steam_choice_path("/S/", "/uioverrides/movies/intro.webm"),
+        "/S/config/uioverrides/movies/intro.webm"
+    );
+
+    let own = vec!["/S/config/uioverrides/movies".to_string(), "/H/.local/share/rexon/startup-movies".to_string()];
+    let mut movies = vec![
+        json!({"path": "/S/steamui/movies/deck_startup.webm"}),
+        json!({"path": "/S/config/communityitemscache/startupmovies/1_a.webm"}),
+        json!({"path": "/S/config/uioverrides/movies/intro.webm"}),
+        json!({"path": "/H/.local/share/rexon/startup-movies/old.mp4"}),
+    ];
+    ss::mark_movies(&mut movies, Some("/S/config/communityitemscache/startupmovies/1_a.webM"), &own);
+    let flags: Vec<(bool, bool)> = movies
+        .iter()
+        .map(|m| (m["steam_selected"].as_bool().unwrap(), m["deletable"].as_bool().unwrap()))
+        .collect();
+    assert_eq!(flags, vec![(false, false), (true, false), (false, true), (false, true)]);
+}
+
+/// Only clips lying directly in our folders are «own»; an old selection
+/// outside them (and outside Steam) must be copied.
+#[test]
+fn own_movie_paths_and_migration() {
+    let own = vec!["/S/config/uioverrides/movies".to_string(), "/H/.local/share/rexon/startup-movies".to_string()];
+    assert!(ss::is_own_movie_path("/S/config/uioverrides/movies/a.webm", &own));
+    assert!(ss::is_own_movie_path("/H/.local/share/rexon/startup-movies/b.mp4", &own));
+    assert!(!ss::is_own_movie_path("/S/steamui/movies/deck_startup.webm", &own));
+    assert!(!ss::is_own_movie_path("/S/config/uioverrides/movies/sub/a.webm", &own));
+    assert!(!ss::is_own_movie_path("/S/config/uioverrides/movies/../../steamui/movies/a.webm", &own));
+    assert!(!ss::is_own_movie_path("/S/config/uioverrides/movies/.a.webm.part", &own));
+    assert!(!ss::is_own_movie_path("a.webm", &own));
+
+    assert!(ss::needs_migration("/H/Видео/мой.mp4", true, &own, Some("/S")));
+    assert!(ss::needs_migration("/H/Видео/мой.mp4", true, &own, None));
+    assert!(!ss::needs_migration("/H/Видео/мой.mp4", false, &own, Some("/S")), "no file — nothing to copy");
+    assert!(!ss::needs_migration("/S/steamui/movies/deck_startup.webm", true, &own, Some("/S")));
+    assert!(!ss::needs_migration("/S/config/uioverrides/movies/a.webm", true, &own, Some("/S")));
+    assert!(!ss::needs_migration("", true, &own, Some("/S")));
+}
+
+/// The config after a move and after a deletion.
+#[test]
+fn config_after_move_and_delete() {
+    let cfg = json!({"path": "/old.mp4", "sound": false, "favorites": ["/old.mp4", "/b.webm"], "hybrid": true});
+    let moved = ss::config_with_replaced_movie(&cfg, "/old.mp4", "/new.mp4");
+    assert_eq!(moved["path"], "/new.mp4");
+    assert_eq!(moved["favorites"], json!(["/new.mp4", "/b.webm"]));
+    assert_eq!((moved["sound"].clone(), moved["hybrid"].clone()), (json!(false), json!(true)));
+
+    let gone = ss::config_without_movie(&cfg, "/old.mp4", Some("/b.webm"));
+    assert_eq!(gone["path"], "/b.webm");
+    assert_eq!(gone["favorites"], json!(["/b.webm"]));
+    let other = ss::config_without_movie(&cfg, "/b.webm", None);
+    assert_eq!(other["path"], "/old.mp4", "deleting another clip keeps the choice");
+    assert_eq!(other["favorites"], json!(["/old.mp4"]));
+    assert_eq!(ss::config_without_movie(&cfg, "/old.mp4", None)["path"], "");
+}
+
+/// With Steam a clip must be a webm Steam plays; without Steam — a plain copy.
+#[test]
+fn import_action_by_verdict_and_steam() {
+    let check = |fmt: &str, st: Value| ss::check_movie_probe(&probe_json(fmt, Some("4"), st));
+    let webm = check("matroska,webm", json!([vstream("vp9", 1280, 720)]));
+    let mp4 = check("mov,mp4,m4a,3gp,3g2,mj2", json!([vstream("h264", 1280, 720)]));
+    let small = check("matroska,webm", json!([vstream("vp9", 320, 240)]));
+    assert_eq!(ss::import_action(&webm, true, true), ss::ImportAction::Copy);
+    // An .mkv with VP9 inside: Matroska doctype — converted for Steam.
+    assert_eq!(ss::import_action(&webm, true, false), ss::ImportAction::Transcode);
+    assert_eq!(ss::import_action(&webm, false, false), ss::ImportAction::Copy);
+    assert_eq!(ss::import_action(&mp4, true, false), ss::ImportAction::Transcode);
+    assert_eq!(ss::import_action(&mp4, false, false), ss::ImportAction::Copy);
+    assert!(matches!(ss::import_action(&small, true, true), ss::ImportAction::Refuse(_)));
+}
+
+const STEAM: &str = "/HOME/.local/share/Steam";
+const OWN_STEAM: &str = "/HOME/.local/share/Steam/config/uioverrides/movies";
+const OWN_REXON: &str = "/HOME/.local/share/rexon/startup-movies";
+const SPLASH_CFG: &str = "/HOME/.config/rexon/session_splash.json";
+
+fn steam_io() -> FakeIo {
+    FakeIo::new().with_dir(STEAM).with_dir(&format!("{STEAM}/config"))
+}
+
+fn import(io: &mut FakeIo, src: &str, cancel: bool) -> (ss::ImportOutcome, Vec<ss::ImportStage>) {
+    let mut stages = Vec::new();
+    let cancelled = || cancel;
+    let out = Splash::new(io, HOME).import_movie(src, &cancelled, &mut |s| stages.push(s));
+    (out, stages)
+}
+
+/// A webm Steam plays is copied as is into Steam's folder, under a Latin
+/// name, through a hidden temporary file, and chosen for login.
+#[test]
+fn flow_import_copies_webm_into_steam_folder() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/Видео/Мой ролик.webm";
+    let out = probe_json("matroska,webm", Some("4.0"), json!([vstream("vp9", 1280, 720)]));
+    let mut io = steam_io().with_file(src).with_bin("ffprobe").with_run("-show_streams", 0, &out, "");
+    let (res, stages) = import(&mut io, src, false);
+    assert!(res.ok, "{res:?}");
+    assert_eq!(res.path, format!("{OWN_STEAM}/moy-rolik.webm"));
+    assert!(io.has(&format!("copy {src} → {OWN_STEAM}/.moy-rolik.webm.part")), "{:#?}", io.journal);
+    assert!(io.has(&format!("replace {OWN_STEAM}/.moy-rolik.webm.part → {OWN_STEAM}/moy-rolik.webm")));
+    assert!(!io.has("libvpx-vp9"), "nothing to convert");
+    assert_eq!(stages, vec![ss::ImportStage::Checking, ss::ImportStage::Copying]);
+    let cfg = ss::parse_config(io.written.get(SPLASH_CFG).map(String::as_str));
+    assert_eq!(cfg["path"], res.path.as_str());
+    assert!(res.message.contains("moy-rolik") && res.message.contains("Steam"), "{}", res.message);
+}
+
+/// An mp4 is converted (VP9 + Opus) with progress; the original is untouched.
+#[test]
+fn flow_import_transcodes_for_steam() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/clip.mp4";
+    let out = probe_json("mov,mp4,m4a,3gp,3g2,mj2", Some("4.0"), json!([vstream("h264", 1920, 1080)]));
+    let mut io = steam_io()
+        .with_file(src)
+        .with_bin("ffprobe")
+        .with_bin("ffmpeg")
+        .with_run("-show_streams", 0, &out, "")
+        .with_run("libvpx-vp9", 0, "out_time_us=1000000\nprogress=continue\nout_time_us=4000000\nprogress=end\n", "");
+    let (res, stages) = import(&mut io, src, false);
+    assert!(res.ok, "{res:?}");
+    assert_eq!(res.path, format!("{OWN_STEAM}/clip.webm"));
+    assert!(stages.contains(&ss::ImportStage::Converting(Some(0.25))), "{stages:?}");
+    assert!(stages.contains(&ss::ImportStage::Converting(Some(1.0))), "{stages:?}");
+    assert!(!io.has(&format!("rm {src}")) && !io.has(&format!("copy {src}")));
+}
+
+/// A cancelled conversion leaves no half-written file and changes no choice.
+#[test]
+fn flow_import_cancel_removes_partial_file() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/clip.mp4";
+    let out = probe_json("mov,mp4,m4a,3gp,3g2,mj2", Some("4.0"), json!([vstream("h264", 1920, 1080)]));
+    let mut io = steam_io()
+        .with_file(src)
+        .with_bin("ffprobe")
+        .with_bin("ffmpeg")
+        .with_run("-show_streams", 0, &out, "");
+    let (res, _) = import(&mut io, src, true);
+    assert!(!res.ok);
+    assert_eq!(res.message, ss::msg_import_cancelled());
+    assert!(io.has(&format!("rm {OWN_STEAM}/.clip.webm.part")));
+    assert!(!io.written.contains_key(SPLASH_CFG));
+}
+
+/// Without Steam the clip goes into Rexon's own folder as is (mpv plays it).
+#[test]
+fn flow_import_without_steam_keeps_format() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/clip.MP4";
+    let out = probe_json("mov,mp4,m4a,3gp,3g2,mj2", Some("4.0"), json!([vstream("h264", 1920, 1080)]));
+    let mut io = FakeIo::new().with_file(src).with_bin("ffprobe").with_run("-show_streams", 0, &out, "");
+    let (res, _) = import(&mut io, src, false);
+    assert!(res.ok, "{res:?}");
+    assert_eq!(res.path, format!("{OWN_REXON}/clip.mp4"));
+    assert!(!io.has("libvpx-vp9"));
+}
+
+/// No ffprobe — it is installed right away; if that fails, nothing is done.
+#[test]
+fn flow_import_needs_ffprobe() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/clip.webm";
+    let mut io = steam_io().with_file(src);
+    let (res, stages) = import(&mut io, src, false);
+    assert!(!res.ok);
+    assert_eq!(stages, vec![ss::ImportStage::Installing]);
+    assert!(res.message.contains("ffmpeg"), "{}", res.message);
+    assert!(!io.has("copy ") && !io.has("makedirs"), "all or nothing: {:#?}", io.journal);
+}
+
+/// A refused clip is not copied, the reason is the check's.
+#[test]
+fn flow_import_refuses_unfit_clip() {
+    let _lang = i18n_pin::en();
+    let src = "/HOME/tiny.webm";
+    let out = probe_json("matroska,webm", Some("4.0"), json!([vstream("vp9", 320, 240)]));
+    let mut io = steam_io().with_file(src).with_bin("ffprobe").with_run("-show_streams", 0, &out, "");
+    let (res, _) = import(&mut io, src, false);
+    assert!(!res.ok);
+    assert_eq!(res.message, ss::msg_movie_too_small(320, 240));
+    assert!(!io.has("copy "));
+}
+
+/// Steam's choice and the «own» mark reach the showcase; Rexon's folder is
+/// scanned too.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
+fn flow_scan_marks_own_and_steam_choice() {
+    let _lang = i18n_pin::ru();
+    let mut io = steam_io()
+        .with_dir(&format!("{STEAM}/steamui/movies"))
+        .with_file(&format!("{STEAM}/steamui/movies/deck_startup.webm"))
+        .with_dir(OWN_STEAM)
+        .with_file(&format!("{OWN_STEAM}/intro.webm"))
+        .with_dir(OWN_REXON)
+        .with_file(&format!("{OWN_REXON}/old.mp4"))
+        .with_file(&format!("{STEAM}/config/config.vdf"));
+    io.texts.insert(
+        format!("{STEAM}/config/config.vdf"),
+        "\"InstallConfigStore\" { \"Customization\" { \"StartupMovie\" { \"LocalPath\" \"/uioverrides/movies/intro.webm\" } } }"
+            .into(),
+    );
+    let movies = Splash::new(&mut io, HOME).scan_startup_movies();
+    let rows: Vec<(String, bool, bool)> = movies
+        .iter()
+        .map(|m| {
+            (
+                m["path"].as_str().unwrap().rsplit('/').next().unwrap().to_string(),
+                m["steam_selected"].as_bool().unwrap(),
+                m["deletable"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("deck_startup.webm".to_string(), false, false),
+            ("intro.webm".to_string(), true, true),
+            ("old.mp4".to_string(), false, true),
+        ]
+    );
+    assert_eq!(movies[2]["origin"], "custom");
+    assert_eq!(movies[2]["origin_label"], ss::origin_label(ss::ORIGIN_CUSTOM).as_str());
+}
+
+/// Deleting: only own clips; the selection moves to another found clip.
+#[test]
+fn flow_delete_only_own_and_reselect() {
+    let _lang = i18n_pin::en();
+    let builtin = format!("{STEAM}/steamui/movies/deck_startup.webm");
+    let own = format!("{OWN_STEAM}/intro.webm");
+    let mut io = steam_io()
+        .with_dir(&format!("{STEAM}/steamui/movies"))
+        .with_file(&builtin)
+        .with_dir(OWN_STEAM)
+        .with_file(&own)
+        .with_file(&format!("{OWN_STEAM}/intro.jpg"))
+        .with_file(SPLASH_CFG);
+    io.texts.insert(SPLASH_CFG.into(), json!({"path": own, "sound": true, "favorites": [own]}).to_string());
+    let refused = Splash::new(&mut io, HOME).delete_own_movie(&builtin);
+    assert_eq!(refused, Err(ss::msg_delete_not_own()));
+    assert!(!io.has(&format!("rm {builtin}")));
+
+    let done = Splash::new(&mut io, HOME).delete_own_movie(&own);
+    assert_eq!(done, Ok(ss::msg_deleted("intro")));
+    assert!(io.has(&format!("rm {own}")) && io.has(&format!("rm {OWN_STEAM}/intro.jpg")));
+    let cfg = ss::parse_config(io.texts.get(SPLASH_CFG).map(String::as_str));
+    assert_eq!(cfg["path"], builtin.as_str(), "the splash is not left without a clip");
+    assert_eq!(cfg["favorites"], json!([]));
+}
+
+/// The deletion question warns when Steam itself plays the clip.
+#[test]
+fn flow_delete_question_warns_about_steam_choice() {
+    let _lang = i18n_pin::en();
+    let own = format!("{OWN_STEAM}/intro.webm");
+    let mut io = steam_io().with_file(&format!("{STEAM}/config/config.vdf"));
+    io.texts.insert(
+        format!("{STEAM}/config/config.vdf"),
+        "\"Customization\" { \"StartupMovie\" { \"LocalPath\" \"/uioverrides/movies/intro.webm\" } }".into(),
+    );
+    let q = Splash::new(&mut io, HOME).delete_question(&own);
+    assert_eq!(q, ss::msg_delete_question("intro", true));
+    assert_ne!(q, ss::msg_delete_question("intro", false));
+    assert!(!has_cyrillic(&q));
+}
+
+/// An old selection (a path to someone else's file) is copied: the choice and
+/// the star now point at the copy.
+#[test]
+fn flow_migrate_old_selection() {
+    let _lang = i18n_pin::en();
+    let old = "/HOME/Видео/старый.mp4";
+    let mut io = steam_io().with_file(old).with_file(SPLASH_CFG);
+    io.texts.insert(SPLASH_CFG.into(), json!({"path": old, "sound": false, "favorites": [old]}).to_string());
+    assert_eq!(Splash::new(&mut io, HOME).migration_candidate().as_deref(), Some(old));
+    let res = Splash::new(&mut io, HOME).migrate_movie(old);
+    assert!(res.ok, "{res:?}");
+    // An mp4 is not for Steam: it goes into Rexon's own folder, without conversion.
+    assert_eq!(res.path, format!("{OWN_REXON}/staryy.mp4"));
+    assert!(!io.has("libvpx-vp9"));
+    let cfg = ss::parse_config(io.texts.get(SPLASH_CFG).map(String::as_str));
+    assert_eq!(cfg["path"], res.path.as_str());
+    assert_eq!(cfg["favorites"], json!([res.path]));
+    assert_eq!(cfg["sound"], false);
+    assert_eq!(Splash::new(&mut io, HOME).migration_candidate(), None, "nothing left to move");
+}
+
+/// New captions in English — without Russian.
+#[test]
+fn own_movie_import_texts_in_english() {
+    let _lang = i18n_pin::en();
+    for text in [
+        ss::import_stage_text(ss::ImportStage::Installing),
+        ss::import_stage_text(ss::ImportStage::Checking),
+        ss::import_stage_text(ss::ImportStage::Copying),
+        ss::import_stage_text(ss::ImportStage::Converting(None)),
+        ss::import_stage_text(ss::ImportStage::Converting(Some(0.42))),
+        ss::msg_import_done("a", true),
+        ss::msg_import_done("a", false),
+        ss::msg_import_cancelled(),
+        ss::msg_import_failed("x"),
+        ss::msg_tools_missing("x"),
+        ss::msg_migrated("a"),
+        ss::msg_delete_question("a", true),
+        ss::msg_deleted("a"),
+        ss::msg_delete_not_own(),
+    ] {
+        assert!(!text.is_empty() && !has_cyrillic(&text), "{text}");
+    }
+    assert!(ss::import_stage_text(ss::ImportStage::Converting(Some(0.42))).contains("42%"));
+}
+
+/// Live run on a temporary HOME with a fake Steam folder: real ffmpeg makes an
+/// mkv, the import converts it into a webm Steam plays, cancellation leaves
+/// nothing behind, deletion removes the copy. The real Steam and the real
+/// config are not touched: `XDG_*` are overridden.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: ffmpeg and ffprobe")]
+fn live_import_on_temporary_home() {
+    use std::process::Command;
+    let have = |b: &str| Command::new(b).arg("-version").output().map(|o| o.status.success()).unwrap_or(false);
+    if !have("ffmpeg") || !have("ffprobe") {
+        eprintln!("ffmpeg/ffprobe нет — проверка пропущена");
+        return;
+    }
+    let home = std::env::temp_dir().join(format!("rexon-movie-import-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".local/share/Steam/config")).unwrap();
+    std::fs::create_dir_all(home.join("Видео")).unwrap();
+    let src = home.join("Видео/Мой ролик.mkv");
+    let ok = Command::new("ffmpeg")
+        .args([
+            "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10:duration=2", "-f", "lavfi",
+            "-i", "sine=duration=2", "-c:v", "mpeg4", "-c:a", "mp2", "-shortest",
+        ])
+        .arg(&src)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    assert!(ok, "ffmpeg не сделал исходник");
+    let home_s = home.to_string_lossy().into_owned();
+    let live = || {
+        rexon_core::splash_exec::LiveSplashIo::new(&home_s, "")
+            .with_env("XDG_CONFIG_HOME", "")
+            .with_env("XDG_DATA_HOME", "")
+            .with_env("XDG_CACHE_HOME", "")
+    };
+    let src_s = src.to_string_lossy().into_owned();
+    let dir = home.join(".local/share/Steam/config/uioverrides/movies");
+
+    // Cancelled at once — nothing left.
+    let mut io = live();
+    let res = Splash::new(&mut io, &home_s).import_movie(&src_s, &|| true, &mut |_| {});
+    assert!(!res.ok);
+    let left: Vec<_> = std::fs::read_dir(&dir).map(|r| r.filter_map(|e| e.ok()).collect()).unwrap_or_default();
+    assert!(left.is_empty(), "после отмены осталось: {left:?}");
+
+    // A full import.
+    let mut io = live();
+    let mut stages = Vec::new();
+    let res = Splash::new(&mut io, &home_s).import_movie(&src_s, &|| false, &mut |s| stages.push(s));
+    assert!(res.ok, "{res:?}");
+    assert_eq!(res.path, dir.join("moy-rolik.webm").to_string_lossy());
+    assert!(src.is_file(), "оригинал не тронут");
+    assert!(stages.iter().any(|s| matches!(s, ss::ImportStage::Converting(_))), "{stages:?}");
+    let argv = ss::ffprobe_streams_argv("ffprobe", &res.path);
+    let out = Command::new(&argv[0]).args(&argv[1..]).output().unwrap();
+    let check = ss::check_movie_probe(&String::from_utf8_lossy(&out.stdout));
+    assert_eq!(check.verdict, ss::MovieVerdict::AsIs, "{check:?}");
+    let cfg = std::fs::read_to_string(home.join(".config/rexon/session_splash.json")).unwrap();
+    assert!(cfg.contains("moy-rolik.webm"), "{cfg}");
+
+    // The showcase sees it as own; deletion removes it.
+    let mut io = live();
+    let movies = Splash::new(&mut io, &home_s).scan_startup_movies();
+    let mine = movies.iter().find(|m| m["path"] == res.path.as_str()).expect("ролик в витрине");
+    assert_eq!(mine["deletable"], true);
+    let mut io = live();
+    assert!(Splash::new(&mut io, &home_s).delete_own_movie(&res.path).is_ok());
+    assert!(!std::path::Path::new(&res.path).exists());
+    let _ = std::fs::remove_dir_all(&home);
 }

@@ -1073,7 +1073,7 @@ impl Drop for State {
         }
         let de = self.last_de.get_mut().map(|d| d.clone()).unwrap_or_default();
         let (ok, msg) = commit_pending(pending, &de);
-        rexon_core::log_info!("theme", "удаление на закрытии: {} — {msg}", if ok { "удалось" } else { "не всё" });
+        rexon_core::log_info!("theme", "removal on close: {} — {msg}", if ok { "done" } else { "partial" });
     }
 }
 
@@ -1168,7 +1168,7 @@ impl qobject::AppearanceActions {
             if let Err(e) = favorites::save_raw(&path, &store) {
                 // Silence is not allowed: the star on screen would light up without
                 // surviving a restart.
-                rexon_core::log_warn!("appearance", "избранное не сохранено: {e}");
+                rexon_core::log_warn!("appearance", "favourites not saved: {e}");
             }
         }
         QString::from(&favorite_ids())
@@ -1544,7 +1544,7 @@ impl qobject::AppearanceActions {
         let targets = rexon_core::conky_scan::watch_targets(&ctx, &rexon_core::conky_scan::extra_dirs_for(&ctx));
         std::thread::spawn(move || {
             let Some(mut watch) = rexon_core::conky_scan::Watch::new(targets) else {
-                rexon_core::log_warn!("appearance", "слежка за виджетами Conky не запущена: inotify недоступен");
+                rexon_core::log_warn!("appearance", "Conky widget watch not started: inotify unavailable");
                 return;
             };
             loop {
@@ -1640,7 +1640,7 @@ impl qobject::AppearanceActions {
             let payload = match resolve_linked_card(&state, &card) {
                 Ok(v) => v,
                 Err(why) => {
-                    rexon_core::log_warn!("link", "карточка по ссылке {url}: {why}");
+                    rexon_core::log_warn!("link", "card from link {url}: {why}");
                     json!({
                         "failed": true,
                         "url": url,
@@ -1681,7 +1681,7 @@ impl qobject::AppearanceActions {
             Ok(c) => c,
             Err(e) => {
                 RUNNING.store(false, Ordering::SeqCst);
-                rexon_core::log_warn!("theme", "показ заставки: {e}");
+                rexon_core::log_warn!("theme", "splash preview: {e}");
                 return QString::from(&if e.kind() == std::io::ErrorKind::NotFound {
                     ainst::splash_demo_missing()
                 } else {
@@ -1699,7 +1699,7 @@ impl qobject::AppearanceActions {
                 Err(e) => Some(e.to_string()),
             };
             if let Some(detail) = failed {
-                rexon_core::log_warn!("theme", "показ заставки не удался: {detail}");
+                rexon_core::log_warn!("theme", "splash preview failed: {detail}");
                 let text = QString::from(&ainst::splash_demo_failed(&detail));
                 let _ = handle.queue(move |mut o| o.as_mut().status_message(text));
             }
@@ -2041,17 +2041,17 @@ impl qobject::AppearanceActions {
         let seven_zip = seven_zip_needs_install(&item, &file_name);
         rexon_core::log_info!(
             "theme",
-            "установка «{}» (id {}, категория {}){}",
+            "installing \"{}\" (id {}, category {}){}",
             item.name,
             item.id,
             item.category_id,
-            if apply_after { " с применением" } else { "" }
+            if apply_after { " and applying" } else { "" }
         );
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
             if seven_zip {
                 if let Err(why) = rexon_core::appearance_installer::install_seven_zip_tool_live() {
-                    rexon_core::log_warn!("theme", "bsdtar для «{}» не встал: {why}", item.name);
+                    rexon_core::log_warn!("theme", "bsdtar for \"{}\" not installed: {why}", item.name);
                     finish_action(&state, &handle, rexon_core::appearance_installer::seven_zip_install_failed(&why), false);
                     return;
                 }
@@ -2109,8 +2109,8 @@ impl qobject::AppearanceActions {
         };
         rexon_core::log_info!(
             "aur",
-            "в очередь: «{name}» помощником {helper}{}",
-            if queued.start_worker { ", очередь была пуста" } else { "" }
+            "queued: \"{name}\" via {helper}{}",
+            if queued.start_worker { ", queue was empty" } else { "" }
         );
         aur_broadcast();
         if queued.start_worker {
@@ -2148,7 +2148,7 @@ impl qobject::AppearanceActions {
                     });
                 }
             });
-            rexon_core::log_info!("theme", "установка из Cinnamon Spices: {}", item.id);
+            rexon_core::log_info!("theme", "installing from Cinnamon Spices: {}", item.id);
             let (ok, msg) = cs::live_install(&item, log_sink(&handle), Some(progress));
             finish_action(&state, &handle, msg, ok);
         });
@@ -2165,7 +2165,7 @@ impl qobject::AppearanceActions {
         };
         let state = self.as_ref().get_ref().rust().state.clone();
         let handle = self.as_mut().qt_thread();
-        rexon_core::log_info!("gnome-ext", "установка: {uuid}");
+        rexon_core::log_info!("gnome-ext", "installing: {uuid}");
         std::thread::spawn(move || {
             let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
             let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
@@ -2194,7 +2194,7 @@ impl qobject::AppearanceActions {
                         if let Err(e) = gext::live_journal_edit(&home(), |log| {
                             gext::journal_record(log, &entry, &data_home, &uuid, &now)
                         }) {
-                            rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                            rexon_core::log_warn!("gnome-ext", "installed-items journal: {e}");
                         }
                     }
                     gext::install_message(&name, outcome)
@@ -2220,7 +2220,7 @@ impl qobject::AppearanceActions {
             .and_then(|m| m.get(&id).map(|it| it.install_path.clone()))
             .unwrap_or_default();
         let handle = self.as_mut().qt_thread();
-        rexon_core::log_info!("gnome-ext", "действие {act:?}: {uuid}");
+        rexon_core::log_info!("gnome-ext", "action {act:?}: {uuid}");
         std::thread::spawn(move || {
             let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
             let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
@@ -2231,7 +2231,7 @@ impl qobject::AppearanceActions {
                 if let Err(e) = gext::live_journal_edit(&home(), |log| {
                     gext::journal_forget(log, &uuid);
                 }) {
-                    rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                    rexon_core::log_warn!("gnome-ext", "installed-items journal: {e}");
                 }
             }
             if matches!(act, gext::Action::Toggle | gext::Action::Enable | gext::Action::Disable | gext::Action::Uninstall) {
@@ -2265,7 +2265,7 @@ impl qobject::AppearanceActions {
     }
 
     fn log_out_for_updates(&self) -> bool {
-        let (program, args) = gext::LOGOUT_ARGV.split_first().expect("команда выхода");
+        let (program, args) = gext::LOGOUT_ARGV.split_first().expect("logout command");
         match std::process::Command::new(program)
             .args(args)
             .stdin(std::process::Stdio::null())
@@ -2275,7 +2275,7 @@ impl qobject::AppearanceActions {
         {
             Ok(_) => true,
             Err(e) => {
-                rexon_core::log_warn!("gnome-ext", "выход из сеанса: {e}");
+                rexon_core::log_warn!("gnome-ext", "logout: {e}");
                 false
             }
         }
@@ -2290,7 +2290,7 @@ impl qobject::AppearanceActions {
         }
         let state = self.as_ref().get_ref().rust().state.clone();
         let handle = self.as_mut().qt_thread();
-        rexon_core::log_info!("theme", "установка из файла в раздел «{section}»: {} шт.", paths.len());
+        rexon_core::log_info!("theme", "installing from file into section \"{section}\": {} item(s)", paths.len());
         std::thread::spawn(move || {
             let outcome = rexon_core::local_install::live_install(&paths, &section, log_sink(&handle));
             let payload = serde_json::to_string(&outcome).unwrap_or_default();
@@ -2487,11 +2487,11 @@ impl qobject::AppearanceActions {
             // question (the protection is the password window). If they did not
             // install, the theme is not applied, and it is said why.
             if let Err(why) = installer.prepare_theme_deps(&item, &name) {
-                rexon_core::log_warn!("theme", "наборы темы «{name}» не встали: {why}");
+                rexon_core::log_warn!("theme", "theme sets of \"{name}\" not installed: {why}");
                 finish_action(&state, &handle, why, false);
                 return;
             }
-            rexon_core::log_info!("theme", "применение «{name}» (id {}, вид {:?})", item.id, item.local_kind);
+            rexon_core::log_info!("theme", "applying \"{name}\" (id {}, kind {:?})", item.id, item.local_kind);
             let (ok, mut msg) = installer.apply(&item, &name);
             finish_splash_slot(keep_video, &note, ok, &mut msg);
             if ok {
@@ -2568,7 +2568,7 @@ impl qobject::AppearanceActions {
                         return;
                     }
                 }
-                rexon_core::log_info!("theme", "к удалению: {path}");
+                rexon_core::log_info!("theme", "to remove: {path}");
                 let text = match state.removals.lock() {
                     Ok(mut queue) => queue.mark(&path, &item.name, &item.id),
                     Err(_) => return,
@@ -2584,7 +2584,7 @@ impl qobject::AppearanceActions {
                 std::thread::spawn(move || {
                     let logger = log_sink(&handle);
                     let mut installer = LiveInstaller::new("", logger);
-                    rexon_core::log_info!("theme", "удаление системной темы без пакета: {path}");
+                    rexon_core::log_info!("theme", "removing a system theme without a package: {path}");
                     let (ok, msg) = installer.remove_loose_system_theme(&path);
                     finish_action(&state, &handle, msg.clone(), ok);
                     post(&handle, move |mut object| object.as_mut().removal_done(QString::from(&msg)));
@@ -2609,7 +2609,7 @@ impl qobject::AppearanceActions {
                 }
                 let handle = self.as_mut().qt_thread();
                 std::thread::spawn(move || {
-                    rexon_core::log_info!("theme", "виджет Conky не из Rexon — в корзину: {path}");
+                    rexon_core::log_info!("theme", "Conky widget not from Rexon — to trash: {path}");
                     let (ok, msg) = rexon_core::conky_scan::live_remove_found(&path);
                     if let Ok(mut cache) = state.scan_cache.lock() {
                         cache.clear();
@@ -2628,7 +2628,7 @@ impl qobject::AppearanceActions {
                 let handle = self.as_mut().qt_thread();
                 let item_id = item.id.clone();
                 std::thread::spawn(move || {
-                    rexon_core::log_info!("theme", "запущенный виджет Conky — остановить и в корзину: {path}");
+                    rexon_core::log_info!("theme", "running Conky widget — stop and move to trash: {path}");
                     let (ok, msg) = removal::live_remove_running_conky(&path, &item_id);
                     if let Ok(mut cache) = state.scan_cache.lock() {
                         cache.clear();
@@ -2673,7 +2673,7 @@ impl qobject::AppearanceActions {
         if !crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text)) {
             return true;
         }
-        rexon_core::log_info!("gnome-ext", "к удалению: {uuid}");
+        rexon_core::log_info!("gnome-ext", "to remove: {uuid}");
         let text = match state.removals.lock() {
             Ok(mut queue) => queue.mark(&info.path, &name, id),
             Err(_) => return true,
@@ -2744,9 +2744,9 @@ impl qobject::AppearanceActions {
             let (ok, msg) = rexon_core::system_exec::live().switch_login_manager(&unit, greeter);
             let first = msg.lines().next().unwrap_or("");
             if ok {
-                rexon_core::log_info!("login", "экран входа {unit}: сделан основным — {first}");
+                rexon_core::log_info!("login", "login screen {unit}: made the default — {first}");
             } else {
-                rexon_core::log_warn!("login", "экран входа {unit}: не вышло — {first}");
+                rexon_core::log_warn!("login", "login screen {unit}: failed — {first}");
             }
             state.login_switching.store(false, Ordering::SeqCst);
             post(&handle, move |mut object| {
@@ -2781,9 +2781,9 @@ impl qobject::AppearanceActions {
                 Err(why) => (false, why),
             };
             if ok {
-                rexon_core::log_info!("login", "сеанс по умолчанию: {} → {}", session.x11, session.wayland);
+                rexon_core::log_info!("login", "default session: {} → {}", session.x11, session.wayland);
             } else {
-                rexon_core::log_warn!("login", "сеанс по умолчанию не сменён ({}): {msg}", session.x11);
+                rexon_core::log_warn!("login", "default session not changed ({}): {msg}", session.x11);
             }
             state.login_switching.store(false, Ordering::SeqCst);
             post(&handle, move |mut object| {
@@ -2854,7 +2854,7 @@ impl qobject::AppearanceActions {
             return QString::default();
         }
         LOGIN_PREVIEW_STOP.store(false, Ordering::SeqCst);
-        rexon_core::log_info!("login", "превью экрана входа: {}", argv.join(" "));
+        rexon_core::log_info!("login", "login screen preview: {}", argv.join(" "));
         self.as_mut().login_preview_changed(true, QString::default());
         let handle = self.as_mut().qt_thread();
         // The thread lives until the end of the show: with it (PR_SET_PDEATHSIG)
@@ -2867,7 +2867,7 @@ impl qobject::AppearanceActions {
             let msg = match out {
                 Ok(()) => String::new(),
                 Err(text) => {
-                    rexon_core::log_warn!("login", "превью экрана входа не удалось: {text}");
+                    rexon_core::log_warn!("login", "login screen preview failed: {text}");
                     text
                 }
             };
@@ -3123,7 +3123,7 @@ fn fetch_ocs(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
             }
             // AUR does not break the store: the showcase is already assembled, and an
             // RPC refusal is no reason to show the user an empty section.
-            Err(e) => rexon_core::log_warn!("aur", "режим «Все»: {e}"),
+            Err(e) => rexon_core::log_warn!("aur", "\"All\" mode: {e}"),
         }
     }
     Value::Object(answer).to_string()
@@ -3291,10 +3291,11 @@ fn fetch_wallhaven(state: &Arc<State>, req: &Value, token: &CancelToken) -> Stri
     answer.insert("key".to_string(), Value::from(s(req, "key")));
     let force = req.get("force").and_then(Value::as_bool).unwrap_or(false);
     let size = page_size(req).max(1);
-    let page = match wh::live_page(s(req, "query"), s(req, "sort"), num(req, "page"), size, force, token) {
+    let orientation = rexon_core::wallpaper_screens::WallpaperOrientation::from_key(s(req, "orientation"));
+    let page = match wh::live_page(s(req, "query"), s(req, "sort"), orientation, num(req, "page"), size, force, token) {
         Ok(p) => p,
         Err(e) => {
-            rexon_core::log_warn!("wallhaven", "страница каталога: {e:?}");
+            rexon_core::log_warn!("wallhaven", "catalogue page: {e:?}");
             answer.insert("items".to_string(), Value::Array(Vec::new()));
             answer.insert("total".to_string(), Value::from(0));
             answer.insert("error".to_string(), Value::from(e.message()));
@@ -3363,7 +3364,7 @@ fn commit_pending(pending: Vec<removal::PendingRemoval>, de: &str) -> (bool, Str
                     if let Err(e) = gext::live_journal_edit(&home(), |log| {
                         gext::journal_forget(log, &uuid);
                     }) {
-                        rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                        rexon_core::log_warn!("gnome-ext", "installed-items journal: {e}");
                     }
                     lines.push(rexon_core::i18n::trf("🗑️ Removed: %1", &[&p.name]));
                 }
@@ -3406,7 +3407,7 @@ fn start_gnome_update_check(state: &Arc<State>, handle: &Handle) {
             post(&handle, move |mut object| object.as_mut().gnome_updates_changed(QString::from(&payload)));
         };
         if let Err(e) = gext::check_updates(&mut io, gext::UPDATE_RECOUNTS, &mut wait, &mut report) {
-            rexon_core::log_warn!("gnome-ext", "проверка обновлений: {e:?}");
+            rexon_core::log_warn!("gnome-ext", "update check: {e:?}");
         }
     });
 }
@@ -3432,7 +3433,7 @@ fn fetch_ego(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
     let page = match ego::live_page(s(req, "query"), s(req, "sort"), num(req, "page"), size, filter, force, token) {
         Ok(p) => p,
         Err(e) => {
-            rexon_core::log_warn!("gnome-ego", "страница каталога: {e:?}");
+            rexon_core::log_warn!("gnome-ego", "catalogue page: {e:?}");
             answer.insert("items".to_string(), Value::Array(Vec::new()));
             answer.insert("total".to_string(), Value::from(0));
             answer.insert("error".to_string(), Value::from(e.message()));
@@ -3445,7 +3446,7 @@ fn fetch_ego(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
             match ego::live_compatible(&shown, site, token) {
                 Ok(ok) => ego::unsupported_uuids(&shown, &ok),
                 Err(e) => {
-                    rexon_core::log_warn!("gnome-ego", "сверка совместимости: {e:?}");
+                    rexon_core::log_warn!("gnome-ego", "compatibility check: {e:?}");
                     Default::default()
                 }
             }
@@ -3809,7 +3810,7 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
         match wh::live_detail(wid, &CancelToken::new()) {
             Ok(w) => wh::theme_item(&w),
             Err(e) => {
-                rexon_core::log_warn!("wallhaven", "сведения о {wid}: {e:?}");
+                rexon_core::log_warn!("wallhaven", "details of {wid}: {e:?}");
                 item
             }
         }
@@ -3885,7 +3886,7 @@ fn resolve_linked_card(state: &Arc<State>, card: &Value) -> Result<Value, String
         "aur" => {
             let name = s(card, "name");
             if name.is_empty() {
-                return Err("нет имени пакета".to_string());
+                return Err("no package name".to_string());
             }
             return Ok(json!({ "aur": name }));
         }
@@ -3896,7 +3897,7 @@ fn resolve_linked_card(state: &Arc<State>, card: &Value) -> Result<Value, String
             client
                 .get_item_cached(s(card, "id"), rexon_core::ocs::DETAIL_TTL_SECS)
                 .map(|c| c.item)
-                .ok_or_else(|| "магазин не отдал товар".to_string())?
+                .ok_or_else(|| "the store returned no item".to_string())?
         }
         "wallhaven" => wh::live_detail(s(card, "id"), &token)
             .map(|w| wh::theme_item(&w))
@@ -3909,19 +3910,19 @@ fn resolve_linked_card(state: &Arc<State>, card: &Value) -> Result<Value, String
                 .map_err(|e| format!("{e:?}"))?
         }
         "spices" => {
-            let t = cs::type_for_key(s(card, "kind")).ok_or_else(|| "неизвестный тип спайса".to_string())?;
+            let t = cs::type_for_key(s(card, "kind")).ok_or_else(|| "unknown spice type".to_string())?;
             let wanted = cs::page_url(t, &Value::from(s(card, "spices_id")));
             let refresh = cs::live_refresh(t, false);
             let sp = refresh
                 .spices
                 .iter()
                 .find(|sp| cs::page_url(t, &sp.spices_id) == wanted)
-                .ok_or_else(|| "спайса нет в индексе".to_string())?;
+                .ok_or_else(|| "spice not in the index".to_string())?;
             let mut it = cs::theme_item(t, sp, &i18n::current_language());
             it.installed = cs::installed_state(&cs::SpiceEnv::live(), t, &sp.key).is_some();
             it
         }
-        other => return Err(format!("незнакомый магазин «{other}»")),
+        other => return Err(format!("unknown store \"{other}\"")),
     };
     ap::stamp_installed_live(&home(), std::slice::from_mut(&mut item));
     remember_items(state, std::slice::from_ref(&item));
@@ -4224,7 +4225,7 @@ fn ask_conky_safety(name: &str, part: Option<&str>) -> Option<bool> {
     let (title, text) = cs::start_question(&io, &ctx, name)?;
     let yes = crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text));
     if yes && !cs::remember(&io, &ctx, name) {
-        rexon_core::log_warn!("appearance", "разрешение виджета Conky «{name}» не записалось: {}", cs::trust_path(&ctx));
+        rexon_core::log_warn!("appearance", "Conky widget permission for \"{name}\" not written: {}", cs::trust_path(&ctx));
     }
     Some(yes)
 }
@@ -4396,7 +4397,7 @@ fn aur_worker() {
         aur_broadcast();
         rexon_core::log_info!(
             "aur",
-            "сборка «{}»: пакеты {} (помощник {}, журнал {})",
+            "building \"{}\": packages {} (helper {}, log {})",
             job.name,
             job.plan.packages.join(" "),
             job.helper,
@@ -4405,11 +4406,11 @@ fn aur_worker() {
         let started = std::time::Instant::now();
         let (ok, message, short) = run_aur_job(&job);
         if ok {
-            rexon_core::log_info!("aur", "«{}» установлен за {:.0} с", job.name, started.elapsed().as_secs_f64());
+            rexon_core::log_info!("aur", "\"{}\" installed in {:.0} s", job.name, started.elapsed().as_secs_f64());
         } else {
             rexon_core::log_warn!(
                 "aur",
-                "«{}» не установлен за {:.0} с: {}",
+                "\"{}\" not installed after {:.0} s: {}",
                 job.name,
                 started.elapsed().as_secs_f64(),
                 if short.is_empty() { message.lines().next().unwrap_or("") } else { short.as_str() }
@@ -4708,7 +4709,7 @@ fn spawn_uninstall(state: Arc<State>, handle: Handle, content_id: String, reload
     std::thread::spawn(move || {
         let logger = log_sink(&handle);
         let mut installer = LiveInstaller::new("", logger);
-        rexon_core::log_info!("theme", "удаление: {content_id}");
+        rexon_core::log_info!("theme", "removing: {content_id}");
         // We do not remove a theme enabled right now here either: the details
         // button may be stale (the theme was enabled after the card was opened).
         if !content_id.starts_with("local:") {
@@ -4734,7 +4735,7 @@ fn spawn_uninstall(state: Arc<State>, handle: Handle, content_id: String, reload
                     if let Err(e) = gext::live_journal_edit(&home(), |log| {
                         gext::journal_forget(log, &uuid);
                     }) {
-                        rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                        rexon_core::log_warn!("gnome-ext", "installed-items journal: {e}");
                     }
                     (true, rexon_core::i18n::trf("🗑️ Removed: %1", &[&uuid]))
                 }
@@ -4842,9 +4843,9 @@ impl qobject::AppearanceActions {
             };
             let first = msg.lines().next().unwrap_or("");
             if ok {
-                rexon_core::log_info!("login", "фон и оформление экрана входа: {first}");
+                rexon_core::log_info!("login", "login screen background and look: {first}");
             } else {
-                rexon_core::log_warn!("login", "фон и оформление экрана входа, не вышло: {first}");
+                rexon_core::log_warn!("login", "login screen background and look failed: {first}");
             }
             state.login_switching.store(false, Ordering::SeqCst);
             post(&handle, move |mut object| object.as_mut().login_look_done(ok, QString::from(&msg)));
@@ -4858,9 +4859,9 @@ fn finish_action(state: &Arc<State>, handle: &Handle, msg: String, ok: bool) {
     // log.
     let first = msg.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
     if ok {
-        rexon_core::log_info!("theme", "итог: удалось — {first}");
+        rexon_core::log_info!("theme", "result: done — {first}");
     } else {
-        rexon_core::log_warn!("theme", "итог: не удалось — {first}");
+        rexon_core::log_warn!("theme", "result: failed — {first}");
     }
     if ok {
         // The theme folder is new, and there is a new picture next to it: a cached
@@ -4897,7 +4898,7 @@ fn post(
 ) {
     if let Err(e) = handle.queue(work) {
         if !matches!(e, cxx_qt::ThreadingQueueError::ObjectDestroyed) {
-            rexon_core::log_warn!("appearance", "ответ вкладки «Оформление» не доставлен: {e:?}");
+            rexon_core::log_warn!("appearance", "Appearance tab reply not delivered: {e:?}");
         }
     }
 }
@@ -4945,6 +4946,14 @@ fn live_scan() -> LiveScan {
 /// that need the package before the next step (parts of the MATE panel
 /// layout). Do not call from the interface thread.
 pub(crate) fn aur_install_wait(name: &str) -> Result<(), String> {
+    aur_install_wait_with(name, &mut |_| {})
+}
+
+/// [`aur_install_wait`] that also reports the build stage for the person
+/// (`AurStage::label`, with the package being worked on) whenever it changes —
+/// for places that show the progress themselves (the KDE wallpaper plugin
+/// banner of the Wallpaper Engine tab).
+pub(crate) fn aur_install_wait_with(name: &str, on_stage: &mut dyn FnMut(&str)) -> Result<(), String> {
     let family = system::DistroDetector::detect_live().family_live();
     let Some(helper) = system_plan::pick_aur_helper(family, &|bin| utils::which(bin, None).is_some()) else {
         return Err(ap::aur_no_builder());
@@ -4960,16 +4969,30 @@ pub(crate) fn aur_install_wait(name: &str) -> Result<(), String> {
         std::thread::spawn(aur_worker);
     }
     // A build takes up to an hour (`run_aur_job`); we wait a little longer.
+    let mut shown = String::new();
     for _ in 0..(2 * 3600) {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        let done = aur_runner().queue.lock().ok().and_then(|q| {
-            q.jobs()
-                .iter()
-                .rev()
-                .find(|j| j.name == name)
-                .filter(|j| !j.stage.active())
-                .map(|j| (j.stage == aur_install::AurStage::Done, j.message.clone()))
-        });
+        let (done, stage) = aur_runner()
+            .queue
+            .lock()
+            .ok()
+            .and_then(|q| {
+                q.jobs().iter().rev().find(|j| j.name == name).map(|j| {
+                    let label = if j.current.is_empty() || j.current == name {
+                        j.stage.label()
+                    } else {
+                        format!("{} ({})", j.stage.label(), j.current)
+                    };
+                    let done = (!j.stage.active())
+                        .then(|| (j.stage == aur_install::AurStage::Done, j.message.clone()));
+                    (done, label)
+                })
+            })
+            .unwrap_or((None, String::new()));
+        if !stage.is_empty() && stage != shown {
+            on_stage(&stage);
+            shown = stage;
+        }
         match done {
             Some((true, _)) => return Ok(()),
             Some((false, msg)) => return Err(msg.lines().next().unwrap_or("").to_string()),
@@ -5460,7 +5483,7 @@ fn aur_page_cached(state: &Arc<State>, name: &str, page: i64) -> Option<aur::Aur
             Some(p)
         }
         Err(e) => {
-            rexon_core::log_warn!("aur", "страница пакета AUR «{name}» не получена: {e:?}");
+            rexon_core::log_warn!("aur", "AUR package page \"{name}\" not fetched: {e:?}");
             None
         }
     }
@@ -5506,13 +5529,13 @@ mod tests {
         let req = json!({
             "key": "splash:0:new::",
             "kind": "local",
-            "which": "нет-такого-скана",
+            "which": "no-such-scan",
             "query": "",
         });
         let state = Arc::new(State::default());
         let answer: Value = serde_json::from_str(&scan_local(&state, &req)).unwrap();
         assert_eq!(answer["key"], Value::from("splash:0:new::"));
-        assert!(answer["items"].is_array(), "витрина обязана быть списком");
+        assert!(answer["items"].is_array(), "the showcase must be a list");
         assert_eq!(answer["total"], Value::from(0));
     }
 
@@ -5524,7 +5547,7 @@ mod tests {
         // comparisons set the source one: without pinning, on a Russian locale the
         // label changed between two `tr` calls and the comparison was flaky.
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
-        let req = json!({"key": "aur:0", "kind": "aur", "query": "п", "aurKey": "x"});
+        let req = json!({"key": "aur:0", "kind": "aur", "query": "п", "aurKey": "x"}); // i18n-exempt: a one-letter Cyrillic query, counted in characters
         let state = Arc::new(State::default());
         let answer: Value = serde_json::from_str(&fetch_aur(&state, &req, &CancelToken::new()))
             .unwrap();
@@ -5555,8 +5578,8 @@ mod tests {
         // The "Downloaded" kind of the same scan — when there is no badge in the
         // label.
         let plain = ThemeItem {
-            id: "local:splash:Другая".to_string(),
-            name: "Другая".to_string(),
+            id: "local:splash:Other".to_string(),
+            name: "Other".to_string(),
             ..Default::default()
         };
         assert_eq!(local_row(&plain, "splash")["localKind"], Value::from("downloaded"));
@@ -5565,7 +5588,7 @@ mod tests {
         assert!(local_row(&plain, "splash").get("sourceName").is_none());
         let translated = ThemeItem {
             id: "local:gtk:HighContrast".to_string(),
-            name: "Высококонтрастная".to_string(),
+            name: "Высококонтрастная".to_string(), // i18n-exempt: test data, a translated theme name
             source_name: "High Contrast".to_string(),
             ..Default::default()
         };
@@ -5578,10 +5601,10 @@ mod tests {
     #[test]
     fn favorites_answer_is_always_a_json_list() {
         let raw = favorite_ids();
-        let parsed: Value = serde_json::from_str(&raw).expect("избранное обязано быть JSON");
-        assert!(parsed.is_array(), "избранное обязано быть списком: {raw}");
+        let parsed: Value = serde_json::from_str(&raw).expect("favourites must be JSON");
+        assert!(parsed.is_array(), "favourites must be a list: {raw}");
         for id in parsed.as_array().unwrap() {
-            assert!(id.is_string(), "номер избранного обязан быть строкой");
+            assert!(id.is_string(), "a favourite id must be a string");
         }
     }
 }

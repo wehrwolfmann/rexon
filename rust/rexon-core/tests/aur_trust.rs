@@ -1092,10 +1092,10 @@ fn pkgbuild_fetch_and_bot_page() {
 fn desktop_notice_lists_only_risky() {
     let rows = vec![
         ("ok-pkg".to_string(), Vec::new()),
-        ("brisk-menu".to_string(), rpc_signals(&RpcView { maintainer: String::new(), votes: 50, popularity: 1.0, out_of_date: 0 })),
+        ("mate-menu".to_string(), rpc_signals(&RpcView { maintainer: String::new(), votes: 50, popularity: 1.0, out_of_date: 0 })),
     ];
     let n = desktop_notice(&rows);
-    assert!(n.contains("brisk-menu") && !n.contains("ok-pkg"));
+    assert!(n.contains("mate-menu") && !n.contains("ok-pkg"));
     assert_eq!(desktop_notice(&rows[..1]), "");
 }
 

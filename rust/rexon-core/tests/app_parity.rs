@@ -937,6 +937,46 @@ fn bundled_engine_variant_ships_where_core_looks() {
     assert_eq!(layouts[bundled].daemon, wc::engine_appimage_path(wc::ENGINE_DIR));
 }
 
+/// The Plasma wallpaper plugin (owner's decision of 25.11.2026): the default
+/// package leaves it to the `plasma-wallpaper-waywallen` distribution package
+/// (optdepends; the core installs it on KDE), only the bundled engine variant
+/// still ships the release archive with its licenses.
+#[test]
+fn plasmoid_ships_only_with_bundled_engine() {
+    use rexon_core::waywallen_kde_plugin as wkp;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
+    let plasmoid = |s: &String| s.contains("waywallen-kde-");
+    let d = pkgbuild_arrays(None);
+    assert!(!d["source"].iter().any(plasmoid), "the default package downloads the plasmoid: {:?}", d["source"]);
+    assert!(!d["noextract"].iter().any(plasmoid));
+    assert!(
+        !d["license"].iter().any(|l| l == "GPL-2.0-or-later"),
+        "GPL-2.0-or-later came only from the plasmoid metadata: {:?}",
+        d["license"]
+    );
+    let b = pkgbuild_arrays(Some("1"));
+    assert!(b["source"].iter().any(plasmoid), "the bundled variant lost the plasmoid");
+    assert!(b["noextract"].iter().any(plasmoid));
+    assert!(b["license"].iter().any(|l| l == "GPL-2.0-or-later"));
+    assert!(
+        pkgbuild.contains(&format!("\n  '{}: ", wkp::PACKAGE_NAME)),
+        "no optdepends on {}",
+        wkp::PACKAGE_NAME
+    );
+    assert!(pkgbuild.contains(&format!("\n  '{}: ", wkp::DISPLAY_MODULE_PACKAGE)));
+    for gone in ["libplasma", "kirigami", "plasma-workspace"] {
+        assert!(!pkgbuild.contains(&format!("\n  '{gone}: ")), "the plugin package brings {gone} itself");
+    }
+    // The plasmoid is unpacked and its licenses installed only in the bundled variant.
+    let guarded = |needle: &str| {
+        let at = pkgbuild.find(needle).unwrap_or_else(|| panic!("no {needle}"));
+        pkgbuild[..at].rfind("if [[ $_bundled_engine == 1 ]]; then").is_some_and(|g| !pkgbuild[g..at].contains("\n  fi\n"))
+    };
+    assert!(guarded("bsdtar --no-same-owner -xf \"$srcdir/$_wwd_zip\""), "the plasmoid is unpacked in every variant");
+    assert!(guarded("LICENSE.waywallen-kde-MIT"), "the plasmoid license is installed in every variant");
+}
+
 /// Any switch value other than 0 and 1 stops the build instead of
 /// silently building the default variant.
 #[test]

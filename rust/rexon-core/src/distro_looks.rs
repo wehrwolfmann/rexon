@@ -77,22 +77,46 @@ pub const OPT_IN_KINDS: &[&str] = &["game-session"];
 /// (`native/desktop-model.json`).
 pub const MODEL_SCHEMA: &str = "rexon-desktop-model/1";
 
-/// Built-in looks: id, manifest, Plasma description, description for other
-/// desktops.
-const BUILTIN: &[(&str, &str, &str, Option<&str>)] = &[
+/// A built-in look: id, manifest, Plasma description (`None` — the look has
+/// none: it is made for other desktops), description for other desktops.
+type BuiltinLook = (&'static str, &'static str, Option<&'static str>, Option<&'static str>);
+
+const BUILTIN: &[BuiltinLook] = &[
     (
         "steamos",
         include_str!("../../../data/distro-looks/steamos/manifest.json"),
-        include_str!("../../../data/distro-looks/steamos/native/plasma-settings.json"),
+        Some(include_str!("../../../data/distro-looks/steamos/native/plasma-settings.json")),
         None,
     ),
     (
         "garuda-dr460nized",
         include_str!("../../../data/distro-looks/garuda-dr460nized/manifest.json"),
-        include_str!("../../../data/distro-looks/garuda-dr460nized/native/plasma-settings.json"),
+        Some(include_str!("../../../data/distro-looks/garuda-dr460nized/native/plasma-settings.json")),
         Some(include_str!("../../../data/distro-looks/garuda-dr460nized/native/desktop-model.json")),
     ),
 ];
+
+/// Looks that are ready as data and tested but get no tile yet: their cards
+/// in «Distro Looks» are a separate step. [`builtin`] knows them;
+/// [`builtin_ids`] (the tiles, the package helper's allowlist) does not.
+const STAGED: &[BuiltinLook] = &[
+    (
+        "windows-xp",
+        include_str!("../../../data/distro-looks/windows-xp/manifest.json"),
+        None,
+        Some(include_str!("../../../data/distro-looks/windows-xp/native/desktop-model.json")),
+    ),
+    (
+        "windows-7",
+        include_str!("../../../data/distro-looks/windows-7/manifest.json"),
+        None,
+        Some(include_str!("../../../data/distro-looks/windows-7/native/desktop-model.json")),
+    ),
+];
+
+fn all_builtin() -> impl Iterator<Item = &'static BuiltinLook> {
+    BUILTIN.iter().chain(STAGED)
+}
 
 /// A look: the v5 manifest, the Plasma description and the description for other desktops.
 #[derive(Debug, Clone, PartialEq)]
@@ -105,14 +129,19 @@ pub struct Look {
     pub model: Option<Value>,
 }
 
-/// Ids of the built-in looks in order.
+/// Ids of the built-in looks shown to the person, in order.
 pub fn builtin_ids() -> Vec<&'static str> {
     BUILTIN.iter().map(|(id, ..)| *id).collect()
 }
 
-/// The built-in look `id`; `None` — there is no such look.
+/// Ids of all built-in looks, the staged ones ([`STAGED`]) included.
+pub fn all_builtin_ids() -> Vec<&'static str> {
+    all_builtin().map(|(id, ..)| *id).collect()
+}
+
+/// The built-in look `id` (a staged one too); `None` — there is no such look.
 pub fn builtin(id: &str) -> Option<Result<Look, String>> {
-    BUILTIN.iter().find(|(i, ..)| *i == id).map(|(_, m, s, d)| parse_look(m, Some(s), *d))
+    all_builtin().find(|(i, ..)| *i == id).map(|(_, m, s, d)| parse_look(m, *s, *d))
 }
 
 /// All packages the built-in looks may install in the family
@@ -690,7 +719,10 @@ fn item_limits(look: &Look, it: &PlannedItem, t: &Target, roles: &BTreeSet<Strin
                 out.push(lim(tr("the dock does not move out of the way of windows: the MATE panel can only hide automatically")));
             }
         }
-        ("panel-layout", "cinnamon-panel") => {
+        // Only a look with a dock (a panel fitted to its contents) loses something here.
+        ("panel-layout", "cinnamon-panel")
+            if model_panels(look).iter().any(|p| p.get("expand").and_then(Value::as_bool) == Some(false)) =>
+        {
             out.push(lim(tr(
                 "the dock spans the whole width of the screen and keeps Cinnamon's own pinned programs: Cinnamon panels can't be shorter than the screen",
             )));
@@ -758,6 +790,10 @@ fn role_state(dep: &PackageDep, family: PkgFamily, probes: &Probes) -> RoleState
         _ => RoleState::Missing(tr("the programs it needs are not in this system's repositories")),
     }
 }
+
+/// The MATE Menu role: the menu a look's description prefers (`"prefer":
+/// "mate-menu"`); without the package the built-in menu button takes its place.
+pub const MATE_MENU_ROLE: &str = "mate-menu";
 
 /// The Compiz role — the window manager that on MATE and XFCE (X11) gives
 /// window effects "like in KWin" (see [`compiz_subplan`]).
@@ -1415,20 +1451,20 @@ fn safe_rel(p: &str) -> bool {
 /// copy what is needed from the downloaded sources (`copy_only`), remove
 /// what is excluded (`exclude`), perform the edits (`edits`), check
 /// the contents. The directory is a copy of the same shape as the package paths.
+///
+/// The lists come from the Plasma description (when it is executed) and from the
+/// description for other desktops (always: a look made for MATE or XFCE has no
+/// Plasma description, and its themes still must not bring their Cinnamon parts).
 fn prepare(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<PathBuf, String> {
     let root = t.prepared_dir(&plan.id);
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     let settings = look.settings.as_ref().filter(|_| plan.uses_settings);
-    let list = |key: &str| -> Vec<String> {
-        settings
-            .and_then(|s| s.get(key))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect()
+    let descriptions: Vec<&Value> = settings.into_iter().chain(look.model.as_ref()).collect();
+    let values = |key: &str| -> Vec<Value> {
+        descriptions.iter().filter_map(|d| d.get(key)).filter_map(Value::as_array).flatten().cloned().collect()
     };
+    let list = |key: &str| -> Vec<String> { values(key).iter().filter_map(|v| v.as_str().map(str::to_string)).collect() };
     let copy_only = list("copy_only");
     let exclude = list("exclude");
 
@@ -1450,17 +1486,21 @@ fn prepare(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Path
             }
             copy_any(&src, &dest).map_err(|e| trf("couldn't prepare %1: %2", &[&p, &e]))?;
         }
+        // The whole source is the unit (a git repository whose root is the theme):
+        // our download marker is not part of it.
+        if rel_in_source(&path).is_empty() {
+            let _ = std::fs::remove_file(root.join(&path).join(PIN_MARK));
+        }
     }
     for x in &exclude {
         if safe_rel(x) {
             remove_any(&root.join(x));
         }
     }
-    if let Some(edits) = settings.and_then(|s| s.get("edits")).and_then(Value::as_array) {
-        for e in edits {
-            run_edit(e, &root, t, m)?;
-        }
+    for e in values("edits") {
+        run_edit(&e, &root, t, m)?;
     }
+    strip_exec_bits(&look.pkg, &root);
     let problems = check_prepared(&look.pkg, &root);
     if !problems.is_empty() {
         return Err(problems);
@@ -1503,6 +1543,26 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
             Ok(m) if m.is_dir() => walk_files(&p, out),
             Ok(m) if m.is_file() => out.push(p),
             _ => {}
+        }
+    }
+}
+
+/// Theme repositories often keep every picture with the executable bit (the
+/// B00merang themes: thousands of PNG files with mode 755). For an element
+/// without the `exec` permission the payload is data: the bit is dropped from
+/// our prepared copy, so nothing of it can be run from the profile. What runs
+/// code by its contents (a shebang, ELF, `.sh`) is still refused by
+/// [`check_prepared`].
+fn strip_exec_bits(pkg: &Package, root: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut files = Vec::new();
+    walk_files(root, &mut files);
+    for f in files {
+        let rel = f.strip_prefix(root).map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
+        let Ok(md) = std::fs::metadata(&f) else { continue };
+        let mode = md.permissions().mode();
+        if mode & 0o111 != 0 && !rxn::path_allows_exec(pkg, &rel) {
+            let _ = std::fs::set_permissions(&f, std::fs::Permissions::from_mode(mode & !0o111));
         }
     }
 }
@@ -1814,7 +1874,13 @@ fn units_of(look: &Look, it: &PlannedItem, prepared: &Path, t: &Target) -> Vec<(
         return Vec::new();
     }
     let Some(base) = kind_dir(t, &it.kind, &it.consumer) else { return Vec::new() };
-    let name = Path::new(rel).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // `sources/<id>` itself — the repository root is the theme, named by the source id
+    // (the same name [`desktop_subplans`] enables it by).
+    let name = if rel.is_empty() {
+        sid.to_string()
+    } else {
+        Path::new(rel).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    };
     if name.is_empty() {
         return Vec::new();
     }
@@ -2162,7 +2228,7 @@ fn desktop_subplans(
             ("palette", false)
                 if it.consumer == "lxqt" || (it.consumer == QT6CT_ROLE && plan.roles.contains(QT6CT_ROLE)) =>
             {
-                if let Some(steps) = palette_steps(look, plan, t, prepared, it, &icon_theme) {
+                if let Some(steps) = palette_steps(look, plan, t, prepared, it, &icon_theme, crate::themes::own_qt_desktop_installed(m.ctx.have)) {
                     out.push(SubPlan { what: kind_label(&it.kind), steps, must_ok: false, fail_note: None });
                 }
                 continue;
@@ -2175,6 +2241,7 @@ fn desktop_subplans(
                     xdg_config_home: &t.config,
                     platform_theme: if qt6ct { crate::themes::QT_STYLE_TOOL } else { "" },
                     icon_theme: icon_theme.clone(),
+                    qt_desktop_installed: crate::themes::own_qt_desktop_installed(m.ctx.have),
                 };
                 let p = crate::themes::apply_kvantum_plan(&name, &env);
                 if !p.steps.is_empty() {
@@ -2225,7 +2292,14 @@ fn desktop_subplans(
         if let Some((action, role)) = press {
             let mut f = facts.clone();
             f.gtk_dark = crate::themes::gtk_theme_is_dark(&name, None);
-            if let PressPlan::Steps { steps, .. } = press_plan_with(&action, &name, &f) {
+            if let PressPlan::Steps { mut steps, .. } = press_plan_with(&action, &name, &f) {
+                // In Plasma the press writes KDE files itself (`kwriteconfig6` →
+                // `kdeglobals`, `plasma-apply-cursortheme` → `kcminputrc`): their
+                // "what it was" goes under the look's rollback, as in the Plasma path.
+                if t.plasma() {
+                    let guard = ApplyStep::Guard { paths: vec![format!("{}/kdeglobals", t.config), format!("{}/kcminputrc", t.config)] };
+                    steps.insert(0, Step::from(guard));
+                }
                 if let Some(read) = crate::themes::native_role_read_cmd(de, role) {
                     let old = read_value(ctx, de, &read.argv);
                     if !old.is_empty() && old != name {
@@ -2276,7 +2350,7 @@ fn desktop_subplans(
 /// «Color schemes» section's (`shell_palette::plan_scheme_layer`: `kdeglobals` for
 /// KDE programs, the qt6ct palette or `lxqt.conf`, the session variable), but
 /// as records of this run — their "what it was" is captured by the look's shared rollback.
-fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: &PlannedItem, icon_theme: &str) -> Option<Vec<Step>> {
+fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: &PlannedItem, icon_theme: &str, qt_desktop_installed: bool) -> Option<Vec<Step>> {
     use crate::shell_palette as sp;
     // The payload is a scheme file or a schemes directory (SteamOS: Vapor and VGUI); from
     // a directory — the scheme the look enables in Plasma (the description's
@@ -2307,7 +2381,7 @@ fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: 
         xdg_cache_home: t.cache.clone(),
         ..sp::PaletteHome::default()
     };
-    let ctx = sp::SchemeCtx { de_id: t.de.clone(), home, data_dirs: Vec::new(), session_platform_theme: String::new() };
+    let ctx = sp::SchemeCtx { de_id: t.de.clone(), home, data_dirs: Vec::new(), session_platform_theme: String::new(), qt_desktop_installed };
     let lxqt = it.consumer == "lxqt";
     let facts = sp::LayerFacts {
         qt_tools: if lxqt { Vec::new() } else { vec![crate::themes::QT_STYLE_TOOL.to_string()] },
@@ -2391,6 +2465,14 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
             })
             .collect()
     };
+    // The menu item of the description: which menu it prefers and its caption.
+    let menu_item = panels
+        .iter()
+        .flat_map(|p| p.get("items").and_then(Value::as_array).into_iter().flatten())
+        .find(|i| i.get("role").and_then(Value::as_str) == Some("menu"));
+    let has_role = |role: &str| {
+        panels.iter().flat_map(|p| p.get("items").and_then(Value::as_array).into_iter().flatten()).any(|i| i.get("role").and_then(Value::as_str) == Some(role))
+    };
     let launchers = |apps: &[String]| -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for app in apps {
@@ -2405,6 +2487,10 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
     match it.consumer.as_str() {
         "mate-panel" => {
             use crate::mate_panel::{OwnObject, OwnPanel};
+            // The MATE Menu applet only when its package is (or is being) installed:
+            // a missing applet would greet the person with "failed to load".
+            let mate_menu = menu_item.and_then(|i| i.get("prefer")).and_then(Value::as_str) == Some(MATE_MENU_ROLE)
+                && plan.roles.contains(MATE_MENU_ROLE);
             let mut own: Vec<OwnPanel> = Vec::new();
             for p in &panels {
                 let top = p.get("edge").and_then(Value::as_str) == Some("top");
@@ -2419,7 +2505,9 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
                 };
                 for (role, align, apps) in roles_of(p) {
                     let objects = match role.as_str() {
+                        "menu" if mate_menu => vec![OwnObject::MateMenu],
                         "menu" => vec![OwnObject::MainMenu],
+                        "show-desktop" => vec![OwnObject::ShowDesktop],
                         "windows" => vec![OwnObject::WindowList],
                         "clock" => vec![OwnObject::Clock],
                         "tray" => vec![OwnObject::NotificationArea],
@@ -2446,10 +2534,17 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
             let layout = format!("{}/mate-panel/layouts/rexon-{}.layout", t.data.trim_end_matches('/'), plan.id);
             let dump = mate_panel_dump(t, &plan.id);
             restore.push(crate::mate_panel::own_restore_argv(&dump));
-            vec![
+            let mut steps = vec![
                 Step::from(ExtStep::WriteFile { path: layout.clone(), content: crate::mate_panel::own_layout_text(&own) }),
                 Step::from(ApplyStep::BestEffort(cmd(crate::mate_panel::own_apply_argv(&layout, &dump)))),
-            ]
+            ];
+            // The caption of the menu button ("Start" in the person's language); the
+            // previous value comes back with the shared value rollback.
+            let label = menu_item.and_then(|i| i.get("label")).map(|l| localized(l, &t.lang)).unwrap_or_default();
+            if mate_menu && !label.is_empty() {
+                steps.push(Step::from(ApplyStep::BestEffort(cmd(crate::mate_panel::mate_menu_label_argv(&label)))));
+            }
+            steps
         }
         "cinnamon-panel" => {
             let mut enabled: Vec<String> = Vec::new();
@@ -2478,6 +2573,10 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
                         "clock" => (zone, &["calendar@cinnamon.org"]),
                         "tray" => (zone, &["systray@cinnamon.org", "xapp-status@cinnamon.org", "notifications@cinnamon.org", "network@cinnamon.org", "sound@cinnamon.org"]),
                         "user" => (zone, &["user@cinnamon.org"]),
+                        "show-desktop" => (zone, &["show-desktop@cinnamon.org"]),
+                        // A look with a dock already lists windows in it (above); a
+                        // classic taskbar gets the window list of its own.
+                        "windows" if !has_role("launchers") => (zone, &["grouped-window-list@cinnamon.org"]),
                         "launchers" => ("center", &["grouped-window-list@cinnamon.org"]),
                         _ => (zone, &[]),
                     };
@@ -3092,6 +3191,29 @@ fn remove_argv(family: crate::system::PkgFamily, names: &[String], helper_ok: bo
     Ok(full)
 }
 
+/// A file of a Pling product: `https://www.pling.com/p/<id>/#<file name>` →
+/// `(id, file name)`. Pling hands out only short-lived signed links, so the
+/// look names the product page and the file, and the link is asked from the
+/// OCS API right before the download; the pinned `sha256` still decides.
+pub fn pling_file_ref(url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix("https://www.pling.com/p/")?;
+    let (id, file) = rest.split_once("/#")?;
+    let ok_id = !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit());
+    let ok_file = !file.is_empty() && !file.contains('/') && file != "..";
+    (ok_id && ok_file).then(|| (id.to_string(), file.to_string()))
+}
+
+/// The current download link of the file `file` from an OCS product card
+/// (`content/data/<id>`); only an `https://` one.
+pub fn pling_download_link(detail_xml: &[u8], file: &str) -> Option<String> {
+    let content = crate::ocs::parse_item_detail(detail_xml).ok()??;
+    content.item.download_links.iter().find_map(|l| {
+        let name = l.get("name").and_then(Value::as_str)?;
+        let link = l.get("url").and_then(Value::as_str)?;
+        (name == file && link.starts_with("https://")).then(|| link.to_string())
+    })
+}
+
 /// Download a source into the cache with verification: an archive — by SHA-256 (no match —
 /// a refusal), git — exactly the pinned commit (`git fetch` by hash, checking
 /// `rev-parse HEAD`; git itself checks the contents with object hashes — on
@@ -3107,7 +3229,15 @@ pub fn fetch_live(job: &FetchJob) -> Result<(), String> {
         match &job.pin {
             Pin::Sha256(want) => {
                 let mut net = crate::net::UreqNet::new();
-                let body = crate::net::NetIo::get(&mut net, &job.url, crate::ocs::USER_AGENT, 300)
+                let url = match pling_file_ref(&job.url) {
+                    Some((id, file)) => {
+                        let detail = crate::net::NetIo::get(&mut net, &crate::ocs::item_url(&id), crate::ocs::USER_AGENT, 60)
+                            .map_err(|e| e.human())?;
+                        pling_download_link(&detail, &file).ok_or_else(|| trf("couldn't download %1", &[&job.url]))?
+                    }
+                    None => job.url.clone(),
+                };
+                let body = crate::net::NetIo::get(&mut net, &url, crate::ocs::USER_AGENT, 300)
                     .map_err(|e| e.human())?;
                 let got: String = Sha256::digest(&body).iter().map(|b| format!("{b:02x}")).collect();
                 if !got.eq_ignore_ascii_case(want) {
@@ -3372,10 +3502,10 @@ mod tests {
 
     #[test]
     fn builtin_looks_parse() {
-        for id in builtin_ids() {
+        for id in all_builtin_ids() {
             let look = builtin(id).unwrap().unwrap();
             assert_eq!(look.pkg.id, id);
-            assert!(look.settings.is_some());
+            assert!(look.settings.is_some() || look.model.is_some(), "{id}: nothing beyond the manifest");
         }
     }
 
@@ -3504,5 +3634,42 @@ mod tests {
         assert_eq!(source_id_of("sources/valve/usr/share/x"), Some("valve"));
         assert_eq!(rel_in_source("sources/valve/usr/share/x"), "usr/share/x");
         assert_eq!(source_id_of("native/plasma-settings.json"), None);
+    }
+
+    /// A Pling file is named by the product page and the file name; anything
+    /// else is an ordinary address.
+    #[test]
+    fn pling_file_reference() {
+        assert_eq!(
+            pling_file_ref("https://www.pling.com/p/2370808/#Windows-7-v1.1.1.tar.xz"),
+            Some(("2370808".to_string(), "Windows-7-v1.1.1.tar.xz".to_string()))
+        );
+        for url in [
+            "https://www.pling.com/p/2370808/",
+            "https://www.pling.com/p/abc/#x.tar.xz",
+            "https://www.pling.com/p/1/#a/b.tar.xz",
+            "http://www.pling.com/p/1/#x.tar.xz",
+            "https://github.com/x/y/releases/download/final/x.tar.gz",
+        ] {
+            assert_eq!(pling_file_ref(url), None, "{url}");
+        }
+    }
+
+    /// The fresh link is taken by the file name from the product card, only https.
+    #[test]
+    fn pling_link_by_file_name() {
+        let xml = br#"<?xml version="1.0"?><ocs><meta><status>ok</status></meta><data><content>
+<id>2370808</id><name>win7-icon-theme</name>
+<downloadlink1>https://files06.pling.com/api/files/download/j/a/SHA256SUMS</downloadlink1><downloadname1>SHA256SUMS</downloadname1>
+<downloadlink2>http://files06.pling.com/api/files/download/j/b/Windows-7-v1.1.1.tar.gz</downloadlink2><downloadname2>Windows-7-v1.1.1.tar.gz</downloadname2>
+<downloadlink3>https://files06.pling.com/api/files/download/j/c/Windows-7-v1.1.1.tar.xz</downloadlink3><downloadname3>Windows-7-v1.1.1.tar.xz</downloadname3>
+</content></data></ocs>"#;
+        assert_eq!(
+            pling_download_link(xml, "Windows-7-v1.1.1.tar.xz").as_deref(),
+            Some("https://files06.pling.com/api/files/download/j/c/Windows-7-v1.1.1.tar.xz")
+        );
+        assert_eq!(pling_download_link(xml, "Windows-7-v1.1.1.tar.gz"), None, "not https");
+        assert_eq!(pling_download_link(xml, "missing.tar.xz"), None);
+        assert_eq!(pling_download_link(b"not xml", "x"), None);
     }
 }

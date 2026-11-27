@@ -14,9 +14,9 @@ target/
 *.dll
 *.o
 
-# Plasma-плагин обоев org.waywallen.kde в git НЕ лежит: пакет качает
-# официальный архив выпуска (packaging/aur/PKGBUILD), а для запуска из дерева
-# его распаковывает сюда `vendor-check --выкачать`. В git — только описание.
+# The org.waywallen.kde Plasma wallpaper plugin does NOT lie in git: the package downloads
+# the official release archive (packaging/aur/PKGBUILD), and for running from the tree
+# `vendor-check --выкачать` unpacks it here. Only the description is in git.
 data/kpackage/org.waywallen.kde/*
 !data/kpackage/org.waywallen.kde/vendor.toml
 
@@ -46,11 +46,11 @@ env/
 _archived/rexon/kpackage/org.rexon.wallpaper/compile_commands.json
 _archived/rexon/kpackage/org.rexon.wallpaper/build/
 
-# Модель перевода описаний (43 МБ) в дерево НЕ кладётся: её место — поставка
-# (packaging/aur/PKGBUILD качает архивы и распаковывает их в каталог данных)
-# либо стендовая копия по REXON_TRANSLATE_MODEL_DIR. Каталог, которым ядро
-# ищет модель в дереве разработчика, закрыт целиком — положенная туда копия
-# не должна молча доехать до коммита.
+# The description translation model (43 MB) is NOT put into the tree: its place is the delivery
+# (packaging/aur/PKGBUILD downloads the archives and unpacks them into the data directory)
+# or a stand copy via REXON_TRANSLATE_MODEL_DIR. The directory where the core
+# looks for the model in the developer tree is closed entirely — a copy put there
+# must not silently get into a commit.
 /data/translate/
 model.*.intgemm.alphas.bin
 *vocab.*.spm

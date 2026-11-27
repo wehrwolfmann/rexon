@@ -80,6 +80,13 @@ pub const FULL_CONFIGS: &[&str] = &[
     "~/.local/share/plasma",
 ];
 
+/// Plasma keyboard shortcuts taken together with the panel by a manual copy:
+/// the global shortcuts file and the person's own command shortcuts
+/// (Plasma 6 keeps them as `.desktop` files next to it). The section's
+/// tooltip has always promised them; before 25.11.2026 a manual copy took only
+/// [`PANEL_CONFIGS`], so the shortcuts were silently missing from it.
+pub const PANEL_SHORTCUT_CONFIGS: &[&str] = &["~/.config/kglobalshortcutsrc", "~/.local/share/kglobalaccel"];
+
 /// The backup name: `f"{de_name}_{timestamp}"` (`create_backup`).
 pub fn backup_name(de_name: &str, timestamp: &str) -> String {
     format!("{de_name}_{timestamp}")
@@ -1283,36 +1290,6 @@ pub fn xfce_panel_load_argv(path: &str) -> Vec<String> {
     vec![XFCE_PANEL_PROFILES.to_string(), "load".to_string(), path.to_string()]
 }
 
-/// Take an XFCE panel copy -> `(succeeded, message)`.
-pub fn xfce_panel_save_live(data_home: &str) -> (bool, String) {
-    let path = xfce_panel_copy_path(data_home);
-    if let Some(dir) = Path::new(&path).parent() {
-        if let Err(e) = fs::create_dir_all(dir) {
-            return (false, e.to_string());
-        }
-    }
-    let (ok, out) = crate::animations::LookIo::run(&crate::animations::SystemIo, &xfce_panel_save_argv(&path));
-    if ok && Path::new(&path).is_file() {
-        (true, path)
-    } else {
-        (false, if out.trim().is_empty() { XFCE_PANEL_PROFILES.to_string() } else { out.trim().to_string() })
-    }
-}
-
-/// Restore the XFCE panel from the copy -> `(succeeded, message)`.
-pub fn xfce_panel_restore_live(data_home: &str) -> (bool, String) {
-    let path = xfce_panel_copy_path(data_home);
-    if !Path::new(&path).is_file() {
-        return (false, tr("There is no saved panel copy yet."));
-    }
-    let (ok, out) = crate::animations::LookIo::run(&crate::animations::SystemIo, &xfce_panel_load_argv(&path));
-    if ok {
-        (true, path)
-    } else {
-        (false, if out.trim().is_empty() { XFCE_PANEL_PROFILES.to_string() } else { out.trim().to_string() })
-    }
-}
-
 // ============================================================================
 // Panel copy of other environments (Cinnamon, Budgie, LXQt, GNOME with panel
 // extensions, Pantheon, COSMIC, tiling compositor bars)
@@ -1339,6 +1316,28 @@ pub enum PanelPart {
     DconfKeys { dir: &'static str, prefixes: &'static [&'static str] },
     /// A file or directory relative to HOME (`.config/lxqt/panel.conf`).
     Home(String),
+    /// A file or directory relative to the config home (`$XDG_CONFIG_HOME`
+    /// or `~/.config`): with a non-standard config root the desktop reads
+    /// its files there, not in `~/.config`.
+    Config(&'static str),
+    /// A directory relative to the data home (`$XDG_DATA_HOME` or
+    /// `~/.local/share`) without its `exclude` subpaths: they are not taken,
+    /// and on restore the person's current ones stay as they are (Rexon's own
+    /// wallpaper plugin and shell extension are managed apart).
+    DataTree { path: &'static str, exclude: &'static [&'static str] },
+    /// The MATE panel branch `/org/mate/panel/`, put back with the panel's
+    /// own procedure ([`mate_panel_load`]).
+    MatePanel,
+    /// An xfconf channel, from its XML file; put back through `xfconf-query`
+    /// ([`xfconf_restore_argvs`]).
+    XfconfChannel(&'static str),
+    /// Deepin shortcuts and touchpad gestures of dde-services (DConfig
+    /// subpaths of `org.deepin.dde.keybinding`) and the person's own shortcuts.
+    DdeShortcuts,
+    /// Plasma global shortcuts (`kglobalshortcutsrc`). KWin keeps them in
+    /// memory, so in a Plasma session the changed ones are also handed to it
+    /// over D-Bus ([`kde_shortcuts_restore`]).
+    KdeShortcuts,
     /// Directories in `parent` (relative to HOME) whose names start with `prefix`.
     HomeMatching { parent: &'static str, prefix: &'static str },
     /// A whole Deepin DConfig resource: all writable keys of its schema
@@ -1369,13 +1368,35 @@ pub enum PanelReload {
     /// Restart a systemd user service if it is running
     /// (`systemctl --user --no-block try-restart`).
     RestartUserUnit(&'static str),
+    /// Run a command and wait for it (`xfce4-panel -r`, `swaymsg reload`).
+    Run(&'static [&'static str]),
+    /// Restart the Plasma shell of this session ([`plasma_restart_shell`]).
+    PlasmaShell,
 }
 
 /// What to take from a desktop and how to reread it afterwards.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PanelCopySpec {
+    /// Panels, applets, docks, panel extensions.
     pub parts: Vec<PanelPart>,
+    /// Keyboard shortcuts: kept apart for the copy's caption and for the
+    /// question before restoring.
+    pub shortcuts: Vec<PanelPart>,
     pub reload: Vec<PanelReload>,
+    /// The restored keyboard shortcuts take effect only after logging in
+    /// again: the desktop applies them once, at session start.
+    pub needs_relogin: bool,
+    /// The restore restarts the desktop's services for a moment (Deepin's
+    /// service group: theme, wallpaper slideshow and power blink): the
+    /// question before restoring says so.
+    pub restarts_services: bool,
+}
+
+impl PanelCopySpec {
+    /// Every part of the copy: the panel ones, then the shortcuts.
+    pub fn all_parts(&self) -> impl Iterator<Item = &PanelPart> {
+        self.parts.iter().chain(self.shortcuts.iter())
+    }
 }
 
 /// What the machine says about the desktop, for choosing the parts of the copy.
@@ -1401,18 +1422,104 @@ pub const DDE_SHELL_DCONFIG_APPID: &str = "org.deepin.dde.shell";
 pub const DDE_DOCK_RESOURCES: &[&str] =
     &["org.deepin.ds.dock", "org.deepin.ds.dock.tray", "org.deepin.ds.dock.taskmanager"];
 
+/// The DConfig application of the Deepin tray plugins.
+pub const DDE_TRAY_LOADER_APPID: &str = "org.deepin.dde.tray-loader";
+
+/// The tray plugins' own settings resources.
+pub const DDE_TRAY_PLUGIN_RESOURCES: &[&str] = &[
+    "org.deepin.dde.dock.plugin.common",
+    "org.deepin.dde.dock.plugin.datetime",
+    "org.deepin.dde.dock.plugin.power",
+    "org.deepin.dde.dock.plugin.shutdown",
+];
+
 /// The systemd service of the Deepin dock (dde-session): `dde-shell -C DDE`.
 pub const DDE_DOCK_UNIT: &str = "dde-shell@DDE.service";
 
 /// The dconf branch where GNOME Shell extensions keep their settings.
 pub const GNOME_EXTENSIONS_DCONF_DIR: &str = "/org/gnome/shell/extensions/";
 
+/// GNOME's window manager shortcuts: read by GNOME, Budgie and Pantheon alike.
+pub const GNOME_WM_KEYS_DIR: &str = "/org/gnome/desktop/wm/keybindings/";
+/// GNOME's media and custom keys: read by GNOME, Budgie and Pantheon alike.
+pub const GNOME_MEDIA_KEYS_DIR: &str = "/org/gnome/settings-daemon/plugins/media-keys/";
+
+/// Cinnamon extensions a copy never takes nor puts back: Rexon's own.
+pub const CINNAMON_EXT_KEEP: &[&str] = &[crate::installer::EXT_ID, crate::installer::EXT_ID_LEGACY];
+
+/// Other desktops whose keyboard shortcuts change when `de`'s are restored:
+/// they read the same GNOME branches. The question before a restore names
+/// the installed ones.
+pub fn shared_shortcut_desktops(de: &str) -> &'static [&'static str] {
+    match de {
+        "gnome" => &["budgie", "pantheon"],
+        "budgie" => &["gnome", "pantheon"],
+        "pantheon" => &["gnome", "budgie"],
+        _ => &[],
+    }
+}
+
+/// Subpaths of `~/.local/share/plasma` a Plasma copy never takes nor puts
+/// back: Rexon's own wallpaper plugin is installed and updated apart, and an
+/// old copy must not bring back an old plugin.
+pub const PLASMA_DATA_KEEP: &[&str] = &["wallpapers/org.waywallen.kde"];
+
 /// What to take from desktop `de` (a Rexon key). `None` means nothing to
-/// take: such a desktop has no panel copy buttons. KDE, MATE and XFCE are
-/// handled their own ways (`plasma_backup_run`, `mate_panel`,
-/// `xfce4-panel-profiles`).
+/// take: such a desktop has no panel copy buttons.
 pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
     match de {
+        // KDE Plasma: the panels and widgets are the applets file and the shell's
+        // own files; Latte Dock, if it is there, has its own. The person's
+        // widgets, desktop themes and looks lie in `~/.local/share/plasma`. The
+        // shell does not reread its files: it is restarted.
+        "kde" if (probe.have)("plasmashell") => Some(PanelCopySpec {
+            parts: vec![
+                PanelPart::Config("plasma-org.kde.plasma.desktop-appletsrc"),
+                PanelPart::Config("plasmashellrc"),
+                PanelPart::Config("plasmarc"),
+                PanelPart::Config("plasmanotifyrc"),
+                PanelPart::Config("plasma-localerc"),
+                PanelPart::Config("lattedockrc"),
+                PanelPart::Config("latte"),
+                PanelPart::DataTree { path: "plasma", exclude: PLASMA_DATA_KEEP },
+            ],
+            // Global shortcuts and the person's own command shortcuts (Plasma 6
+            // keeps them as `.desktop` files); `khotkeysrc` is Plasma 5's.
+            shortcuts: vec![
+                PanelPart::KdeShortcuts,
+                PanelPart::DataTree { path: "kglobalaccel", exclude: &[] },
+                PanelPart::Config("khotkeysrc"),
+            ],
+            reload: vec![PanelReload::PlasmaShell],
+            ..Default::default()
+        }),
+        // MATE: everything about the panels is the `/org/mate/panel/` branch;
+        // the running panel picks the branch up itself, after the procedure
+        // measured for the layout section (`mate_panel::restore`).
+        "mate" if (probe.have)("mate-panel") => Some(PanelCopySpec {
+            parts: vec![PanelPart::MatePanel],
+            // Marco and the settings daemon watch their keys themselves.
+            shortcuts: vec![
+                PanelPart::DconfDir("/org/mate/marco/global-keybindings/"),
+                PanelPart::DconfDir("/org/mate/marco/window-keybindings/"),
+                PanelPart::DconfDir("/org/mate/marco/keybinding-commands/"),
+                PanelPart::DconfDir("/org/mate/settings-daemon/plugins/media-keys/"),
+                PanelPart::DconfDir("/org/mate/desktop/keybindings/"),
+            ],
+            reload: vec![PanelReload::Live],
+            ..Default::default()
+        }),
+        // XFCE: the `xfce4-panel` xfconf channel and the panel's own files
+        // (launchers, plugin settings) in `~/.config/xfce4/panel`; the panel is
+        // restarted to read them (`xfce4-panel -r`). No xfce4-panel-profiles
+        // needed: the channel is put back through `xfconf-query`.
+        "xfce" if (probe.have)("xfce4-panel") && (probe.have)("xfconf-query") => Some(PanelCopySpec {
+            parts: vec![PanelPart::XfconfChannel("xfce4-panel"), PanelPart::Config("xfce4/panel")],
+            // xfsettingsd and xfwm4 follow their channel themselves.
+            shortcuts: vec![PanelPart::XfconfChannel("xfce4-keyboard-shortcuts")],
+            reload: vec![PanelReload::Run(&["xfce4-panel", "-r"])],
+            ..Default::default()
+        }),
         // Budgie: everything about the panels is the
         // `com.solus-project.budgie-panel` branch (panels, applet `instance/`,
         // their settings). budgie-panel does not rebuild existing panels from
@@ -1423,9 +1530,16 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
         // itself; the LXQt session stops and starts its module again
         // (`org.lxqt.session`, `stopModule` / `startModule`, the module name is
         // the autostart file).
+        // On X11 the shortcuts are `lxqt-globalkeysd`'s file, reread when its
+        // session module is restarted too (on Wayland the compositor owns them).
         "lxqt" if (probe.have)("lxqt-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::Home(".config/lxqt/panel.conf".to_string())],
-            reload: vec![PanelReload::LxqtModule("lxqt-panel.desktop")],
+            shortcuts: vec![PanelPart::Config("lxqt/globalkeyshortcuts.conf")],
+            reload: vec![
+                PanelReload::LxqtModule("lxqt-panel.desktop"),
+                PanelReload::LxqtModule("lxqt-globalkeyshortcuts.desktop"),
+            ],
+            ..Default::default()
         }),
         // GNOME: it has no panel of its own; the panel, the dock and the icons in
         // it come from extensions. So the copy is all of the person's extensions:
@@ -1441,10 +1555,23 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             Some(PanelCopySpec {
                 parts: vec![
                     PanelPart::DconfDir(GNOME_EXTENSIONS_DCONF_DIR),
-                    PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions", "disabled-extensions"] },
+                    PanelPart::DconfKeys {
+                        dir: "/org/gnome/shell/",
+                        prefixes: &["enabled-extensions", "disabled-extensions", "favorite-apps"],
+                    },
                     PanelPart::GnomeExtensions,
                 ],
+                // ⚠️ The window manager and media key branches are read by Budgie
+                // and Pantheon too ([`shared_shortcut_desktops`]).
+                shortcuts: vec![
+                    PanelPart::DconfDir(GNOME_WM_KEYS_DIR),
+                    PanelPart::DconfDir("/org/gnome/shell/keybindings/"),
+                    PanelPart::DconfDir("/org/gnome/mutter/keybindings/"),
+                    PanelPart::DconfDir("/org/gnome/mutter/wayland/keybindings/"),
+                    PanelPart::DconfDir(GNOME_MEDIA_KEYS_DIR),
+                ],
                 reload: vec![PanelReload::Live],
+                ..Default::default()
             })
         }
         // Pantheon: the Wingpanel top panel (`io.elementary.desktop.wingpanel`)
@@ -1460,21 +1587,35 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             if (probe.have)("io.elementary.dock") {
                 parts.push(PanelPart::DconfDir("/io/elementary/dock/"));
             }
-            Some(PanelCopySpec { parts, reload: vec![PanelReload::Live] })
+            let shortcuts = vec![
+                PanelPart::DconfDir(GNOME_WM_KEYS_DIR),
+                PanelPart::DconfDir("/io/elementary/desktop/wm/keybindings/"),
+                PanelPart::DconfDir(GNOME_MEDIA_KEYS_DIR),
+            ];
+            Some(PanelCopySpec { parts, shortcuts, reload: vec![PanelReload::Live], ..Default::default() })
         }
         // Wayfire: the wf-panel panel and the wf-background background (wf-shell)
         // are one file, `~/.config/wf-shell.ini`; wf-shell watches it itself
         // (inotify) and rereads it on write.
         "wayfire" if (probe.have)("wf-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::Home(".config/wf-shell.ini".to_string())],
+            // Key bindings live in the compositor's own file, watched the same way.
+            shortcuts: vec![PanelPart::Home(".config/wayfire.ini".to_string())],
             reload: vec![PanelReload::Live],
+            ..Default::default()
         }),
         // COSMIC: the panel, the dock and their buttons are the settings
         // directories `~/.config/cosmic/com.system76.CosmicPanel*`
         // (cosmic-config); the panel watches them itself.
         "cosmic" if (probe.have)("cosmic-panel") => Some(PanelCopySpec {
-            parts: vec![PanelPart::HomeMatching { parent: ".config/cosmic", prefix: "com.system76.CosmicPanel" }],
+            // The pinned programs of the dock are the app list applet's own settings.
+            parts: vec![
+                PanelPart::HomeMatching { parent: ".config/cosmic", prefix: "com.system76.CosmicPanel" },
+                PanelPart::Home(".config/cosmic/com.system76.CosmicAppList".to_string()),
+            ],
+            shortcuts: vec![PanelPart::Home(".config/cosmic/com.system76.CosmicSettings.Shortcuts".to_string())],
             reload: vec![PanelReload::Live],
+            ..Default::default()
         }),
         // Tiling compositors: the panel is a bar. Configs of whatever is
         // installed: waybar (`~/.config/waybar`, rereads it on SIGUSR2), the
@@ -1493,13 +1634,31 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
                     parts.push(PanelPart::Home(dir.to_string()));
                 }
             }
-            if parts.is_empty() {
+            // Key bindings are the compositor's own config (with its included
+            // files). Hyprland and niri reread it themselves, sway on `reload`;
+            // river runs its init once per session, so its bindings come back at
+            // the next login.
+            let mut shortcuts = Vec::new();
+            let config = match de {
+                "hyprland" => ".config/hypr",
+                "niri" => ".config/niri",
+                "sway" => ".config/sway",
+                _ => ".config/river",
+            };
+            if (probe.home_exists)(config) {
+                shortcuts.push(PanelPart::Home(config.to_string()));
+                if de == "sway" {
+                    reload.push(PanelReload::Run(&["swaymsg", "reload"]));
+                }
+            }
+            if parts.is_empty() && shortcuts.is_empty() {
                 return None;
             }
             if reload.is_empty() {
                 reload.push(PanelReload::Live);
             }
-            Some(PanelCopySpec { parts, reload })
+            let needs_relogin = de == "river" && !shortcuts.is_empty();
+            Some(PanelCopySpec { parts, shortcuts, reload, needs_relogin, ..Default::default() })
         }
         // Deepin V23/V25: the dock is dde-shell, its settings are three DConfig
         // resources of the `org.deepin.dde.shell` application. The dock watches
@@ -1515,31 +1674,81 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
                     (probe.system_exists)(&crate::dde::dconfig_schema_path(DDE_SHELL_DCONFIG_APPID, r))
                 }) =>
         {
+            let mut parts: Vec<PanelPart> = DDE_DOCK_RESOURCES
+                .iter()
+                .map(|r| PanelPart::DdeDconfig { appid: DDE_SHELL_DCONFIG_APPID, resource: r })
+                .collect();
+            // The tray plugins' own settings (seconds in the clock, the charge
+            // limit, the shutdown menu), where this release has them.
+            for r in DDE_TRAY_PLUGIN_RESOURCES {
+                if (probe.system_exists)(&crate::dde::dconfig_schema_path(DDE_TRAY_LOADER_APPID, r)) {
+                    parts.push(PanelPart::DdeDconfig { appid: DDE_TRAY_LOADER_APPID, resource: r });
+                }
+            }
+            let mut reload = vec![PanelReload::RestartUserUnit(DDE_DOCK_UNIT)];
+            // Shortcuts and gestures: only dde-services' scheme (Deepin 25, Arch
+            // since July 2026). After the values, the service group is restarted
+            // so the whole set is bound anew (two swapped shortcuts would
+            // otherwise leave one unbound): that blinks the theme, the wallpaper
+            // slideshow and power for a second, and the question says so.
+            let mut shortcuts = Vec::new();
+            if (probe.system_exists)(crate::dde::SHORTCUT_SERVICE_MARK) {
+                shortcuts.push(PanelPart::DdeShortcuts);
+                reload.push(PanelReload::RestartUserUnit(crate::dde::SERVICE_GROUP_UNIT));
+            }
+            let restarts_services = !shortcuts.is_empty();
             Some(PanelCopySpec {
-                parts: DDE_DOCK_RESOURCES
-                    .iter()
-                    .map(|r| PanelPart::DdeDconfig { appid: DDE_SHELL_DCONFIG_APPID, resource: r })
-                    .collect(),
-                reload: vec![PanelReload::RestartUserUnit(DDE_DOCK_UNIT)],
+                parts,
+                shortcuts,
+                restarts_services,
+                reload,
+                ..Default::default()
             })
         }
+        // Budgie's shortcuts are partly GNOME's branches (shared), partly its
+        // own; on labwc its bridge rewrites `rc.xml` from them by itself.
         "budgie" if (probe.have)("budgie-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::DconfDir("/com/solus-project/budgie-panel/")],
+            shortcuts: vec![
+                PanelPart::DconfDir(GNOME_WM_KEYS_DIR),
+                PanelPart::DconfDir("/org/gnome/mutter/keybindings/"),
+                PanelPart::DconfDir(GNOME_MEDIA_KEYS_DIR),
+                PanelPart::DconfDir("/org/buddiesofbudgie/settings-daemon/plugins/media-keys/"),
+                PanelPart::DconfDir("/com/solus-project/budgie-wm/"),
+                PanelPart::Config("budgie-desktop/labwc/rc.xml"),
+            ],
             reload: vec![PanelReload::Spawn(&["budgie-panel", "--replace"])],
+            ..Default::default()
         }),
         // Cinnamon panels and applets are `org.cinnamon` keys (`panels-*`,
         // `panel-zone-*`, `enabled-applets`, `next-applet-id`), applet settings
         // are files in `~/.config/cinnamon/spices/`. Cinnamon watches both
         // itself (changing `enabled-applets` rebuilds the panels).
+        // Downloaded applets, desklets and extensions are taken too: without
+        // them `enabled-applets` would name an applet that is not on disk.
+        // Rexon's own wallpaper extension is managed apart.
         "cinnamon" | "cinnamon-mint" => Some(PanelCopySpec {
             parts: vec![
                 PanelPart::DconfKeys {
                     dir: "/org/cinnamon/",
-                    prefixes: &["panels-", "panel-zone-", "enabled-applets", "next-applet-id"],
+                    prefixes: &[
+                        "panels-",
+                        "panel-zone-",
+                        "enabled-applets",
+                        "next-applet-id",
+                        "enabled-desklets",
+                        "next-desklet-id",
+                        "enabled-extensions",
+                    ],
                 },
                 PanelPart::Home(".config/cinnamon/spices".to_string()),
+                PanelPart::DataTree { path: "cinnamon/applets", exclude: &[] },
+                PanelPart::DataTree { path: "cinnamon/desklets", exclude: &[] },
+                PanelPart::DataTree { path: "cinnamon/extensions", exclude: CINNAMON_EXT_KEEP },
             ],
+            shortcuts: vec![PanelPart::DconfDir("/org/cinnamon/desktop/keybindings/")],
             reload: vec![PanelReload::Live],
+            ..Default::default()
         }),
         _ => None,
     }
@@ -1573,6 +1782,18 @@ pub trait PanelIo {
     /// The user data directory (`$XDG_DATA_HOME` or `~/.local/share`).
     fn data_home(&self, home: &str) -> String {
         format!("{}/.local/share", home.trim_end_matches('/'))
+    }
+    /// The user config directory (`$XDG_CONFIG_HOME` or `~/.config`).
+    fn config_home(&self, home: &str) -> String {
+        format!("{}/.config", home.trim_end_matches('/'))
+    }
+    /// Restart the Plasma shell -> the line to tell the person.
+    fn restart_plasma_shell(&self) -> Option<String> {
+        None
+    }
+    /// When the file was last changed, as `YYYYMMDD_HHMMSS` local time.
+    fn mtime_stamp(&self, _path: &str) -> Option<String> {
+        None
     }
 }
 
@@ -1615,10 +1836,12 @@ pub fn dconf_root_keys(dump: &str, prefixes: &[&str]) -> String {
 /// Take a panel copy by `spec` into `copy_dir` -> the copy path or the reason.
 pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_dir: &str) -> Result<String, String> {
     let home = home.trim_end_matches('/');
+    let config = io.config_home(home);
+    let data = io.data_home(home);
     let tmp = format!("{copy_dir}.new");
     io.remove_tree(&tmp)?;
     let mut manifest: Vec<serde_json::Value> = Vec::new();
-    for (i, part) in spec.parts.iter().enumerate() {
+    for (i, part) in spec.all_parts().enumerate() {
         match part {
             PanelPart::DconfDir(dir) | PanelPart::DconfKeys { dir, .. } => {
                 let (ok, dump) = io.run(&sv(&["dconf", "dump", dir]));
@@ -1635,11 +1858,66 @@ pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_
                 }
                 manifest.push(serde_json::json!({ "kind": kind, "dir": dir, "file": file }));
             }
+            PanelPart::MatePanel => {
+                let (ok, dump) = io.run(&sv(&["dconf", "dump", MATE_PANEL_DCONF_DIR]));
+                if !ok {
+                    return Err(dump);
+                }
+                let file = format!("dconf-{i}.ini");
+                if !io.write(&format!("{tmp}/{file}"), &dump) {
+                    return Err(format!("{tmp}/{file}"));
+                }
+                manifest.push(serde_json::json!({ "kind": "mate_panel", "file": file }));
+            }
             PanelPart::Home(rel) => {
                 if io.exists(&format!("{home}/{rel}")) {
                     io.copy_tree(&format!("{home}/{rel}"), &format!("{tmp}/home/{rel}"))?;
                     manifest.push(serde_json::json!({ "kind": "home", "path": rel }));
                 }
+            }
+            PanelPart::Config(rel) => {
+                if io.exists(&format!("{config}/{rel}")) {
+                    io.copy_tree(&format!("{config}/{rel}"), &format!("{tmp}/config/{rel}"))?;
+                    manifest.push(serde_json::json!({ "kind": "config", "path": rel }));
+                }
+            }
+            PanelPart::DataTree { path, exclude } => {
+                if io.exists(&format!("{data}/{path}")) {
+                    let dest = format!("{tmp}/data/{path}");
+                    io.copy_tree(&format!("{data}/{path}"), &dest)?;
+                    for ex in exclude.iter() {
+                        io.remove_tree(&format!("{dest}/{ex}"))?;
+                    }
+                    manifest.push(serde_json::json!({ "kind": "data", "path": path }));
+                }
+            }
+            PanelPart::XfconfChannel(channel) => {
+                // No file means the channel is all defaults: there is nothing to
+                // keep, and resetting a live panel to nothing would make it ask
+                // the person how to set itself up.
+                if let Some(xml) = io.read(&xfconf_channel_path(&config, channel)) {
+                    let file = format!("xfconf-{i}.xml");
+                    if !io.write(&format!("{tmp}/{file}"), &xml) {
+                        return Err(format!("{tmp}/{file}"));
+                    }
+                    manifest.push(serde_json::json!({ "kind": "xfconf", "channel": channel, "file": file }));
+                }
+            }
+            PanelPart::KdeShortcuts => {
+                if let Some(text) = io.read(&format!("{config}/{KDE_SHORTCUTS_FILE}")) {
+                    let file = format!("kde-shortcuts-{i}.ini");
+                    if !io.write(&format!("{tmp}/{file}"), &text) {
+                        return Err(format!("{tmp}/{file}"));
+                    }
+                    manifest.push(serde_json::json!({ "kind": "kde_shortcuts", "file": file }));
+                }
+            }
+            PanelPart::DdeShortcuts => {
+                let body = dde_shortcuts_save(io, &config)?;
+                if !io.write(&format!("{tmp}/{DDE_SHORTCUTS_COPY_FILE}"), &body.to_string()) {
+                    return Err(format!("{tmp}/{DDE_SHORTCUTS_COPY_FILE}"));
+                }
+                manifest.push(serde_json::json!({ "kind": "dde_shortcuts", "file": DDE_SHORTCUTS_COPY_FILE }));
             }
             PanelPart::HomeMatching { parent, prefix } => {
                 let names: Vec<String> =
@@ -1677,7 +1955,7 @@ pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_
                 manifest.push(serde_json::json!({ "kind": "dde_dconfig", "appid": appid, "resource": resource, "file": file }));
             }
             PanelPart::GnomeExtensions => {
-                let list = gnome_ext_inventory(io, &io.data_home(home));
+                let list = gnome_ext_inventory(io, &data);
                 let body = serde_json::json!({ "extensions": list });
                 if !io.write(&format!("{tmp}/{GNOME_EXT_COPY_FILE}"), &body.to_string()) {
                     return Err(format!("{tmp}/{GNOME_EXT_COPY_FILE}"));
@@ -1696,12 +1974,31 @@ pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_
 
 /// Restore the panel from copy `copy_dir` and let the desktop reread it.
 pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_dir: &str) -> Result<String, String> {
+    panel_copy_restore_in(io, spec, home, copy_dir, true).map(|_| copy_dir.to_string())
+}
+
+/// Restore the panel from copy `copy_dir` -> what else to tell the person
+/// (lines, may be empty) or the reason it failed.
+///
+/// `live`: the copy's desktop is the running session. Otherwise there is
+/// nobody to reread anything: the files and keys are put back, and the
+/// desktop picks them up at its next login.
+pub fn panel_copy_restore_in(
+    io: &dyn PanelIo,
+    spec: &PanelCopySpec,
+    home: &str,
+    copy_dir: &str,
+    live: bool,
+) -> Result<Vec<String>, String> {
     let home = home.trim_end_matches('/');
+    let config = io.config_home(home);
+    let data = io.data_home(home);
     let Some(text) = io.read(&format!("{copy_dir}/manifest.json")) else {
         return Err(tr("There is no saved panel copy yet."));
     };
     let entries: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let s = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+    let mut notes: Vec<String> = Vec::new();
     for e in &entries {
         match s(e, "kind").as_str() {
             kind @ ("dconf_dir" | "dconf_keys") => {
@@ -1710,7 +2007,7 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                 // on disk, and we do not reset a foreign branch from it.
                 // A branch inside one taken as a whole is ours too: earlier GNOME
                 // copies took the branches of individual extensions.
-                let known = spec.parts.iter().any(|p| match p {
+                let known = spec.all_parts().any(|p| match p {
                     PanelPart::DconfDir(d) => *d == dir || (dir.starts_with(d) && d.ends_with('/') && !dir.contains("..")),
                     PanelPart::DconfKeys { dir: d, .. } => *d == dir,
                     _ => false,
@@ -1725,10 +2022,17 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                     }
                 }
                 let path = format!("{copy_dir}/{file}");
-                let (ok, out) = io.run(&sv(&["sh", "-c", "dconf load \"$1\" < \"$2\"", "sh", &dir, &path]));
+                let (ok, out) = io.run(&dconf_load_argv(&dir, &path));
                 if !ok {
                     return Err(out);
                 }
+            }
+            "mate_panel" => {
+                let file = s(e, "file");
+                if !spec.all_parts().any(|p| *p == PanelPart::MatePanel) || !safe_rel(&file) {
+                    continue;
+                }
+                mate_panel_load(io, &format!("{copy_dir}/{file}"), live)?;
             }
             "home" => {
                 let rel = s(e, "path");
@@ -1737,6 +2041,63 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                 }
                 io.remove_tree(&format!("{home}/{rel}"))?;
                 io.copy_tree(&format!("{copy_dir}/home/{rel}"), &format!("{home}/{rel}"))?;
+            }
+            "config" => {
+                let rel = s(e, "path");
+                if !safe_rel(&rel) || !spec.all_parts().any(|p| matches!(p, PanelPart::Config(c) if *c == rel)) {
+                    continue;
+                }
+                io.remove_tree(&format!("{config}/{rel}"))?;
+                io.copy_tree(&format!("{copy_dir}/config/{rel}"), &format!("{config}/{rel}"))?;
+            }
+            "data" => {
+                let rel = s(e, "path");
+                let exclude = spec.all_parts().find_map(|p| match p {
+                    PanelPart::DataTree { path, exclude } if *path == rel => Some(*exclude),
+                    _ => None,
+                });
+                let Some(exclude) = exclude else { continue };
+                if !safe_rel(&rel) {
+                    continue;
+                }
+                restore_tree_keeping(io, &format!("{copy_dir}/data/{rel}"), &format!("{data}/{rel}"), exclude)?;
+            }
+            "xfconf" => {
+                let (channel, file) = (s(e, "channel"), s(e, "file"));
+                if !safe_rel(&file) || !spec.all_parts().any(|p| matches!(p, PanelPart::XfconfChannel(c) if *c == channel)) {
+                    continue;
+                }
+                let Some(xml) = io.read(&format!("{copy_dir}/{file}")) else {
+                    return Err(format!("{copy_dir}/{file}"));
+                };
+                let props = xfconf_parse(&xml)?;
+                for argv in xfconf_restore_argvs(&channel, &props) {
+                    let (ok, out) = io.run(&argv);
+                    if !ok {
+                        return Err(out);
+                    }
+                }
+            }
+            "kde_shortcuts" => {
+                let file = s(e, "file");
+                if !safe_rel(&file) || !spec.all_parts().any(|p| *p == PanelPart::KdeShortcuts) {
+                    continue;
+                }
+                let Some(saved) = io.read(&format!("{copy_dir}/{file}")) else {
+                    return Err(format!("{copy_dir}/{file}"));
+                };
+                notes.extend(kde_shortcuts_restore(io, &config, &saved, live)?);
+            }
+            "dde_shortcuts" => {
+                let file = s(e, "file");
+                if !safe_rel(&file) || !spec.all_parts().any(|p| *p == PanelPart::DdeShortcuts) {
+                    continue;
+                }
+                let Some(text) = io.read(&format!("{copy_dir}/{file}")) else {
+                    return Err(format!("{copy_dir}/{file}"));
+                };
+                let body: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+                dde_shortcuts_restore(io, &config, &body, live)?;
             }
             "home_matching" => {
                 let (parent, prefix) = (s(e, "parent"), s(e, "prefix"));
@@ -1758,7 +2119,7 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
             "dde_dconfig" => {
                 let (appid, resource, file) = (s(e, "appid"), s(e, "resource"), s(e, "file"));
                 // Only the resources this desktop takes.
-                let known = spec.parts.iter().any(
+                let known = spec.all_parts().any(
                     |p| matches!(p, PanelPart::DdeDconfig { appid: a, resource: r } if *a == appid && *r == resource),
                 );
                 if !known || !safe_rel(&file) {
@@ -1792,11 +2153,25 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
             _ => {}
         }
     }
+    if !live {
+        return Ok(notes);
+    }
     for r in &spec.reload {
         match r {
             PanelReload::Live => {}
             PanelReload::Spawn(argv) => {
                 io.spawn(&sv(argv));
+            }
+            PanelReload::Run(argv) => {
+                let (ok, out) = io.run(&sv(argv));
+                if !ok {
+                    crate::log_warn!("backup", "panel reread command {argv:?} failed: {}", out.trim());
+                }
+            }
+            PanelReload::PlasmaShell => {
+                if let Some(note) = io.restart_plasma_shell() {
+                    notes.push(note);
+                }
             }
             PanelReload::LxqtModule(module) => {
                 let call = |method: &str| {
@@ -1822,7 +2197,659 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
             }
         }
     }
-    Ok(copy_dir.to_string())
+    Ok(notes)
+}
+
+/// `dconf load <dir> < <file>` through the shell (dconf reads the dump from stdin).
+pub fn dconf_load_argv(dir: &str, file: &str) -> Vec<String> {
+    sv(&["sh", "-c", "dconf load \"$1\" < \"$2\"", "sh", dir, file])
+}
+
+/// Put folder `dest` back from `src`, keeping the person's current `keep`
+/// subpaths (relative to `dest`) as they are: they belong to someone else.
+fn restore_tree_keeping(io: &dyn PanelIo, src: &str, dest: &str, keep: &[&str]) -> Result<(), String> {
+    let stash = format!("{dest}.rexon-keep");
+    io.remove_tree(&stash)?;
+    let kept: Vec<&str> = keep.iter().copied().filter(|k| io.exists(&format!("{dest}/{k}"))).collect();
+    for k in &kept {
+        io.copy_tree(&format!("{dest}/{k}"), &format!("{stash}/{k}"))?;
+    }
+    io.remove_tree(dest)?;
+    if io.exists(src) {
+        io.copy_tree(src, dest)?;
+    }
+    for k in keep {
+        io.remove_tree(&format!("{dest}/{k}"))?;
+    }
+    for k in &kept {
+        io.copy_tree(&format!("{stash}/{k}"), &format!("{dest}/{k}"))?;
+    }
+    io.remove_tree(&stash)
+}
+
+// ── MATE: the panel branch is loaded by the panel's own procedure ─────────
+
+/// The MATE panel settings branch.
+pub const MATE_PANEL_DCONF_DIR: &str = crate::mate_panel::PANEL_DCONF_DIR;
+
+/// Load MATE panel dump `file`. On a live panel the objects are emptied first
+/// and the panel is given time to drop them (see `mate_panel::restore`, where
+/// the procedure was measured); on failure the panel as it was is put back.
+pub fn mate_panel_load(io: &dyn PanelIo, file: &str, live: bool) -> Result<(), String> {
+    let undo = format!("{file}.before-restore");
+    let (ok, now) = io.run(&sv(&["dconf", "dump", MATE_PANEL_DCONF_DIR]));
+    if !ok || !io.write(&undo, &now) {
+        return Err(if ok { undo } else { now });
+    }
+    if live {
+        let (ok, out) = io.run(&crate::mate_panel::empty_objects_argv());
+        if !ok {
+            return Err(out);
+        }
+        for _ in 0..3 {
+            let (ok, out) = io.run(&sv(&["dconf", "list", "/org/mate/panel/objects/"]));
+            if !ok || out.trim().is_empty() {
+                break;
+            }
+            io.pause();
+        }
+    }
+    for step in crate::mate_panel::load_steps(file) {
+        let (ok, out) = io.run(&step);
+        if !ok {
+            for back in crate::mate_panel::rollback_steps(&undo) {
+                io.run(&back);
+            }
+            let _ = io.remove_tree(&undo);
+            return Err(out);
+        }
+    }
+    let _ = io.remove_tree(&undo);
+    Ok(())
+}
+
+// ── KDE: global shortcuts back into a running KWin ────────────────────────
+//
+// In Plasma 6 the global shortcuts service lives inside KWin: it reads
+// `kglobalshortcutsrc` once, at login, and keeps the shortcuts in memory.
+// Writing the file back is therefore not enough for the running session, so
+// the actions whose keys differ are also handed to KWin over D-Bus
+// (`org.kde.KGlobalAccel.setForeignShortcutKeys`). KConfig writes back only
+// the entries it changed itself, so whatever could not be handed over stays
+// in the file and takes effect at the next login: the person is told so.
+
+/// The Plasma global shortcuts file in the config home.
+pub const KDE_SHORTCUTS_FILE: &str = "kglobalshortcutsrc";
+
+/// One action of `kglobalshortcutsrc`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KdeShortcut {
+    /// The component (`kwin`, `org.kde.dolphin.desktop` for a program).
+    pub component: String,
+    pub action: String,
+    /// The active key sequences in Qt's portable text (`Meta+E`); empty = none.
+    pub keys: Vec<String>,
+    pub component_name: String,
+    pub action_name: String,
+}
+
+/// Split a KConfig list value on unescaped commas and undo KConfig escapes.
+fn kconfig_list(value: &str) -> Vec<String> {
+    let mut out = vec![String::new()];
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('t') => out.last_mut().unwrap().push('\t'),
+                Some('n') => out.last_mut().unwrap().push('\n'),
+                Some('s') => out.last_mut().unwrap().push(' '),
+                Some(other) => out.last_mut().unwrap().push(other),
+                None => {}
+            },
+            ',' => out.push(String::new()),
+            other => out.last_mut().unwrap().push(other),
+        }
+    }
+    out
+}
+
+/// Parse `kglobalshortcutsrc`: `[component]` groups (`[services][x.desktop]`
+/// for programs), `action=active,default,friendly name` entries,
+/// `_k_friendly_name` for the component's name.
+pub fn kde_shortcuts_parse(text: &str) -> Vec<KdeShortcut> {
+    let mut out: Vec<KdeShortcut> = Vec::new();
+    let mut component = String::new();
+    let mut component_name = String::new();
+    let mut start = 0;
+    let close = |out: &mut Vec<KdeShortcut>, from: usize, name: &str| {
+        for s in out.iter_mut().skip(from) {
+            s.component_name = name.to_string();
+        }
+    };
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            close(&mut out, start, &component_name);
+            start = out.len();
+            component = t.rsplit('[').next().unwrap_or("").trim_end_matches(']').to_string();
+            component_name = component.clone();
+            continue;
+        }
+        if t.is_empty() || t.starts_with('#') || component.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = t.split_once('=') else { continue };
+        let key = key.trim();
+        if key == "_k_friendly_name" {
+            component_name = value.to_string();
+            continue;
+        }
+        let fields = kconfig_list(value);
+        let active = fields.first().cloned().unwrap_or_default();
+        let keys: Vec<String> = if active == "none" || active.is_empty() {
+            Vec::new()
+        } else {
+            active.split('\t').filter(|k| !k.is_empty() && *k != "none").map(str::to_string).collect()
+        };
+        out.push(KdeShortcut {
+            component: component.clone(),
+            action: key.to_string(),
+            keys,
+            component_name: String::new(),
+            action_name: fields.get(2).cloned().unwrap_or_else(|| key.to_string()),
+        });
+    }
+    close(&mut out, start, &component_name);
+    out
+}
+
+/// Qt key codes by portable name (`Qt::Key`), for the keys global shortcuts
+/// use. A name missing here is not guessed: that action is left to the next
+/// login.
+const QT_KEYS: &[(&str, u32)] = &[
+    ("Esc", 0x0100_0000), ("Tab", 0x0100_0001), ("Backtab", 0x0100_0002), ("Backspace", 0x0100_0003),
+    ("Return", 0x0100_0004), ("Enter", 0x0100_0005), ("Ins", 0x0100_0006), ("Del", 0x0100_0007),
+    ("Pause", 0x0100_0008), ("Print", 0x0100_0009), ("SysReq", 0x0100_000a), ("Clear", 0x0100_000b),
+    ("Home", 0x0100_0010), ("End", 0x0100_0011), ("Left", 0x0100_0012), ("Up", 0x0100_0013),
+    ("Right", 0x0100_0014), ("Down", 0x0100_0015), ("PgUp", 0x0100_0016), ("PgDown", 0x0100_0017),
+    ("CapsLock", 0x0100_0024), ("NumLock", 0x0100_0025), ("ScrollLock", 0x0100_0026), ("Menu", 0x0100_0055),
+    ("Space", 0x20),
+    ("Back", 0x0100_0061), ("Forward", 0x0100_0062), ("Stop", 0x0100_0063), ("Refresh", 0x0100_0064),
+    ("Volume Down", 0x0100_0070), ("Volume Mute", 0x0100_0071), ("Volume Up", 0x0100_0072),
+    ("Media Play", 0x0100_0080), ("Media Stop", 0x0100_0081), ("Media Previous", 0x0100_0082),
+    ("Media Next", 0x0100_0083), ("Media Record", 0x0100_0084), ("Media Pause", 0x0100_0085),
+    ("Toggle Media Play/Pause", 0x0100_0086),
+    ("Home Page", 0x0100_0090), ("Favorites", 0x0100_0091), ("Search", 0x0100_0092),
+    ("Launch Mail", 0x0100_00a0), ("Launch Media", 0x0100_00a1),
+    ("Monitor Brightness Up", 0x0100_00b2), ("Monitor Brightness Down", 0x0100_00b3),
+    ("Keyboard Light On/Off", 0x0100_00b4), ("Keyboard Brightness Up", 0x0100_00b5),
+    ("Keyboard Brightness Down", 0x0100_00b6), ("Power Off", 0x0100_00b7), ("Eject", 0x0100_00b9),
+    ("Screensaver", 0x0100_00ba), ("Calculator", 0x0100_00cb),
+    ("Hibernate", 0x0100_0108), ("Suspend", 0x0100_010c),
+    ("Touchpad Toggle", 0x0100_0110), ("Touchpad On", 0x0100_0111), ("Touchpad Off", 0x0100_0112),
+    ("Microphone Mute", 0x0100_0113),
+];
+
+/// One key combination (`Meta+Shift+E`) as Qt's combined int, if every part is known.
+fn qt_key_combination(text: &str) -> Option<u32> {
+    let text = text.trim();
+    // `Ctrl++` is Ctrl with the plus key.
+    let (mods_part, key) = match text.strip_suffix("++") {
+        Some(rest) => (rest, "+"),
+        None => match text.rsplit_once('+') {
+            Some((m, k)) => (m, k),
+            None => ("", text),
+        },
+    };
+    let mut combined = 0u32;
+    if !mods_part.is_empty() {
+        for m in mods_part.split('+') {
+            combined |= match m {
+                "Shift" => 0x0200_0000,
+                "Ctrl" => 0x0400_0000,
+                "Alt" => 0x0800_0000,
+                "Meta" => 0x1000_0000,
+                "Num" => 0x2000_0000,
+                _ => return None,
+            };
+        }
+    }
+    let code = if let Some((_, c)) = QT_KEYS.iter().find(|(n, _)| *n == key) {
+        *c
+    } else if let Some(n) = key.strip_prefix('F').and_then(|n| n.parse::<u32>().ok()).filter(|n| (1..=35).contains(n)) {
+        0x0100_0030 + n - 1
+    } else if let Some(n) = key.strip_prefix("Launch (").and_then(|r| r.strip_suffix(')')) {
+        let c = n.chars().next().filter(|_| n.chars().count() == 1)?;
+        match c {
+            '0'..='9' => 0x0100_00a2 + (c as u32 - '0' as u32),
+            'A'..='F' => 0x0100_00ac + (c as u32 - 'A' as u32),
+            _ => return None,
+        }
+    } else {
+        let mut cs = key.chars();
+        let c = cs.next()?;
+        if cs.next().is_some() || !(c.is_ascii_graphic()) {
+            return None;
+        }
+        c.to_ascii_uppercase() as u32
+    };
+    Some(combined | code)
+}
+
+/// A key sequence (`Ctrl+X, Ctrl+C`, up to four combinations) as the four
+/// ints KGlobalAccel takes; `None` if any part is unknown.
+pub fn qt_key_sequence(text: &str) -> Option<[u32; 4]> {
+    let mut out = [0u32; 4];
+    let combos: Vec<&str> = if text.trim() == "," { vec![","] } else { text.split(", ").collect() };
+    if combos.is_empty() || combos.len() > 4 {
+        return None;
+    }
+    for (i, c) in combos.iter().enumerate() {
+        out[i] = qt_key_combination(c)?;
+    }
+    Some(out)
+}
+
+/// A string as a GVariant text literal (for `gdbus call`).
+fn gvariant_str(s: &str) -> String {
+    format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// The `gdbus` call that gives action `s` its keys in the running KWin;
+/// `None` if a key name is not known.
+pub fn kde_set_shortcut_argv(s: &KdeShortcut) -> Option<Vec<String>> {
+    let mut seqs = Vec::new();
+    for k in &s.keys {
+        let q = qt_key_sequence(k)?;
+        seqs.push(format!("([{}, {}, {}, {}],)", q[0], q[1], q[2], q[3]));
+    }
+    let id = [&s.component, &s.action, &s.component_name, &s.action_name]
+        .iter()
+        .map(|v| gvariant_str(v))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let keys = if seqs.is_empty() { "@a(ai) []".to_string() } else { format!("[{}]", seqs.join(", ")) };
+    Some(sv(&[
+        "gdbus",
+        "call",
+        "--session",
+        "--dest",
+        "org.kde.kglobalaccel",
+        "--object-path",
+        "/kglobalaccel",
+        "--method",
+        "org.kde.KGlobalAccel.setForeignShortcutKeys",
+        &format!("[{id}]"),
+        &keys,
+    ]))
+}
+
+/// Message: some shortcuts take effect only at the next login.
+pub fn msg_kde_shortcuts_next_login(n: usize) -> String {
+    ntr(
+        "%n keyboard shortcut will take effect after you log in again.",
+        "%n keyboard shortcuts will take effect after you log in again.",
+        n as u64,
+    )
+}
+
+/// Put `kglobalshortcutsrc` back from `saved` -> notes for the person.
+///
+/// `live` (a Plasma session): the actions whose keys differ from the current
+/// file are handed to KWin first; what it does not take is counted for the
+/// note. The file is written in any case, so the next login reads the copy.
+pub fn kde_shortcuts_restore(io: &dyn PanelIo, config: &str, saved: &str, live: bool) -> Result<Vec<String>, String> {
+    let path = format!("{config}/{KDE_SHORTCUTS_FILE}");
+    let current = kde_shortcuts_parse(&io.read(&path).unwrap_or_default());
+    if !io.write(&path, saved) {
+        return Err(path);
+    }
+    if !live {
+        return Ok(Vec::new());
+    }
+    let mut later = 0usize;
+    for s in kde_shortcuts_parse(saved) {
+        let now = current.iter().find(|c| c.component == s.component && c.action == s.action);
+        if now.is_some_and(|c| c.keys == s.keys) {
+            continue;
+        }
+        // An action KWin does not know yet is not registered there: it is
+        // read from the file at the next login.
+        let applied = now.is_some() && kde_set_shortcut_argv(&s).is_some_and(|argv| io.run(&argv).0);
+        if !applied {
+            later += 1;
+        }
+    }
+    Ok(if later > 0 { vec![msg_kde_shortcuts_next_login(later)] } else { Vec::new() })
+}
+
+
+// ── Deepin: shortcuts and gestures of dde-services ────────────────────────
+//
+// Since dde-daemon 6.1.105 the shortcuts belong to dde-services: every entry
+// is a DConfig subpath of `org.deepin.dde.keybinding` (its writable keys are
+// the keys and whether it is on), the list of entries is in the registration
+// files, the person's own shortcuts are subpaths named in
+// `custom-shortcuts.ini`. The files under `~/.config/dsg` belong to the
+// DConfig daemon, so values go through `dde-dconfig` only. dde-services
+// follows every entry and rebinds it in Treeland at once; a swap of two
+// shortcuts can still leave one unbound on the way, so after a restore the
+// service group is restarted and registers the whole set anew.
+
+/// The shortcuts file in a Deepin copy.
+pub const DDE_SHORTCUTS_COPY_FILE: &str = "dde-shortcuts.json";
+
+/// The resource of entry `subpath` on this machine: a shortcut or a gesture;
+/// `None` means the release does not know it.
+fn dde_entry_resource(io: &dyn PanelIo, subpath: &str) -> Option<(&'static str, String)> {
+    use crate::dde::{dconfig_subpath_schema_path, GESTURE_RESOURCE, KEYBINDING_APPID, SHORTCUT_RESOURCE};
+    [SHORTCUT_RESOURCE, GESTURE_RESOURCE]
+        .into_iter()
+        .find_map(|r| io.read(&dconfig_subpath_schema_path(KEYBINDING_APPID, subpath, r)).map(|schema| (r, schema)))
+}
+
+/// The system entries: the registration files' subpaths and the gesture
+/// folders of the schemas, without repeats.
+fn dde_system_subpaths(io: &dyn PanelIo) -> Vec<String> {
+    use crate::dde::{keybinding_ini_subpaths, KEYBINDING_INI_DIR, KEYBINDING_SCHEMA_DIR};
+    let mut out: Vec<String> = Vec::new();
+    for name in io.list_dir(KEYBINDING_INI_DIR).into_iter().filter(|n| n.ends_with(".ini")) {
+        for sub in keybinding_ini_subpaths(&io.read(&format!("{KEYBINDING_INI_DIR}/{name}")).unwrap_or_default()) {
+            if !out.contains(&sub) {
+                out.push(sub);
+            }
+        }
+    }
+    for name in io.list_dir(KEYBINDING_SCHEMA_DIR).into_iter().filter(|n| n.contains(".gesture.")) {
+        let sub = format!("/{name}");
+        if crate::dde::dconfig_subpath_ok(&sub) && !out.contains(&sub) {
+            out.push(sub);
+        }
+    }
+    out
+}
+
+/// The person's own shortcuts from `custom-shortcuts.ini`, in its order.
+fn dde_custom_subpaths(text: &str) -> Vec<String> {
+    crate::dde::keybinding_ini_subpaths(text)
+}
+
+/// The base schema of the person's own shortcuts: all their keys.
+fn dde_custom_keys(io: &dyn PanelIo) -> Vec<String> {
+    use crate::dde::{dconfig_schema_path, KEYBINDING_APPID, SHORTCUT_RESOURCE};
+    crate::dde::dconfig_schema_writable_keys(
+        &io.read(&dconfig_schema_path(KEYBINDING_APPID, SHORTCUT_RESOURCE)).unwrap_or_default(),
+    )
+}
+
+/// The values of `keys` of entry `subpath`: `{key: {value, default}}`.
+fn dde_entry_values(
+    io: &dyn PanelIo,
+    resource: &str,
+    subpath: &str,
+    keys: &[String],
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    use crate::dde::{dconfig_cli_value, dconfig_get_sub_argv, dconfig_is_default_sub_argv, KEYBINDING_APPID};
+    let mut values = serde_json::Map::new();
+    for key in keys {
+        let (ok, raw) = io.run(&dconfig_get_sub_argv(KEYBINDING_APPID, resource, subpath, key));
+        if !ok {
+            return Err(raw);
+        }
+        let (_, default) = io.run(&dconfig_is_default_sub_argv(KEYBINDING_APPID, resource, subpath, key));
+        values.insert(
+            key.clone(),
+            serde_json::json!({ "value": dconfig_cli_value(&raw), "default": default.trim() == "true" }),
+        );
+    }
+    Ok(values)
+}
+
+/// Take the shortcuts and gestures -> the body of [`DDE_SHORTCUTS_COPY_FILE`].
+fn dde_shortcuts_save(io: &dyn PanelIo, config: &str) -> Result<serde_json::Value, String> {
+    let mut system = Vec::new();
+    for sub in dde_system_subpaths(io) {
+        // An entry this release lists but has no schema for is skipped, not fatal.
+        let Some((resource, schema)) = dde_entry_resource(io, &sub) else { continue };
+        let keys = crate::dde::dconfig_schema_writable_keys(&schema);
+        if keys.is_empty() {
+            continue;
+        }
+        let values = dde_entry_values(io, resource, &sub, &keys)?;
+        system.push(serde_json::json!({ "subpath": sub, "resource": resource, "values": values }));
+    }
+    let ini = io.read(&format!("{config}/{}", crate::dde::CUSTOM_SHORTCUTS_INI));
+    let keys = dde_custom_keys(io);
+    let mut custom = Vec::new();
+    for sub in dde_custom_subpaths(ini.as_deref().unwrap_or("")) {
+        let values = dde_entry_values(io, crate::dde::SHORTCUT_RESOURCE, &sub, &keys)?;
+        custom.push(serde_json::json!({ "subpath": sub, "values": values }));
+    }
+    Ok(serde_json::json!({ "system": system, "custom": custom, "custom_ini": ini }))
+}
+
+/// Write entry `subpath`'s values back: a default one is reset, the rest set.
+/// Only keys the current schema allows (`allowed`) are touched.
+fn dde_entry_restore(
+    io: &dyn PanelIo,
+    resource: &str,
+    subpath: &str,
+    values: &serde_json::Map<String, serde_json::Value>,
+    allowed: &[String],
+) -> Result<(), String> {
+    use crate::dde::{dconfig_reset_sub_argv, dconfig_set_sub_argv, KEYBINDING_APPID};
+    for (key, v) in values {
+        if !allowed.contains(key) {
+            continue;
+        }
+        let argv = if v.get("default").and_then(serde_json::Value::as_bool) == Some(true) {
+            dconfig_reset_sub_argv(KEYBINDING_APPID, resource, subpath, key)
+        } else {
+            let value = v.get("value").and_then(serde_json::Value::as_str).unwrap_or("");
+            dconfig_set_sub_argv(KEYBINDING_APPID, resource, subpath, key, value)
+        };
+        let (ok, out) = io.run(&argv);
+        if !ok {
+            return Err(out);
+        }
+    }
+    Ok(())
+}
+
+/// Put the shortcuts and gestures back from `body`.
+fn dde_shortcuts_restore(io: &dyn PanelIo, config: &str, body: &serde_json::Value, live: bool) -> Result<(), String> {
+    let list = |k: &str| body.get(k).and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+    let sub_of = |e: &serde_json::Value| e.get("subpath").and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+    let empty = serde_json::Map::new();
+    for e in list("system") {
+        let sub = sub_of(&e);
+        if !crate::dde::dconfig_subpath_ok(&sub) {
+            continue;
+        }
+        // The copy may come from another release: an entry unknown here is skipped.
+        let Some((resource, schema)) = dde_entry_resource(io, &sub) else {
+            crate::log_info!("backup", "Deepin shortcut {sub} from the copy is unknown here, skipped");
+            continue;
+        };
+        let allowed = crate::dde::dconfig_schema_writable_keys(&schema);
+        let values = e.get("values").and_then(serde_json::Value::as_object).unwrap_or(&empty);
+        dde_entry_restore(io, resource, &sub, values, &allowed)?;
+    }
+    let keys = dde_custom_keys(io);
+    let ini_path = format!("{config}/{}", crate::dde::CUSTOM_SHORTCUTS_INI);
+    let saved: Vec<serde_json::Value> = list("custom");
+    let saved_subs: Vec<String> = saved.iter().map(sub_of).collect();
+    // Own shortcuts made after the copy: their values are reset, as removing
+    // one in the control center does.
+    for sub in dde_custom_subpaths(&io.read(&ini_path).unwrap_or_default()) {
+        if saved_subs.contains(&sub) {
+            continue;
+        }
+        let defaults: serde_json::Map<String, serde_json::Value> =
+            keys.iter().map(|k| (k.clone(), serde_json::json!({ "default": true }))).collect();
+        dde_entry_restore(io, crate::dde::SHORTCUT_RESOURCE, &sub, &defaults, &keys)?;
+    }
+    for e in &saved {
+        let sub = sub_of(e);
+        if !crate::dde::dconfig_subpath_ok(&sub) {
+            continue;
+        }
+        let values = e.get("values").and_then(serde_json::Value::as_object).unwrap_or(&empty);
+        dde_entry_restore(io, crate::dde::SHORTCUT_RESOURCE, &sub, values, &keys)?;
+    }
+    match body.get("custom_ini").and_then(serde_json::Value::as_str) {
+        Some(text) => {
+            if !io.write(&ini_path, text) {
+                return Err(ini_path);
+            }
+        }
+        None => io.remove_tree(&ini_path)?,
+    }
+    if live {
+        let (ok, out) = io.run(&crate::dde::keybinding_reload_argv());
+        if !ok {
+            crate::log_warn!("backup", "dde-services did not reread its shortcuts: {}", out.trim());
+        }
+    }
+    Ok(())
+}
+
+// ── XFCE: xfconf channels without xfce4-panel-profiles ────────────────────
+//
+// A channel is saved as its own XML file (it carries the types), and is put
+// back property by property through `xfconf-query`: writing the file over
+// would be undone by xfconfd, which keeps the channel in memory and writes
+// it back.
+
+/// The xfconf file of channel `channel` under config home `config`.
+pub fn xfconf_channel_path(config: &str, channel: &str) -> String {
+    format!("{}/xfce4/xfconf/xfce-perchannel-xml/{channel}.xml", config.trim_end_matches('/'))
+}
+
+/// One xfconf property with its value(s): `(type, value)` pairs; an array has
+/// any number of them, a scalar exactly one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XfconfProp {
+    pub path: String,
+    pub array: bool,
+    pub values: Vec<(String, String)>,
+}
+
+/// xfconf value types `xfconf-query -t` knows.
+const XFCONF_TYPES: &[&str] = &[
+    "string", "int", "uint", "bool", "double", "float", "int64", "uint64", "char", "uchar", "int16", "uint16",
+];
+
+/// Parse a channel file: `<channel>` with nested `<property name type value>`;
+/// `type="empty"` is only a container, `type="array"` has `<value type value/>` children.
+pub fn xfconf_parse(xml: &str) -> Result<Vec<XfconfProp>, String> {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let attrs = |e: &quick_xml::events::BytesStart| -> Result<(String, String, String), String> {
+        let (mut name, mut ty, mut value) = (String::new(), String::new(), String::new());
+        for attr in e.attributes() {
+            let attr = attr.map_err(|e| e.to_string())?;
+            let v = attr.unescape_value().map_err(|e| e.to_string())?.into_owned();
+            match attr.key.as_ref() {
+                b"name" => name = v,
+                b"type" => ty = v,
+                b"value" => value = v,
+                _ => {}
+            }
+        }
+        Ok((name, ty, value))
+    };
+    let mut out: Vec<XfconfProp> = Vec::new();
+    // The open properties: their paths; an open array collects its values.
+    let mut stack: Vec<String> = Vec::new();
+    // Open arrays (an array may hold child properties, arrays among them).
+    let mut arrays: Vec<XfconfProp> = Vec::new();
+    let mut seen_channel = false;
+    loop {
+        let event = reader.read_event().map_err(|e| e.to_string())?;
+        let (e, empty) = match &event {
+            Event::Start(e) => (e, false),
+            Event::Empty(e) => (e, true),
+            Event::End(e) => {
+                match e.name().as_ref() {
+                    b"property" => {
+                        let path = stack.pop().ok_or("unbalanced <property>")?;
+                        if arrays.last().is_some_and(|a| a.path == path) {
+                            out.extend(arrays.pop());
+                        }
+                    }
+                    b"value" | b"channel" => {}
+                    other => return Err(format!("unexpected </{}>", String::from_utf8_lossy(other))),
+                }
+                continue;
+            }
+            Event::Eof => break,
+            _ => continue,
+        };
+        match e.name().as_ref() {
+            b"channel" => seen_channel = true,
+            b"property" => {
+                let (name, ty, value) = attrs(e)?;
+                if name.is_empty() || name.contains('/') {
+                    return Err(format!("bad property name “{name}”"));
+                }
+                let path = format!("{}/{name}", stack.last().map(String::as_str).unwrap_or(""));
+                match ty.as_str() {
+                    "empty" => {}
+                    "array" => {
+                        let prop = XfconfProp { path: path.clone(), array: true, values: Vec::new() };
+                        // An empty array has nothing to write.
+                        if !empty {
+                            arrays.push(prop);
+                        }
+                    }
+                    t if XFCONF_TYPES.contains(&t) => {
+                        out.push(XfconfProp { path: path.clone(), array: false, values: vec![(ty.clone(), value)] })
+                    }
+                    other => return Err(format!("unknown xfconf type “{other}” at {path}")),
+                }
+                if !empty {
+                    stack.push(path);
+                }
+            }
+            b"value" => {
+                let (_, ty, value) = attrs(e)?;
+                if !XFCONF_TYPES.contains(&ty.as_str()) {
+                    return Err(format!("unknown xfconf array type “{ty}”"));
+                }
+                match arrays.last_mut() {
+                    Some(a) if stack.last() == Some(&a.path) => a.values.push((ty, value)),
+                    _ => return Err("<value> outside an array".to_string()),
+                }
+            }
+            other => return Err(format!("unexpected <{}>", String::from_utf8_lossy(other))),
+        }
+    }
+    if !seen_channel || !stack.is_empty() {
+        return Err("not an xfconf channel file".to_string());
+    }
+    Ok(out)
+}
+
+/// Commands that put channel `channel` back to `props`: the whole channel is
+/// reset first (a property added since the copy must go), then each property
+/// is created with its type.
+pub fn xfconf_restore_argvs(channel: &str, props: &[XfconfProp]) -> Vec<Vec<String>> {
+    let mut out = vec![sv(&["xfconf-query", "-c", channel, "-p", "/", "-r", "-R"])];
+    for p in props {
+        if p.values.is_empty() {
+            continue;
+        }
+        let mut argv = sv(&["xfconf-query", "-c", channel, "-p", &p.path, "-n"]);
+        if p.array {
+            argv.push("-a".to_string());
+        }
+        for (ty, value) in &p.values {
+            argv.extend(["-t".to_string(), ty.clone(), "-s".to_string(), value.clone()]);
+        }
+        out.push(argv);
+    }
+    out
 }
 
 // ── GNOME extensions in the copy ─────────────────────────────────────────
@@ -2070,13 +3097,13 @@ pub fn gnome_ext_copy_deliver(
     report
 }
 
-/// Delivering extensions from a GNOME copy on the live machine (network,
+/// Delivering extensions from GNOME copy `dir` on the live machine (network,
 /// shell; call it from a worker thread: the shell's window waits for the
-/// person). `None` means there is no copy with an inventory or everything
-/// is in place.
-pub fn gnome_ext_copy_deliver_live() -> Option<String> {
-    let (home, dir) = live_copy_dir("gnome");
-    let saved = gnome_ext_copy_saved(&LivePanelIo, &dir);
+/// person). `None` means there is no inventory in the copy or everything is
+/// in place.
+pub fn gnome_ext_copy_deliver_live_from(dir: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let saved = gnome_ext_copy_saved(&LivePanelIo, dir);
     if saved.is_empty() {
         return None;
     }
@@ -2199,6 +3226,19 @@ impl PanelIo for LivePanelIo {
     fn data_home(&self, home: &str) -> String {
         crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref().filter(|v| !v.is_empty()), home)
     }
+    fn config_home(&self, home: &str) -> String {
+        match std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty()) {
+            Some(dir) => dir.trim_end_matches('/').to_string(),
+            None => format!("{}/.config", home.trim_end_matches('/')),
+        }
+    }
+    fn restart_plasma_shell(&self) -> Option<String> {
+        Some(plasma_restart_message(plasma_restart_shell()).trim_start_matches('\n').to_string())
+    }
+    fn mtime_stamp(&self, path: &str) -> Option<String> {
+        let secs = fs::metadata(path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        crate::qt_app::Timestamp::from_epoch_local(secs).map(|t| t.file_stamp())
+    }
     fn pause(&self) {
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
@@ -2223,41 +3263,559 @@ pub fn live_panel_copy_spec(de: &str) -> Option<PanelCopySpec> {
     )
 }
 
-fn live_copy_dir(de: &str) -> (String, String) {
+// ============================================================================
+// Panel protection on every desktop: many copies per desktop
+// ============================================================================
+//
+// One model for all desktops (Wehrwolfmann's decision of 25.11.2026). Every
+// copy is a folder `<root>/<desktop>/<stamp>/` with the same `manifest.json`
+// that [`panel_copy_save`] writes, and one inventory, `<root>/panel_meta.json`
+// (`{"version": 2, "copies": [...]}`), names them all. A desktop keeps up to
+// [`MAX_PANEL_COPIES`] copies, the oldest go first. The very first copy of a
+// desktop is its "original" (the panel as it was before Rexon touched it): it
+// is kept apart and rotation never removes it.
+//
+// Copies of earlier releases (the Plasma snapshots, the single MATE, XFCE and
+// `panel-<desktop>` copies) are not moved: the inventory refers to them where
+// they lie (see the migration below). Such "linked" entries are never deleted
+// by rotation: other parts of Rexon still read those files.
+//
+// The inventory is read raw, like the Plasma meta file above: an entry written
+// by a newer release with fields we do not know must survive our rewrite.
+
+/// Name of the panel copies inventory in the copies root.
+pub const PANEL_META_FILE: &str = "panel_meta.json";
+/// Version of the inventory format.
+pub const PANEL_META_VERSION: u64 = 2;
+/// How many copies of one desktop are kept, not counting the original one.
+pub const MAX_PANEL_COPIES: usize = 10;
+
+/// How the files of a copy are laid out (`PanelSnapshot::format`).
+pub mod snapshot_format {
+    /// A [`super::panel_copy_save`] folder with `manifest.json`.
+    pub const MANIFEST: &str = "manifest";
+    /// A Plasma snapshot of earlier releases: files by basename, the original
+    /// paths are in `files`.
+    pub const PLASMA_FILES: &str = "plasma_files";
+    /// One `dconf dump /org/mate/panel/` file (the MATE layout section's copy).
+    pub const MATE_DCONF: &str = "mate_dconf";
+    /// An `xfce4-panel-profiles` archive of earlier releases.
+    pub const XFCE_PROFILE: &str = "xfce_profile";
+}
+
+/// What a copy holds, for its caption (`PanelSnapshot::parts`).
+pub mod snapshot_part {
+    /// Panels, applets, docks, panel extensions.
+    pub const PANEL: &str = "panel";
+    /// Keyboard shortcuts.
+    pub const SHORTCUTS: &str = "shortcuts";
+}
+
+fn default_snapshot_format() -> String {
+    snapshot_format::MANIFEST.to_string()
+}
+
+/// One entry of the panel copies inventory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PanelSnapshot {
+    /// Rexon desktop key (`kde`, `mate`, `cinnamon-mint`…).
+    pub de: String,
+    /// `YYYYMMDD_HHMMSS`, local time.
+    pub timestamp: String,
+    /// Why it was taken: `manual`, `before_install`, `before_switch`,
+    /// `before_layout`, `migrated`.
+    pub reason: String,
+    /// The copy folder (or file, for the linked single-file copies).
+    pub path: String,
+    /// [`snapshot_part`] names.
+    #[serde(default)]
+    pub parts: Vec<String>,
+    /// How many items the copy holds (manifest entries or files).
+    #[serde(default)]
+    pub items: usize,
+    /// The desktop's original copy: never removed by rotation.
+    #[serde(default)]
+    pub original: bool,
+    /// [`snapshot_format`].
+    #[serde(default = "default_snapshot_format")]
+    pub format: String,
+    /// [`snapshot_format::PLASMA_FILES`]: the original paths of the files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    /// A copy of an earlier release that lies where that release put it:
+    /// rotation neither counts nor deletes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub linked: bool,
+}
+
+/// The copies root: `<data home>/rexon/backups/panel`.
+pub fn panel_root(data_home: &str) -> String {
+    format!("{}/rexon/backups/panel", data_home.trim_end_matches('/'))
+}
+
+/// One key per desktop in the inventory: Cinnamon is known to Rexon under two
+/// names, and its copies must not split into two lists.
+pub fn panel_de_key(de: &str) -> &str {
+    match de {
+        "cinnamon" => "cinnamon-mint",
+        other => other,
+    }
+}
+
+/// Inventory entries IN WRITE ORDER and AS IS (raw JSON); no file or a broken
+/// one means none.
+pub fn panel_meta_raw(io: &dyn PanelIo, root: &str) -> Vec<serde_json::Value> {
+    let Some(text) = io.read(&format!("{root}/{PANEL_META_FILE}")) else {
+        return Vec::new();
+    };
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) => match v.get("copies") {
+            Some(serde_json::Value::Array(items)) => items.clone(),
+            _ => Vec::new(),
+        },
+        Err(e) => {
+            crate::log_warn!("backup", "panel copies inventory is unreadable, treated as empty: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// Write the inventory as a whole: next to it first, then in its place, so a
+/// failed write never leaves half a list.
+pub fn panel_meta_store(io: &dyn PanelIo, root: &str, raw: &[serde_json::Value]) -> Result<(), String> {
+    let body = serde_json::json!({ "version": PANEL_META_VERSION, "copies": raw });
+    let text = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
+    let path = format!("{root}/{PANEL_META_FILE}");
+    let tmp = format!("{path}.tmp");
+    if !io.write(&tmp, &text) {
+        return Err(tmp);
+    }
+    io.rename(&tmp, &path)
+}
+
+/// Typed entries; an entry of an unknown form is skipped, not fatal.
+pub fn panel_snapshots(raw: &[serde_json::Value]) -> Vec<PanelSnapshot> {
+    raw.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect()
+}
+
+/// Copies of desktop `de`, newest first (the original among them, in its place by time).
+pub fn panel_copies_of(list: &[PanelSnapshot], de: &str) -> Vec<PanelSnapshot> {
+    let de = panel_de_key(de);
+    let mut out: Vec<PanelSnapshot> = list.iter().filter(|s| s.de == de).cloned().collect();
+    out.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    out
+}
+
+/// Desktops that have copies, in first-seen order.
+pub fn panel_desktops_with_copies(list: &[PanelSnapshot]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in list {
+        if !out.contains(&s.de) {
+            out.push(s.de.clone());
+        }
+    }
+    out
+}
+
+/// Copies of `de` that rotation removes: Rexon's own (not linked), not the
+/// original, the oldest beyond [`MAX_PANEL_COPIES`]. Paths.
+pub fn panel_rotation(list: &[PanelSnapshot], de: &str) -> Vec<String> {
+    let de = panel_de_key(de);
+    let mut own: Vec<&PanelSnapshot> = list.iter().filter(|s| s.de == de && !s.original && !s.linked).collect();
+    own.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    let extra = own.len().saturating_sub(MAX_PANEL_COPIES);
+    own.into_iter().take(extra).map(|s| s.path.clone()).collect()
+}
+
+/// The entry with path `path` (the copy's id on the page and in questions).
+pub fn panel_snapshot_by_path(list: &[PanelSnapshot], path: &str) -> Option<PanelSnapshot> {
+    list.iter().find(|s| s.path == path).cloned()
+}
+
+/// What spec `spec` takes, as [`snapshot_part`] names.
+pub fn panel_spec_parts(spec: &PanelCopySpec) -> Vec<String> {
+    let mut out = Vec::new();
+    if !spec.parts.is_empty() {
+        out.push(snapshot_part::PANEL.to_string());
+    }
+    if !spec.shortcuts.is_empty() {
+        out.push(snapshot_part::SHORTCUTS.to_string());
+    }
+    out
+}
+
+/// Take a copy of desktop `de` by `spec` into the copies root and name it in
+/// the inventory. `stamp` comes from outside (the clock is an observation).
+///
+/// The first copy of a desktop becomes its original. After the new entry the
+/// oldest copies beyond the limit are removed, from disk and from the list.
+pub fn panel_snapshot_save(
+    io: &dyn PanelIo,
+    spec: &PanelCopySpec,
+    de: &str,
+    home: &str,
+    root: &str,
+    reason: &str,
+    stamp: &str,
+) -> Result<PanelSnapshot, String> {
+    let de = panel_de_key(de);
+    let mut raw = panel_meta_raw(io, root);
+    let list = panel_snapshots(&raw);
+    // Two copies within one second (an automatic one right after a manual one)
+    // get their own folders.
+    let mut dir = format!("{root}/{de}/{stamp}");
+    let mut n = 2;
+    while io.exists(&dir) || list.iter().any(|s| s.path == dir) {
+        dir = format!("{root}/{de}/{stamp}-{n}");
+        n += 1;
+    }
+    panel_copy_save(io, spec, home, &dir)?;
+    let items = io
+        .read(&format!("{dir}/manifest.json"))
+        .and_then(|t| serde_json::from_str::<Vec<serde_json::Value>>(&t).ok())
+        .map_or(0, |v| v.len());
+    let entry = PanelSnapshot {
+        de: de.to_string(),
+        timestamp: stamp.to_string(),
+        reason: reason.to_string(),
+        path: dir.clone(),
+        parts: panel_spec_parts(spec),
+        items,
+        original: !list.iter().any(|s| s.de == de && s.original),
+        format: snapshot_format::MANIFEST.to_string(),
+        files: Vec::new(),
+        linked: false,
+    };
+    raw.push(serde_json::to_value(&entry).map_err(|e| e.to_string())?);
+    let dropped = panel_rotation(&panel_snapshots(&raw), de);
+    raw.retain(|v| {
+        let path = v.get("path").and_then(serde_json::Value::as_str).unwrap_or_default();
+        !dropped.iter().any(|d| d == path)
+    });
+    if let Err(e) = panel_meta_store(io, root, &raw) {
+        // A copy nobody can find is dead weight: take it back.
+        let _ = io.remove_tree(&dir);
+        return Err(e);
+    }
+    for path in &dropped {
+        if let Err(e) = io.remove_tree(path) {
+            crate::log_warn!("backup", "old panel copy {path} was not removed: {e}");
+        }
+    }
+    Ok(entry)
+}
+
+// ── Copies of earlier releases in the inventory ───────────────────────────
+//
+// Nothing is moved: every old copy is referred to where it lies. The Plasma
+// snapshots keep their folders (the old `plasma_meta.json` points at them and
+// stays readable for an older Rexon; a `.migrated` mark is put next to it);
+// the single MATE copy and its `.last` neighbour are the files the MATE layout
+// section still reads and writes; the XFCE archive and the `panel-<desktop>`
+// folders are the last copies of the previous release. One idempotent
+// function brings the inventory in line with them, on every read: a second
+// run changes nothing.
+
+/// The mark next to the old Plasma meta file once its entries are in the inventory.
+pub fn plasma_meta_migrated_mark(plasma_dir: &str) -> String {
+    format!("{}.migrated", plasma_meta_path(plasma_dir))
+}
+
+const MISSING_STAMP: &str = "00000000_000000";
+
+/// Bring the inventory in line with the copies of earlier releases under
+/// `data_home` -> whether it changed (and was written).
+pub fn panel_migrate(io: &dyn PanelIo, data_home: &str) -> Result<bool, String> {
+    let backups = format!("{}/rexon/backups", data_home.trim_end_matches('/'));
+    let root = panel_root(data_home);
+    let mut raw = panel_meta_raw(io, &root);
+    let before = raw.clone();
+    let known = |raw: &[serde_json::Value], path: &str| {
+        raw.iter().position(|v| v.get("path").and_then(serde_json::Value::as_str) == Some(path))
+    };
+    let stamp_of = |path: &str| io.mtime_stamp(path).unwrap_or_else(|| MISSING_STAMP.to_string());
+
+    // 1. Plasma snapshots: Rexon's own copies, so rotation counts them.
+    let plasma_dir = format!("{backups}/plasma-panel");
+    let plasma_raw: Vec<serde_json::Value> = io
+        .read(&plasma_meta_path(&plasma_dir))
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("backups").and_then(serde_json::Value::as_array).cloned())
+        .unwrap_or_default();
+    let plasma = plasma_parse_entries(&plasma_raw);
+    for b in &plasma {
+        if known(&raw, &b.path).is_some() || !io.exists(&b.path) {
+            continue;
+        }
+        let shortcuts = b.full || b.files.iter().any(|f| f.ends_with("/kglobalshortcutsrc"));
+        let mut parts = vec![snapshot_part::PANEL.to_string()];
+        if shortcuts {
+            parts.push(snapshot_part::SHORTCUTS.to_string());
+        }
+        let entry = PanelSnapshot {
+            de: "kde".into(),
+            timestamp: b.timestamp.clone(),
+            reason: b.reason.clone(),
+            path: b.path.clone(),
+            parts,
+            items: b.files.len(),
+            original: false,
+            format: snapshot_format::PLASMA_FILES.into(),
+            files: b.files.clone(),
+            linked: false,
+        };
+        raw.push(serde_json::to_value(&entry).map_err(|e| e.to_string())?);
+    }
+    if !plasma.is_empty() && !io.exists(&plasma_meta_migrated_mark(&plasma_dir)) {
+        io.write(&plasma_meta_migrated_mark(&plasma_dir), "");
+    }
+
+    // 2. Linked single copies: `(path, desktop, format, reason, original candidate)`.
+    let mate = format!("{backups}/mate-panel.dconf");
+    let mate_returned = io
+        .read(&panel_original_returned_mark(&mate))
+        .is_some_and(|m| m.trim() == PANEL_ORIGINAL_RETURNED);
+    let mut linked: Vec<(String, &str, &str, &str, bool)> = vec![
+        (mate.clone(), "mate", snapshot_format::MATE_DCONF, "migrated", !mate_returned),
+        (panel_last_snapshot_path(&mate), "mate", snapshot_format::MATE_DCONF, "before_layout", false),
+        (xfce_panel_copy_path(data_home), "xfce", snapshot_format::XFCE_PROFILE, "migrated", true),
+    ];
+    let old_dirs: Vec<String> = io.list_dir(&backups).into_iter().filter(|n| n.starts_with("panel-")).collect();
+    for name in &old_dirs {
+        let de = &name["panel-".len()..];
+        if let Some(meta) = crate::system::DE_META.iter().find(|m| m.id == panel_de_key(de) || m.id == de) {
+            linked.push((format!("{backups}/{name}"), meta.id, snapshot_format::MANIFEST, "migrated", true));
+        }
+    }
+    for (path, de, format, reason, may_be_original) in linked {
+        let probe = if format == snapshot_format::MANIFEST { format!("{path}/manifest.json") } else { path.clone() };
+        let at = known(&raw, &path);
+        if !io.exists(&probe) {
+            // The file is gone (the layout section or the person removed it).
+            if let Some(i) = at {
+                if raw[i].get("linked").and_then(serde_json::Value::as_bool) == Some(true) {
+                    raw.remove(i);
+                }
+            }
+            continue;
+        }
+        let stamp = stamp_of(&probe);
+        let de = panel_de_key(de);
+        let other_original = panel_snapshots(&raw).iter().any(|s| s.de == de && s.original && s.path != path);
+        let original = may_be_original && !other_original;
+        match at {
+            Some(i) => {
+                // The layout section rewrites these files: the time follows the file.
+                if let Some(obj) = raw[i].as_object_mut() {
+                    obj.insert("timestamp".into(), stamp.into());
+                    obj.insert("original".into(), original.into());
+                }
+            }
+            None => {
+                // The single copies of earlier releases held the panel only.
+                let parts = vec![snapshot_part::PANEL.to_string()];
+                let entry = PanelSnapshot {
+                    de: de.to_string(),
+                    timestamp: stamp,
+                    reason: reason.to_string(),
+                    path: path.clone(),
+                    parts,
+                    items: 1,
+                    original,
+                    format: format.to_string(),
+                    files: Vec::new(),
+                    linked: true,
+                };
+                raw.push(serde_json::to_value(&entry).map_err(|e| e.to_string())?);
+            }
+        }
+    }
+
+    // 3. A desktop without an original: its oldest copy is the closest to how
+    // the panel was before Rexon.
+    let list = panel_snapshots(&raw);
+    for de in panel_desktops_with_copies(&list) {
+        if list.iter().any(|s| s.de == de && s.original) {
+            continue;
+        }
+        // Only Rexon's own copies: a linked one says itself whether it is the original.
+        let oldest = list.iter().filter(|s| s.de == de && !s.linked).min_by(|a, b| a.timestamp.cmp(&b.timestamp)).map(|s| s.path.clone());
+        if let Some(i) = oldest.and_then(|p| known(&raw, &p)) {
+            if let Some(obj) = raw[i].as_object_mut() {
+                obj.insert("original".into(), true.into());
+            }
+        }
+    }
+
+    if raw == before {
+        return Ok(false);
+    }
+    panel_meta_store(io, &root, &raw)?;
+    crate::log_info!("backup", "panel copies inventory brought in line with earlier copies ({} entries)", raw.len());
+    Ok(true)
+}
+
+// ── Restoring a copy of any format ────────────────────────────────────────
+
+/// The spec a restore checks the manifest against: everything the desktop
+/// could have had when the copy was taken, whatever is installed now (a
+/// desktop being restored from another one may lack its programs).
+pub fn panel_restore_spec(de: &str) -> Option<PanelCopySpec> {
+    let yes = |_: &str| true;
+    let some_ext = ["any@rexon.app".to_string()];
+    panel_copy_spec(
+        panel_de_key(de),
+        &PanelProbe { have: &yes, home_exists: &yes, gnome_extensions: &some_ext, system_exists: &yes },
+    )
+}
+
+/// Message: an XFCE copy of an earlier release needs xfce4-panel-profiles.
+pub fn msg_xfce_profile_needed(detail: &str) -> String {
+    // TRANSLATORS: %1 is what the program said.
+    trf(
+        "This copy was made by an earlier version of Rexon with xfce4-panel-profiles; install that program to restore it. (%1)",
+        &[&detail],
+    )
+}
+
+/// Restore copy `snap` -> notes for the person (may be empty) or the reason.
+///
+/// `live`: `snap.de` is the running session's desktop, so it is told to
+/// reread what came back; otherwise the desktop reads it at its next login.
+pub fn panel_snapshot_restore(io: &dyn PanelIo, home: &str, snap: &PanelSnapshot, live: bool) -> Result<Vec<String>, String> {
+    let home = home.trim_end_matches('/');
+    match snap.format.as_str() {
+        snapshot_format::MANIFEST => {
+            let spec = panel_restore_spec(&snap.de).ok_or_else(|| tr("There is no saved panel copy yet."))?;
+            let notes = panel_copy_restore_in(io, &spec, home, &snap.path, live)?;
+            Ok(notes)
+        }
+        snapshot_format::PLASMA_FILES => {
+            if !io.exists(&snap.path) {
+                return Err(msg_snapshot_dir_missing(&snap.path));
+            }
+            let entry = PlasmaBackup {
+                timestamp: snap.timestamp.clone(),
+                reason: snap.reason.clone(),
+                path: snap.path.clone(),
+                files: snap.files.clone(),
+                full: false,
+            };
+            let items = plasma_restore_items(&entry, |p| io.exists(p));
+            if items.is_empty() {
+                return Err(msg_none_restored());
+            }
+            let mut notes = Vec::new();
+            for (src, dest) in &items {
+                if dest.ends_with(&format!("/{KDE_SHORTCUTS_FILE}")) {
+                    let text = io.read(src).ok_or_else(|| src.clone())?;
+                    let config = &dest[..dest.len() - KDE_SHORTCUTS_FILE.len() - 1];
+                    notes.extend(kde_shortcuts_restore(io, config, &text, live)?);
+                } else if dest.ends_with("/plasma") && dest.contains("/share/") {
+                    // Old full copies took the whole `~/.local/share/plasma`,
+                    // Rexon's wallpaper plugin included: the current plugin stays.
+                    restore_tree_keeping(io, src, dest, PLASMA_DATA_KEEP)?;
+                } else {
+                    io.remove_tree(dest)?;
+                    io.copy_tree(src, dest)?;
+                }
+            }
+            if live {
+                notes.extend(io.restart_plasma_shell());
+            }
+            Ok(notes)
+        }
+        snapshot_format::MATE_DCONF => {
+            if !io.exists(&snap.path) {
+                return Err(tr("⚠️ There is no saved panel to restore."));
+            }
+            mate_panel_load(io, &snap.path, live)?;
+            // The layout section's original came back: its next layout takes a
+            // fresh original (the rule of 20.10.2026, `panel_snapshot_slot`).
+            if snap.original && snap.linked && !snap.path.ends_with(".last") {
+                io.write(&panel_original_returned_mark(&snap.path), PANEL_ORIGINAL_RETURNED);
+            }
+            Ok(Vec::new())
+        }
+        snapshot_format::XFCE_PROFILE => {
+            let (ok, out) = io.run(&xfce_panel_load_argv(&snap.path));
+            if ok {
+                Ok(Vec::new())
+            } else {
+                Err(msg_xfce_profile_needed(out.trim()))
+            }
+        }
+        other => Err(format!("unknown copy format “{other}”")),
+    }
+}
+
+// ── The live machine ──────────────────────────────────────────────────────
+
+fn live_home_and_data() -> (String, String) {
     let home = std::env::var("HOME").unwrap_or_default();
-    let xdg = std::env::var("XDG_DATA_HOME").ok();
-    let data = crate::utils::data_home(xdg.as_deref(), &home);
-    (home, panel_copy_dir(&data, de))
+    let data = LivePanelIo.data_home(&home);
+    (home, data)
 }
 
-/// Whether desktop `de` already has a panel copy (a new one will replace it).
-pub fn panel_copy_exists_live(de: &str) -> bool {
-    let (_, dir) = live_copy_dir(de);
-    Path::new(&format!("{dir}/manifest.json")).is_file()
+/// The desktop of the running session (a Rexon key), if Rexon knows it.
+pub fn live_session_de() -> Option<String> {
+    let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    let session = std::env::var("DESKTOP_SESSION").unwrap_or_default();
+    let wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+    crate::system::detect_current_de(&xdg, &session, wayland)
+        .filter(|de| !de.is_empty())
+        .map(|de| panel_de_key(&de).to_string())
 }
 
-/// "Save panel" for desktop `de` -> (succeeded, path or reason).
-pub fn panel_copy_save_live(de: &str) -> (bool, String) {
-    let Some(spec) = live_panel_copy_spec(de) else {
-        return (false, tr("There is no saved panel copy yet."));
-    };
-    let (home, dir) = live_copy_dir(de);
-    match panel_copy_save(&LivePanelIo, &spec, &home, &dir) {
-        Ok(p) => (true, p),
-        Err(e) => (false, e),
+/// All panel copies on this machine (earlier releases' ones included).
+pub fn panel_inventory_live() -> Vec<PanelSnapshot> {
+    let (_, data) = live_home_and_data();
+    if let Err(e) = panel_migrate(&LivePanelIo, &data) {
+        crate::log_warn!("backup", "panel copies inventory was not brought in line: {e}");
     }
+    panel_snapshots(&panel_meta_raw(&LivePanelIo, &panel_root(&data)))
 }
 
-/// "Restore panel" for desktop `de` -> (succeeded, path or reason).
-pub fn panel_copy_restore_live(de: &str) -> (bool, String) {
+/// Whether Rexon can take a panel copy of desktop `de` on this machine.
+pub fn panel_supported_live(de: &str) -> bool {
+    live_panel_copy_spec(panel_de_key(de)).is_some()
+}
+
+/// The current local time as a copy stamp.
+pub fn panel_stamp_now() -> String {
+    crate::qt_app::Timestamp::now_local().unwrap_or_default().file_stamp()
+}
+
+/// Take a copy of desktop `de` now, with reason `reason`.
+pub fn panel_save_live(de: &str, reason: &str) -> Result<PanelSnapshot, String> {
+    let de = panel_de_key(de);
     let Some(spec) = live_panel_copy_spec(de) else {
-        return (false, tr("There is no saved panel copy yet."));
+        return Err(msg_nothing_to_backup());
     };
-    let (home, dir) = live_copy_dir(de);
-    match panel_copy_restore(&LivePanelIo, &spec, &home, &dir) {
-        Ok(p) => (true, p),
-        Err(e) => (false, e),
+    let (home, data) = live_home_and_data();
+    if let Err(e) = panel_migrate(&LivePanelIo, &data) {
+        crate::log_warn!("backup", "panel copies inventory was not brought in line: {e}");
     }
+    let snap = panel_snapshot_save(&LivePanelIo, &spec, de, &home, &panel_root(&data), reason, &panel_stamp_now())?;
+    crate::log_info!("backup", "panel copy of {de} taken ({reason}): {}", snap.path);
+    Ok(snap)
+}
+
+/// Restore the copy at `path` (its id in the list) -> notes or the reason.
+pub fn panel_restore_live(path: &str) -> Result<(PanelSnapshot, Vec<String>), String> {
+    let Some(snap) = panel_snapshot_by_path(&panel_inventory_live(), path) else {
+        return Err(msg_no_plasma_backups());
+    };
+    let (home, _) = live_home_and_data();
+    let live = live_session_de().as_deref() == Some(snap.de.as_str());
+    crate::log_info!("backup", "restoring panel copy {} of {} (running session: {live})", snap.path, snap.de);
+    let notes = panel_snapshot_restore(&LivePanelIo, &home, &snap, live)?;
+    Ok((snap, notes))
+}
+
+/// The newest copy of desktop `de`.
+pub fn panel_latest_live(de: &str) -> Option<PanelSnapshot> {
+    panel_copies_of(&panel_inventory_live(), de).into_iter().next()
 }
 
 /// Processes of our own session (uid and `XDG_SESSION_ID`) with executable
@@ -2317,9 +3875,6 @@ mod xfce_panel_tests {
         assert_eq!(path, "/home/w/.local/share/rexon/backups/xfce4-panel.tar.bz2");
         assert_eq!(xfce_panel_save_argv(&path), ["xfce4-panel-profiles", "save", path.as_str()]);
         assert_eq!(xfce_panel_load_argv(&path), ["xfce4-panel-profiles", "load", path.as_str()]);
-        // No copy: nothing to restore, the program is not called.
-        let (ok, msg) = xfce_panel_restore_live("/nonexistent-rexon-test");
-        assert!(!ok && !msg.is_empty());
     }
 }
 
@@ -2684,6 +4239,8 @@ mod panel_copy_tests {
         pub dde_default: RefCell<std::collections::BTreeSet<String>>,
         /// `gsettings get org.gnome.shell <key>` -> the answer.
         pub gsettings: RefCell<BTreeMap<String, String>>,
+        /// File change times (`mtime_stamp`).
+        pub mtimes: RefCell<BTreeMap<String, String>>,
     }
 
     impl PanelIo for Mem {
@@ -2701,6 +4258,24 @@ mod panel_copy_tests {
                 ["sh", "-c", _, "sh", dir, file] => {
                     let text = self.files.borrow().get(*file).cloned().unwrap_or_default();
                     self.dconf.borrow_mut().insert(dir.to_string(), text);
+                    (true, String::new())
+                }
+                ["dde-dconfig", "get", "-a", a, "-r", r, "-s", s, "-k", k, "-m", "isDefaultValue"] => {
+                    (true, self.dde_default.borrow().contains(&format!("{a}|{r}|{k}@{s}")).to_string())
+                }
+                ["dde-dconfig", "get", "-a", a, "-r", r, "-s", s, "-k", k] => {
+                    (true, self.dde.borrow().get(&format!("{a}|{r}|{k}@{s}")).cloned().unwrap_or_default())
+                }
+                ["dde-dconfig", "set", "-a", a, "-r", r, "-s", s, "-k", k, "-v", v] => {
+                    let id = format!("{a}|{r}|{k}@{s}");
+                    self.dde.borrow_mut().insert(id.clone(), format!("\"{v}\""));
+                    self.dde_default.borrow_mut().remove(&id);
+                    (true, String::new())
+                }
+                ["dde-dconfig", "reset", "-a", a, "-r", r, "-s", s, "-k", k] => {
+                    let id = format!("{a}|{r}|{k}@{s}");
+                    self.dde.borrow_mut().insert(id.clone(), "default".into());
+                    self.dde_default.borrow_mut().insert(id);
                     (true, String::new())
                 }
                 ["dde-dconfig", "get", "-a", a, "-r", r, "-k", k, "-m", "isDefaultValue"] => {
@@ -2783,6 +4358,9 @@ mod panel_copy_tests {
             1
         }
         fn pause(&self) {}
+        fn mtime_stamp(&self, path: &str) -> Option<String> {
+            self.mtimes.borrow().get(path).cloned()
+        }
     }
 
     pub(super) fn spec_for(de: &str, tools: &[&str], home_paths: &[&str], exts: &[&str]) -> Option<PanelCopySpec> {
@@ -2836,8 +4414,10 @@ mod panel_copy_tests {
         assert!(panel_copy_restore(&m, &spec, HOME, COPY).is_ok());
         assert_eq!(m.read(&format!("{HOME}/.config/cinnamon/spices/menu@cinnamon.org/0.json")).as_deref(), Some("{\"a\":1}"));
         assert!(!m.exists(&format!("{HOME}/.config/cinnamon/spices/new@x")));
-        // The whole branch was not reset: only the panel keys were written over.
-        assert!(!m.runs.borrow().iter().any(|r| r.get(1).map(String::as_str) == Some("reset")));
+        // The whole branch was not reset: only the panel keys were written over
+        // (the shortcut branch is a separate one and is reset as a whole).
+        assert!(!m.runs.borrow().iter().any(|r| r.get(1).map(String::as_str) == Some("reset")
+            && r.get(3).map(String::as_str) == Some("/org/cinnamon/")));
     }
 
     #[test]
@@ -2885,7 +4465,16 @@ mod panel_copy_tests {
         assert_eq!(m.read(&conf).as_deref(), Some("[panel1]\nposition=Bottom\n"));
         let runs = m.runs.borrow();
         let calls: Vec<&String> = runs.iter().filter(|r| r[0] == "dbus-send").map(|r| &r[5]).collect();
-        assert_eq!(calls, ["org.lxqt.session.stopModule", "org.lxqt.session.startModule"]);
+        // The panel module, then the shortcuts module.
+        assert_eq!(
+            calls,
+            [
+                "org.lxqt.session.stopModule",
+                "org.lxqt.session.startModule",
+                "org.lxqt.session.stopModule",
+                "org.lxqt.session.startModule"
+            ]
+        );
         assert!(runs.iter().any(|r| r.last().map(String::as_str) == Some("string:lxqt-panel.desktop")));
     }
 
@@ -2899,10 +4488,14 @@ mod panel_copy_tests {
             spec.parts,
             vec![
                 PanelPart::DconfDir("/org/gnome/shell/extensions/"),
-                PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions", "disabled-extensions"] },
+                PanelPart::DconfKeys {
+                    dir: "/org/gnome/shell/",
+                    prefixes: &["enabled-extensions", "disabled-extensions", "favorite-apps"],
+                },
                 PanelPart::GnomeExtensions,
             ]
         );
+        assert!(spec.shortcuts.contains(&PanelPart::DconfDir(GNOME_WM_KEYS_DIR)));
         assert!(spec_for("gnome", &[], &[], &["appindicatorsupport@rgcjonas.gmail.com"]).is_some());
     }
 
@@ -2965,7 +4558,8 @@ mod panel_copy_tests {
         );
         let keys = io.files.borrow().get(&format!("{COPY}/dconf-1.ini")).cloned().unwrap();
         assert!(keys.contains("enabled-extensions") && keys.contains("disabled-extensions"));
-        assert!(!keys.contains("favorite-apps"), "{keys}");
+        // The dock's favourites are taken since 25.11.2026 (they are the dock's icons).
+        assert!(!keys.contains("gtk-theme"), "{keys}");
 
         io.dconf.borrow_mut().insert("/org/gnome/shell/extensions/".into(), "[own]\nsize=9\n[other]\nx=1\n".into());
         panel_copy_restore(&io, &spec, HOME, COPY).unwrap();
@@ -3325,5 +4919,802 @@ mod gnome_ext_delivery_tests {
         });
         assert!(r.is_empty());
         assert!(shell.calls.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod panel_model_tests {
+    use super::panel_copy_tests::{spec_for, Mem};
+    use super::*;
+
+    const HOME: &str = "/home/w";
+    const ROOT: &str = "/home/w/.local/share/rexon/backups/panel";
+
+    fn lxqt(m: &Mem) -> PanelCopySpec {
+        m.write(&format!("{HOME}/.config/lxqt/panel.conf"), "[panel1]\n");
+        spec_for("lxqt", &["lxqt-panel"], &[], &[]).expect("LXQt is taken")
+    }
+
+    fn list(m: &Mem) -> Vec<PanelSnapshot> {
+        panel_snapshots(&panel_meta_raw(m, ROOT))
+    }
+
+    #[test]
+    fn first_copy_is_the_original_and_rotation_spares_it() {
+        let m = Mem::default();
+        let spec = lxqt(&m);
+        for i in 0..(MAX_PANEL_COPIES + 3) {
+            let stamp = format!("20261125_1200{i:02}");
+            let s = panel_snapshot_save(&m, &spec, "lxqt", HOME, ROOT, "manual", &stamp).expect("saved");
+            assert_eq!(s.original, i == 0, "copy {i}");
+            assert_eq!(s.parts, vec![snapshot_part::PANEL.to_string(), snapshot_part::SHORTCUTS.to_string()]);
+            assert_eq!(s.items, 1);
+        }
+        let all = list(&m);
+        assert_eq!(all.len(), MAX_PANEL_COPIES + 1, "ten copies plus the original");
+        assert!(all.iter().any(|s| s.original && s.timestamp == "20261125_120000"));
+        // The two oldest non-original copies are gone from disk too.
+        assert!(!m.exists(&format!("{ROOT}/lxqt/20261125_120001")));
+        assert!(!m.exists(&format!("{ROOT}/lxqt/20261125_120002")));
+        assert!(m.exists(&format!("{ROOT}/lxqt/20261125_120000/manifest.json")));
+        assert!(m.exists(&format!("{ROOT}/lxqt/20261125_120003/manifest.json")));
+        // Newest first.
+        let mine = panel_copies_of(&all, "lxqt");
+        assert_eq!(mine[0].timestamp, format!("20261125_1200{:02}", MAX_PANEL_COPIES + 2));
+    }
+
+    #[test]
+    fn copies_of_one_second_get_their_own_folders() {
+        let m = Mem::default();
+        let spec = lxqt(&m);
+        let a = panel_snapshot_save(&m, &spec, "lxqt", HOME, ROOT, "manual", "20261125_120000").unwrap();
+        let b = panel_snapshot_save(&m, &spec, "lxqt", HOME, ROOT, "before_install", "20261125_120000").unwrap();
+        assert_ne!(a.path, b.path);
+        assert!(b.path.ends_with("/20261125_120000-2"));
+        assert!(!b.original);
+    }
+
+    #[test]
+    fn unknown_fields_and_foreign_entries_survive_a_rewrite() {
+        let m = Mem::default();
+        let spec = lxqt(&m);
+        m.write(
+            &format!("{ROOT}/{PANEL_META_FILE}"),
+            r#"{"version":2,"copies":[{"de":"kde","timestamp":"20260101_000000","reason":"manual","path":"/x","future":1},{"strange":true}]}"#,
+        );
+        panel_snapshot_save(&m, &spec, "lxqt", HOME, ROOT, "manual", "20261125_120000").unwrap();
+        let raw = panel_meta_raw(&m, ROOT);
+        assert_eq!(raw.len(), 3);
+        assert_eq!(raw[0]["future"], 1);
+        assert_eq!(raw[1]["strange"], true);
+        let typed = panel_snapshots(&raw);
+        assert_eq!(typed.len(), 2);
+        assert_eq!(typed[0].format, snapshot_format::MANIFEST, "a missing format means a manifest copy");
+        assert!(!m.exists(&format!("{ROOT}/{PANEL_META_FILE}.tmp")));
+    }
+
+    #[test]
+    fn linked_copies_are_neither_counted_nor_removed() {
+        let mut list: Vec<PanelSnapshot> = (0..MAX_PANEL_COPIES)
+            .map(|i| PanelSnapshot {
+                de: "mate".into(),
+                timestamp: format!("20261125_1200{i:02}"),
+                reason: "manual".into(),
+                path: format!("/c/{i}"),
+                parts: vec![],
+                items: 1,
+                original: false,
+                format: snapshot_format::MANIFEST.into(),
+                files: vec![],
+                linked: false,
+            })
+            .collect();
+        let mut linked = list[0].clone();
+        linked.path = "/old/mate-panel.dconf".into();
+        linked.timestamp = "20200101_000000".into();
+        linked.linked = true;
+        list.push(linked);
+        assert!(panel_rotation(&list, "mate").is_empty());
+        let mut extra = list[1].clone();
+        extra.path = "/c/new".into();
+        extra.timestamp = "20261126_000000".into();
+        list.push(extra);
+        assert_eq!(panel_rotation(&list, "mate"), vec!["/c/0".to_string()]);
+    }
+
+    #[test]
+    fn cinnamon_has_one_list() {
+        assert_eq!(panel_de_key("cinnamon"), "cinnamon-mint");
+        assert_eq!(panel_de_key("kde"), "kde");
+    }
+}
+
+#[cfg(test)]
+mod desktop_spec_tests {
+    use super::panel_copy_tests::{spec_for, Mem};
+    use super::*;
+
+    const HOME: &str = "/home/w";
+    const COPY: &str = "/home/w/.local/share/rexon/backups/panel/x/1";
+
+    /// A trimmed copy of the XML that xfce4-panel 4.20 ships
+    /// (`/etc/xdg/xfce4/panel/default.xml`): an array with child properties,
+    /// containers, all scalar kinds, an escaped value.
+    const XFCE_PANEL_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfce4-panel" version="1.0">
+  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <value type="int" value="2"/>
+    <property name="dark-mode" type="bool" value="true"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=6;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="1"/>
+        <value type="int" value="2"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-1" type="string" value="applicationsmenu"/>
+    <property name="plugin-2" type="string" value="tasklist">
+      <property name="grouping" type="uint" value="1"/>
+      <property name="label" type="string" value="Tom &amp; Jerry &quot;x&quot;"/>
+    </property>
+  </property>
+</channel>
+"#;
+
+    #[test]
+    fn xfconf_file_parses_with_types() {
+        let props = xfconf_parse(XFCE_PANEL_XML).expect("a real channel file parses");
+        let get = |p: &str| props.iter().find(|x| x.path == p).cloned().unwrap_or_else(|| panic!("{p} missing"));
+        assert_eq!(get("/configver").values, [("int".to_string(), "2".to_string())]);
+        let panels = get("/panels");
+        assert!(panels.array);
+        assert_eq!(panels.values, [("int".into(), "1".into()), ("int".into(), "2".into())]);
+        assert_eq!(get("/panels/dark-mode").values, [("bool".into(), "true".into())]);
+        assert_eq!(get("/panels/panel-1/length").values, [("uint".into(), "100".into())]);
+        assert!(get("/panels/panel-1/plugin-ids").array);
+        // A property with a value can have children too.
+        assert_eq!(get("/plugins/plugin-2").values, [("string".into(), "tasklist".into())]);
+        assert_eq!(get("/plugins/plugin-2/label").values[0].1, "Tom & Jerry \"x\"");
+        assert!(!props.iter().any(|p| p.path == "/plugins" || p.path == "/panels/panel-1"), "containers are not written");
+        assert_eq!(props.len(), 10);
+
+        let argvs = xfconf_restore_argvs("xfce4-panel", &props);
+        assert_eq!(argvs[0], ["xfconf-query", "-c", "xfce4-panel", "-p", "/", "-r", "-R"]);
+        assert!(argvs.contains(&sv(&[
+            "xfconf-query", "-c", "xfce4-panel", "-p", "/panels", "-n", "-a", "-t", "int", "-s", "1", "-t", "int", "-s", "2"
+        ])));
+        assert!(argvs.contains(&sv(&["xfconf-query", "-c", "xfce4-panel", "-p", "/configver", "-n", "-t", "int", "-s", "2"])));
+    }
+
+    #[test]
+    fn broken_xfconf_files_are_refused() {
+        assert!(xfconf_parse("<channel name=\"x\"><property name=\"a\" type=\"weird\" value=\"1\"/></channel>").is_err());
+        assert!(xfconf_parse("<channel name=\"x\"><property name=\"a/b\" type=\"int\" value=\"1\"/></channel>").is_err());
+        assert!(xfconf_parse("<channel name=\"x\"><value type=\"int\" value=\"1\"/></channel>").is_err());
+        assert!(xfconf_parse("<html></html>").is_err());
+        assert_eq!(xfconf_parse("<channel name=\"x\" version=\"1.0\"/>").map(|p| p.len()), Ok(0));
+    }
+
+    /// XFCE without xfce4-panel-profiles: the channel goes through its file
+    /// and comes back through `xfconf-query`, the panel is restarted.
+    #[test]
+    fn xfce_round_trip_without_panel_profiles() {
+        assert!(spec_for("xfce", &["xfce4-panel"], &[], &[]).is_none(), "no xfconf-query, nothing to restore with");
+        let spec = spec_for("xfce", &["xfce4-panel", "xfconf-query"], &[], &[]).expect("XFCE is taken");
+        let m = Mem::default();
+        m.write(&xfconf_channel_path(&format!("{HOME}/.config"), "xfce4-panel"), XFCE_PANEL_XML);
+        m.write(&format!("{HOME}/.config/xfce4/panel/launcher-3/1.desktop"), "[Desktop Entry]\n");
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.write(&format!("{HOME}/.config/xfce4/panel/launcher-3/1.desktop"), "broken");
+        let notes = panel_copy_restore_in(&m, &spec, HOME, COPY, true).unwrap();
+        assert!(notes.is_empty());
+        assert_eq!(m.read(&format!("{HOME}/.config/xfce4/panel/launcher-3/1.desktop")).as_deref(), Some("[Desktop Entry]\n"));
+        let runs = m.runs.borrow();
+        let reset = runs.iter().position(|r| r.contains(&"-R".to_string())).expect("channel reset");
+        let restart = runs.iter().position(|r| r == &sv(&["xfce4-panel", "-r"])).expect("panel restarted");
+        assert!(reset < restart);
+        assert_eq!(runs.iter().filter(|r| r[0] == "xfconf-query").count(), 11);
+    }
+
+    /// Not the running desktop: nothing is restarted.
+    #[test]
+    fn restore_outside_the_desktop_rereads_nothing() {
+        let spec = spec_for("xfce", &["xfce4-panel", "xfconf-query"], &[], &[]).unwrap();
+        let m = Mem::default();
+        m.write(&xfconf_channel_path(&format!("{HOME}/.config"), "xfce4-panel"), XFCE_PANEL_XML);
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        assert!(!m.runs.borrow().iter().any(|r| r[0] == "xfce4-panel"));
+    }
+
+    /// KDE: the shell's files from the config home, `~/.local/share/plasma`
+    /// without Rexon's wallpaper plugin, which stays as it is on restore.
+    #[test]
+    fn kde_copy_keeps_the_wallpaper_plugin_apart() {
+        assert_eq!(PLASMA_DATA_KEEP, [format!("wallpapers/{}", crate::waywallen_kde_plugin::PLUGIN_ID)]);
+        assert!(spec_for("kde", &[], &[], &[]).is_none());
+        let spec = spec_for("kde", &["plasmashell"], &[], &[]).expect("Plasma is taken");
+        let m = Mem::default();
+        let cfg = format!("{HOME}/.config");
+        let data = format!("{HOME}/.local/share/plasma");
+        m.write(&format!("{cfg}/plasma-org.kde.plasma.desktop-appletsrc"), "panel=left");
+        m.write(&format!("{data}/plasmoids/my.widget/metadata.json"), "{}");
+        m.write(&format!("{data}/wallpapers/org.waywallen.kde/old.qml"), "old plugin");
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        assert!(!m.exists(&format!("{COPY}/data/plasma/wallpapers/org.waywallen.kde")), "the plugin is not taken");
+        assert!(m.exists(&format!("{COPY}/data/plasma/plasmoids/my.widget/metadata.json")));
+
+        // The panel broke, a widget vanished, the plugin was updated meanwhile.
+        m.write(&format!("{cfg}/plasma-org.kde.plasma.desktop-appletsrc"), "panel=gone");
+        m.remove_tree(&format!("{data}/plasmoids")).unwrap();
+        m.remove_tree(&format!("{data}/wallpapers")).unwrap();
+        m.write(&format!("{data}/wallpapers/org.waywallen.kde/new.qml"), "new plugin");
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        assert_eq!(m.read(&format!("{cfg}/plasma-org.kde.plasma.desktop-appletsrc")).as_deref(), Some("panel=left"));
+        assert!(m.exists(&format!("{data}/plasmoids/my.widget/metadata.json")));
+        assert_eq!(m.read(&format!("{data}/wallpapers/org.waywallen.kde/new.qml")).as_deref(), Some("new plugin"));
+        assert!(!m.exists(&format!("{data}/wallpapers/org.waywallen.kde/old.qml")));
+        assert!(!m.exists(&format!("{data}.rexon-keep")));
+    }
+
+    /// MATE: on the live panel the objects are emptied first, then the dump is
+    /// loaded by the layout section's own steps.
+    #[test]
+    fn mate_panel_goes_through_its_procedure() {
+        let spec = spec_for("mate", &["mate-panel"], &[], &[]).expect("MATE is taken");
+        let m = Mem::default();
+        m.dconf.borrow_mut().insert(MATE_PANEL_DCONF_DIR.into(), "[general]\nobject-id-list=['a']\n".into());
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.runs.borrow_mut().clear();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, true).unwrap();
+        let runs = m.runs.borrow();
+        let empty = runs.iter().position(|r| *r == crate::mate_panel::empty_objects_argv()).expect("objects emptied");
+        let steps = crate::mate_panel::load_steps(&format!("{COPY}/dconf-0.ini"));
+        let load = runs.iter().position(|r| *r == steps[3]).expect("dump loaded");
+        assert!(empty < load);
+        assert!(!m.exists(&format!("{COPY}/dconf-0.ini.before-restore")), "the insurance is cleaned up");
+        drop(runs);
+        // Outside MATE: no panel to wait for.
+        m.runs.borrow_mut().clear();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        assert!(!m.runs.borrow().contains(&crate::mate_panel::empty_objects_argv()));
+    }
+}
+
+#[cfg(test)]
+mod shortcut_spec_tests {
+    use super::panel_copy_tests::{spec_for, Mem};
+    use super::*;
+
+    const HOME: &str = "/home/w";
+    const COPY: &str = "/home/w/.local/share/rexon/backups/panel/x/1";
+
+    /// Every desktop with a copy spec takes its keyboard shortcuts too.
+    #[test]
+    fn every_desktop_takes_its_shortcuts() {
+        let cases: &[(&str, &[&str], &[&str])] = &[
+            ("kde", &["plasmashell"], &[]),
+            ("mate", &["mate-panel"], &[]),
+            ("xfce", &["xfce4-panel", "xfconf-query"], &[]),
+            ("gnome", &["gnome-shell"], &[]),
+            ("cinnamon-mint", &[], &[]),
+            ("budgie", &["budgie-panel"], &[]),
+            ("pantheon", &["io.elementary.wingpanel"], &[]),
+            ("lxqt", &["lxqt-panel"], &[]),
+            ("cosmic", &["cosmic-panel"], &[]),
+            ("wayfire", &["wf-panel"], &[]),
+            ("hyprland", &[], &[".config/hypr"]),
+            ("niri", &[], &[".config/niri"]),
+            ("sway", &[], &[".config/sway"]),
+            ("river", &[], &[".config/river"]),
+        ];
+        for (de, tools, paths) in cases {
+            let spec = spec_for(de, tools, paths, &[]).unwrap_or_else(|| panic!("{de}: no spec"));
+            assert!(!spec.shortcuts.is_empty(), "{de}: no shortcuts");
+            assert_eq!(spec.needs_relogin, *de == "river", "{de}");
+        }
+        // A compositor with only its config still gets buttons.
+        let sway = spec_for("sway", &[], &[".config/sway"], &[]).unwrap();
+        assert!(sway.parts.is_empty());
+        assert!(sway.reload.contains(&PanelReload::Run(&["swaymsg", "reload"])));
+        // Deepin's shortcuts are a separate study: none yet.
+        assert!(shared_shortcut_desktops("deepin").is_empty());
+    }
+
+    #[test]
+    fn gnome_branches_are_shared_with_budgie_and_pantheon() {
+        assert_eq!(shared_shortcut_desktops("gnome"), ["budgie", "pantheon"]);
+        assert_eq!(shared_shortcut_desktops("budgie"), ["gnome", "pantheon"]);
+        assert!(shared_shortcut_desktops("mate").is_empty());
+        for de in ["gnome", "budgie"] {
+            let tools: &[&str] = if de == "gnome" { &["gnome-shell"] } else { &["budgie-panel"] };
+            let spec = spec_for(de, tools, &[], &[]).unwrap();
+            assert!(spec.shortcuts.contains(&PanelPart::DconfDir(GNOME_WM_KEYS_DIR)), "{de}");
+            assert!(spec.shortcuts.contains(&PanelPart::DconfDir(GNOME_MEDIA_KEYS_DIR)), "{de}");
+        }
+    }
+
+    /// Cinnamon: downloaded applets come with the copy, Rexon's own wallpaper
+    /// extension neither goes into it nor gets replaced by it.
+    #[test]
+    fn cinnamon_takes_downloaded_applets_but_not_rexon() {
+        let spec = spec_for("cinnamon-mint", &[], &[], &[]).unwrap();
+        let m = Mem::default();
+        let data = format!("{HOME}/.local/share/cinnamon");
+        m.write(&format!("{data}/applets/weather@x/metadata.json"), "{}");
+        m.write(&format!("{data}/extensions/{}/extension.js", crate::installer::EXT_ID), "ours");
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        assert!(m.exists(&format!("{COPY}/data/cinnamon/applets/weather@x/metadata.json")));
+        assert!(!m.exists(&format!("{COPY}/data/cinnamon/extensions/{}", crate::installer::EXT_ID)));
+        m.remove_tree(&format!("{data}/applets")).unwrap();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        assert!(m.exists(&format!("{data}/applets/weather@x/metadata.json")));
+        assert_eq!(m.read(&format!("{data}/extensions/{}/extension.js", crate::installer::EXT_ID)).as_deref(), Some("ours"));
+        assert!(m.runs.borrow().iter().any(|r| r.get(4).map(String::as_str) == Some("/org/cinnamon/desktop/keybindings/")));
+    }
+
+    /// COSMIC: the dock's pinned programs and the shortcuts come with the panel.
+    #[test]
+    fn cosmic_takes_pinned_apps_and_shortcuts() {
+        let spec = spec_for("cosmic", &["cosmic-panel"], &[], &[]).unwrap();
+        let m = Mem::default();
+        let base = format!("{HOME}/.config/cosmic");
+        m.write(&format!("{base}/com.system76.CosmicAppList/v1/favorites"), "[\"firefox\"]");
+        m.write(&format!("{base}/com.system76.CosmicSettings.Shortcuts/v1/custom"), "{}");
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.write(&format!("{base}/com.system76.CosmicAppList/v1/favorites"), "[]");
+        panel_copy_restore(&m, &spec, HOME, COPY).unwrap();
+        assert_eq!(m.read(&format!("{base}/com.system76.CosmicAppList/v1/favorites")).as_deref(), Some("[\"firefox\"]"));
+        assert!(m.exists(&format!("{base}/com.system76.CosmicSettings.Shortcuts/v1/custom")));
+    }
+
+    const KDE_FILE: &str = "[kwin]\n_k_friendly_name=KWin\nWindow Close=Alt+F4,Alt+F4,Close Window\nExpose=Ctrl+F9\\tMeta+W,Ctrl+F9,Toggle Present Windows\nOdd=Ctrl+Weird Key,none,Odd thing\n\n[services][org.kde.dolphin.desktop]\n_launch=Meta+E\n";
+
+    #[test]
+    fn kde_shortcuts_file_parses() {
+        let list = kde_shortcuts_parse(KDE_FILE);
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[0].component, "kwin");
+        assert_eq!(list[0].component_name, "KWin");
+        assert_eq!(list[0].keys, ["Alt+F4"]);
+        assert_eq!(list[0].action_name, "Close Window");
+        assert_eq!(list[1].keys, ["Ctrl+F9", "Meta+W"]);
+        assert_eq!(list[3].component, "org.kde.dolphin.desktop");
+        assert_eq!(list[3].action, "_launch");
+        assert_eq!(kconfig_list("Ctrl+\\,,none,Comma"), ["Ctrl+,", "none", "Comma"]);
+    }
+
+    #[test]
+    fn key_names_become_qt_codes() {
+        assert_eq!(qt_key_sequence("Alt+F4"), Some([0x0800_0000 | 0x0100_0033, 0, 0, 0]));
+        assert_eq!(qt_key_sequence("Meta+E"), Some([0x1000_0000 | 0x45, 0, 0, 0]));
+        assert_eq!(qt_key_sequence("Ctrl++"), Some([0x0400_0000 | 0x2b, 0, 0, 0]));
+        assert_eq!(qt_key_sequence("Volume Up"), Some([0x0100_0072, 0, 0, 0]));
+        assert_eq!(qt_key_sequence("Ctrl+X, Ctrl+C"), Some([0x0400_0058, 0x0400_0043, 0, 0]));
+        assert_eq!(qt_key_sequence("Launch (A)"), Some([0x0100_00ac, 0, 0, 0]));
+        assert_eq!(qt_key_sequence("Ctrl+Weird Key"), None);
+        assert_eq!(qt_key_sequence("Hyper+A"), None);
+    }
+
+    /// In a Plasma session only the changed actions go to KWin; an unknown key
+    /// name is left to the next login, and the person hears how many.
+    #[test]
+    fn kde_shortcuts_go_to_kwin_where_changed() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let m = Mem::default();
+        let cfg = format!("{HOME}/.config");
+        let current = KDE_FILE
+            .replace("Window Close=Alt+F4", "Window Close=none")
+            .replace("Odd=Ctrl+Weird Key", "Odd=none")
+            .replace("_launch=Meta+E", "_launch=Meta+D");
+        m.write(&format!("{cfg}/{KDE_SHORTCUTS_FILE}"), &current);
+        let notes = kde_shortcuts_restore(&m, &cfg, KDE_FILE, true).unwrap();
+        assert_eq!(m.read(&format!("{cfg}/{KDE_SHORTCUTS_FILE}")).as_deref(), Some(KDE_FILE));
+        let calls: Vec<Vec<String>> = m.runs.borrow().iter().filter(|r| r[0] == "gdbus").cloned().collect();
+        assert_eq!(calls.len(), 2, "{calls:#?}");
+        assert_eq!(calls[0][9], "['kwin', 'Window Close', 'KWin', 'Close Window']");
+        assert_eq!(calls[0][10], format!("[([{}, 0, 0, 0],)]", 0x0800_0000u32 | 0x0100_0033));
+        assert_eq!(calls[1][9], "['org.kde.dolphin.desktop', '_launch', 'org.kde.dolphin.desktop', '_launch']");
+        assert_eq!(notes, [msg_kde_shortcuts_next_login(1)]);
+        // Outside Plasma: the file only.
+        m.runs.borrow_mut().clear();
+        assert!(kde_shortcuts_restore(&m, &cfg, KDE_FILE, false).unwrap().is_empty());
+        assert!(m.runs.borrow().is_empty());
+    }
+
+    #[test]
+    fn kde_copy_round_trip_with_shortcuts() {
+        let spec = spec_for("kde", &["plasmashell"], &[], &[]).unwrap();
+        let m = Mem::default();
+        let cfg = format!("{HOME}/.config");
+        m.write(&format!("{cfg}/{KDE_SHORTCUTS_FILE}"), KDE_FILE);
+        m.write(&format!("{HOME}/.local/share/kglobalaccel/net.local.mine.desktop"), "[Desktop Entry]\n");
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.write(&format!("{cfg}/{KDE_SHORTCUTS_FILE}"), "[kwin]\n");
+        m.remove_tree(&format!("{HOME}/.local/share/kglobalaccel")).unwrap();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        assert_eq!(m.read(&format!("{cfg}/{KDE_SHORTCUTS_FILE}")).as_deref(), Some(KDE_FILE));
+        assert!(m.exists(&format!("{HOME}/.local/share/kglobalaccel/net.local.mine.desktop")));
+    }
+}
+
+#[cfg(test)]
+mod panel_migration_tests {
+    use super::panel_copy_tests::Mem;
+    use super::*;
+
+    const DATA: &str = "/home/w/.local/share";
+    const B: &str = "/home/w/.local/share/rexon/backups";
+
+    fn inventory(m: &Mem) -> Vec<PanelSnapshot> {
+        panel_snapshots(&panel_meta_raw(m, &panel_root(DATA)))
+    }
+
+    fn machine() -> Mem {
+        let m = Mem::default();
+        let plasma = format!("{B}/plasma-panel");
+        m.write(
+            &plasma_meta_path(&plasma),
+            &format!(
+                r#"{{"backups":[
+                {{"timestamp":"20261001_100000","reason":"manual","path":"{plasma}/20261001_100000","files":["/home/w/.config/plasmashellrc"],"full":false}},
+                {{"timestamp":"20261002_100000","reason":"before_switch","path":"{plasma}/20261002_100000","files":["/home/w/.config/kglobalshortcutsrc"],"full":true}},
+                {{"timestamp":"20261003_100000","reason":"manual","path":"{plasma}/gone","files":[],"full":false}}
+                ]}}"#
+            ),
+        );
+        m.write(&format!("{plasma}/20261001_100000/plasmashellrc"), "a");
+        m.write(&format!("{plasma}/20261002_100000/kglobalshortcutsrc"), "b");
+        m.write(&format!("{B}/mate-panel.dconf"), "[toplevels]\n");
+        m.write(&format!("{B}/mate-panel.dconf.last"), "[toplevels]\n");
+        m.write(&format!("{B}/xfce4-panel.tar.bz2"), "bz");
+        m.write(&format!("{B}/panel-lxqt/manifest.json"), "[]");
+        m.mtimes.borrow_mut().insert(format!("{B}/mate-panel.dconf"), "20261019_120000".into());
+        m.mtimes.borrow_mut().insert(format!("{B}/mate-panel.dconf.last"), "20261101_120000".into());
+        m
+    }
+
+    #[test]
+    fn old_copies_are_referred_to_where_they_lie() {
+        let m = machine();
+        assert_eq!(panel_migrate(&m, DATA), Ok(true));
+        let list = inventory(&m);
+        let kde = panel_copies_of(&list, "kde");
+        assert_eq!(kde.len(), 2, "a snapshot whose folder is gone is not listed");
+        assert_eq!(kde[0].format, snapshot_format::PLASMA_FILES);
+        assert_eq!(kde[0].parts, [snapshot_part::PANEL, snapshot_part::SHORTCUTS]);
+        assert_eq!(kde[1].parts, [snapshot_part::PANEL]);
+        assert!(kde[1].original && !kde[0].original, "the oldest one is the original");
+        assert!(!kde[0].linked, "Plasma snapshots are Rexon's own: rotation counts them");
+        assert!(m.exists(&plasma_meta_migrated_mark(&format!("{B}/plasma-panel"))));
+        assert!(m.exists(&plasma_meta_path(&format!("{B}/plasma-panel"))), "the old meta file stays");
+
+        let mate = panel_copies_of(&list, "mate");
+        assert_eq!(mate.len(), 2);
+        assert_eq!(mate[0].reason, "before_layout");
+        assert_eq!(mate[1].timestamp, "20261019_120000");
+        assert!(mate[1].original && mate[1].linked && mate[1].format == snapshot_format::MATE_DCONF);
+        let xfce = panel_copies_of(&list, "xfce");
+        assert_eq!(xfce[0].format, snapshot_format::XFCE_PROFILE);
+        let lxqt = panel_copies_of(&list, "lxqt");
+        assert_eq!(lxqt[0].path, format!("{B}/panel-lxqt"));
+        assert!(lxqt[0].linked && lxqt[0].original);
+    }
+
+    #[test]
+    fn migration_is_idempotent() {
+        let m = machine();
+        assert_eq!(panel_migrate(&m, DATA), Ok(true));
+        let first = m.read(&format!("{}/{PANEL_META_FILE}", panel_root(DATA)));
+        assert_eq!(panel_migrate(&m, DATA), Ok(false));
+        assert_eq!(m.read(&format!("{}/{PANEL_META_FILE}", panel_root(DATA))), first);
+    }
+
+    /// MATE: the layout section restored the original (the "returned" mark):
+    /// it is no longer the original; the layout section rewrote `.last`: the
+    /// time follows the file; a vanished file leaves the list.
+    #[test]
+    fn linked_mate_copies_follow_their_files() {
+        let m = machine();
+        panel_migrate(&m, DATA).unwrap();
+        m.write(&panel_original_returned_mark(&format!("{B}/mate-panel.dconf")), PANEL_ORIGINAL_RETURNED);
+        m.mtimes.borrow_mut().insert(format!("{B}/mate-panel.dconf.last"), "20261120_080000".into());
+        m.remove_tree(&format!("{B}/xfce4-panel.tar.bz2")).unwrap();
+        assert_eq!(panel_migrate(&m, DATA), Ok(true));
+        let list = inventory(&m);
+        let mate = panel_copies_of(&list, "mate");
+        assert_eq!(mate[0].timestamp, "20261120_080000");
+        assert!(!mate.iter().any(|s| s.original), "{mate:#?}");
+        assert!(panel_copies_of(&list, "xfce").is_empty());
+    }
+
+    #[test]
+    fn broken_old_meta_and_unknown_fields() {
+        let m = Mem::default();
+        m.write(&plasma_meta_path(&format!("{B}/plasma-panel")), "{not json");
+        assert_eq!(panel_migrate(&m, DATA), Ok(false), "nothing to bring in");
+        // An old entry with a field we do not know is skipped by the typed parse,
+        // but stays in the old file untouched.
+        let m = machine();
+        m.write(
+            &plasma_meta_path(&format!("{B}/plasma-panel")),
+            &format!(r#"{{"backups":[{{"timestamp":"1","reason":"manual","path":"{B}/plasma-panel/20261001_100000","files":[],"full":false,"new":1}}]}}"#),
+        );
+        panel_migrate(&m, DATA).unwrap();
+        assert!(panel_copies_of(&inventory(&m), "kde").is_empty());
+        assert!(m.read(&plasma_meta_path(&format!("{B}/plasma-panel"))).unwrap().contains("\"new\":1"));
+    }
+
+    /// The first copy taken with the new model after a migration does not
+    /// become a second original.
+    #[test]
+    fn a_new_copy_after_migration_is_not_a_second_original() {
+        let m = machine();
+        panel_migrate(&m, DATA).unwrap();
+        m.write("/home/w/.config/lxqt/panel.conf", "[panel1]\n");
+        let spec = super::panel_copy_tests::spec_for("lxqt", &["lxqt-panel"], &[], &[]).unwrap();
+        let s = panel_snapshot_save(&m, &spec, "lxqt", "/home/w", &panel_root(DATA), "manual", "20261125_100000").unwrap();
+        assert!(!s.original);
+        assert_eq!(panel_copies_of(&inventory(&m), "lxqt").iter().filter(|s| s.original).count(), 1);
+    }
+}
+
+#[cfg(test)]
+mod panel_restore_tests {
+    use super::panel_copy_tests::{spec_for, Mem};
+    use super::*;
+
+    const HOME: &str = "/home/w";
+    const DATA: &str = "/home/w/.local/share";
+
+    #[test]
+    fn manifest_copy_restores_even_without_the_desktop_installed() {
+        let m = Mem::default();
+        m.write(&format!("{HOME}/.config/lxqt/panel.conf"), "[panel1]\nposition=Bottom\n");
+        let spec = spec_for("lxqt", &["lxqt-panel"], &[], &[]).unwrap();
+        let snap = panel_snapshot_save(&m, &spec, "lxqt", HOME, &panel_root(DATA), "manual", "20261125_100000").unwrap();
+        m.write(&format!("{HOME}/.config/lxqt/panel.conf"), "broken");
+        // `panel_restore_spec` does not ask whether lxqt-panel is installed.
+        assert!(panel_restore_spec("lxqt").is_some());
+        let notes = panel_snapshot_restore(&m, HOME, &snap, false).unwrap();
+        assert!(notes.is_empty());
+        assert_eq!(m.read(&format!("{HOME}/.config/lxqt/panel.conf")).as_deref(), Some("[panel1]\nposition=Bottom\n"));
+        assert!(m.runs.borrow().iter().all(|r| r[0] != "dbus-send"), "not the running desktop: nothing restarted");
+    }
+
+    /// An old Plasma snapshot: files back by basename, shortcuts through
+    /// their own path, the current wallpaper plugin kept.
+    #[test]
+    fn old_plasma_snapshot_restores() {
+        let m = Mem::default();
+        let dir = format!("{DATA}/rexon/backups/plasma-panel/20261001_100000");
+        m.write(&format!("{dir}/plasmashellrc"), "old shell");
+        m.write(&format!("{dir}/kglobalshortcutsrc"), "[kwin]\nExpose=Meta+W,Ctrl+F9,Present\n");
+        m.write(&format!("{dir}/plasma/plasmoids/a/x"), "widget");
+        m.write(&format!("{dir}/plasma/wallpapers/org.waywallen.kde/main.qml"), "old plugin");
+        m.write(&format!("{DATA}/plasma/wallpapers/org.waywallen.kde/main.qml"), "new plugin");
+        let snap = PanelSnapshot {
+            de: "kde".into(),
+            timestamp: "20261001_100000".into(),
+            reason: "before_install".into(),
+            path: dir.clone(),
+            parts: vec![],
+            items: 3,
+            original: true,
+            format: snapshot_format::PLASMA_FILES.into(),
+            files: vec![
+                format!("{HOME}/.config/plasmashellrc"),
+                format!("{HOME}/.config/kglobalshortcutsrc"),
+                format!("{DATA}/plasma"),
+            ],
+            linked: false,
+        };
+        panel_snapshot_restore(&m, HOME, &snap, false).unwrap();
+        assert_eq!(m.read(&format!("{HOME}/.config/plasmashellrc")).as_deref(), Some("old shell"));
+        assert!(m.read(&format!("{HOME}/.config/kglobalshortcutsrc")).unwrap().contains("Meta+W"));
+        assert_eq!(m.read(&format!("{DATA}/plasma/plasmoids/a/x")).as_deref(), Some("widget"));
+        assert_eq!(m.read(&format!("{DATA}/plasma/wallpapers/org.waywallen.kde/main.qml")).as_deref(), Some("new plugin"));
+    }
+
+    /// The MATE layout section's original: restoring it places the
+    /// "returned" mark, the `.last` neighbour does not.
+    #[test]
+    fn linked_mate_copy_restores_and_marks_the_original() {
+        let m = Mem::default();
+        let file = format!("{DATA}/rexon/backups/mate-panel.dconf");
+        m.write(&file, "[toplevels/top]\nexpand=true\n");
+        m.write(&format!("{file}.last"), "[toplevels/top]\nexpand=false\n");
+        panel_migrate(&m, DATA).unwrap();
+        let list = panel_snapshots(&panel_meta_raw(&m, &panel_root(DATA)));
+        let last = panel_snapshot_by_path(&list, &format!("{file}.last")).unwrap();
+        panel_snapshot_restore(&m, HOME, &last, false).unwrap();
+        assert!(!m.exists(&panel_original_returned_mark(&file)));
+        let orig = panel_snapshot_by_path(&list, &file).unwrap();
+        assert!(orig.original);
+        panel_snapshot_restore(&m, HOME, &orig, true).unwrap();
+        assert_eq!(m.read(&panel_original_returned_mark(&file)).as_deref(), Some(PANEL_ORIGINAL_RETURNED));
+        assert!(m.runs.borrow().contains(&crate::mate_panel::empty_objects_argv()));
+    }
+
+    #[test]
+    fn old_xfce_archive_goes_through_panel_profiles() {
+        let m = Mem::default();
+        let path = xfce_panel_copy_path(DATA);
+        let snap = PanelSnapshot {
+            de: "xfce".into(),
+            timestamp: "1".into(),
+            reason: "migrated".into(),
+            path: path.clone(),
+            parts: vec![],
+            items: 1,
+            original: true,
+            format: snapshot_format::XFCE_PROFILE.into(),
+            files: vec![],
+            linked: true,
+        };
+        panel_snapshot_restore(&m, HOME, &snap, true).unwrap();
+        assert!(m.runs.borrow().contains(&xfce_panel_load_argv(&path)));
+    }
+}
+
+#[cfg(test)]
+mod deepin_shortcut_tests {
+    use super::panel_copy_tests::{spec_for, Mem};
+    use super::*;
+    use crate::dde::{
+        dconfig_schema_path, dconfig_subpath_schema_path, GESTURE_RESOURCE, KEYBINDING_APPID, KEYBINDING_INI_DIR,
+        SHORTCUT_RESOURCE, SHORTCUT_SERVICE_MARK,
+    };
+
+    const HOME: &str = "/home/w";
+    const COPY: &str = "/home/w/.local/share/rexon/backups/panel/deepin/1";
+
+    fn rw(keys: &[&str]) -> String {
+        let body: Vec<String> = keys.iter().map(|k| format!("\"{k}\": {{\"value\": [], \"permissions\": \"readwrite\"}}")).collect();
+        format!("{{\"contents\": {{{}, \"away\": {{\"value\": 1, \"permissions\": \"\"}}}}}}", body.join(", "))
+    }
+
+    /// A Deepin with dde-services: two system shortcuts listed by a
+    /// registration file (one over a `\` line), a gesture folder, the base
+    /// schema of own shortcuts and one own shortcut.
+    fn machine() -> Mem {
+        let m = Mem::default();
+        m.write(
+            &format!("{KEYBINDING_INI_DIR}/org.deepin.dde.keybinding.ini"),
+            "[Config]\nSubPaths=org.deepin.dde.keybinding.shortcut.app.launcher,\\\n  org.deepin.dde.keybinding.shortcut.system.terminal\n",
+        );
+        for sub in ["/org.deepin.dde.keybinding.shortcut.app.launcher", "/org.deepin.dde.keybinding.shortcut.system.terminal"] {
+            m.write(&dconfig_subpath_schema_path(KEYBINDING_APPID, sub, SHORTCUT_RESOURCE), &rw(&["hotkeys", "enabled"]));
+        }
+        let gesture = "/org.deepin.dde.keybinding.gesture.swipe-up-3";
+        m.write(&dconfig_subpath_schema_path(KEYBINDING_APPID, gesture, GESTURE_RESOURCE), &rw(&["action"]));
+        m.write(&dconfig_schema_path(KEYBINDING_APPID, SHORTCUT_RESOURCE), &rw(&["hotkeys", "triggerValue"]));
+        m.write(&format!("{HOME}/.config/{}", crate::dde::CUSTOM_SHORTCUTS_INI), "[Config]\nSubPaths=/mine-1\n");
+        let set = |sub: &str, res: &str, key: &str, v: &str| {
+            m.dde.borrow_mut().insert(format!("{KEYBINDING_APPID}|{res}|{key}@{sub}"), v.to_string());
+        };
+        set("/org.deepin.dde.keybinding.shortcut.app.launcher", SHORTCUT_RESOURCE, "hotkeys", "\"[\n    \"Meta+S\"\n]\"");
+        set("/org.deepin.dde.keybinding.shortcut.system.terminal", SHORTCUT_RESOURCE, "hotkeys", "\"[\n    \"Ctrl+Alt+T\"\n]\"");
+        set("/mine-1", SHORTCUT_RESOURCE, "hotkeys", "\"[\n    \"Meta+B\"\n]\"");
+        m
+    }
+
+    fn spec() -> PanelCopySpec {
+        let schemas: Vec<String> = DDE_DOCK_RESOURCES.iter().map(|r| crate::dde::dconfig_schema_path(DDE_SHELL_DCONFIG_APPID, r)).collect();
+        let mut refs: Vec<&str> = schemas.iter().map(String::as_str).collect();
+        refs.push(SHORTCUT_SERVICE_MARK);
+        let spec = spec_for("deepin", &["dde-dconfig", "dde-shell"], &refs, &[]).expect("Deepin V25");
+        PanelCopySpec { parts: Vec::new(), ..spec }
+    }
+
+    #[test]
+    fn registration_files_and_subpaths() {
+        use crate::dde::{dconfig_subpath_ok, keybinding_ini_subpaths};
+        assert_eq!(
+            keybinding_ini_subpaths("[Other]\nSubPaths=x\n[Config]\nSubPaths=a.b,\\\n c ,\\\n\n"),
+            ["/a.b", "/c"]
+        );
+        assert!(keybinding_ini_subpaths("[Config]\nX=1\n").is_empty());
+        assert!(dconfig_subpath_ok("/org.deepin.x"));
+        assert!(!dconfig_subpath_ok("org.deepin.x"), "dtkcore refuses a subpath without the slash");
+        assert!(!dconfig_subpath_ok("/../x") && !dconfig_subpath_ok("/-x"));
+        assert_eq!(
+            crate::dde::dconfig_get_sub_argv(KEYBINDING_APPID, SHORTCUT_RESOURCE, "/s", "hotkeys"),
+            ["dde-dconfig", "get", "-a", KEYBINDING_APPID, "-r", SHORTCUT_RESOURCE, "-s", "/s", "-k", "hotkeys"]
+        );
+    }
+
+    /// The shortcut part exists only with dde-services' module, restarts the
+    /// service group on restore and asks for no relogin.
+    #[test]
+    fn spec_takes_shortcuts_only_with_dde_services() {
+        let schemas: Vec<String> = DDE_DOCK_RESOURCES.iter().map(|r| crate::dde::dconfig_schema_path(DDE_SHELL_DCONFIG_APPID, r)).collect();
+        let refs: Vec<&str> = schemas.iter().map(String::as_str).collect();
+        let old = spec_for("deepin", &["dde-dconfig", "dde-shell"], &refs, &[]).unwrap();
+        assert!(old.shortcuts.is_empty() && !old.restarts_services);
+        let new = spec();
+        assert_eq!(new.shortcuts, [PanelPart::DdeShortcuts]);
+        assert!(new.reload.contains(&PanelReload::RestartUserUnit(crate::dde::SERVICE_GROUP_UNIT)));
+        assert!(new.restarts_services && !new.needs_relogin);
+    }
+
+    /// A swap of two shortcuts, an own shortcut made after the copy, an entry
+    /// unknown to this release: all handled, then dde-services rereads.
+    #[test]
+    fn shortcuts_round_trip() {
+        let m = machine();
+        let spec = spec();
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        let body: serde_json::Value = serde_json::from_str(&m.read(&format!("{COPY}/{DDE_SHORTCUTS_COPY_FILE}")).unwrap()).unwrap();
+        assert_eq!(body["system"].as_array().unwrap().len(), 3, "two shortcuts and a gesture");
+        assert_eq!(body["system"][0]["values"]["hotkeys"]["value"], "[\"Meta+S\"]");
+        assert!(body["system"][0]["values"].get("away").is_none(), "read-only keys are not taken");
+        assert_eq!(body["custom"][0]["subpath"], "/mine-1");
+
+        // Swap A and B, add an own shortcut, make one entry unknown.
+        let key = |sub: &str| format!("{KEYBINDING_APPID}|{SHORTCUT_RESOURCE}|hotkeys@{sub}");
+        m.dde.borrow_mut().insert(key("/org.deepin.dde.keybinding.shortcut.app.launcher"), "\"[\\\"Ctrl+Alt+T\\\"]\"".into());
+        m.dde.borrow_mut().insert(key("/org.deepin.dde.keybinding.shortcut.system.terminal"), "\"[\\\"Meta+S\\\"]\"".into());
+        m.write(&format!("{HOME}/.config/{}", crate::dde::CUSTOM_SHORTCUTS_INI), "[Config]\nSubPaths=/mine-1,/mine-2\n");
+        m.remove_tree(&dconfig_subpath_schema_path(KEYBINDING_APPID, "/org.deepin.dde.keybinding.gesture.swipe-up-3", GESTURE_RESOURCE)).unwrap();
+        m.runs.borrow_mut().clear();
+
+        panel_copy_restore_in(&m, &spec, HOME, COPY, true).unwrap();
+        let runs = m.runs.borrow();
+        let sets: Vec<&Vec<String>> = runs.iter().filter(|r| r[0] == "dde-dconfig" && r[1] != "get").collect();
+        assert!(sets.iter().any(|r| r.contains(&"/org.deepin.dde.keybinding.shortcut.app.launcher".to_string())
+            && r.contains(&"[\"Meta+S\"]".to_string())), "{sets:#?}");
+        assert!(sets.iter().any(|r| r[1] == "reset" && r.contains(&"/mine-2".to_string())), "a later own shortcut is reset");
+        assert!(!sets.iter().any(|r| r.iter().any(|a| a.contains("gesture"))), "an unknown entry is skipped");
+        assert!(runs.contains(&crate::dde::keybinding_reload_argv()));
+        let restart = sv(&["systemctl", "--user", "--no-block", "try-restart", crate::dde::SERVICE_GROUP_UNIT]);
+        let reload = runs.iter().position(|r| *r == crate::dde::keybinding_reload_argv()).unwrap();
+        assert!(runs.iter().position(|r| *r == restart).unwrap() > reload, "the group restarts after the values");
+        drop(runs);
+        assert_eq!(
+            m.read(&format!("{HOME}/.config/{}", crate::dde::CUSTOM_SHORTCUTS_INI)).as_deref(),
+            Some("[Config]\nSubPaths=/mine-1\n")
+        );
+    }
+
+    /// Outside Deepin nothing is restarted or reread.
+    #[test]
+    fn restore_outside_deepin_restarts_nothing() {
+        let m = machine();
+        let spec = spec();
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.runs.borrow_mut().clear();
+        panel_copy_restore_in(&m, &spec, HOME, COPY, false).unwrap();
+        let runs = m.runs.borrow();
+        assert!(!runs.iter().any(|r| r[0] == "systemctl" || r[0] == "busctl"), "{runs:#?}");
+    }
+
+    /// The tray plugins' own settings come with the dock when their schemas exist.
+    #[test]
+    fn tray_plugin_settings_are_taken() {
+        let schemas: Vec<String> = DDE_DOCK_RESOURCES
+            .iter()
+            .map(|r| crate::dde::dconfig_schema_path(DDE_SHELL_DCONFIG_APPID, r))
+            .chain([crate::dde::dconfig_schema_path(DDE_TRAY_LOADER_APPID, "org.deepin.dde.dock.plugin.power")])
+            .collect();
+        let refs: Vec<&str> = schemas.iter().map(String::as_str).collect();
+        let spec = spec_for("deepin", &["dde-dconfig", "dde-shell"], &refs, &[]).unwrap();
+        assert!(spec.parts.contains(&PanelPart::DdeDconfig { appid: DDE_TRAY_LOADER_APPID, resource: "org.deepin.dde.dock.plugin.power" }));
+        assert!(!spec.parts.iter().any(|p| matches!(p, PanelPart::DdeDconfig { resource: "org.deepin.dde.dock.plugin.datetime", .. })));
+    }
+
+    #[test]
+    fn broken_copy_file_is_refused() {
+        let m = machine();
+        let spec = spec();
+        panel_copy_save(&m, &spec, HOME, COPY).unwrap();
+        m.write(&format!("{COPY}/{DDE_SHORTCUTS_COPY_FILE}"), "{broken");
+        assert!(panel_copy_restore_in(&m, &spec, HOME, COPY, true).is_err());
     }
 }

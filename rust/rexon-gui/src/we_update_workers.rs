@@ -1767,7 +1767,7 @@ version = \"0.1.10\"\n";
     /// mandatory in tests; this test cannot install the engine and does not
     /// try.
     #[test]
-    #[ignore = "нужен интернет"]
+    #[ignore = "needs the internet"]
     fn upstream_check_live() {
         let sb = Sandbox::new("live");
         let env = sb.env();

@@ -5,39 +5,39 @@ edition.workspace = true
 license.workspace = true
 description = "Rexon core (без Qt): DE-логика, парсеры, API-клиенты, настройки"
 
-# ── Пометка сверок, которым живая машина нужна ПО СУЩЕСТВУ ───────────
+# ── Marking the checks that need a live machine BY THEIR NATURE ──────
 #
-# ЗАЧЕМ. Почти все сверки ядра обязаны давать один ответ где угодно: они
-# читают фикстуры и подставные деревья. Но горстка проверяет саму работу с
-# НАСТОЯЩЕЙ системой — поиск бинарей в живом PATH тем же способом, каким
-# его вёл `shutil.which`; сборку каталога перевода настоящим `lrelease`;
-# живость ссылок генераторов в объектной базе git. Выкинуть их нельзя:
-# именно они ловят то, чего не поймает никакая фикстура. Но и красноту их
-# нельзя путать с настоящей поломкой — на машине без `lrelease` или с чужим
-# PATH они краснеют, ничего не сломав.
+# WHY. Almost all core checks must give one answer anywhere: they
+# read fixtures and stand-in trees. But a handful check the work with
+# the REAL system itself — looking up binaries in the live PATH the same way
+# `shutil.which` did; building the translation catalog with the real `lrelease`;
+# the liveness of generator references in the git object database. They cannot be thrown out:
+# they are exactly what catches what no fixture will. But their red must not
+# be confused with a real breakage either — on a machine without `lrelease` or with someone else's
+# PATH they go red without anything being broken.
 #
-# ПОЧЕМУ ПРИЗНАК СБОРКИ, А НЕ ПЕРЕМЕННАЯ ОКРУЖЕНИЯ. У `cargo test` нет
-# нашего прогона со списком пропущенных (как у прежнего `rexon-bridge-tests
-# --isolated`). Переменная окружения дала бы ранний `return` внутри сверки —
-# libtest посчитал бы её ЗЕЛЁНОЙ и раздул счёт на пустом месте; ровно эту
-# ошибку уже ловили у моста (`REXON_NOT_A_CHECK`, коммит c7d5687). Признак
-# сборки включает штатный `#[ignore = "…"]`, и libtest сам печатает
-# `ignored` с причиной и отдельной строкой в итоге — то самое «называются
-# отдельной строкой», только без своего прогона.
+# WHY A BUILD FEATURE AND NOT AN ENVIRONMENT VARIABLE. `cargo test` does not have
+# our run with a list of skipped checks (like the former `rexon-bridge-tests
+# --isolated`). An environment variable would give an early `return` inside the check —
+# libtest would count it as GREEN and inflate the count out of nothing; exactly this
+# mistake was already caught in the bridge (`REXON_NOT_A_CHECK`, commit c7d5687). A build
+# feature turns on the stock `#[ignore = "…"]`, and libtest itself prints
+# `ignored` with the reason and a separate line in the summary — the very «named on a
+# separate line», only without our own run.
 #
-# КАК ПОЛЬЗОВАТЬСЯ:
-#   cargo test-core            — как раньше, всё вместе (машина разработки);
-#   cargo test-core-isolated   — без сверок, зависящих от машины.
-# Отдельный набор файлов для них не заводится намеренно: сверка обязана
-# лежать рядом со своей родней по модулю, иначе её теряют при правке.
+# HOW TO USE:
+#   cargo test-core            — as before, everything together (the development machine);
+#   cargo test-core-isolated   — without the checks that depend on the machine.
+# A separate set of files for them is deliberately not created: a check must
+# lie next to its module kin, otherwise it gets lost during edits.
 [features]
 isolated-checks = []
-# Стенд помощника сеанса прав («один пароль», уровень 2 из трёх): собирает бинарь
-# `rexon-priv-stand` («сухой» RootIo, корень-префикс, поддельные logind и
-# часы) и его тест `priv_stand`. ⛔ Только для стенда: пакет и `build-app`
-# feature не включают, библиотека и настоящий `rexon-priv-helper` от неё не
-# меняются (код стенда — только в `src/bin/rexon-priv-stand.rs`).
-# Запуск — `scripts/priv-stand`, описание — docs/testing.md.
+# The session rights helper stand («one password», level 2 of three): builds the binary
+# `rexon-priv-stand` (a «dry» RootIo, a root prefix, fake logind and
+# clock) and its test `priv_stand`. ⛔ Only for the stand: the package and `build-app`
+# do not enable the feature, the library and the real `rexon-priv-helper` do not
+# change because of it (the stand code is only in `src/bin/rexon-priv-stand.rs`).
+# Run — `scripts/priv-stand`, description — docs/testing.md.
 stand = []
 
 [[bin]]
@@ -52,191 +52,190 @@ required-features = ["stand"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-# preserve_order — IndexMap внутри Value: порядок ключей как у Python dict,
-# нужно для побайтовой сверки вывода с json.dump.
+# preserve_order — an IndexMap inside Value: key order as in a Python dict,
+# needed for a byte-for-byte check of the output against json.dump.
 serde_json = { version = "1", features = ["preserve_order"] }
-# zip — упаковка/распаковка .rxn (порт extensions/utils.py, manifest_v4.py).
-# Только deflate: ZIP_DEFLATED в Python; лишние кодеки (zstd/lzma/bzip2) не
-# нужны — уменьшаем дерево зависимостей.
+# zip — packing/unpacking .rxn (a port of extensions/utils.py, manifest_v4.py).
+# Deflate only: ZIP_DEFLATED in Python; extra codecs (zstd/lzma/bzip2) are not
+# needed — we keep the dependency tree smaller.
 zip = { version = "2", default-features = false, features = ["deflate"] }
-# prost — protobuf-структуры протокола демона waywallen (control.proto/
-# filter.proto). Код генерится prost-build в build.rs из .proto (не пишется
-# руками). Порт control_pb2.py/filter_pb2.py.
+# prost — protobuf structures of the waywallen daemon protocol (control.proto/
+# filter.proto). The code is generated by prost-build in build.rs from .proto (not written
+# by hand). A port of control_pb2.py/filter_pb2.py.
 prost = "0.13"
-# quick-xml — разбор XML-ответов OCS API (порт appearance/ocs_client.py, где
-# Python использует xml.etree.ElementTree). Только чтение; фичи по умолчанию
-# (без serde/async) — минимальное дерево зависимостей.
+# quick-xml — parsing XML replies of the OCS API (a port of appearance/ocs_client.py, where
+# Python uses xml.etree.ElementTree). Reading only; default features
+# (no serde/async) — a minimal dependency tree.
 quick-xml = "0.39"
-# sha2 — короткий prefix-hash `.rxn` для каталога установки adaptive-обоев
-# (порт rxn_v4_installer.py `_short_hash`: SHA-256 первых 16 МиБ → 8 hex).
-# Тот же алгоритм, что hashlib.sha256 — байт-в-байт (golden с живого Python).
+# sha2 — SHA-256 for content hashes (Axon extraction, Conky checks, importers,
+# QML module cache, SteamOS sysext and others).
 sha2 = "0.10"
-# toml — разбор `plugin.toml` плагинов waywallen (порт engine_update.py, где
-# Python использует stdlib tomllib). Только парсинг (без display/serde-derive):
-# читаем `[plugin] id/name/version` манифеста установленного/скачанного плагина.
+# toml — parsing `plugin.toml` of waywallen plugins (a port of engine_update.py, where
+# Python uses the stdlib tomllib). Parsing only (no display/serde-derive):
+# we read `[plugin] id/name/version` of the manifest of an installed/downloaded plugin.
 toml = { version = "0.8", default-features = false, features = ["parse"] }
-# ureq — синхронный HTTP-клиент сетевого слоя каталогов тем (порт
-# `_http_get`/`_http_download` из appearance/ocs_client.py и `_http_json` из
-# appearance/aur_client.py, где Python использует stdlib urllib). Выбран
-# СИНХРОННЫЙ клиент: вызовы идут из рабочих потоков (сегодня QThread Python,
-# завтра — рабочий поток Qt-слоя), async-рантайм (tokio у reqwest) там не
-# нужен и был бы лишним весом и лишним деревом зависимостей.
-# Версия 3.x (была 2.12) — ради ОТМЕНЫ уже отправленного запроса: у 3.x есть
-# сменный слой соединения (`unversioned::transport`), и в него встраивается
-# наше звено, которое дробит ожидание ответа и рвёт его по внешнему сигналу
-# (см. net.rs, CancelToken). У 2.x такого шва нет вовсе — там запрос можно
-# только дождаться. ⚠️ Модуль `unversioned` намеренно вне semver: обновление
-# ureq проверять на тестах `net_cancel.rs`, не мажорной цифрой.
-# TLS — `native-tls`, то есть системный OpenSSL и системное хранилище доверия.
-# Корни задаются явно в net.rs (`RootCerts::PlatformVerifier`), rustls не
-# включается.
-# Лицензии: ureq, ureq-proto, http, native-tls, der, rustls-pki-types —
-# MIT/Apache-2.0, permissive (правило #10).
-# ⚠️ Расхождение с прежним решением, осознанное: в ureq 3 ВЕСЬ код native-tls
-# закрыт фичей `native-tls`, а она тянет за собой крейт со слепком корневых
-# центров (`webpki-root-certs`). Раньше такой крейт отвергался как MPL-2.0 —
-# сегодня он под CDLA-Permissive-2.0 (проверено в реестре 2026-07-31), то есть
-# permissive и правилу #10 не противоречит. Данные из него мы всё равно НЕ
-# используем: конфигурация форсит системное хранилище, а не список Mozilla.
-# Урезанная фича `native-tls-no-default` не годится — она добавляет
-# зависимости, но не включает сам код TLS, и любой https падает в панику
-# «feature is not enabled» (проверено живьём).
-# Плюс системных корней: список обновляет дистрибутив, а не наш релиз, и
-# корпоративные CA работают сами собой.
-# ⚠️ ЦЕНА РЕШЕНИЯ (учитывать при упаковке): боевой бинарь теперь ДИНАМИЧЕСКИ
-# линкуется с системными libssl/libcrypto, а не носит TLS в себе. Значит в
-# поставку (Flatpak для SteamOS, пакеты дистрибутивов) обязаны попасть
-# OpenSSL 3 и хранилище `ca-certificates`. Колесо моста из-за этого требует
-# `patchelf` при сборке maturin и весит 7,4 МБ вместо 2,9 МБ — оно вкладывает
-# шесть системных `.so` внутрь себя.
-# gzip-фича НЕ включается: urllib не шлёт `Accept-Encoding` и не распаковывает
-# ответ — включённая распаковка разошлась бы с оригиналом.
+# ureq — the synchronous HTTP client of the theme catalog network layer (a port of
+# `_http_get`/`_http_download` from appearance/ocs_client.py and `_http_json` from
+# appearance/aur_client.py, where Python uses the stdlib urllib). A SYNCHRONOUS
+# client was chosen: the calls come from worker threads (today a Python QThread,
+# tomorrow a worker thread of the Qt layer), an async runtime (tokio in reqwest) is not
+# needed there and would be extra weight and an extra dependency tree.
+# Version 3.x (was 2.12) — for CANCELLING an already sent request: 3.x has
+# a replaceable connection layer (`unversioned::transport`), and our link is built into it,
+# which splits the wait for the reply and breaks it on an external signal
+# (see net.rs, CancelToken). 2.x has no such seam at all — there a request can
+# only be waited out. ⚠️ The `unversioned` module is deliberately outside semver: check a
+# ureq update with the `net_cancel.rs` tests, not by the major number.
+# TLS — `native-tls`, i.e. the system OpenSSL and the system trust store.
+# The roots are set explicitly in net.rs (`RootCerts::PlatformVerifier`), rustls is not
+# enabled.
+# Licenses: ureq, ureq-proto, http, native-tls, der, rustls-pki-types —
+# MIT/Apache-2.0, permissive (rule #10).
+# ⚠️ A divergence from the former decision, a conscious one: in ureq 3 ALL the native-tls code
+# is behind the `native-tls` feature, and it pulls in a crate with a snapshot of root
+# authorities (`webpki-root-certs`). Previously such a crate was rejected as MPL-2.0 —
+# today it is under CDLA-Permissive-2.0 (checked in the registry on 2026-07-31), i.e.
+# permissive, and it does not contradict rule #10. We still do NOT use its data:
+# the configuration forces the system store, not the Mozilla list.
+# The trimmed `native-tls-no-default` feature does not fit — it adds
+# dependencies but does not enable the TLS code itself, and any https panics with
+# «feature is not enabled» (checked live).
+# The upside of system roots: the list is updated by the distribution, not by our release, and
+# corporate CAs just work.
+# ⚠️ THE PRICE OF THE DECISION (keep in mind when packaging): the production binary now links
+# DYNAMICALLY against the system libssl/libcrypto instead of carrying TLS inside. So
+# the delivery (Flatpak for SteamOS, distribution packages) must include
+# OpenSSL 3 and the `ca-certificates` store. Because of this the bridge wheel requires
+# `patchelf` in the maturin build and weighs 7.4 MB instead of 2.9 MB — it embeds
+# six system `.so` files inside itself.
+# The gzip feature is NOT enabled: urllib does not send `Accept-Encoding` and does not unpack
+# the reply — an enabled decompression would diverge from the original.
 ureq = { version = "3.3", default-features = false, features = ["native-tls"] }
-# flate2 — распаковка ОДНОГО сжатого ответа: дерева репозитория тем Cinnamon
-# Spices у GitHub (`cinnamon_spices::THEME_TREE_URL`, ~9 МБ как есть, ~1,2 МБ
-# сжатым). Общий сетевой слой по-прежнему без gzip (см. выше); сжатие
-# просит только этот запрос. Крейт и движок те же, что уже тянет `zip`
-# (miniz_oxide), — новых зависимостей нет. MIT/Apache-2.0.
+# flate2 — unpacking ONE compressed reply: the Cinnamon Spices theme repository tree
+# from GitHub (`cinnamon_spices::THEME_TREE_URL`, ~9 MB as is, ~1.2 MB
+# compressed). The shared network layer is still without gzip (see above); compression
+# is requested only by this request. The crate and the engine are the same ones `zip` already pulls in
+# (miniz_oxide) — no new dependencies. MIT/Apache-2.0.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
-# ── добыча личного webapi_token из cookie клиента Steam ──────────────
-# Порт детерминированной части Python-кода (архив, метка git `python-final`; расшифровка
-# steamLoginSecure из CEF-БД): sqlite + Chromium-схема v10 (AES-128-CBC,
-# ключ PBKDF2-HMAC-SHA1). См. src/steam_token.rs.
-# Все крейты — MIT/Apache-2.0 (правило #10), сам SQLite — public domain.
+# ── extracting the personal webapi_token from the Steam client's cookie ──
+# A port of the deterministic part of the Python code (archive, git tag `python-final`; decrypting
+# steamLoginSecure from the CEF DB): sqlite + the Chromium v10 scheme (AES-128-CBC,
+# a PBKDF2-HMAC-SHA1 key). See src/steam_token.rs.
+# All crates are MIT/Apache-2.0 (rule #10), SQLite itself is public domain.
 #
-# rusqlite (bundled) — чтение таблицы `cookies` CEF-БД. `bundled` компилирует
-# SQLite прямо в дерево: не зависим от версии системного libsqlite3 и читаем
-# БД детерминированно. Лицензии: rusqlite/libsqlite3-sys — MIT, сам SQLite —
-# public domain. Открываем только на чтение (см. модуль).
+# rusqlite (bundled) — reading the `cookies` table of the CEF DB. `bundled` compiles
+# SQLite right into the tree: we do not depend on the version of the system libsqlite3 and read
+# the DB deterministically. Licenses: rusqlite/libsqlite3-sys — MIT, SQLite itself —
+# public domain. We open it read-only (see the module).
 rusqlite = { version = "0.32", features = ["bundled"] }
-# aes + cbc — AES-128 в режиме CBC с распадом PKCS7 (Chromium v10). RustCrypto,
-# MIT/Apache-2.0. Фича block-padding нужна для `decrypt_padded_mut::<Pkcs7>`.
+# aes + cbc — AES-128 in CBC mode with PKCS7 unpadding (Chromium v10). RustCrypto,
+# MIT/Apache-2.0. The block-padding feature is needed for `decrypt_padded_mut::<Pkcs7>`.
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc", "block-padding"] }
-# pbkdf2 + sha1 — вывод 16-байтного ключа: PBKDF2-HMAC-SHA1, pw="peanuts",
-# salt="saltysalt", iter=1 (Linux-фолбэк Chromium). RustCrypto, MIT/Apache-2.0.
-# sha1 здесь именно как хэш для PBKDF2 (не sha2, что уже в дереве).
+# pbkdf2 + sha1 — deriving the 16-byte key: PBKDF2-HMAC-SHA1, pw="peanuts",
+# salt="saltysalt", iter=1 (the Chromium Linux fallback). RustCrypto, MIT/Apache-2.0.
+# sha1 here is exactly the hash for PBKDF2 (not sha2, which is already in the tree).
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha1 = "0.10"
-# hmac — пароль файла скачанных обоев Razer Axon (HMAC-SHA256,
-# `axon_extract.rs`). Та же версия, что уже тянет pbkdf2: новых крейтов нет.
+# hmac — the password of the downloaded Razer Axon wallpaper file (HMAC-SHA256,
+# `axon_extract.rs`). The same version that pbkdf2 already pulls in: no new crates.
 hmac = "0.12"
 
-# libc — ровно один вызов: `kill(pid, SIGTERM)` подпроцессу захвата звука
-# (audio_capture.rs). У std есть только `Child::kill()` = SIGKILL, а оригинал
-# на Python останавливал `pw-record`/`parec`/`arecord` мягким `terminate()`,
-# давая им отцепиться от графа PipeWire. Крейт уже в дереве сборки
-# (транзитивно через zip/ureq/pyo3) и прямой зависимостью объявлен у
-# rexon-splash-overlay; лицензия MIT/Apache-2.0 — permissive, правило #10.
+# libc — exactly one call: `kill(pid, SIGTERM)` to the audio capture subprocess
+# (audio_capture.rs). std has only `Child::kill()` = SIGKILL, while the original
+# in Python stopped `pw-record`/`parec`/`arecord` with a gentle `terminate()`,
+# letting them detach from the PipeWire graph. The crate is already in the build tree
+# (transitively through zip/ureq/pyo3) and is declared as a direct dependency of
+# rexon-splash-overlay; the MIT/Apache-2.0 license is permissive, rule #10.
 #
-# ⚠️ С 2026-09-08 вызовов больше одного: сюда переехал живой исполнитель
-# видеозаставки входа (`splash_exec.rs`), а ему нужны unix-сокеты mpv-IPC и
-# sd_notify (адрес в abstract namespace std не умеет), flock замка «один
-# прогон на сессию», труба пробуждения raise-цикла и poll на дескрипторе
-# X-соединения.
+# ⚠️ Since 2026-09-08 there is more than one call: the live executor of the login
+# video splash moved here (`splash_exec.rs`), and it needs unix sockets for mpv IPC and
+# sd_notify (std cannot do an address in the abstract namespace), the flock of the «one
+# run per session» lock, the wake-up pipe of the raise loop and poll on the descriptor
+# of the X connection.
 libc = "0.2"
 
-# zbus — ОДИН вызов D-Bus: `performAction` собственного помощника Plasma
-# Login Manager (KAuth, системная шина), чтобы фон и перенос оформления
-# экрана входа писал его помощник, а не мы (`plasma_login.rs`; своя запись
-# — путь, на котором PLM получил CVE-2026-25710). Синхронный API
-# (`blocking-api`) на встроенном исполнителе `async-io`: вызов идёт из
-# рабочего потока, tokio в ядро не тянем. Передача дескриптора картинки
-# (`a{sh}`) — штатная у zbus на unix. Лицензия MIT — permissive, правило #10.
+# zbus — ONE D-Bus call: `performAction` of Plasma Login Manager's own
+# helper (KAuth, the system bus), so that the background and the carry-over of the login screen
+# look are written by its helper, not by us (`plasma_login.rs`; writing it ourselves
+# is the path on which PLM got CVE-2026-25710). The synchronous API
+# (`blocking-api`) on the built-in `async-io` executor: the call comes from a
+# worker thread, we do not pull tokio into the core. Passing the picture's descriptor
+# (`a{sh}`) is standard in zbus on unix. The MIT license is permissive, rule #10.
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
-# ── живой исполнитель видеозаставки входа (splash_exec.rs) ──────────
-# Оба крейта пришли ВМЕСТЕ с модулем из rexon-py и появились в дереве ядра
-# 2026-09-08: без них вкладка «Steam» на Rust не смогла бы ни проиграть
-# ролик, ни включить автозапуск, а второй копии исполнителя быть не должно
-# (правило #12).
+# ── the live executor of the login video splash (splash_exec.rs) ─────
+# Both crates came TOGETHER with the module from rexon-py and appeared in the core tree on
+# 2026-09-08: without them the Rust «Steam» tab could neither play
+# a clip nor enable autostart, and there must be no second copy of the executor
+# (rule #12).
 #
-# x11-dl — собственный X11-слой заставки (override-redirect окно во весь
-# экран, постер фоном, событийный raise-цикл). Крейт грузит libX11 через
-# dlopen В МОМЕНТ ВЫЗОВА и честно отдаёт ошибку, если её нет: на
-# Wayland-машине без libX11 ядро всё равно собирается и работает, а заставка
-# уходит на свой путь. Линковки с libX11 у ядра нет.
-# Лицензия: CC0-1.0 (permissive, правило #10).
+# x11-dl — the splash's own X11 layer (an override-redirect window over the whole
+# screen, the poster as a background, an event-driven raise loop). The crate loads libX11 through
+# dlopen AT CALL TIME and honestly returns an error if it is missing: on a
+# Wayland machine without libX11 the core still builds and works, and the splash
+# goes its own way. The core does not link against libX11.
+# License: CC0-1.0 (permissive, rule #10).
 x11-dl = "2.21"
-# image — постер (первый кадр ролика) фоном X11-слоя: разбор PNG от ffmpeg и
-# вписывание в экран Ланцошем, как это делала Pillow. png — заставке; jpeg и
-# webp — размытию обоев (`wallpaper_engine::blur_image_file`): обои-картинки
-# бывают JPEG/WebP, а размытая копия пишется в JPEG. gif — чтению кадров
-# GIF для витрин профиля Steam (`steam_showcase`). Остальные кодеки не
-# нужны — дерево зависимостей остаётся маленьким.
-# Лицензия: MIT OR Apache-2.0.
+# image — the poster (the first frame of the clip) as the background of the X11 layer: parsing the PNG from ffmpeg and
+# fitting it to the screen with Lanczos, as Pillow did. png — for the splash; jpeg and
+# webp — for blurring the wallpaper (`wallpaper_engine::blur_image_file`): picture wallpapers
+# come as JPEG/WebP, and the blurred copy is written as JPEG. gif — for reading GIF
+# frames for Steam profile showcases (`steam_showcase`). Other codecs are not
+# needed — the dependency tree stays small.
+# License: MIT OR Apache-2.0.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
-# gif и color_quant — нарезка GIF для витрин профиля Steam
-# (`steam_showcase`): своя общая палитра на нужное число цветов, чтобы
-# уложить часть в 5 МБ. Оба уже в дереве зависимостей (через image и
-# ruffle_render), новых крейтов не приезжает.
-# Лицензии: gif — MIT OR Apache-2.0; color_quant — MIT.
+# gif and color_quant — cutting GIFs for Steam profile showcases
+# (`steam_showcase`): our own shared palette with the needed number of colors, to
+# fit a part into 5 MB. Both are already in the dependency tree (through image and
+# ruffle_render), no new crates arrive.
+# Licenses: gif — MIT OR Apache-2.0; color_quant — MIT.
 gif = "0.14"
 color_quant = "1.1"
-# png и md-5 — миниатюры карточек обоев без готового превью
-# (`we_thumbnail`): PNG с подписями `Thumb::URI`/`Thumb::MTime`/`Thumb::Size`
-# (кодировщик `image` подписей не пишет) и имя файла в общем кэше миниатюр —
-# md5 адреса, как велит стандарт freedesktop. png уже в дереве через image.
-# Лицензии: обе MIT OR Apache-2.0.
+# png and md-5 — thumbnails of wallpaper cards without a ready preview
+# (`we_thumbnail`): a PNG with the `Thumb::URI`/`Thumb::MTime`/`Thumb::Size` tags
+# (the `image` encoder does not write tags) and the file name in the shared thumbnail cache —
+# the md5 of the address, as the freedesktop standard prescribes. png is already in the tree through image.
+# Licenses: both MIT OR Apache-2.0.
 png = "0.18"
 md-5 = "0.10"
 
-# ── движок автоперевода описаний оформления ──────────────────────────
-# fxtranslate — реализация движка переводов Firefox на Rust. Вендорен в
-# дерево (`rust/vendor/fxtranslate/`), а не взят зависимостью с crates.io,
-# потому что мы его ПРАВИМ: без нашего выбора набора инструкций по CPUID
-# продукт падает с SIGILL на любом x86-64 без AVX2, и падает не на старте,
-# а ПОСЛЕ загрузки модели, на первом переводе. Пересборка вендора —
-# `scripts/sync-fxtranslate.py`, наши правки одним файлом —
-# `rust/vendor/fxtranslate/patches/`, обязанности по MPL-2.0 —
+# ── the auto-translation engine for appearance descriptions ──────────
+# fxtranslate — a Rust implementation of the Firefox translation engine. Vendored into
+# the tree (`rust/vendor/fxtranslate/`) rather than taken as a crates.io dependency,
+# because we PATCH it: without our CPUID-based choice of instruction set the
+# product crashes with SIGILL on any x86-64 without AVX2, and it crashes not at start
+# but AFTER the model is loaded, on the first translation. Rebuilding the vendor —
+# `scripts/sync-fxtranslate.py`, our edits as one file —
+# `rust/vendor/fxtranslate/patches/`, the MPL-2.0 obligations —
 # `rust/vendor/fxtranslate/ATTRIBUTION.md`.
 #
-# НАБОР ФИЧ — ровно тот, на котором сняты замеры ниже: `default` (= `fast` = lean-embed +
-# gemmology + mmap) плюс `threads` (пакетный перевод по ядрам).
-#   ⛔`gemm-threads` НЕ включать: на 4 потоках данных падает с SIGSEGV
-#     (8 попыток из 8), на одном даёт 1,17× ценой четырёх ядер и вдобавок
-#     МЕНЯЕТ перевод против того же бинаря без пула.
-#   ⛔`download`/`net`/`discovery` НЕ включать: они тянут ureq + rustls, и
-#     их загрузчик (`remote::pick`) берёт старшую версию записи, не глядя
-#     на архитектуру, — то есть качает АНДРОИДНУЮ `base-memory` вместо
-#     настольной `base` (на 0,34 chrF++ хуже). Модель прибивается гвоздями
-#     в поставке, в сеть на машине покупателя не ходим.
-#   ⛔`icu-segmenter` пока не включаем: сегментатор меняет разбивку на
-#     предложения, а значит и вывод, — выбор сегментатора решается вместе
-#     со встраиванием в окно, не здесь.
-# Лицензия: MPL-2.0 (пофайловый копилефт — распространяется на изменённые
-# нами файлы САМОГО крейта, не на код Rexon, который с ним линкуется).
+# THE FEATURE SET is exactly the one the measurements below were taken on: `default` (= `fast` = lean-embed +
+# gemmology + mmap) plus `threads` (batch translation across cores).
+#   ⛔ do NOT enable `gemm-threads`: on 4 data threads it crashes with SIGSEGV
+#     (8 attempts out of 8), on one it gives 1.17× at the cost of four cores and on top of that
+#     CHANGES the translation against the same binary without the pool.
+#   ⛔ do NOT enable `download`/`net`/`discovery`: they pull in ureq + rustls, and
+#     their loader (`remote::pick`) takes the highest version of a record without looking
+#     at the architecture — i.e. it downloads the ANDROID `base-memory` instead of
+#     the desktop `base` (0.34 chrF++ worse). The model is nailed down
+#     in the delivery, we do not go to the network on the buyer's machine.
+#   ⛔ `icu-segmenter` is not enabled for now: the segmenter changes the split into
+#     sentences, and therefore the output — the choice of segmenter is decided together
+#     with embedding into the window, not here.
+# License: MPL-2.0 (a per-file copyleft — it covers the files of the crate ITSELF
+# that we changed, not the Rexon code that links with it).
 fxtranslate = { path = "../vendor/fxtranslate/crate", features = ["threads"] }
 
 [build-dependencies]
-# prost-build генерит Rust-структуры из .proto на этапе сборки (нужен protoc
-# в PATH). Единственный источник .proto — оригинал в data/qt_wallpaper_engine/
-# proto/, читаем его напрямую (не копируем, чтобы не расходиться с апстримом).
+# prost-build generates Rust structures from .proto at build time (protoc is needed
+# in PATH). The only source of .proto is the original in data/qt_wallpaper_engine/
+# proto/, we read it directly (we do not copy it, so as not to diverge from upstream).
 prost-build = "0.13"
-# prost + prost-types в build-скрипте — разбор FileDescriptorSet, который
-# protoc отдаёт вместе со структурами: из него генерится таблица номеров полей
-# `oneof payload` сообщения Request (см. build.rs, почему не руками).
-# Новых зависимостей не добавляют: и то, и то уже тянет prost-build.
+# prost + prost-types in the build script — parsing the FileDescriptorSet that
+# protoc returns together with the structures: the table of field numbers of
+# `oneof payload` of the Request message is generated from it (see build.rs for why not by hand).
+# They add no new dependencies: both are already pulled in by prost-build.
 prost = "0.13"
 prost-types = "0.13"

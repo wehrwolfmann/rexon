@@ -120,15 +120,21 @@ impl Dialog {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn initial_state_matches_original() {
     let _lang = i18n_pin::ru();
     let g = fx();
     Dialog::new().assert_matches(&g["initial"], "initial");
 }
 
+/// Stages renamed after the golden file was taken: `(former, new, new Russian
+/// title)`. `plasma_backup` → `panel_backup` (25.11.2026): before installing
+/// or switching, Rexon copies the panels of every installed desktop, not only
+/// of KDE Plasma.
+const STAGE_RENAMES: &[(&str, &str, &str)] = &[("plasma_backup", "panel_backup", "Сохраняем копии панелей...")];
+
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn stage_titles_match_original() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -139,6 +145,13 @@ fn stage_titles_match_original() {
         "число этапов с заголовком"
     );
     for (stage, title) in want {
+        // A stage renamed after the golden file was taken: its new name and words.
+        if let Some((_, new, words)) = STAGE_RENAMES.iter().find(|(old, _, _)| old == stage) {
+            assert_eq!(dp::stage_title(stage), None, "{stage} is back under its former name");
+            assert_ne!(title.as_str(), Some(*words), "{stage}: the golden file already knows the new words");
+            assert_eq!(dp::stage_title(new).as_deref(), Some(*words), "заголовок этапа {new}");
+            continue;
+        }
         assert_eq!(
             dp::stage_title(stage).as_deref(),
             title.as_str(),
@@ -154,7 +167,7 @@ fn stage_titles_match_original() {
 
 /// Every single message — on a fresh dialog, the way the golden file was captured.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn single_messages_match_original() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -193,7 +206,7 @@ fn single_messages_match_original() {
 /// `OverflowError`. The golden file recorded that crash; instead of crashing, the port
 /// leaves the bar in place — as with "not a number".
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn infinite_fraction_no_longer_crashes() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -253,7 +266,7 @@ fn replay(case: &str) {
 
 /// A real installation sequence.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn sequence_matches_original_step_by_step() {
     let _lang = i18n_pin::ru();
     replay("sequence");
@@ -265,14 +278,14 @@ fn sequence_matches_original_step_by_step() {
 /// there is something to show. On a fresh dialog the difference is not visible (it is empty anyway),
 /// so it is checked exactly this way.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn empty_message_overwrites_only_for_pkg_install() {
     let _lang = i18n_pin::ru();
     replay("current_overwrite");
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn done_matches_original() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -293,7 +306,7 @@ fn done_matches_original() {
 /// On failure the log is NOT appended: the error text is already there, put there by
 /// the `error` stage. And the bar stays where it was.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn failure_keeps_log_and_bar() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -315,7 +328,7 @@ fn failure_keeps_log_and_bar() {
 /// live River installation 24.10.2026). On a fresh dialog both differences are not
 /// visible — the bar is at zero there and the line is empty.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn done_over_populated_dialog() {
     let _lang = i18n_pin::ru();
     let g = fx();
@@ -406,7 +419,7 @@ fn verdict(allowed: bool, outcome: &str, title: &str, explanation: &str) -> dp::
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn blocked_verdict_gets_window_without_install_button() {
     let _lang = i18n_pin::ru();
     let v = verdict(false, "blocked", "Astra Linux SE: ЗПС включена", "Что мешает\nЧто делать");
@@ -455,7 +468,7 @@ fn ok_verdict_asks_the_plain_question() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn unknown_verdict_warns_but_does_not_block() {
     let _lang = i18n_pin::ru();
     // "Unknown" is not "forbidden": otherwise Rexon is useless on an unknown distro.
@@ -470,7 +483,7 @@ fn unknown_verdict_warns_but_does_not_block() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn aeroshell_details_describe_every_package() {
     let _lang = i18n_pin::ru();
     let packages = vec![
@@ -504,7 +517,7 @@ aeroshell-icons: версия сборки не указана"
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn aeroshell_result_keeps_the_builder_output() {
     let _lang = i18n_pin::ru();
     let (title, body) = dp::aeroshell_result(true, "неважно");
@@ -522,7 +535,7 @@ fn aeroshell_result_keeps_the_builder_output() {
 /// risk ("needs a rebuild") — «Пересобрать», with a breakage ("stopped
 /// working") — «Восстановить».
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn aeroshell_confirm_button_matches_the_title() {
     use rexon_core::aeroshell::{self, Marker, PackageVerdict, Report};
     let _lang = i18n_pin::ru();

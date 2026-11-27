@@ -780,6 +780,11 @@ fn backup_row_label_reads_like_a_sentence() {
         "📁 20.06.2026 в 01:10  ·  вручную  ·  11 файлов"
     );
     assert_eq!(qs::backup_reason_label("своё"), "своё");
+    // Every reason Rexon writes has words: "before_switch" used to reach the
+    // person as the raw machine string.
+    assert_eq!(qs::backup_reason_label("before_switch"), "авто, перед сменой стола");
+    assert_eq!(qs::backup_reason_label("before_layout"), "авто, перед сменой раскладки");
+    assert_eq!(qs::backup_reason_label("migrated"), "прежней версией Rexon");
 }
 
 #[test]
@@ -1708,7 +1713,7 @@ fn as_phrase(template: &str) -> String {
 /// during the port): jargon in the buyer's face is replaced with human words.
 const TEXT_FIXES: &[(&str, &str)] = &[
     ("prot.snapshot_error", "⚠️ Ошибка snapshot: {}"),
-    ("plasma.backup_error", "⚠️ Ошибка backup: {}"),
+    ("panel.backup_error", "⚠️ Ошибка backup: {}"),
     // The hint listed formats, and Flash was not among them — although the engine
     // plays it. An omission in a list reads as "we can't".
     (
@@ -1827,13 +1832,14 @@ const TEXT_FIXES: &[(&str, &str)] = &[
     // «(не задан)» read as "there is no font"; in fact the desktop's default
     // font applies — and that is what it says now (acceptance 10.10.2026).
     ("font.unset", "<i>(не задан)</i>"),
+    // Panel protection on every desktop (25.11.2026): the subtitle names no
+    // KDE widgets, the question names the desktop.
     (
-        "plasma.backup_tip",
-        "Технически: копируются plasma-org.kde.plasma.desktop-appletsrc, \
-         plasmashellrc, kglobalshortcutsrc",
+        "panel.backup_sub",
+        "Rexon сделает копию расположения панели, виджетов и сочетаний клавиш — вернуть её можно будет в один клик",
     ),
     (
-        "plasma.confirm_text",
+        "panel.confirm_text",
         "Восстановить Plasma-панель из бэкапа «{}»?\n\nТекущая конфигурация \
          будет перезаписана.",
     ),
@@ -1844,6 +1850,20 @@ const TEXT_FIXES: &[(&str, &str)] = &[
 /// have (there was one checkbox without storage and without volume). The list
 /// is closed — a new string must get here deliberately, not slip past the check.
 const TEXT_ADDITIONS: &[&str] = &[
+    // Panel protection on every desktop (25.11.2026): what a copy holds, the
+    // original copy, copies of other desktops, the notes of the restore question.
+    "panel.tip",
+    "panel.parts_panel",
+    "panel.parts_shortcuts",
+    "panel.original",
+    "panel.others",
+    "panel.unsupported",
+    "panel.shared",
+    "panel.relogin",
+    "panel.services",
+    "panel.other_de",
+    "panel.saved",
+    "panel.restored",
     // Resetting sites "without asking" (`link_policy`, 16.11.2026).
     "links.reset",
     // Protecting terminal colours from themes (`terminal_guard`, 06.11.2026).
@@ -1927,6 +1947,31 @@ const TEXT_ADDITIONS: &[&str] = &[
 /// (`golden/qt_settings_ru_before.json`): they have no "as before", their
 /// Russian is checked separately ([`language_section_russian`]).
 const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
+    // Panel protection on every desktop (25.11.2026): the former `plasma.*`
+    // keys under their new names, and the new ones — Russian is checked in
+    // `panel_protection_texts_russian`.
+    "panel.backup_title",
+    "panel.backup_sub",
+    "panel.tip",
+    "panel.parts_panel",
+    "panel.parts_shortcuts",
+    "panel.original",
+    "panel.backup",
+    "panel.backups_header",
+    "panel.no_backups",
+    "panel.others",
+    "panel.unsupported",
+    "panel.restore",
+    "panel.backup_dir",
+    "panel.confirm_title",
+    "panel.confirm_text",
+    "panel.shared",
+    "panel.relogin",
+    "panel.services",
+    "panel.other_de",
+    "panel.saved",
+    "panel.restored",
+    "panel.backup_error",
     // Resetting sites "without asking" (16.11.2026) — Russian is checked in
     // `links_texts_russian`.
     "links.reset",
@@ -1984,6 +2029,19 @@ const AFTER_RU_SNAPSHOT_SECTIONS: &[&str] = &["langGroup", "linksGroup"];
 /// under live wallpapers itself (`wallpaper_backend::prepare_desktop_icons`).
 const SECTION_REMOVALS: &[&str] = &["mateIconsGroup"];
 const TEXT_REMOVALS: &[&str] = &[
+    // Renamed to `panel.*` with the section (25.11.2026); `plasma.backup_tip`
+    // (a list of KDE files) is now built per desktop (`qt_settings::panel_tip`).
+    "plasma.backup_title",
+    "plasma.backup_sub",
+    "plasma.backup_tip",
+    "plasma.backup",
+    "plasma.backups_header",
+    "plasma.no_backups",
+    "plasma.restore",
+    "plasma.backup_dir",
+    "plasma.confirm_title",
+    "plasma.confirm_text",
+    "plasma.backup_error",
     "mate.icons_on",
     "mate.icons_off",
     "mate.restart_caja",
@@ -2000,6 +2058,32 @@ const TEXT_REMOVALS: &[&str] = &[
     "wp.audio_disabling",
 ];
 
+/// Sections renamed after the golden files were frozen: `(former id, new id)`.
+/// The golden files remember the former id; here it is looked up by the new one.
+///
+/// `plasmaGroup` → `panelGroup` (25.11.2026, Wehrwolfmann's decision): the
+/// panel protection works on every desktop, not only on KDE Plasma.
+const SECTION_RENAMES: &[(&str, &str)] = &[("plasmaGroup", "panelGroup")];
+
+/// The id the golden files know section `id` by.
+fn golden_id(id: &str) -> &str {
+    SECTION_RENAMES.iter().find(|(_, new)| *new == id).map_or(id, |(old, _)| old)
+}
+
+/// The id a golden section has today.
+fn current_id(id: &str) -> &str {
+    SECTION_RENAMES.iter().find(|(old, _)| *old == id).map_or(id, |(_, new)| new)
+}
+
+/// Sections whose title AND description were rewritten after the Russian
+/// text snapshot: `(section, new Russian title, new Russian description)`.
+const AFTER_RU_SNAPSHOT_RETITLED: &[(&str, &str, &str)] = &[(
+    "panelGroup",
+    "🛡️ Защита панели",
+    "Сохраняет вид панели, апплеты и сочетания клавиш вашего рабочего стола и возвращает их, \
+     если после установки другого стола что-то сломалось",
+)];
+
 /// The removed section and labels really are removed: neither the core tables
 /// nor the page markup have them.
 #[test]
@@ -2012,6 +2096,11 @@ fn removed_sections_and_texts_are_gone() {
     }
     for key in TEXT_REMOVALS {
         assert!(qs::text_template(key).is_none(), "подпись {key} снова в каталоге");
+    }
+    for (old, new) in SECTION_RENAMES {
+        assert!(!qs::section_order().contains(old), "{old} is back under its former name");
+        assert!(!SETTINGS_QML.contains(&format!("\"{old}\"")), "{old} is back in the page markup");
+        assert!(qs::section_order().contains(new), "{new} is missing");
     }
 }
 
@@ -2075,6 +2164,12 @@ const SECTION_FIXES: &[(&str, &str, &str)] = &[
         "🔔 Звуки событий",
         "Системная звуковая тема для {} (клики, уведомления, ошибки). \
          Применяется через нативные API DE",
+    ),
+    (
+        "panelGroup",
+        "🛡️ Защита панели KDE Plasma",
+        "Сохраняет вид панели, виджеты и сочетания клавиш — и возвращает их, если после \
+         установки другого рабочего стола что-то сломалось",
     ),
     (
         "fontsGroup",
@@ -2146,7 +2241,7 @@ fn tab_sections_match_python() {
             continue;
         }
         let row = want
-            .get(*id)
+            .get(golden_id(id))
             .unwrap_or_else(|| panic!("в оригинале нет секции {id}"));
         let want_desc = row[1].as_str().unwrap_or("");
         if let Some((_, was_title, was_desc)) = SECTION_FIXES.iter().find(|(k, _, _)| k == id) {
@@ -2191,7 +2286,7 @@ fn section_order_matches_python() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| v.as_str().unwrap().to_string())
+        .map(|v| current_id(v.as_str().unwrap()).to_string())
         .filter(|id| !SECTION_REMOVALS.contains(&id.as_str()))
         .collect();
     let ours: Vec<String> = qs::section_order()
@@ -2375,8 +2470,8 @@ fn statuses_pick_the_right_sign() {
     assert!(qs::restore_native_status("x", false).starts_with("✅"));
     assert!(qs::compliance_status("x", false).starts_with("ℹ️"));
     assert_eq!(qs::compliance_status("x", true), "x");
-    assert!(qs::plasma_status(true, "готово").starts_with("✅"));
-    assert!(qs::plasma_status(false, "нет копии").starts_with("⚠️"));
+    assert!(qs::panel_status(true, "готово").starts_with("✅"));
+    assert!(qs::panel_status(false, "нет копии").starts_with("⚠️"));
     assert!(qs::fm_apply_status(true).starts_with("✅"));
     assert!(qs::sound_theme_status(false, "ocean").contains("ocean"));
     assert!(qs::event_sounds_status(true, false).contains("выключены"));
@@ -2387,28 +2482,68 @@ fn statuses_pick_the_right_sign() {
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
-fn plasma_backups_are_counted_and_confirmed() {
+fn panel_backups_are_counted_and_confirmed() {
     let _lang = i18n_pin::ru();
-    assert_eq!(
-        qs::plasma_backups_header(10),
-        "<b>Сохранённые копии (10):</b>"
-    );
-    let (title, question) = qs::plasma_restore_confirm("20260620_011005");
+    assert_eq!(qs::panel_backups_header(10), "<b>Сохранённые копии (10):</b>");
+    let (title, question) = qs::panel_restore_confirm("MATE", "20260620_011005", &[], false, false);
     assert_eq!(title, "Восстановить?");
-    // ⭐A deliberate difference from the original (rule #13): Python put the
-    // machine label «20260620_011005» into the question, although it labelled
-    // the list row the person had just clicked «20.06.2026 в 01:10». The same
-    // backup cannot be called by two names in one window, so the question asks
-    // with the human date too.
-    assert!(
-        question.contains("20.06.2026 в 01:10") && question.contains("будет заменён"),
-        "вопрос о возврате копии показывает машинную метку времени: {question}"
+    // The question asks with the human date the list row shows (rule #13) and
+    // names the desktop: the section now holds copies of several.
+    assert_eq!(
+        question,
+        "Восстановить панель MATE из копии от 20.06.2026 в 01:10?\n\nНынешний вид панели будет заменён."
     );
-    // An unparsed label stays as is — the question must not turn into
-    // «из копии от ?».
-    let (_, broken) = qs::plasma_restore_confirm("мусор");
+    // An unparsed label stays as is — the question must not turn into «из копии от ?».
+    let (_, broken) = qs::panel_restore_confirm("MATE", "мусор", &[], false, false);
     assert!(broken.contains("мусор"));
-    assert_eq!(qs::PLASMA_BACKUPS_SHOWN, 5);
+    // Shared GNOME branches and a desktop that applies shortcuts at login.
+    let (_, shared) = qs::panel_restore_confirm("GNOME", "20260620_011005", &["Budgie".to_string()], true, false);
+    assert!(shared.contains("Сочетания клавиш Budgie тоже изменятся"), "{shared}");
+    assert!(shared.ends_with("Сочетания клавиш вступят в силу после повторного входа в систему."), "{shared}");
+    let (_, deepin) = qs::panel_restore_confirm("Deepin", "20260620_011005", &[], false, true);
+    assert!(deepin.ends_with("Службы стола на секунду перезапустятся: тема, слайд-шоу обоев и питание могут мигнуть."), "{deepin}");
+    assert_eq!(qs::PANEL_BACKUPS_SHOWN, 5);
+}
+
+/// The section's own words, as the person reads them.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn panel_protection_texts_russian() {
+    let _lang = i18n_pin::ru();
+    let get = |k: &str| qs::text(k, &["X".to_string(), "Y".to_string()]).unwrap();
+    assert_eq!(get("panel.backup_title"), "<b>Сохранить текущий вид панели</b>");
+    assert_eq!(
+        get("panel.backup_sub"),
+        "Rexon сделает копию панелей, апплетов и сочетаний клавиш вашего рабочего стола — вернуть её можно будет в один клик"
+    );
+    assert_eq!(get("panel.backup"), "📦 Сохранить копию");
+    assert_eq!(get("panel.no_backups"), "Сохранённых копий пока нет");
+    assert_eq!(get("panel.others"), "Копии других столов (X)");
+    assert_eq!(get("panel.unsupported"), "Rexon пока не умеет делать копии панели этого стола.");
+    assert_eq!(get("panel.other_de"), "X подхватит копию при следующем входе в этот стол.");
+    assert_eq!(get("panel.saved"), "Копия сохранена: X");
+    assert_eq!(get("panel.restored"), "Возвращена копия от X");
+    assert_eq!(get("panel.backup_error"), "⚠️ Не удалось сохранить копию: X");
+    let parts = vec!["panel".to_string(), "shortcuts".to_string()];
+    assert_eq!(qs::panel_tip(&parts), "Что копируется: панели и апплеты, сочетания клавиш");
+    let snap = rexon_core::backup::PanelSnapshot {
+        de: "mate".into(),
+        timestamp: "20261125_100000".into(),
+        reason: "before_switch".into(),
+        path: "/x".into(),
+        parts,
+        items: 2,
+        original: true,
+        format: "manifest".into(),
+        files: vec![],
+        linked: false,
+    };
+    assert_eq!(
+        qs::panel_row_label(&snap),
+        "📁 25.11.2026 в 10:00  ·  авто, перед сменой стола  ·  панели и апплеты, сочетания клавиш  ·  ⭐ исходная, до Rexon"
+    );
+    let (title, _) = qs::section_texts("panelGroup", "KDE").unwrap();
+    assert_eq!(title, "🛡️ Защита панели");
 }
 
 // ============================================================================
@@ -2420,11 +2555,12 @@ fn plasma_backups_are_counted_and_confirmed() {
 ///
 /// The pair "section → the fact without which it was not drawn":
 ///   * `obGroup` — `onboarding.available()`;
-///   * `plasmaGroup` — `PlasmaProtector.is_plasma_running() or has_backups()`;
+///   * `panelGroup` (`plasmaGroup` in the original) — `PlasmaProtector.is_plasma_running()
+///     or has_backups()`; since 25.11.2026 "Rexon can copy this desktop's panel or copies remain";
 ///   * `aeroGroup` — `detect_plasma_forks()`.
 /// The other sections were always drawn.
 /// (`mateIconsGroup` is removed since 08.11.2026 — see [`SECTION_REMOVALS`].)
-const CONDITIONAL_SECTIONS: &[&str] = &["obGroup", "plasmaGroup", "aeroGroup"];
+const CONDITIONAL_SECTIONS: &[&str] = &["obGroup", "panelGroup", "aeroGroup"];
 
 #[test]
 fn sections_without_conditions_are_always_shown() {
@@ -2446,7 +2582,7 @@ fn every_condition_opens_exactly_its_own_section() {
     // Each fact separately: enables its own section and NOT A SINGLE other one.
     let cases: &[(&str, qs::SectionFacts)] = &[
         ("obGroup", qs::SectionFacts::new(true, false, false)),
-        ("plasmaGroup", qs::SectionFacts::new(false, true, false)),
+        ("panelGroup", qs::SectionFacts::new(false, true, false)),
         ("aeroGroup", qs::SectionFacts::new(false, false, true)),
     ];
     for (id, facts) in cases {
@@ -2659,7 +2795,7 @@ fn layout_and_colors_are_frozen() {
         format!("setSpacing({})", qs::SOUND_PREVIEW_SPACING),
         format!("setSpacing({})", qs::FONT_ROW_SPACING),
         format!("setSpacing({})", qs::FONT_COL_SPACING),
-        format!("setSpacing({})", qs::PLASMA_ROW_SPACING),
+        format!("setSpacing({})", qs::PANEL_ROW_SPACING),
         format!("setSpacing({})", qs::INFO_BOX_SPACING),
     ];
     assert_eq!(expected.to_vec(), LAYOUT_FROZEN, "раскладка или краски вкладки сдвинулись");
@@ -3152,7 +3288,13 @@ fn russian_catalog_keeps_old_texts() {
             assert!(!sections.contains_key(*id), "{id} помечен новым, а в снимке он был");
             continue;
         }
-        let want = &sections[*id];
+        let want = &sections[golden_id(id)];
+        if let Some((_, title_now, desc_now)) = AFTER_RU_SNAPSHOT_RETITLED.iter().find(|(k, _, _)| k == id) {
+            assert_ne!(want[0].as_str().unwrap(), *title_now, "{id}: the snapshot already knows the new title");
+            assert_eq!(i18n::tr(title), *title_now, "заголовок {id}");
+            assert_eq!(i18n::tr(desc), *desc_now, "описание {id}");
+            continue;
+        }
         if !title.is_empty() {
             assert_eq!(i18n::tr(title), want[0].as_str().unwrap(), "заголовок {id}");
         }
@@ -3260,7 +3402,9 @@ fn english_tab_has_no_russian() {
             &[("Browser".to_string(), "a".to_string(), "b".to_string())],
         ),
         qs::youtube_starting_status("best", "stream", true),
-        qs::plasma_restore_confirm("20260620_011005").1,
+        qs::panel_restore_confirm("KDE Plasma", "20260620_011005", &["Budgie".to_string()], true, true).1,
+        qs::panel_tip(&["panel".to_string(), "shortcuts".to_string()]),
+        qs::panel_others_header(2),
         qs::onboarding_replay_button(),
     ]);
     for text in &all {

@@ -1,0 +1,192 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Windows XP style”?",
+      "text": "The look <b>Windows XP style</b> will be applied to your desktop.<br><br>What will change: GTK theme, window frames, icons, cursors, desktop behaviour.<br><br>Rexon builds these parts itself from what your desktop has, close to the original: desktop behaviour.<br><br>Won't be applied: panel layout — Rexon can&#39;t lay out Xfce panels yet, so your panels stay as they are<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "windows-xp",
+    "name": "Windows XP style",
+    "items": [
+      {
+        "index": 0,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/xp-theme/Windows XP Luna",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/xp-theme/Windows XP Luna"
+        }
+      },
+      {
+        "index": 1,
+        "kind": "window-decoration",
+        "consumer": "xfwm4",
+        "path": "sources/xp-theme/Windows XP Luna",
+        "choice": {
+          "choice": "native",
+          "consumer": "xfwm4",
+          "path": "sources/xp-theme/Windows XP Luna"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/Windows-XP",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/Windows-XP"
+        }
+      },
+      {
+        "index": 3,
+        "kind": "cursors",
+        "consumer": "freedesktop",
+        "path": "sources/modernxp/ModernXP",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/modernxp/ModernXP"
+        }
+      },
+      {
+        "index": 5,
+        "kind": "behaviour",
+        "consumer": "xfwm4",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "xfwm4",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      }
+    ],
+    "skipped": [
+      {
+        "kind": "panel-layout",
+        "reason": "Rexon can't lay out Xfce panels yet, so your panels stay as they are"
+      }
+    ],
+    "install": [],
+    "aur": [],
+    "roles": [],
+    "fetch": [
+      {
+        "id": "xp-theme",
+        "url": "https://github.com/B00merang-Project/Windows-XP.git",
+        "pin": {
+          "pin": "git",
+          "value": "7637830906823af40a3cd7e7079be753d8b7d679"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/xp-theme-763783090682"
+      },
+      {
+        "id": "Windows-XP",
+        "url": "https://github.com/B00merang-Artwork/Windows-XP.git",
+        "pin": {
+          "pin": "git",
+          "value": "24e95ad2b12c55dd11883ee7066525527d944039"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/Windows-XP-24e95ad2b12c"
+      },
+      {
+        "id": "modernxp",
+        "url": "https://github.com/na0miluv/modernXP-cursor-theme/releases/download/final/ModernXP.tar.gz",
+        "pin": {
+          "pin": "sha256",
+          "value": "5b439d1b838f19b667d565f9bc7c5e435118a7ef60cb2975f4695ce216b6be03"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/modernxp-5b439d1b838f"
+      }
+    ],
+    "uses_settings": false,
+    "values": {}
+  },
+  "calls": [
+    "xfconf-query -c xsettings -p /Net/ThemeName",
+    "xfconf-query -c xfwm4 -p /general/theme",
+    "xfconf-query -c xsettings -p /Net/IconThemeName",
+    "xfconf-query -c xsettings -p /Gtk/CursorThemeName",
+    "xfconf-query -c xsettings -p /Net/ThemeName",
+    "xfconf-query -c xsettings -p /Net/ThemeName -s Windows XP Luna",
+    "xfconf-query -c xfwm4 -p /general/theme",
+    "xfconf-query -c xfwm4 -p /general/theme -s Windows XP Luna",
+    "xfconf-query -c xsettings -p /Net/IconThemeName",
+    "xfconf-query -c xsettings -p /Net/IconThemeName -s Windows-XP",
+    "xfconf-query -c xsettings -p /Gtk/CursorThemeName",
+    "xfconf-query -c xsettings -p /Gtk/CursorThemeName -s ModernXP",
+    "xfconf-query -c xfwm4 -p /general/button_layout",
+    "xfconf-query -c xfwm4 -p /general/button_layout -n -t string -s |HMC",
+    "xfconf-query -c xsettings -p /Net/ThemeName"
+  ],
+  "missing": [],
+  "message": "“Windows XP style” applied.\nSkipped: panel layout — Rexon can't lay out Xfce panels yet, so your panels stay as they are",
+  "installed": [],
+  "profile": {
+    ".config/": "",
+    ".config/environment.d/": "",
+    ".config/environment.d/rexon-cursor.conf": "XCURSOR_THEME=ModernXP\n",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Adwaita\ngtk-icon-theme-name=Windows-XP\ngtk-cursor-theme-name=ModernXP\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Windows-XP\ngtk-cursor-theme-name=ModernXP\n",
+    ".config/kdeglobals": "\n[Icons]\nTheme=Windows-XP\n",
+    ".icons/": "",
+    ".icons/default/": "",
+    ".icons/default/index.theme": "[Icon Theme]\nInherits=ModernXP\n",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/icons/": "",
+    ".local/share/icons/ModernXP/": "",
+    ".local/share/icons/ModernXP/.rexon-owner": "look:windows-xp\n",
+    ".local/share/icons/ModernXP/cursors/": "",
+    ".local/share/icons/ModernXP/cursors/default": "left_ptr",
+    ".local/share/icons/ModernXP/cursors/left_ptr": "cur",
+    ".local/share/icons/ModernXP/index.theme": "[Icon Theme]\nName=ModernXP\n",
+    ".local/share/icons/Windows-XP/": "",
+    ".local/share/icons/Windows-XP/.rexon-owner": "look:windows-xp\n",
+    ".local/share/icons/Windows-XP/48x48/": "",
+    ".local/share/icons/Windows-XP/48x48/apps/": "",
+    ".local/share/icons/Windows-XP/48x48/apps/firefox.png": "png",
+    ".local/share/icons/Windows-XP/48x48/apps/start-here.png": "author-logo",
+    ".local/share/icons/Windows-XP/LICENSE": "GPL-2\n",
+    ".local/share/icons/Windows-XP/index.theme": "[Icon Theme]\nName=Windows XP\nDirectories=48x48/apps\n\nInherits=Adwaita,hicolor\n[48x48/apps]\nSize=48\n",
+    ".local/share/themes/": "",
+    ".local/share/themes/Windows XP Luna/": "",
+    ".local/share/themes/Windows XP Luna/.rexon-owner": "look:windows-xp\n",
+    ".local/share/themes/Windows XP Luna/gtk-2.0/": "",
+    ".local/share/themes/Windows XP Luna/gtk-2.0/gtkrc": "gtk-color-scheme = \"bg:#ece9d8\"\n",
+    ".local/share/themes/Windows XP Luna/gtk-3.0/": "",
+    ".local/share/themes/Windows XP Luna/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows XP Luna/gtk-3.20/": "",
+    ".local/share/themes/Windows XP Luna/gtk-3.20/gtk.css": "* {}\n",
+    ".local/share/themes/Windows XP Luna/gtk-4.0/": "",
+    ".local/share/themes/Windows XP Luna/gtk-4.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows XP Luna/index.theme": "[Desktop Entry]\nName=Windows XP Luna\n",
+    ".local/share/themes/Windows XP Luna/metacity-1/": "",
+    ".local/share/themes/Windows XP Luna/metacity-1/metacity-theme-3.xml": "<metacity_theme/>\n",
+    ".local/share/themes/Windows XP Luna/xfwm4/": "",
+    ".local/share/themes/Windows XP Luna/xfwm4/close-active.png": "png",
+    ".local/share/themes/Windows XP Luna/xfwm4/themerc": "x=1\n",
+    ".xfstore/": "",
+    ".xfstore/xfwm4/": "",
+    ".xfstore/xfwm4/general/": "",
+    ".xfstore/xfwm4/general/button_layout": "|HMC",
+    ".xfstore/xfwm4/general/theme": "Windows XP Luna",
+    ".xfstore/xsettings/": "",
+    ".xfstore/xsettings/Gtk/": "",
+    ".xfstore/xsettings/Gtk/CursorThemeName": "ModernXP",
+    ".xfstore/xsettings/Net/": "",
+    ".xfstore/xsettings/Net/IconThemeName": "Windows-XP",
+    ".xfstore/xsettings/Net/ThemeName": "Windows XP Luna"
+  }
+}

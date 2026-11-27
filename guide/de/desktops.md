@@ -54,7 +54,7 @@ Linux (Dr460nized)“. Ein angewendetes Design bekommt die Schaltfläche
   Desktop, an dem Sie gerade arbeiten;
 - **🛟 Leiste sichern** und **↩️ Leiste zurückholen** — eine Kopie der
   Leisteneinstellungen, falls Experimente mit Designs die Leiste beschädigen.
-  Diese Schaltflächen gibt es nur in KDE Plasma, MATE und XFCE.
+  Alle Kopien liegen unter **Einstellungen → 🛡️ Leistenschutz**.
 
 ![Karte eines installierten Desktops mit „Wechseln“, „Prüfen / Reparieren“ und „Entfernen“](../images/desktops-installed.png)
 
@@ -176,7 +176,7 @@ XFCE ↔ KDE). Zurück geht es mit **← Desktops**.
   Karte auf **🔧 Prüfen / Reparieren**.
 - **Nach dem Wechsel ist die KDE-Plasma-Leiste weg.** Vor dem Wechsel weg von
   Plasma sichert Rexon dessen Leiste; zurückholen lässt sie sich unter
-  **Einstellungen → 🛡️ Schutz der KDE-Plasma-Leiste**. Hat der neue Desktop
+  **Einstellungen → 🛡️ Leistenschutz**. Hat der neue Desktop
   Ihren Standardbrowser oder -player übernommen, sehen Sie unter
   **Einstellungen → 🔒 Schutz der Standardanwendungen** nach.
 - **Das ganze System soll zurück.** Rexon selbst legt keine

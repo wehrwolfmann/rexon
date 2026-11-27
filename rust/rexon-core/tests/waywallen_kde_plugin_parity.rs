@@ -324,6 +324,7 @@ fn refresh_check(present: bool, installed_sha: &str) -> w::PluginCheck {
         },
         daemon_version: Some("0.6.0".into()),
         consent: false,
+        ..Default::default()
     }
 }
 
@@ -709,7 +710,137 @@ fn check_from(input: &Value) -> w::PluginCheck {
         },
         daemon_version: opt_str(&input["daemon_version"]),
         consent: input["consent"].as_bool().unwrap(),
+        // Cases written before the packaged plugin: no package, a bundle, no failure.
+        system: w::SystemPlugin {
+            present: input["system"]["present"].as_bool().unwrap_or(false),
+            dir: opt_str(&input["system"]["dir"]),
+            version: opt_str(&input["system"]["version"]),
+            package: opt_str(&input["system"]["package"]),
+        },
+        bundle_missing: input["bundle_missing"].as_bool().unwrap_or(false),
+        package_failed: input["package_failed"].as_bool().unwrap_or(false),
     }
+}
+
+fn assert_plan_matches(section: &str, min_cases: usize) {
+    let g = golden();
+    let cases = g[section].as_object().unwrap_or_else(|| panic!("section {section}"));
+    assert!(cases.len() >= min_cases, "{section}: suspiciously few cases: {}", cases.len());
+    for (name, case) in cases {
+        let exp = &case["expected"];
+        let plan = w::plan_plugin(&check_from(&case["input"]));
+        assert_eq!(plan.action.as_str(), exp["action"].as_str().unwrap(), "action [{name}]: {}", plan.reason);
+        assert_eq!(plan.installed_version, opt_str(&exp["installed_version"]), "installed version [{name}]");
+        assert_eq!(plan.notice.as_ref().map(|n| n.kind()), exp["notice"].as_str(), "notice [{name}]");
+        assert_eq!(
+            plan.notice.as_ref().is_some_and(|n| n.offers_install()),
+            exp["offers_install"].as_bool().unwrap(),
+            "banner button [{name}]"
+        );
+        assert_eq!(plan.select, exp["select"].as_bool().unwrap(), "selection on desktops [{name}]");
+    }
+}
+
+/// The packaged plugin `plasma-wallpaper-waywallen` (owner's decision of 25.11.2026).
+#[test]
+fn system_package_cases_match_golden() {
+    assert_plan_matches("system_package_cases", 15);
+}
+
+/// The main rule of the packaged plugin: with it present the bundle is NEVER installed
+/// (no `kpackagetool6 -i/-u`), with any copy, consent, daemon or bundle.
+#[test]
+fn packaged_plugin_never_gets_overwritten() {
+    let copies = [
+        w::InstalledPlugin::default(),
+        w::InstalledPlugin { present: true, vendor_version: Some("0.4.5".into()), marker: true, runtime_sha: None },
+        w::InstalledPlugin { present: true, vendor_version: None, marker: false, runtime_sha: Some("ffff".into()) },
+    ];
+    for installed in copies {
+        for consent in [false, true] {
+            for daemon in [None, Some("0.3.9"), Some("0.6.1"), Some("9.9.9")] {
+                for bundle_missing in [false, true] {
+                    let c = w::PluginCheck {
+                        bundle_version: (!bundle_missing).then(|| "0.4.5".into()),
+                        bundle_sha: (!bundle_missing).then(|| "4d90629e44055113".into()),
+                        installed: installed.clone(),
+                        daemon_version: daemon.map(str::to_string),
+                        consent,
+                        system: w::SystemPlugin { present: true, version: Some("0.4.6".into()), ..Default::default() },
+                        bundle_missing,
+                        package_failed: false,
+                    };
+                    let plan = w::plan_plugin(&c);
+                    assert!(
+                        !plan.action.installs() && plan.action != w::PluginAction::InstallPackage,
+                        "{:?} over the packaged plugin: {c:?}",
+                        plan.action
+                    );
+                    assert!(!w::refresh_decision(&c, true, !bundle_missing).upgrades(), "refresh over the package: {c:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn refresh_moves_our_copy_away_from_package() {
+    let mut c = refresh_check(true, "aaaa");
+    c.installed.vendor_version = Some("0.4.5".into());
+    c.system.present = true;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::RemoveUserCopy);
+    assert_eq!(w::refresh_decision(&c, false, false), w::RefreshDecision::RemoveUserCopy, "no kpackagetool6 needed");
+    c.installed.vendor_version = None;
+    c.installed.marker = false;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::UpToDate, "a foreign copy only by consent");
+    c.installed.present = false;
+    assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::NotInstalled);
+}
+
+#[test]
+fn user_copy_backup_lies_outside_plasma_wallpapers() {
+    let dir = w::user_copy_backup_dir("/home/u/", "20261125-210000");
+    assert_eq!(dir, "/home/u/.local/share/waywallen/plasmoid-org.waywallen.kde.bak-20261125-210000");
+    assert!(!dir.contains("plasma/wallpapers"), "Plasma would still load a copy from there");
+}
+
+/// Texts of the packaged-plugin notices name the package and the versions; the
+/// buttons have their own labels.
+#[test]
+fn package_notice_texts_and_buttons() {
+    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    let t = w::PluginNotice::SystemIncompatible {
+        plugin_version: "0.3.3".into(),
+        daemon_version: "0.6.1".into(),
+        plugin_older: true,
+    }
+    .text();
+    assert!(t.contains("plasma-wallpaper-waywallen") && t.contains("0.3.3") && t.contains("0.6.1"), "{t}");
+    assert!(t.ends_with("Update the plasma-wallpaper-waywallen package."), "{t}");
+    let pkg = || w::PACKAGE_NAME.to_string();
+    let t = w::PluginNotice::PackageInstalling { package: pkg(), stage: "Building".into() }.text();
+    assert!(t.contains("plasma-wallpaper-waywallen") && t.ends_with("Stage: Building"), "{t}");
+    assert!(!w::PluginNotice::PackageInstalling { package: pkg(), stage: String::new() }.text().contains("Stage"));
+    let t = w::PluginNotice::PackageMissing { package: pkg(), reason: "no AUR helper".into() }.text();
+    assert!(t.contains("plasma-wallpaper-waywallen") && t.ends_with("no AUR helper"), "{t}");
+    assert!(!w::PluginNotice::PackageMissing { package: pkg(), reason: String::new() }.text().is_empty());
+    let x11 = w::PluginNotice::PackageMissing { package: w::DISPLAY_MODULE_PACKAGE.into(), reason: "x".into() };
+    assert!(x11.text().contains("waywallen-display"));
+    assert_eq!(x11.button_label(), None, "the banner button retries only the Plasma plugin package");
+    assert!(w::PluginNotice::ShadowsSystem.text().contains("plasma-wallpaper-waywallen"));
+    assert_eq!(w::PluginNotice::ShadowsSystem.button_label().as_deref(), Some("Use the Packaged Version"));
+    assert_eq!(
+        w::PluginNotice::PackageMissing { package: pkg(), reason: String::new() }.button_label().as_deref(),
+        Some("Install the Plugin Package")
+    );
+    assert_eq!(w::PluginNotice::ForeignUnknown.button_label(), Some(w::install_rexon_version_label()));
+    assert_eq!(w::PluginNotice::PackageInstalling { package: pkg(), stage: String::new() }.button_label(), None);
+    assert_eq!(
+        w::PluginNotice::SystemIncompatible { plugin_version: String::new(), daemon_version: String::new(), plugin_older: false }
+            .button_label(),
+        None,
+        "nothing Rexon could install over a package"
+    );
 }
 
 #[test]
@@ -757,6 +888,7 @@ fn never_installs_older_over_newer() {
                 },
                 daemon_version: daemon.map(str::to_string),
                 consent: false,
+                ..Default::default()
             };
             let plan = w::plan_plugin(&c);
             assert!(!plan.action.installs(), "старое поверх нового: демон {daemon:?}, маркер {marker}");
@@ -774,7 +906,8 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::plugin_protocol("0.4.3"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.4"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.5"), Some(9));
-    assert_eq!(w::plugin_protocol("0.4.6"), None, "вне проверенной таблицы — не угадываем");
+    assert_eq!(w::plugin_protocol("0.4.6"), Some(9), "v0.4.6 checked by the tag header");
+    assert_eq!(w::plugin_protocol("0.4.7"), None, "outside the checked table: no guessing");
     assert_eq!(w::daemon_protocols("0.4.3"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.3.9"), Some((8, 8)));
     assert_eq!(w::daemon_protocols("0.4.4"), Some((9, 9)));
@@ -876,6 +1009,24 @@ fn notice_texts_translated_ru_de() {
             .to_string(),
         w::install_rexon_version_label(),
         "Could not install the Plasma wallpaper plugin: %1".to_string(),
+        // The packaged plugin (25.11.2026).
+        "Use the Packaged Version".to_string(),
+        "Install the Plugin Package".to_string(),
+        "The installed %1 package (version %2) does not work with the waywallen engine %3, so live \
+         wallpapers are not shown."
+            .to_string(),
+        "Update the %1 package.".to_string(),
+        "A copy of the Plasma wallpaper plugin for waywallen in your home folder (from the KDE Store \
+         or installed by hand) hides the %1 package. Rexon left the copy as is. If live wallpapers do \
+         not appear, use the packaged version — the copy is kept as a backup."
+            .to_string(),
+        "Rexon is installing the %1 package for live wallpapers. It is built from source, which can \
+         take several minutes."
+            .to_string(),
+        "Stage: %1".to_string(),
+        "Live wallpapers need the %1 package. Install it, and the wallpapers will appear.".to_string(),
+        "Live wallpapers need the %1 package, and Rexon could not install it: %2".to_string(),
+        w::package_unsupported_reason(),
     ];
     for lang in rexon_core::i18n::parse_linguas(rexon_core::i18n::LINGUAS) {
         let po = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../po/{lang}.po"));
@@ -939,4 +1090,84 @@ fn no_displays_hint_explains_missing_output() {
         w::no_displays_hint(DisplaySetup::RexonHost),
         "Cinnamon с layer-shell: вывод поднимает Rexon"
     );
+}
+
+/// X11 output host client: the packaged `Waywallen.Display` module first, the
+/// plasmoid wrappers as fallbacks (owner's decision of 25.11.2026: the output on
+/// XFCE/MATE must not disappear when the package carries no bundle).
+#[test]
+fn display_item_prefers_packaged_module_with_fallback() {
+    let dirs = w::qml_import_dirs("/opt/qml:relative", "/usr/lib/qt6/qml/");
+    assert_eq!(dirs[0], "/opt/qml");
+    assert_eq!(dirs[1], "/usr/lib/qt6/qml", "env first, no duplicates");
+    assert!(dirs.contains(&"/usr/lib64/qt6/qml".to_string()));
+    assert_eq!(dirs.iter().filter(|d| *d == "/usr/lib/qt6/qml").count(), 1);
+
+    let wrapper = w::system_display_wrapper_path("/run/user/1000", "/home/u");
+    assert_eq!(wrapper.as_deref(), Some("/run/user/1000/rexon-waywallen-display.qml"));
+    assert_eq!(
+        w::system_display_wrapper_path("", "/home/u").as_deref(),
+        Some("/home/u/.cache/rexon/rexon-waywallen-display.qml")
+    );
+    assert_eq!(w::system_display_wrapper_path("", ""), None);
+    assert!(w::SYSTEM_DISPLAY_WRAPPER_QML.contains("import Waywallen.Display as WW"));
+
+    let bundled = "/usr/lib/rexon/rexon/kpackage/org.waywallen.kde/contents/ui/Plugin/PluginDisplay.qml".to_string();
+    let plasmoids = vec![bundled.clone()];
+    let module_qmldir = "/usr/lib/qt6/qml/Waywallen/Display/qmldir";
+    let with_module = |p: &str| p == module_qmldir || p == bundled;
+    let without_module = |p: &str| p == bundled;
+    assert_eq!(
+        w::pick_display_item(&dirs, wrapper.as_deref(), &plasmoids, &with_module),
+        Some(w::DisplayItemSource::SystemModule { wrapper: wrapper.clone().unwrap() })
+    );
+    assert_eq!(
+        w::pick_display_item(&dirs, wrapper.as_deref(), &plasmoids, &without_module),
+        Some(w::DisplayItemSource::Plasmoid { qml: bundled.clone() }),
+        "no packaged module: the bundled plasmoid"
+    );
+    assert_eq!(
+        w::pick_display_item(&dirs, None, &plasmoids, &with_module).map(|s| s.qml().to_string()),
+        Some(bundled.clone()),
+        "nowhere to write the wrapper: the plasmoid"
+    );
+    assert_eq!(w::pick_display_item(&dirs, wrapper.as_deref(), &[], &|_| false), None);
+}
+
+/// Packaged plugin: where it is looked for and how pacman's answer is read.
+#[test]
+fn system_install_dirs_follow_xdg_data_dirs() {
+    assert_eq!(
+        w::system_install_dirs("", "/home/u"),
+        vec![
+            "/usr/local/share/plasma/wallpapers/org.waywallen.kde".to_string(),
+            "/usr/share/plasma/wallpapers/org.waywallen.kde".to_string(),
+        ],
+        "empty XDG_DATA_DIRS: the specification's default"
+    );
+    assert_eq!(
+        w::system_install_dirs("/home/u/.local/share:/opt/kde/share/:relative:/opt/kde/share", "/home/u"),
+        vec!["/opt/kde/share/plasma/wallpapers/org.waywallen.kde".to_string()],
+        "the user's own copy is not the package; relative and repeated entries are skipped"
+    );
+}
+
+#[test]
+fn pacman_owner_is_parsed() {
+    let file = "/usr/share/plasma/wallpapers/org.waywallen.kde/metadata.json";
+    assert_eq!(w::pacman_owner_argv("/usr/bin/pacman", file), vec!["/usr/bin/pacman", "-Qo", file]);
+    assert_eq!(
+        w::parse_pacman_owner(&format!("{file} is owned by plasma-wallpaper-waywallen 0.4.6-1\n")),
+        Some(("plasma-wallpaper-waywallen".to_string(), "0.4.6".to_string()))
+    );
+    assert_eq!(
+        w::parse_pacman_owner(&format!("{file} is owned by plasma-wallpaper-waywallen-git 1:0.4.6.r3.g1234abc-2")),
+        Some(("plasma-wallpaper-waywallen-git".to_string(), "0.4.6.r3.g1234abc".to_string())),
+        "epoch and pkgrel are stripped"
+    );
+    assert_eq!(w::parse_pacman_owner(&format!("error: No package owns {file}")), None);
+    assert_eq!(w::parse_pacman_owner(""), None);
+    assert_eq!(w::parse_pacman_owner(&format!("{file} is owned by lonely")), None, "no version");
+    assert_eq!(w::upstream_version("0.4.6"), Some("0.4.6".to_string()));
+    assert_eq!(w::upstream_version(" "), None);
 }

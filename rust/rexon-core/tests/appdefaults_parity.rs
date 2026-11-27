@@ -125,7 +125,7 @@ fn default_file_manager_parity() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn generate_profile_parity() {
     // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -161,7 +161,7 @@ fn generate_profile_parity() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn apply_de_specific_parity() {
     // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();

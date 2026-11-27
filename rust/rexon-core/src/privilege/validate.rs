@@ -1291,7 +1291,7 @@ mod tests {
             "-oX", "--config=/tmp/evil.conf", "--root=/", "-", "-dd", "a b", "a;b", "a|b",
             "$(id)", "`id`", "a\nb", "a\0b", "a&b", "x>y", "~", "",
         ] {
-            assert!(check_operand(bad).is_err(), "{bad:?} прошёл");
+            assert!(check_operand(bad).is_err(), "{bad:?} passed");
         }
         // a flag passes neither as a package name nor as a theme name
         assert!(matches!(check_package_name(PkgFamily::Arch, "-oX"), Err(Refusal::Operand(_))));
@@ -1311,7 +1311,7 @@ mod tests {
     fn з2_путь_вместо_имени_отказ() {
         let arch = PkgFamily::Arch;
         for bad in ["/tmp/x.deb", "x.deb", "../x", "./x", "a/b", "x.pkg.tar.zst", ".hidden", "@world"] {
-            assert!(check_package_name(arch, bad).is_err(), "{bad} прошёл");
+            assert!(check_package_name(arch, bad).is_err(), "{bad} passed");
         }
         // Gentoo: exactly one '/', no sets
         assert!(check_package_name(PkgFamily::Gentoo, "x11-misc/lightdm").is_ok());
@@ -1331,8 +1331,9 @@ mod tests {
 
     #[test]
     fn з2_имена_тем_и_столов() {
+        // i18n-exempt: a non-ASCII item name must be rejected
         for bad in ["", ".", "..", "a/b", "../x", ".x", "-x", "a..b", "a b", "тема"] {
-            assert!(check_item_name(bad).is_err(), "{bad:?} прошёл");
+            assert!(check_item_name(bad).is_err(), "{bad:?} passed");
         }
         assert!(check_item_name("breeze-2.0_x").is_ok());
         let (de, _) = two_desktops();
@@ -1385,7 +1386,7 @@ mod tests {
             "/home/a/.cache/rexon/rebuild/r/x\n",
             "",
         ] {
-            assert!(check_user_path(bad, &root).is_err(), "{bad:?} прошёл");
+            assert!(check_user_path(bad, &root).is_err(), "{bad:?} passed");
         }
         assert_eq!(check_user_path("/home/a/.cache/rexon/rebuild/r/f", &root), Ok("r/f"));
         // a broken root is also "no"
@@ -1408,7 +1409,7 @@ mod tests {
             "/home/a/.cache/rexon/rebuild/r/x.pkg.tar.zst.sig",
             "/home/a/.cache/rexon/rebuild/r/x y.pkg.tar.zst",
         ] {
-            assert!(check_built_package(bad, &root).is_err(), "{bad} прошёл");
+            assert!(check_built_package(bad, &root).is_err(), "{bad} passed");
         }
     }
 
@@ -1450,17 +1451,17 @@ mod tests {
             "xf86-video-amdgpu", "amd-ucode", "intel-ucode", "sof-firmware", "firmware-linux",
             "mkinitcpio", "dracut", "grub", "limine", "rexon", "@base",
         ] {
-            assert!(is_vital(v), "{v} не в вечном списке");
+            assert!(is_vital(v), "{v} is not in the vital list");
             assert!(
                 matches!(
                     check_remove_packages(PkgFamily::Arch, &s(&[v]), "kde"),
                     Err(Refusal::Vital(_) | Refusal::PackageName(_))
                 ),
-                "{v} удаляется"
+                "{v} is being removed"
             );
         }
         for ok in ["xfce4-panel", "lightdm", "polkit-gnome", "network-manager-applet"] {
-            assert!(!is_vital(ok), "{ok} в вечном списке");
+            assert!(!is_vital(ok), "{ok} is in the vital list");
         }
     }
 
@@ -1471,7 +1472,7 @@ mod tests {
         for (id, _) in system::DE_DATABASE {
             for fam in ALL_FAMILIES {
                 for p in desktop_packages(*fam, id) {
-                    assert!(!is_vital(&p), "пакет стола {id}/{} {p} — вечный", fam.as_str());
+                    assert!(!is_vital(&p), "desktop package {id}/{} {p} is vital", fam.as_str());
                 }
             }
         }
@@ -1637,14 +1638,14 @@ mod tests {
             }
             let helper: HashSet<String> = plan::pkg_helper_install_allowlist(*fam).into_iter().collect();
             let missing: Vec<&String> = helper.iter().filter(|p| !ours.contains(*p)).collect();
-            assert!(missing.is_empty(), "{}: нет источника сеанса для {missing:?}", fam.as_str());
+            assert!(missing.is_empty(), "{}: no session source for {missing:?}", fam.as_str());
             // The other way round: everything the session lets through, the package
             // helper lets through too (names that fail its name check are installed by nobody).
             let extra: Vec<&String> = ours
                 .iter()
                 .filter(|p| !helper.contains(*p) && plan::is_safe_pkg_arg(*fam, p))
                 .collect();
-            assert!(extra.is_empty(), "{}: сеанс шире помощника пакетов: {extra:?}", fam.as_str());
+            assert!(extra.is_empty(), "{}: the session is wider than the package helper: {extra:?}", fam.as_str());
         }
     }
 
@@ -1901,6 +1902,7 @@ mod tests {
     /// fonts.
     #[test]
     fn шрифты_для_всех_имя_файла() {
+        // i18n-exempt: a font file name with non-ASCII letters must be accepted
         for ok in ["Inter.ttf", "Мой шрифт.TTF", "a b (1).otf", "NotoSansCJK.ttc", "x.woff2", "t.pcf.gz", "fixed.bdf", "Type1.pfb"] {
             assert_eq!(check_font_file_name(ok), Ok(()), "{ok:?}");
         }
@@ -1908,9 +1910,9 @@ mod tests {
             "", ".ttf", ".hidden.ttf", "-x.ttf", "a/b.ttf", "../a.ttf", "a..ttf", "ttf", "a.ttf.sh", "a.so", "a.conf",
             "fonts.dir", "a\n.ttf", "a\0.ttf", "a\t.ttf",
         ] {
-            assert!(check_font_file_name(bad).is_err(), "{bad:?} прошёл");
+            assert!(check_font_file_name(bad).is_err(), "{bad:?} passed");
         }
-        let long = format!("{}.ttf", "а".repeat(200));
+        let long = format!("{}.ttf", "а".repeat(200)); // i18n-exempt: two-byte letters for the name length limit
         assert!(matches!(check_font_file_name(&long), Err(Refusal::TooLong(_))));
         // List: empty, too long, a repeat: refusal.
         assert_eq!(check_font_install(&["a.ttf", "b.otf"]), Ok(()));
@@ -1926,8 +1928,8 @@ mod tests {
     fn шрифты_для_всех_удаление_только_из_своего_каталога() {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            check_font_remove(&s(&["/usr/local/share/fonts/a.ttf", "/usr/local/share/fonts/sub/Мой.otf"])),
-            Ok(vec!["a.ttf", "sub/Мой.otf"])
+            check_font_remove(&s(&["/usr/local/share/fonts/a.ttf", "/usr/local/share/fonts/sub/Мой.otf"])), // i18n-exempt: non-ASCII font file name
+            Ok(vec!["a.ttf", "sub/Мой.otf"]) // i18n-exempt: non-ASCII font file name
         );
         for bad in [
             // package fonts, neighbours, the directory itself
@@ -1951,7 +1953,7 @@ mod tests {
             // a hidden subdirectory
             "/usr/local/share/fonts/.cache/a.ttf",
         ] {
-            assert!(check_font_remove(&s(&[bad])).is_err(), "{bad:?} прошёл");
+            assert!(check_font_remove(&s(&[bad])).is_err(), "{bad:?} passed");
         }
         assert_eq!(check_font_remove(&[]), Err(Refusal::Empty));
         assert!(matches!(

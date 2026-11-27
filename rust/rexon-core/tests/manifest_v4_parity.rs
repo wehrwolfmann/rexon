@@ -21,7 +21,7 @@ mod i18n_pin;
 
 /// Every Python case → the same verdict and error text from the Rust port.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn validate_matches_python_all_cases() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let golden: Value = serde_json::from_str(include_str!("golden/manifest_v4_cases.json")).unwrap();
@@ -47,7 +47,7 @@ fn golden_dir() -> PathBuf {
 /// Reading `manifest.json` from REAL archives matches Python — including
 /// malformed inputs: a non-UTF-8 manifest, a truncated ZIP, an archive without a manifest.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn read_manifest_text_matches_python() {
     let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let golden: Value =

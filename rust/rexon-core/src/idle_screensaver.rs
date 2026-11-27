@@ -621,6 +621,28 @@ pub fn must_stop(e: &Event, s: &Settings, preview: bool) -> bool {
     }
 }
 
+/// How far (logical pixels) the pointer has to travel from where it was first
+/// seen on the screensaver before the movement counts as [`Event::Input`].
+///
+/// Why not "any motion": when a surface appears under the cursor the
+/// compositor sends `wl_pointer.enter` with the current position, and a
+/// mouse on a wobbly desk or a touchpad reports one-pixel jitter. Taking
+/// either for "the user is back" would close the screensaver the moment it
+/// opens. X11 screensaver daemons apply a hysteresis of the same order (about
+/// ten pixels) for the same reason.
+pub const WAKE_MOTION_PX: f64 = 10.0;
+
+/// Whether the pointer moved far enough from its first position on the
+/// screensaver (`dx`, `dy` — offset from that position) to wake it.
+///
+/// Keys, clicks and wheel always wake; only motion has a threshold.
+pub fn motion_wakes(dx: f64, dy: f64) -> bool {
+    if !dx.is_finite() || !dy.is_finite() {
+        return false;
+    }
+    dx.hypot(dy) >= WAKE_MOTION_PX
+}
+
 
 // ============================================================================
 // Environment timers: when it will dim, blank and lock the screen
@@ -1695,6 +1717,22 @@ mod tests {
         assert!(!must_stop(&Event::OnBattery(true), &on_batt, false));
         assert!(must_stop(&Event::InhibitAdded, &s, false));
         assert!(!must_stop(&Event::InhibitAdded, &s, true));
+    }
+
+    #[test]
+    fn motion_wakes_only_past_the_threshold() {
+        // The enter event and one-pixel jitter keep the screensaver up.
+        assert!(!motion_wakes(0.0, 0.0));
+        assert!(!motion_wakes(1.0, -1.0));
+        assert!(!motion_wakes(6.0, 7.0)); // 9.2 px
+        // A real move wakes it, in any direction.
+        assert!(motion_wakes(10.0, 0.0));
+        assert!(motion_wakes(0.0, -10.0));
+        assert!(motion_wakes(-8.0, 6.0)); // exactly 10 px
+        assert!(motion_wakes(40.0, 30.0));
+        // Garbage coordinates never count as the user coming back.
+        assert!(!motion_wakes(f64::NAN, 50.0));
+        assert!(!motion_wakes(f64::INFINITY, 0.0));
     }
 }
 

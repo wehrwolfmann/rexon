@@ -105,7 +105,7 @@ fn exit_step(step: &'static str) {
     if let Ok(mut s) = EXIT_STEP.lock() {
         *s = step;
     }
-    rexon_core::log_debug!("exit", "шаг выхода: {step}");
+    rexon_core::log_debug!("exit", "exit step: {step}");
 }
 
 /// Exit watchdog: if we did not leave within [`EXIT_WATCHDOG_SECS`] — a
@@ -118,7 +118,7 @@ fn spawn_exit_watchdog(code: i32) {
         let step = EXIT_STEP.lock().map(|s| *s).unwrap_or("?");
         log_error!(
             "exit",
-            "выход завис на шаге «{step}» дольше {EXIT_WATCHDOG_SECS} с — процесс завершается принудительно; живые потоки: {}",
+            "exit hung at step \"{step}\" for longer than {EXIT_WATCHDOG_SECS} s — forcing the process to end; live threads: {}",
             live_threads()
         );
         unsafe { libc::_exit(code) };
@@ -162,7 +162,7 @@ fn log_startup(args: &[String], language: &str, restart_of: Option<u32>) {
     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
     log_info!(
         "start",
-        "Rexon {} запущен: pid {}, родитель {}, {exe} {}",
+        "Rexon {} started: pid {}, parent {}, {exe} {}",
         applog::version_line(),
         std::process::id(),
         unsafe { libc::getppid() },
@@ -172,18 +172,18 @@ fn log_startup(args: &[String], language: &str, restart_of: Option<u32>) {
     if run == build {
         log_info!("start", "Qt {run}");
     } else {
-        log_warn!("start", "Qt рантайма {run}, а собран Rexon с Qt {build}");
+        log_warn!("start", "runtime Qt is {run}, but Rexon was built with Qt {build}");
     }
-    log_info!("start", "окружение: {}", applog::desktop_env_line());
+    log_info!("start", "environment: {}", applog::desktop_env_line());
     if let Some(prev) = restart_of {
-        log_info!("restart", "шаг 3: это новая копия, запущенная перезапуском процесса {prev}");
+        log_info!("restart", "step 3: this is a new copy started by restarting process {prev}");
     }
     let saved = i18n::saved_setting();
     log_info!(
         "lang",
-        "выбор «{saved}» → язык {language} (как в системе: {}); каталог {} (и для Rust, и для QML)",
+        "choice \"{saved}\" → language {language} (system: {}); catalog {} (for both Rust and QML)",
         i18n::language_for_setting(None),
-        i18n::mo_path().map_or_else(|| "нет".to_string(), |p| p.display().to_string())
+        i18n::mo_path().map_or_else(|| "none".to_string(), |p| p.display().to_string())
     );
 }
 
@@ -217,13 +217,13 @@ fn main() {
     let tour_cfg = match tour::parse_args(&args, || tour::default_out_dir(&|k| std::env::var(k).ok())) {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("обход: {e}");
+            eprintln!("tour: {e}");
             std::process::exit(tour::EXIT_BAD_ARGS);
         }
     };
     if let Some(cfg) = &tour_cfg {
         if let Err(e) = prepare_tour_dir(cfg) {
-            eprintln!("обход: папка {} не готова: {e}", cfg.out_dir.display());
+            eprintln!("tour: folder {} is not ready: {e}", cfg.out_dir.display());
             std::process::exit(tour::EXIT_BAD_ARGS);
         }
     }
@@ -303,7 +303,7 @@ fn main() {
     // knock from the console would raise the window on someone else's screen.
     // The decision belongs to the core (`cli::window_can_open`).
     if !cli::window_can_open(&|k| std::env::var(k).ok()) {
-        log_error!("start", "окно показать негде: нет дисплея ({})", applog::desktop_env_line());
+        log_error!("start", "nowhere to show the window: no display ({})", applog::desktop_env_line());
         for line in cli::no_display_lines() {
             eprintln!("{line}");
         }
@@ -350,6 +350,9 @@ fn main() {
         // installed bypassing Rexon) — the choice by desktop; if already in order,
         // it does nothing.
         std::thread::spawn(rexon_core::notifications_slot::sync_live);
+        // Screen saver launchers of other desktops (XScreenSaver Settings in the
+        // MATE Control Center offers to kill its screen saver): hidden there.
+        std::thread::spawn(rexon_core::screensaver_guard::sync_live);
         // Second copies of ordinary Conky widgets put by a previous installation
         // (each widget was shown twice) — only our own and untouched ones.
         std::thread::spawn(rexon_core::ext_exec::heal_conky_duplicates_live);
@@ -374,11 +377,11 @@ fn main() {
         let lock = single_instance::lock_path(&runtime_dir);
         let mut held = single_instance::acquire_lock(&lock);
         if held {
-            log_info!("instance", "замок одного экземпляра взят: {lock}");
+            log_info!("instance", "single instance lock taken: {lock}");
         } else {
             log_info!(
                 "instance",
-                "замок {lock} занят (держит процесс {})",
+                "lock {lock} is busy (held by process {})",
                 single_instance::lock_holder_pid(&lock).map_or_else(|| "?".to_string(), |p| p.to_string())
             );
         }
@@ -389,22 +392,22 @@ fn main() {
         if let (false, Some(prev)) = (held, restart_of) {
             log_info!(
                 "restart",
-                "шаг 4: жду ухода прежнего процесса {prev} (до {} с)",
+                "step 4: waiting for the previous process {prev} to exit (up to {} s)",
                 single_instance::RESTART_LOCK_WAIT.as_secs()
             );
             match single_instance::wait_for_previous(&lock, prev, single_instance::RESTART_LOCK_WAIT) {
                 single_instance::PreviousWait::Acquired(waited) => {
-                    log_info!("restart", "шаг 5: прежний ушёл, замок взят через {} мс", waited.as_millis());
+                    log_info!("restart", "step 5: the previous one exited, lock taken after {} ms", waited.as_millis());
                     held = true;
                 }
                 single_instance::PreviousWait::PreviousStillRunning => log_error!(
                     "restart",
-                    "прежний процесс {prev} не ушёл за {} с — стучусь в него, чтобы окно хотя бы было",
+                    "the previous process {prev} did not exit within {} s — knocking on it so that there is at least a window",
                     single_instance::RESTART_LOCK_WAIT.as_secs()
                 ),
                 single_instance::PreviousWait::OtherHolder(pid) => log_warn!(
                     "restart",
-                    "прежний процесс {prev} ушёл, но замок держит другой ({}) — стучусь в него",
+                    "the previous process {prev} exited, but another one holds the lock ({}) — knocking on it",
                     pid.map_or_else(|| "?".to_string(), |p| p.to_string())
                 ),
             }
@@ -427,25 +430,25 @@ fn main() {
             // the user.
             match &outcome {
                 Some(single_instance::KnockOutcome::NoAnswer(reason)) => {
-                    log_warn!("instance", "стук «подними окно» без ответа: {reason}")
+                    log_warn!("instance", "\"raise the window\" knock got no answer: {reason}")
                 }
-                Some(other) => log_info!("instance", "стук «подними окно»: {other:?}"),
-                None => log_info!("instance", "скрытый запуск при занятом замке — выхожу молча"),
+                Some(other) => log_info!("instance", "\"raise the window\" knock: {other:?}"),
+                None => log_info!("instance", "hidden start while the lock is busy — exiting quietly"),
             }
             // This launch will have no window of its own, and Qt sends "startup
             // finished" only when a window is shown: without this line the MATE panel
             // kept "Starting Rexon" and the busy cursor until the timeout
             // (`single_instance::complete_startup_notification`).
             match single_instance::complete_startup_notification() {
-                Some((id, Ok(()))) => log_info!("instance", "уведомление о запуске завершено: {id}"),
-                Some((id, Err(e))) => log_warn!("instance", "уведомление о запуске {id} не завершено: {e}"),
+                Some((id, Ok(()))) => log_info!("instance", "startup notification completed: {id}"),
+                Some((id, Err(e))) => log_warn!("instance", "startup notification {id} not completed: {e}"),
                 None => {}
             }
             // A restart that never became Rexon, and nobody raised the window: the
             // user pressed "Restart" and was left with nothing — tell them with a
             // notification, since we have no window.
             if restart_of.is_some() && outcome != Some(single_instance::KnockOutcome::Raised) {
-                log_error!("restart", "перезапуск не удался: окна нет ни у новой, ни у прежней копии");
+                log_error!("restart", "restart failed: neither the new nor the previous copy has a window");
                 // TRANSLATORS: Title of a desktop notification when Rexon failed to come back after a restart.
                 let summary = i18n::tr("Rexon didn't restart");
                 let body = i18n::trf(
@@ -458,7 +461,7 @@ fn main() {
                 let actions = vec![("open".to_string(), i18n::tr("Open Rexon"))];
                 if rexon_core::utils::notify_ask_live(&summary, &body, &actions, "", 600).as_deref() == Some("open") {
                     if let Err(e) = rexon_core::installer::open_rexon_live(&[]) {
-                        log_warn!("restart", "Rexon из уведомления не открылся: {e}");
+                        log_warn!("restart", "Rexon did not open from the notification: {e}");
                     }
                 }
             }
@@ -491,7 +494,7 @@ fn main() {
     // "Wie im System (Deutsch)").
     i18n::override_ui_language_env(&cli::qt_ui_language_env(&language));
     if !quiet {
-        log_info!("lang", "переменные языка: {}", i18n::locale_env_report());
+        log_info!("lang", "language variables: {}", i18n::locale_env_report());
     }
 
     if quiet {
@@ -547,7 +550,7 @@ fn main() {
     // icon is set before the first window and applies to all windows of the
     // process (`rexon_gui::tray::set_app_window_icon`).
     if !rexon_gui::tray::set_app_window_icon() && !quiet {
-        log_warn!("start", "значок окна не найден ни в теме, ни файлом — панель задач покажет общий");
+        log_warn!("start", "window icon found neither in the theme nor as a file — the taskbar will show a generic one");
     }
 
     // Labels on Qt's OWN buttons ("OK", "Cancel", "Show Details…", the edit
@@ -573,7 +576,7 @@ fn main() {
     // on logging into Plasma it hung plasmashell). An ordinary start only
     // compares the hashes, in the background.
     if !quiet {
-        rexon_gui::we_socket::refresh_installed_kde_plugin("старт Rexon");
+        rexon_gui::we_socket::refresh_installed_kde_plugin("Rexon start");
     }
 
     let mut engine = QQmlApplicationEngine::new();
@@ -633,7 +636,7 @@ fn main() {
             // `main`) and loaded; the GUI thread.
             let adopted = unsafe { rexon_gui::tray::adopt_main_window(engine_ptr.cast()) };
             if !adopted {
-                log_warn!("start", "корень QML не окно — показывать нечего");
+                log_warn!("start", "the QML root is not a window — nothing to show");
             }
         }
     }
@@ -690,7 +693,7 @@ fn main() {
     if !quiet {
         std::thread::spawn(|| {
             if let Err(e) = cli::announce_to_bridge() {
-                log_warn!("bridge", "объявление не записано: {e}");
+                log_warn!("bridge", "announcement not written: {e}");
             }
         });
     }
@@ -743,18 +746,18 @@ fn main() {
             single_instance::Holder::Rust,
             on_activation,
         ) {
-            Ok(()) => log_info!("instance", "слушатель «подними окно» встал: {sock}"),
+            Ok(()) => log_info!("instance", "\"raise the window\" listener is up: {sock}"),
             // Did not come up — no big deal for this launch, but a second launch will
             // now tell the user that Rexon does not respond, and the reason needs to
             // be known.
-            Err(e) => log_warn!("instance", "слушатель «подними окно» не встал ({sock}): {e}"),
+            Err(e) => log_warn!("instance", "\"raise the window\" listener did not start ({sock}): {e}"),
         }
     }
 
     if !quiet && stand_restarts > 0 {
         rexon_gui::settings_actions::STAND_RESTARTS_LEFT
             .store(stand_restarts, std::sync::atomic::Ordering::SeqCst);
-        log_info!("restart", "стенд: перезапуск через {STAND_RESTART_DELAY_SECS} с (осталось {stand_restarts})");
+        log_info!("restart", "stand: restart in {STAND_RESTART_DELAY_SECS} s ({stand_restarts} left)");
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(STAND_RESTART_DELAY_SECS));
             rexon_gui::settings_actions::stand_restart_now();
@@ -763,27 +766,27 @@ fn main() {
 
     if let Some(cfg) = tour_cfg {
         let limit = cfg.timeout_secs;
-        println!("обход: {} → {}", cfg.target_label(), cfg.out_dir.display());
+        println!("tour: {} → {}", cfg.target_label(), cfg.out_dir.display());
         // The overall timeout: a tour without network or with a hung page must
         // end, and the report must say what it got stuck on.
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(limit));
-            let reason = format!("общий тайм-аут {limit} с");
+            let reason = format!("overall timeout {limit} s");
             let code = rexon_gui::main_window::tour_abort(&reason).unwrap_or(tour::EXIT_TIMEOUT);
-            println!("обход: {reason}");
+            println!("tour: {reason}");
             unsafe { libc::_exit(code) };
         });
     }
 
     if selftest {
         eprintln!(
-            "хозяин окна на Rust: {}",
+            "Rust window owner: {}",
             std::any::type_name::<MainWindowModel>()
         );
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(SELFTEST_TIMEOUT_SECS));
             eprintln!(
-                "окно не отчиталось за {SELFTEST_TIMEOUT_SECS} с — самопроверка провалена"
+                "the window did not report within {SELFTEST_TIMEOUT_SECS} s — self-test failed"
             );
             std::process::exit(2);
         });
@@ -823,12 +826,12 @@ fn main() {
     if !quiet {
         log_info!(
             "exit",
-            "цикл событий завершён (код {code}); причина: {}",
+            "event loop finished (code {code}); reason: {}",
             rexon_gui::tray::quit_reason()
         );
     }
     spawn_exit_watchdog(code);
-    exit_step("остановка проигрывателей");
+    exit_step("stopping the players");
 
     // ── Players — stop BEFORE any teardown ────────────────────────────
     //
@@ -852,9 +855,9 @@ fn main() {
             applog::write_opts(applog::Level::Info, "exit", &line, false);
         }
     }
-    exit_step("сток фоновых задач");
+    exit_step("draining background tasks");
     if stand_exit_hang > 0 {
-        log_warn!("exit", "стенд: зависаю на выходе на {stand_exit_hang} с");
+        log_warn!("exit", "stand: hanging on exit for {stand_exit_hang} s");
         std::thread::sleep(std::time::Duration::from_secs(stand_exit_hang));
     }
 
@@ -894,14 +897,14 @@ fn main() {
     //
     // The background task drain above does NOT replace this: it counts our
     // tasks, while the scene and multimedia threads are started by Qt itself.
-    exit_step("роспуск движка QML");
+    exit_step("dropping the QML engine");
     drop(engine);
-    exit_step("роспуск приложения");
+    exit_step("dropping the application");
     drop(app);
-    exit_step("завершение процесса");
+    exit_step("ending the process");
 
     if !quiet {
-        log_info!("exit", "выход за {} мс, код {code}", exit_started.elapsed().as_millis());
+        log_info!("exit", "exit took {} ms, code {code}", exit_started.elapsed().as_millis());
     }
     std::process::exit(code);
 }
@@ -938,9 +941,9 @@ fn prepare_tour_dir(cfg: &tour::TourConfig) -> std::io::Result<()> {
 /// translator is not installed then.
 fn install_app_translation(language: &str) {
     if !rexon_gui::install_app_translator() {
-        log_warn!("lang", "переводчик строк QML не встал (нет приложения Qt) — подписи QML останутся английскими");
+        log_warn!("lang", "the QML string translator did not start (no Qt application) — QML labels stay English");
     } else if language != rexon_core::i18n::SOURCE_LANGUAGE && rexon_core::i18n::mo_path().is_none() {
-        log_warn!("lang", "для языка «{language}» нет rexon.mo — подписи останутся английскими");
+        log_warn!("lang", "no rexon.mo for language \"{language}\" — labels stay English");
     }
 }
 
@@ -977,15 +980,15 @@ fn on_activation(action: single_instance::ListenerAction) -> bool {
         single_instance::ListenerAction::Raise(section) => {
             if let Some((id, subpage)) = &section {
                 if !rexon_gui::tray::open_section(id, subpage) {
-                    log_warn!("instance", "раздел «{id}» по просьбе второго запуска не открылся");
+                    log_warn!("instance", "section \"{id}\" requested by a second start did not open");
                 }
             }
             let raised = raise_window();
-            log_info!("instance", "второй запуск: поднять окно (раздел {section:?}) → {raised}");
+            log_info!("instance", "second start: raise the window (section {section:?}) → {raised}");
             raised
         }
         single_instance::ListenerAction::HandOver => {
-            rexon_gui::tray::request_quit("передача хозяина классическому окну");
+            rexon_gui::tray::request_quit("handing the owner over to the classic window");
             true
         }
     }

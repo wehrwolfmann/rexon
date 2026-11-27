@@ -6851,7 +6851,7 @@ mod tests {
     #[test]
     #[cfg_attr(
         feature = "isolated-checks",
-        ignore = "живой прогон: настоящие подпроцессы машины"
+        ignore = "live run: the machine's real subprocesses"
     )]
     fn the_live_executor_runs_real_processes() {
         let sandbox = std::env::temp_dir()

@@ -1,16 +1,16 @@
-// Заставка Rexon для экрана простоя Steam Big Picture.
+// Rexon screensaver for the Steam Big Picture idle screen.
 //
-// Настройки и список картинок приходят из manifest.js
-// (window.REXON_SCREENSAVER), который пишет Rexon при установке. У страницы
-// нет доступа к диску: все картинки — уменьшенные копии в этой же папке,
-// адреса относительные. Нет манифеста — прыгающий логотип Rexon.
+// The settings and the picture list come from manifest.js
+// (window.REXON_SCREENSAVER), which Rexon writes on install. The page has
+// no disk access: all pictures are downscaled copies in this same folder,
+// the addresses are relative. No manifest — the bouncing Rexon logo.
 //
-// Бережём видеокарту: кадры слайд-шоу сменяются прозрачностью, наезд — одним
-// CSS-переходом на весь кадр, логотип двигается transform-ом из
-// requestAnimationFrame; пока страница скрыта, ничего не считается.
+// Spare the GPU: slideshow frames change by opacity, the zoom is one
+// CSS transition over the whole frame, the logo moves with a transform from
+// requestAnimationFrame; while the page is hidden, nothing is computed.
 //
-// Для проверки в браузере настройки можно перебить параметрами адреса:
-// ?mode=bounce|slideshow&logo=rexon|games&clock=0|1&interval=<с>&at=<мс эпохи>
+// For checking in a browser the settings can be overridden with address parameters:
+// ?mode=bounce|slideshow&logo=rexon|games&clock=0|1&interval=<s>&at=<epoch ms>
 "use strict";
 
 (function () {
@@ -33,12 +33,12 @@
   const intervalS = Math.min(60, Math.max(4, Number(pick("interval", 9)) || 9));
   const clockOn = String(pick("clock", true)) !== "0" && pick("clock", true) !== false;
   const locale = manifest.locale || navigator.language || "en";
-  // Подмена «сейчас» — только для снимков проверки.
+  // Overriding «now» — only for check snapshots.
   const fixedNow = Number(query.get("at")) || 0;
 
   const FADE_S = 1.6;
 
-  // ── Часы ──────────────────────────────────────────────────────────────
+  // ── Clock ─────────────────────────────────────────────────────────────
   const clock = document.getElementById("clock");
   const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
   const dateFmt = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" });
@@ -50,7 +50,7 @@
     const d = now();
     clock.querySelector(".time").textContent = timeFmt.format(d);
     clock.querySelector(".date").textContent = dateFmt.format(d);
-    // Следующий раз — ровно на смене минуты, а не раз в секунду.
+    // The next time — exactly at the minute change, not once a second.
     const wait = 60000 - (d.getSeconds() * 1000 + d.getMilliseconds()) + 50;
     if (!fixedNow) setTimeout(tickClock, wait);
   }
@@ -59,7 +59,7 @@
     tickClock();
   }
 
-  // ── Слайд-шоу ─────────────────────────────────────────────────────────
+  // ── Slideshow ─────────────────────────────────────────────────────────
   function cssUrl(name) {
     return 'url("' + encodeURI(name).replace(/"/g, "%22") + '")';
   }
@@ -89,7 +89,7 @@
       layer.classList.remove("moving", "reverse", "framed", "with-logo");
       pan.style.transition = "none";
       if (slide.framed) {
-        // Вертикальная обложка: фон — размытая копия, сама обложка по центру.
+        // A vertical cover: the background is a blurred copy, the cover itself in the center.
         pan.style.backgroundImage = cssUrl(slide.backdrop || slide.image);
         fr.style.backgroundImage = cssUrl(slide.image);
         layer.classList.add("framed");
@@ -115,7 +115,7 @@
         }
       }
       if (flip) layer.classList.add("reverse");
-      // Сброс наезда без анимации, затем наезд на всю длину кадра.
+      // Reset the zoom without animation, then zoom over the whole frame length.
       void pan.offsetWidth;
       pan.style.transition = "transform " + (intervalS + FADE_S * 2) + "s linear";
     }
@@ -141,8 +141,8 @@
           timer = setTimeout(next, intervalS * 1000);
         });
       }, () => {
-        // Картинку не открыть — следующий кадр; если не открывается ничего,
-        // переходим на логотип, а не крутимся вхолостую.
+        // The picture cannot be opened — the next frame; if nothing opens,
+        // we switch to the logo instead of spinning idle.
         failures += 1;
         if (failures >= slides.length) {
           layers.forEach(l => l.classList.remove("shown"));
@@ -159,9 +159,9 @@
     next();
   }
 
-  // ── Прыгающий логотип ─────────────────────────────────────────────────
-  // Логотип летит с постоянной скоростью, у края отражается и меняет вид:
-  // у логотипа Rexon — оттенок, в режиме «логотипы игр» — следующую игру.
+  // ── Bouncing logo ─────────────────────────────────────────────────
+  // The logo flies at a constant speed, bounces off the edge and changes its look:
+  // the Rexon logo — its tint, in the «game logos» mode — the next game.
   const HUES = [0, 70, 150, 205, 265, 320];
 
   function runBounce() {
@@ -181,7 +181,7 @@
       h = Math.round(nh * k);
       el.style.width = w + "px";
       el.style.height = h + "px";
-      // Меньшую сторону экрана логотип проходит примерно за 12 секунд.
+      // The logo crosses the smaller side of the screen in about 12 seconds.
       const speed = Math.min(W, H) / 12;
       const len = Math.hypot(vx, vy) || 1;
       vx = vx / len * speed;
@@ -238,7 +238,7 @@
       if (!raf) raf = requestAnimationFrame(frame);
     };
     el.onerror = () => {
-      // Логотип игры не открылся — свой логотип есть всегда.
+      // The game logo did not open — our own logo is always there.
       if (el.src.indexOf(rexonLogo) < 0) { logoChoice = "rexon"; el.src = rexonLogo; }
     };
     el.src = pool[poolIndex];

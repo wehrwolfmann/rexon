@@ -79,6 +79,12 @@ TextField {
     // the text position does not need to be moved.
     horizontalAlignment: TextInput.AlignLeft
 
+    // Accessibility: Qt publishes the placeholder only as the DESCRIPTION, so
+    // a screen reader announced an unnamed "text" (found by
+    // `rexon-a11y-robot`). The placeholder is the field's label in every
+    // section — it becomes the name; a field may still set its own.
+    Accessible.name: control.placeholderText
+
     implicitHeight: 40
     leftPadding: 10
     rightPadding: 10

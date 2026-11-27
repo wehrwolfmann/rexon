@@ -2453,7 +2453,7 @@ pub struct WidgetStylePlan {
 pub fn widget_style_plan(name: &str) -> WidgetStylePlan {
     let plan = crate::themes::apply_qt_style_plan(
         name,
-        &crate::themes::KvantumEnv { de_id: "kde", home: "", xdg_config_home: "", platform_theme: "", icon_theme: String::new() },
+        &crate::themes::KvantumEnv { de_id: "kde", home: "", xdg_config_home: "", platform_theme: "", icon_theme: String::new(), qt_desktop_installed: false },
     );
     let argv = |i: usize| match &plan.steps[i] {
         ApplyStep::Primary(c) | ApplyStep::IfOk(c) => CfgCmd { argv: c.argv.clone() },
@@ -4102,6 +4102,7 @@ fn qt_style_env<'a>(
         xdg_config_home: xdg.unwrap_or(""),
         platform_theme,
         icon_theme,
+        qt_desktop_installed: crate::themes::own_qt_desktop_installed(&have),
     }
 }
 
@@ -4335,6 +4336,8 @@ impl<'r> ApplyRun<'r> {
                 if self.ok {
                     undo.remove_file(Path::new(path))
                         .map_err(|e| Failure::Remove { path: path.clone(), err: e.to_string() })?;
+                    // A removed variables file must disappear from the mirrors too.
+                    self.env_written |= crate::compositor_autostart::is_environment_d_path(path);
                 }
             }
             ApplyStep::Guard { paths } => {
@@ -4629,6 +4632,9 @@ pub struct PressFacts {
     pub qt_platform_theme: String,
     /// The environment's current icon theme, for a new qt6ct config.
     pub qt_icon_theme: String,
+    /// A desktop with its own Qt integration is installed
+    /// ([`crate::themes::own_qt_desktop_installed`]).
+    pub qt_desktop_installed: bool,
     /// argv for "KWin, reread the config"; `None` means nothing to call it with.
     pub kwin_reconfigure: Option<Vec<String>>,
     /// The `library` of an Aurorae SVG theme on this machine
@@ -4678,6 +4684,7 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
         xdg_config_home: xdg.unwrap_or(""),
         platform_theme: &facts.qt_platform_theme,
         icon_theme: facts.qt_icon_theme.clone(),
+        qt_desktop_installed: facts.qt_desktop_installed,
     };
     let steps = |plan: Vec<crate::themes::ApplyStep>| plan.into_iter().map(Step::from).collect::<Vec<_>>();
     let with_history = |plan: crate::themes::Plan, de: &str| PressPlan::Steps {
@@ -6110,6 +6117,7 @@ impl LiveInstaller {
                 let env = qt_style_env(de, home, xdg.as_deref());
                 facts.qt_platform_theme = env.platform_theme.to_string();
                 facts.qt_icon_theme = env.icon_theme;
+                facts.qt_desktop_installed = env.qt_desktop_installed;
             }
             ApplyAction::Aurorae => {
                 facts.kwin_reconfigure = kwin_reconfigure_argv();
@@ -7576,7 +7584,7 @@ mod tests {
     /// TAR (the system `tar`): the executable bit stays, setuid, setgid and
     /// write for group and others are stripped.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный tar")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system tar")]
     fn tar_keeps_exec_bits_and_drops_setuid() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -7614,7 +7622,7 @@ mod tests {
     /// extracts too. A real `tar` is needed: on a machine without it there is
     /// nothing to check.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный tar")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system tar")]
     fn tar_archive_extracts_through_system_tar() {
         let base = tmp_dir("tar");
         let src = base.join("src");
@@ -7664,7 +7672,7 @@ mod tests {
     /// `7z`/`7zz`, p7zip `7za`): a link inside the theme is kept; a link
     /// outside, an absolute one and a write through a link are refused.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bsdtar или 7z")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bsdtar or 7z")]
     fn seven_zip_links_extract_safely_with_every_tool() {
         let base = tmp_dir("7z-links");
         let bsdtar_ok = have("bsdtar");
@@ -7741,7 +7749,7 @@ mod tests {
     /// "BlueSky" from the store arrive exactly like this). The archive is
     /// built by the same tool.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bsdtar или 7z")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bsdtar or 7z")]
     fn seven_zip_archive_extracts_through_system_tool() {
         let base = tmp_dir("7z");
         let src = base.join("src");

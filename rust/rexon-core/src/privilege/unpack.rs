@@ -181,24 +181,24 @@ impl UnpackError {
 impl fmt::Display for UnpackError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotRegular(k) => write!(f, "передан не обычный файл ({k})"),
-            Self::TooLarge(n) => write!(f, "больше предела {n} байт"),
-            Self::TooManyEntries(n) => write!(f, "записей больше предела {n}"),
-            Self::TooDeep(p) => write!(f, "запись слишком глубоко: {p}"),
-            Self::Link(p) => write!(f, "ссылка в архиве: {p}"),
-            Self::Special(p) => write!(f, "особый файл в архиве: {p}"),
-            Self::Unsupported(p) => write!(f, "неподдерживаемая запись: {p}"),
-            Self::DotDot(p) => write!(f, "«..» в пути: {p}"),
-            Self::Absolute(p) => write!(f, "абсолютный путь: {p}"),
-            Self::BadName(p) => write!(f, "недопустимое имя: {p}"),
+            Self::NotRegular(k) => write!(f, "not a regular file was passed ({k})"),
+            Self::TooLarge(n) => write!(f, "exceeds the limit of {n} bytes"),
+            Self::TooManyEntries(n) => write!(f, "more entries than the limit {n}"),
+            Self::TooDeep(p) => write!(f, "entry nested too deep: {p}"),
+            Self::Link(p) => write!(f, "link in the archive: {p}"),
+            Self::Special(p) => write!(f, "special file in the archive: {p}"),
+            Self::Unsupported(p) => write!(f, "unsupported entry: {p}"),
+            Self::DotDot(p) => write!(f, "\"..\" in the path: {p}"),
+            Self::Absolute(p) => write!(f, "absolute path: {p}"),
+            Self::BadName(p) => write!(f, "invalid name: {p}"),
             Self::SetId(p) => write!(f, "setuid/setgid: {p}"),
-            Self::Duplicate(p) => write!(f, "повтор записи: {p}"),
-            Self::Escape(p) => write!(f, "путь уходит за корень или через ссылку: {p}"),
-            Self::Malformed(e) => write!(f, "порченый архив: {e}"),
-            Self::Theme(p) => write!(f, "тема не принята: {p:?}"),
-            Self::NotRootOwned(p) => write!(f, "не только root: {p}"),
-            Self::Refused(r) => write!(f, "отказ проверки: {r:?}"),
-            Self::Io(e) => write!(f, "ввод-вывод: {e}"),
+            Self::Duplicate(p) => write!(f, "duplicate entry: {p}"),
+            Self::Escape(p) => write!(f, "path escapes the root or goes through a link: {p}"),
+            Self::Malformed(e) => write!(f, "malformed archive: {e}"),
+            Self::Theme(p) => write!(f, "theme rejected: {p:?}"),
+            Self::NotRootOwned(p) => write!(f, "not owned by root only: {p}"),
+            Self::Refused(r) => write!(f, "check refused: {r:?}"),
+            Self::Io(e) => write!(f, "I/O: {e}"),
         }
     }
 }
@@ -269,7 +269,7 @@ impl WorkDir {
         let euid = unsafe { libc::geteuid() };
         if st.st_mode & libc::S_IFMT != libc::S_IFDIR || st.st_uid != euid || st.st_mode & 0o7777 != 0o700 {
             let _ = std::fs::remove_dir(&path);
-            return Err(io::Error::other("рабочий каталог не 0700 или не наш"));
+            return Err(io::Error::other("the working directory is not 0700 or not ours"));
         }
         Ok(Self { path, fd })
     }
@@ -365,7 +365,7 @@ fn openat2(dir: BorrowedFd<'_>, path: &str, flags: libc::c_int, mode: u32) -> Re
             Some(libc::ELOOP) | Some(libc::EXDEV) => return Err(UnpackError::Escape(clip(path))),
             Some(libc::EEXIST) => return Err(UnpackError::Duplicate(clip(path))),
             Some(libc::ENOENT) | Some(libc::ENOTDIR) => {
-                return Err(UnpackError::Malformed(format!("нет каталога для {}", clip(path))))
+                return Err(UnpackError::Malformed(format!("no directory for {}", clip(path))))
             }
             _ => return Err(err.into()),
         }
@@ -544,10 +544,10 @@ fn parse_octal(b: &[u8], what: &str) -> Res<u64> {
         return Ok(0);
     }
     if !t.iter().all(|c| (b'0'..=b'7').contains(c)) {
-        return Err(UnpackError::Malformed(format!("поле {what} не восьмеричное")));
+        return Err(UnpackError::Malformed(format!("field {what} is not octal")));
     }
     u64::from_str_radix(std::str::from_utf8(&t).unwrap_or("0"), 8)
-        .map_err(|_| UnpackError::Malformed(format!("поле {what}")))
+        .map_err(|_| UnpackError::Malformed(format!("field {what}")))
 }
 
 fn checksum(h: &[u8; BLOCK]) -> u64 {
@@ -563,10 +563,10 @@ fn parse_header(h: &[u8; BLOCK]) -> Res<Option<Header>> {
         return Ok(None);
     }
     if parse_octal(&h[148..156], "chksum")? != checksum(h) {
-        return Err(UnpackError::Malformed("контрольная сумма заголовка".into()));
+        return Err(UnpackError::Malformed("header checksum".into()));
     }
     if &h[257..263] != USTAR_MAGIC || &h[263..265] != USTAR_VERSION {
-        return Err(UnpackError::Malformed("не POSIX ustar".into()));
+        return Err(UnpackError::Malformed("not POSIX ustar".into()));
     }
     let name = field_str(&h[0..100]);
     let prefix = field_str(&h[345..500]);
@@ -666,7 +666,7 @@ pub fn unpack_tar_into(
             // End: a second zero block is mandatory (otherwise the archive is truncated).
             read_block(archive, &mut block)?;
             if block.iter().any(|&c| c != 0) {
-                return Err(UnpackError::Malformed("за концом архива данные".into()));
+                return Err(UnpackError::Malformed("data after the end of the archive".into()));
             }
             return Ok(entries);
         };
@@ -680,7 +680,7 @@ pub fn unpack_tar_into(
             b'1' | b'2' => return Err(UnpackError::Link(clip(name))),
             b'3' | b'4' | b'6' => return Err(UnpackError::Special(clip(name))),
             t => {
-                return Err(UnpackError::Unsupported(format!("{} (тип {:?})", clip(name), t as char)))
+                return Err(UnpackError::Unsupported(format!("{} (type {:?})", clip(name), t as char)))
             }
         }
         if h.mode & 0o6000 != 0 {
@@ -690,14 +690,14 @@ pub fn unpack_tar_into(
         let segs = entry_segments(name, is_dir, limits.max_depth)?;
         if is_dir {
             if h.size != 0 {
-                return Err(UnpackError::Malformed(format!("каталог с данными: {}", clip(name))));
+                return Err(UnpackError::Malformed(format!("directory with data: {}", clip(name))));
             }
             if let Some(segs) = segs {
                 mkdir_beneath(dest, &segs, name)?;
             }
             continue;
         }
-        let segs = segs.expect("файл всегда с сегментами");
+        let segs = segs.expect("a file always has segments");
         let rel = segs.join("/");
         check_file(&rel)?;
         total = total.saturating_add(h.size);
@@ -714,7 +714,7 @@ pub fn unpack_tar_into(
         let mut out = File::from(out);
         let copied = io::copy(&mut archive.by_ref().take(h.size), &mut out)?;
         if copied != h.size {
-            return Err(UnpackError::Malformed(format!("обрыв данных {}", clip(name))));
+            return Err(UnpackError::Malformed(format!("data cut off: {}", clip(name))));
         }
         let mode = if h.mode & 0o111 != 0 { 0o755 } else { 0o644 };
         // SAFETY: a live fd.
@@ -735,7 +735,7 @@ fn read_block(r: &mut impl Read, b: &mut [u8; BLOCK]) -> Res<()> {
 
 fn read_exact_or_malformed(r: &mut impl Read, b: &mut [u8]) -> Res<()> {
     r.read_exact(b).map_err(|e| match e.kind() {
-        io::ErrorKind::UnexpectedEof => UnpackError::Malformed("архив обрезан".into()),
+        io::ErrorKind::UnexpectedEof => UnpackError::Malformed("the archive is truncated".into()),
         _ => UnpackError::Io(e),
     })
 }
@@ -828,18 +828,18 @@ fn ustar_header(name: &str, typeflag: u8, mode: u32, size: u64, linkname: &str) 
             .filter(|&(i, &c)| c == b'/' && i <= 155 && nb.len() - i - 1 <= 100 && nb.len() - i - 1 > 0)
             .map(|(i, _)| i)
             .next_back()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("имя длиннее ustar: {name}")))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("name longer than ustar allows: {name}")))?;
         (&nb[..cut], &nb[cut + 1..])
     };
     if linkname.len() > 100 {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "ссылка длиннее ustar"));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "link longer than ustar allows"));
     }
     h[..base.len()].copy_from_slice(base);
     h[100..108].copy_from_slice(format!("{mode:07o}\0").as_bytes());
     h[108..116].copy_from_slice(b"0000000\0");
     h[116..124].copy_from_slice(b"0000000\0");
     if size >= 8u64.pow(11) {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "файл больше предела ustar"));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "file exceeds the ustar limit"));
     }
     h[124..136].copy_from_slice(format!("{size:011o}\0").as_bytes());
     h[136..148].copy_from_slice(b"00000000000\0");
@@ -866,7 +866,7 @@ pub fn pack_tree(dir: &Path, out: &mut impl Write) -> io::Result<()> {
                 e.and_then(|e| {
                     e.file_name()
                         .into_string()
-                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "имя не UTF-8"))
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "name is not UTF-8"))
                 })
             })
             .collect::<io::Result<_>>()?;
@@ -886,14 +886,14 @@ pub fn pack_tree(dir: &Path, out: &mut impl Write) -> io::Result<()> {
                 out.write_all(&ustar_header(&r, b'0', mode, size, "")?)?;
                 let copied = io::copy(&mut (&mut f).take(size), out)?;
                 if copied != size {
-                    return Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("файл изменился: {r}")));
+                    return Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("file changed: {r}")));
                 }
                 let pad = (BLOCK - (size as usize % BLOCK)) % BLOCK;
                 out.write_all(&[0u8; BLOCK][..pad])?;
             } else {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("ссылка или особый файл: {r}"),
+                    format!("link or special file: {r}"),
                 ));
             }
         }
@@ -1004,9 +1004,9 @@ mod tests {
         assert_eq!(std::fs::read(tree.join("images/sub/a.png")).unwrap(), vec![7u8; 1500]);
         let mode = |p: &str| std::fs::metadata(tree.join(p)).unwrap().permissions().mode() & 0o7777;
         assert_eq!(mode("run.sh"), 0o755);
-        assert_eq!(mode("neon.plymouth"), 0o644, "запись для всех снимается");
+        assert_eq!(mode("neon.plymouth"), 0o644, "write access for others is removed");
         assert_eq!(mode("images"), 0o755);
-        assert!(!work.path().join("bundle.tar").exists(), "копия архива убрана");
+        assert!(!work.path().join("bundle.tar").exists(), "the archive copy is removed");
         // The same directory — the same bytes.
         let (mut a, mut b) = (Vec::new(), Vec::new());
         pack_tree(s, &mut a).unwrap();
@@ -1029,7 +1029,7 @@ mod tests {
         v.extend_from_slice(&[0u8; 4 * BLOCK]);
         let (work, r) = unpack(&v, small());
         assert!(matches!(r, Err(UnpackError::TooLarge(_))), "{r:?}");
-        assert!(!work.path().join("big").exists(), "ничего не записано");
+        assert!(!work.path().join("big").exists(), "nothing was written");
         // The sum of small ones is over the limit.
         let chunk = vec![1u8; 20 * 1024];
         let names: Vec<String> = (0..5).map(|i| format!("f{i}")).collect();
@@ -1057,9 +1057,9 @@ mod tests {
     #[test]
     fn links_refused() {
         let (_w, r) = unpack(&tar(&[("evil", b'2', 0o777, b"", "/etc/passwd")]), small());
-        assert!(matches!(r, Err(UnpackError::Link(_))), "симлинк: {r:?}");
+        assert!(matches!(r, Err(UnpackError::Link(_))), "symlink: {r:?}");
         let (_w, r) = unpack(&tar(&[file_e("a", b"x"), ("b", b'1', 0o644, b"", "a")]), small());
-        assert!(matches!(r, Err(UnpackError::Link(_))), "жёсткая ссылка: {r:?}");
+        assert!(matches!(r, Err(UnpackError::Link(_))), "hard link: {r:?}");
     }
 
     #[test]
@@ -1259,7 +1259,7 @@ mod tests {
             let entries = [dir_e("lib/"), file_e("neon.plymouth", good), file_e(so, b"\x7fELF")];
             let r = receive_system_theme(memfd_with(&tar(&entries)).as_fd(), &work, SystemThemeKind::Plymouth, "neon");
             assert!(matches!(r, Err(UnpackError::Refused(Refusal::BootSplashCode(_)))), "{so}: {r:?}");
-            assert!(!work.path().join("tree").join(so).exists(), ".so не записан");
+            assert!(!work.path().join("tree").join(so).exists(), ".so not written");
         }
         // The theme name is a name, not a path.
         let work = WorkDir::create(&base()).unwrap();

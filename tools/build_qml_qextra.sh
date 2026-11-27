@@ -1,47 +1,47 @@
 #!/usr/bin/env bash
-# Сборка QML-плагина QExtra (hypengw/QExtra, MIT OR Apache-2.0) — настоящие
-# `QE.AnimatedImage` и `QE.ImageCache` для вкладки обоев: декодер на ffmpeg,
-# общий потолок памяти кадров, общий такт одинаковых анимаций. Третий в
-# семье `build_qml_*`.
+# Build of the QExtra QML plugin (hypengw/QExtra, MIT OR Apache-2.0) — the real
+# `QE.AnimatedImage` and `QE.ImageCache` for the wallpaper tab: an ffmpeg decoder,
+# a shared memory cap for frames, a shared tick for identical animations. The third
+# in the `build_qml_*` family.
 #
-# Исходников QExtra в дереве нет. В дереве лежит только наша обёртка
-# `tools/qextra_plugin/` (общая библиотека-плагин, ~20 строк склейки) и
-# `lito.lock` рядом с ней: в нём закреплены ревизия QExtra и всех его
-# зависимостей — срез `lito.lock` выпуска waywallen, с которым приехала
-# вендорная разметка. Сборка идёт с `--locked`: разошёлся lock — отказ, а
-# не молчаливая сборка с головы.
+# There are no QExtra sources in the tree. The tree holds only our wrapper
+# `tools/qextra_plugin/` (a shared plugin library, ~20 lines of glue) and
+# `lito.lock` next to it: it pins the revision of QExtra and of all its
+# dependencies — a slice of the `lito.lock` of the waywallen release the
+# vendored markup came with. The build runs with `--locked`: a diverged lock is a
+# refusal, not a silent build from the head.
 #
-# ⚠️ Собирается ВНЕ дерева, в каталоге с путём из латиницы
-# (`~/.cache/rexon-qextra-build`): lito падает на нелатинских путях, а дерево
-# может лежать в `~/Загрузки`. В `/tmp` не собирать — каталог сборки весит
-# ~740 МБ, а `/tmp` часто живёт в памяти.
+# ⚠️ It is built OUTSIDE the tree, in a directory with a Latin-only path
+# (`~/.cache/rexon-qextra-build`): lito crashes on non-Latin paths, and the tree
+# may live in `~/Загрузки`. Do not build in `/tmp` — the build directory weighs
+# ~740 MB, and `/tmp` often lives in memory.
 #
-# ⚠️ Плагин зовёт частный API Qt (`QRhi`) и годится только той младшей
-# версии Qt, с которой собран. Рядом с ним пишется отметка `QT_VERSION`;
-# Rexon сверяет её с Qt процесса (`qml_modules::choose_qextra`) и при
-# расхождении берёт QML-подмену из `qml_ui/QExtra/`.
+# ⚠️ The plugin calls a private Qt API (`QRhi`) and fits only the Qt minor
+# version it was built with. A `QT_VERSION` mark is written next to it;
+# Rexon compares it with the process's Qt (`qml_modules::choose_qextra`) and on
+# a mismatch takes the QML stand-in from `qml_ui/QExtra/`.
 #
-# Требования: lito >= 0.8.7 (переменная LITO либо PATH), clang >= 22, lld,
+# Requirements: lito >= 0.8.7 (the LITO variable or PATH), clang >= 22, lld,
 # cmake, ninja, qt6-base, qt6-declarative, qt6-grpc, ffmpeg, libva, curl,
 # glslang, vulkan-headers, libpulse.
 #
-# Переменные (необязательно): LITO — путь к lito; QEXTRA_BUILD — каталог
-# сборки; QEXTRA_JOBS — число потоков (4).
-# Для сборки пакета (в ней нет сети и флаги задаёт makepkg):
-#   QEXTRA_SOURCE_BUNDLE — каталог набора исходников lito (внутри `v1/git/…`
-#     и `v1/registry/source/…`, раскладка `lito lock export`): сборка идёт
-#     с `--frozen` и в сеть не ходит вовсе;
-#   QEXTRA_ENV_FLAGS=1 — добавить CFLAGS, CXXFLAGS и LDFLAGS окружения
-#     (`lito --use-env-flags`), в том числе `-ffile-prefix-map`; ключи,
-#     которые держит профиль release (-O*, -g*, LTO, strip), и
-#     _FORTIFY_SOURCE сценарий срезает сам — годятся флаги любого makepkg.conf.
+# Variables (optional): LITO — path to lito; QEXTRA_BUILD — the build
+# directory; QEXTRA_JOBS — the number of threads (4).
+# For a package build (it has no network and makepkg sets the flags):
+#   QEXTRA_SOURCE_BUNDLE — the directory of a lito source bundle (inside `v1/git/…`
+#     and `v1/registry/source/…`, the `lito lock export` layout): the build runs
+#     with `--frozen` and never goes to the network;
+#   QEXTRA_ENV_FLAGS=1 — add the environment's CFLAGS, CXXFLAGS and LDFLAGS
+#     (`lito --use-env-flags`), including `-ffile-prefix-map`; the keys
+#     held by the release profile (-O*, -g*, LTO, strip) and
+#     _FORTIFY_SOURCE are cut by the script itself — flags of any makepkg.conf fit.
 #
-# Тяжёлая: первая сборка ~2–3 минуты на 4 потоках. На занятой машине —
+# Heavy: the first build takes ~2–3 minutes on 4 threads. On a busy machine —
 #   systemd-run --user --scope -p MemoryMax=10G nice tools/build_qml_qextra.sh
 set -euo pipefail
 
-# 0.8.7: манифест wavsen 7564374 (срез waywallen 0.5.0) пишет у зависимости
-# поле `condition`, и 0.8.5 отвергает его «unknown field: condition».
+# 0.8.7: the wavsen 7564374 manifest (the waywallen 0.5.0 slice) writes the
+# `condition` field on a dependency, and 0.8.5 rejects it with «unknown field: condition».
 LITO_MIN="0.8.7"
 DEST="${1:-$HOME/.local/share/rexon/qml_modules}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,29 +74,29 @@ fi
 PIN="$(grep -oE 'QExtra\.git#[0-9a-f]+' "$SRC/lito.lock" | cut -d'#' -f2)"
 echo "== QExtra @${PIN:-?} (lito $LITO_VER, -j $JOBS) → $DEST =="
 
-# Обёртка копируется в каталог сборки заново, каталог `build/` в нём
-# остаётся: повторная сборка без изменений — секунды.
+# The wrapper is copied into the build directory anew, the `build/` directory in it
+# stays: a repeated build without changes takes seconds.
 mkdir -p "$WORK/wrapper"
 for f in lito.toml lito.lock build.lua plugin.hpp plugin.cpp plugin.cppm; do
     cmp -s "$SRC/$f" "$WORK/wrapper/$f" || cp "$SRC/$f" "$WORK/wrapper/$f"
 done
 LITO_GLOBAL=()
 
-# Флаги окружения доходят до lito не целиком. Срезается то, что `--profile
-# release` держит за собой: оптимизация (-O3), отладочная информация (нет),
-# LTO (нет), а на линковке ещё и strip (нет). Любой такой ключ из окружения,
-# расходящийся с профилем, lito отвергает ДО сборки («compiler option '-O2'
+# Environment flags do not reach lito in full. What `--profile release`
+# keeps for itself is cut: optimization (-O3), debug info (none),
+# LTO (none), and at link time also strip (none). Any such key from the environment
+# that diverges from the profile is rejected by lito BEFORE the build («compiler option '-O2'
 # from CXXFLAGS sets optimization to '-O2', but the selected profile 'release'
-# fixes it to '-O3'»): с CFLAGS Arch (-O2) пакет не собирался вовсе, а на
-# CachyOS проходил только потому, что там -O3. Защитные ключи
-# (-fstack-clash-protection, -fcf-protection, -D_GLIBCXX_ASSERTIONS…) и карта
-# путей остаются. `-Wl,-O1` — ключ компоновщика, не профиля, и тоже остаётся.
+# fixes it to '-O3'»): with Arch CFLAGS (-O2) the package did not build at all, and on
+# CachyOS it passed only because -O3 is used there. Hardening keys
+# (-fstack-clash-protection, -fcf-protection, -D_GLIBCXX_ASSERTIONS…) and the path
+# map stay. `-Wl,-O1` is a linker key, not a profile one, and stays too.
 #
-# ⚠️ _FORTIFY_SOURCE снимается тоже: с ним glibc объявляет open/openat
-# встроенными обёртками с внутренним связыванием (bits/fcntl2.h), а модуль
-# C++ такое имя экспортировать не может — rstd падает на `using ::openat`
-# («with internal linkage cannot be exported»). Так же поступает и пакет
-# самого lito в AUR.
+# ⚠️ _FORTIFY_SOURCE is removed too: with it glibc declares open/openat
+# as inline wrappers with internal linkage (bits/fcntl2.h), and a C++
+# module cannot export such a name — rstd fails on `using ::openat`
+# («with internal linkage cannot be exported»). The AUR package of lito
+# itself does the same.
 strip_profile_flags() {
     local -a in out=()
     local t
@@ -136,10 +136,10 @@ for f in "$SO" "$TYPES"; do
     [ -f "$f" ] || { echo "сборка прошла, а файла нет: $f" >&2; exit 1; }
 done
 
-# Версия Qt, с которой плагин собран, — из него самого: байты «старшая,
-# младшая» за меткой `qt-project!` в заметке `.note.qt.metadata` (ту же
-# метку читает ядро, `qml_modules::plugin_qt_version`). Полная версия
-# системного Qt берётся, только если её старшая и младшая с ними совпали.
+# The Qt version the plugin was built with — from the plugin itself: the «major,
+# minor» bytes after the `qt-project!` tag in the `.note.qt.metadata` note (the
+# core reads the same tag, `qml_modules::plugin_qt_version`). The full version
+# of the system Qt is taken only if its major and minor match them.
 at="$(LC_ALL=C grep -a -b -o 'qt-project!' "$SO" | head -1 | cut -d: -f1 || true)"
 if [ -z "$at" ]; then
     echo "в плагине нет отметки Qt (.note.qt.metadata): $SO" >&2
@@ -150,8 +150,8 @@ QT_BUILT="$qt_major.$qt_minor"
 QT_FULL="$(pkg-config --modversion Qt6Core 2>/dev/null || true)"
 case "$QT_FULL" in "$QT_BUILT".*) QT_BUILT="$QT_FULL" ;; esac
 
-# Сначала собрать во временном каталоге рядом, потом подменить разом: Rexon
-# не должен увидеть плагин без отметки или отметку от прежнего плагина.
+# First build in a temporary directory next to it, then swap in one go: Rexon
+# must not see a plugin without a mark or a mark from the previous plugin.
 mkdir -p "$DEST"
 NEW="$DEST/.QExtra.new.$$"
 rm -rf "$NEW"; mkdir "$NEW"

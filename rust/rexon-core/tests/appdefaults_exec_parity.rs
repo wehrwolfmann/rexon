@@ -157,6 +157,12 @@ impl AppDefaultsIo for FakeIo {
         Ok(())
     }
 
+    fn remove_file(&self, path: &str) -> Result<(), String> {
+        self.record("remove_file", path);
+        self.files.borrow_mut().remove(path);
+        Ok(())
+    }
+
     fn list_dir(&self, dir: &str) -> Vec<String> {
         let prefix = format!("{}/", dir.trim_end_matches('/'));
         let mut names: Vec<String> = self
@@ -243,14 +249,14 @@ fn profile_kde_written_into_fake_config_home() {
     assert_eq!(path, format!("{CFG}/kde-mimeapps.list"));
 
     let text = io.content(&path).expect("файл профиля");
-    assert!(text.starts_with("[Default Applications]\n"), "{text}");
+    assert!(text.starts_with("# Rexon: per-desktop defaults\n\n[Default Applications]\n"), "{text}");
     assert!(text.contains("inode/directory=org.kde.dolphin.desktop"), "{text}");
     // The terminal is not assigned through MIME — it has no type.
     assert!(!text.contains("konsole"), "{text}");
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn profile_skipped_when_de_not_installed() {
     let _lang = i18n_pin::ru();
     // Not a single .desktop: GNOME is not installed.
@@ -263,7 +269,7 @@ fn profile_skipped_when_de_not_installed() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn apply_for_current_de_kde_full_pass() {
     let _lang = i18n_pin::ru();
     let io = kde_io();
@@ -295,7 +301,7 @@ fn apply_for_current_de_kde_full_pass() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn apply_for_current_de_keeps_existing_profile() {
     let _lang = i18n_pin::ru();
     let io = kde_io().file(&format!("{CFG}/kde-mimeapps.list"), "старое\n");
@@ -309,7 +315,7 @@ fn apply_for_current_de_keeps_existing_profile() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn apply_for_current_de_unknown_desktop() {
     let _lang = i18n_pin::ru();
     let io = FakeIo::new();
@@ -326,7 +332,7 @@ fn apply_for_current_de_unknown_desktop() {
 /// ⭐ FIXED DURING THE MOVE: the original printed «📝 Создан …» even when
 /// the desktop was not installed and no file appeared.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn skip_is_not_reported_as_created_file() {
     let _lang = i18n_pin::ru();
     // XFCE is recognized, but not a single one of its .desktop files is on the system.
@@ -360,7 +366,7 @@ fn mate_io() -> FakeIo {
 /// and a program with `Terminal=true` opened not in mate-terminal. Logging into the session
 /// fixes the desktop's own list; the common one is not touched.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn login_fixes_foreign_desktop_terminals_list() {
     let _lang = i18n_pin::ru();
     let list = format!("{CFG}/mate-xdg-terminals.list");
@@ -587,7 +593,7 @@ fn autostart_follows_rust_entry() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn autostart_says_why_it_did_not_install() {
     let _lang = i18n_pin::ru();
     let mut io = kde_io();
@@ -608,7 +614,7 @@ fn autostart_says_why_it_did_not_install() {
 const NAUTILUS_SERVICE: &str = "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/nautilus --gapplication-service\n";
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn file_manager_default_writes_override_and_evicts_owner() {
     let _lang = i18n_pin::ru();
     let io = kde_io()
@@ -660,7 +666,7 @@ restartCommand1=Thunar,--sm-client-id,10188108,--daemon\n";
 /// «Открыть содержащую папку» opens Thunar, because the name on the bus
 /// is held by its daemon from the saved KDE session.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn login_route_takes_filemanager1_back_from_foreign_daemon() {
     let _lang = i18n_pin::ru();
     let io = kde_io()
@@ -702,7 +708,7 @@ fn login_route_takes_filemanager1_back_from_foreign_daemon() {
 
 /// ⛔ The foreign manager has open windows — the route does NOT touch it.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn login_route_never_kills_file_manager_with_open_windows() {
     let _lang = i18n_pin::ru();
     let mut io = kde_io()
@@ -726,7 +732,7 @@ fn login_route_never_kills_file_manager_with_open_windows() {
 
 /// The name is held by the one assigned as default — we do nothing.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn login_route_leaves_matching_owner_alone() {
     let _lang = i18n_pin::ru();
     let io = kde_io()
@@ -748,7 +754,7 @@ fn login_route_leaves_matching_owner_alone() {
 /// A manager without its own quit command is stopped by a signal to EXACTLY the PID
 /// the bus named.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn foreign_daemon_without_quit_option_gets_signal_by_pid() {
     let _lang = i18n_pin::ru();
     let io = kde_io().reply("xdg-mime", true, "nemo.desktop\n").reply(
@@ -764,7 +770,7 @@ fn foreign_daemon_without_quit_option_gets_signal_by_pid() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn file_manager_default_without_vendor_service_says_so() {
     let _lang = i18n_pin::ru();
     let io = kde_io()
@@ -782,7 +788,7 @@ fn file_manager_default_without_vendor_service_says_so() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn file_manager_default_missing_desktop_is_reported() {
     let _lang = i18n_pin::ru();
     let io = FakeIo::new();
@@ -926,7 +932,7 @@ fn run_route(io: &FakeIo, de: &str) -> (i32, Vec<String>, FakeComplianceIo) {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn route_applies_then_checks() {
     let _lang = i18n_pin::ru();
     let io = kde_io();
@@ -944,7 +950,7 @@ fn route_applies_then_checks() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn route_returns_one_when_desktop_unknown() {
     let _lang = i18n_pin::ru();
     let io = FakeIo::new();
@@ -1037,7 +1043,7 @@ fn guard_login_route_stays_unprivileged() {
 #[test]
 #[cfg_attr(
     feature = "isolated-checks",
-    ignore = "нужна живая машина: спрашивает настоящую шину сеанса"
+    ignore = "needs a live machine: queries the real session bus"
 )]
 fn live_bus_owner_of_filemanager1_is_understood() {
     use rexon_core::appdefaults as ad;
@@ -1153,11 +1159,158 @@ fn login_keeps_input_method_installed_on_purpose() {
 /// The person's own copy and an already restricted system entry are not touched.
 #[test]
 fn confined_autostart_respects_existing_choices() {
-    use rexon_core::appdefaults as ad;
-    assert!(!ad::needs_confined_autostart("[Desktop Entry]\n", Some("[Desktop Entry]\nHidden=true\n")));
-    assert!(!ad::needs_confined_autostart("[Desktop Entry]\nOnlyShowIn=Deepin;\n", None));
-    assert!(ad::needs_confined_autostart("[Desktop Entry]\nExec=x\n", None));
-    let text = ad::confined_autostart_text("[Desktop Entry]\nNotShowIn=KDE;\nExec=x\n", "Deepin;DDE;");
+    use rexon_core::appdefaults::{self as ad, ConfinedCopy};
+    let only = "Deepin;DDE;";
+    // The person's own copy (no mark) — never touched, whatever the system has.
+    let mine = "[Desktop Entry]\nHidden=true\n";
+    assert_eq!(ad::confined_copy_action(Some("[Desktop Entry]\nExec=x\n"), Some(mine), only), ConfinedCopy::Keep);
+    assert_eq!(ad::confined_copy_action(None, Some(mine), only), ConfinedCopy::Keep);
+    // A record that restricts itself needs no copy.
+    assert_eq!(ad::confined_copy_action(Some("[Desktop Entry]\nOnlyShowIn=Deepin;\n"), None, only), ConfinedCopy::Keep);
+    let text = ad::confined_autostart_text("[Desktop Entry]\nNotShowIn=KDE;\nExec=x\n", only);
     assert!(!text.contains("NotShowIn"));
     assert!(text.ends_with("OnlyShowIn=Deepin;DDE;\nX-Rexon-Confined=true\n"));
+    // COSMIC does not read `Hidden`: the restriction is OnlyShowIn only.
+    let t = ad::confined_autostart_text("[Desktop Entry]\nExec=x\nHidden=false\n", only);
+    assert!(!t.contains("Hidden"), "{t}");
+}
+
+/// Our confined copy follows the system record: created, refreshed after a
+/// package update, removed when the package is gone or the record restricts
+/// itself (step 0.6 of the desktop-protection plan).
+#[test]
+fn confined_copy_four_cases() {
+    use rexon_core::appdefaults::{self as ad, ConfinedCopy};
+    let only = "Deepin;DDE;";
+    let v1 = "[Desktop Entry]\nExec=fcitx5 -d\n";
+    let v2 = "[Desktop Entry]\nExec=fcitx5 -d --replace\n";
+    let ours_v1 = ad::confined_autostart_text(v1, only);
+    // none yet → write
+    assert_eq!(ad::confined_copy_action(Some(v1), None, only), ConfinedCopy::Write(ours_v1.clone()));
+    // up to date → keep
+    assert_eq!(ad::confined_copy_action(Some(v1), Some(&ours_v1), only), ConfinedCopy::Keep);
+    // stale after an update → rewrite
+    assert_eq!(
+        ad::confined_copy_action(Some(v2), Some(&ours_v1), only),
+        ConfinedCopy::Write(ad::confined_autostart_text(v2, only))
+    );
+    // package removed → remove ours
+    assert_eq!(ad::confined_copy_action(None, Some(&ours_v1), only), ConfinedCopy::Remove);
+    // the record restricts itself now → ours is not needed
+    assert_eq!(
+        ad::confined_copy_action(Some("[Desktop Entry]\nExec=x\nOnlyShowIn=DDE;\n"), Some(&ours_v1), only),
+        ConfinedCopy::Remove
+    );
+
+    // The executor: login removes our copy once the package is gone.
+    let io = kde_io().file(&format!("{CFG}/autostart/fcitx5-helper.desktop"), &ours_v1);
+    DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
+    assert!(io.content(&format!("{CFG}/autostart/fcitx5-helper.desktop")).is_none());
+}
+
+/// «Switch desktop» no longer throws away what the person chose in that
+/// desktop: an installed program in the list wins, missing types are added.
+#[test]
+fn switch_keeps_choice_in_desktop_list() {
+    let io = kde_io()
+        .desktop("gimp.desktop")
+        .file(&format!("{CFG}/kde-mimeapps.list"), "[Default Applications]\nimage/jpeg=gimp.desktop\ntext/plain=gone.desktop\n");
+    let sw = DeAppSwitcher::new(&io, env_for("KDE"));
+    assert!(matches!(sw.generate_profile("kde"), GenerateOutcome::Wrote(_)));
+    let text = io.content(&format!("{CFG}/kde-mimeapps.list")).unwrap();
+    assert!(text.contains("\nimage/jpeg=gimp.desktop\n"), "{text}");
+    assert!(text.contains("\ntext/plain=org.kde.kate.desktop\n"), "a removed program is replaced: {text}");
+    assert!(text.contains("\nimage/png=org.kde.gwenview.desktop\n"), "{text}");
+}
+
+/// A choice the person made during a session (the shared `mimeapps.list`
+/// changed) goes into THAT session's list at the next login, whatever desktop
+/// the next login is.
+#[test]
+fn login_carries_last_session_choice_into_its_list() {
+    let ours = rexon_core::defaults::serialize_mimeapps_list(
+        &[("image/jpeg".into(), "xviewer.desktop".into()), ("video/mp4".into(), "xplayer.desktop".into())],
+        "ts",
+    );
+    let io = kde_io()
+        .file(&format!("{CFG}/kde-mimeapps.list"), "[Default Applications]\n")
+        .file(&format!("{CFG}/x-cinnamon-mimeapps.list"), &ours)
+        .file(&format!("{CFG}/mimeapps.list"), "[Default Applications]\nimage/jpeg=xviewer.desktop\n");
+    let sw = DeAppSwitcher::new(&io, env_for("X-Cinnamon"));
+    // First login: nothing to compare with — only remembered.
+    sw.apply_for_current_de();
+    assert_eq!(io.content(&format!("{CFG}/x-cinnamon-mimeapps.list")).as_deref(), Some(ours.as_str()));
+    let seen = io.content(&format!("{CFG}/rexon/mimeapps_seen.json")).unwrap();
+    assert!(seen.contains("\"x-cinnamon-mimeapps.list\""), "{seen}");
+    // During the Cinnamon session the person picks gThumb in Nemo and Firefox for pages.
+    io.write_text(
+        &format!("{CFG}/mimeapps.list"),
+        "[Default Applications]\nimage/jpeg=org.gnome.gThumb.desktop\ntext/html=firefox.desktop\n",
+    )
+    .unwrap();
+    // The next login is into Plasma: the choice goes into the Cinnamon list.
+    DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
+    let cin = io.content(&format!("{CFG}/x-cinnamon-mimeapps.list")).unwrap();
+    assert!(cin.contains("\nimage/jpeg=org.gnome.gThumb.desktop\n"), "{cin}");
+    assert!(cin.contains("\nvideo/mp4=xplayer.desktop\n"), "{cin}");
+    assert!(!cin.contains("text/html"), "the browser is never written: {cin}");
+    // The Plasma list is not touched by a Cinnamon choice.
+    assert!(!io.content(&format!("{CFG}/kde-mimeapps.list")).unwrap().contains("gThumb"));
+}
+
+/// labwc: `default=wlr;*` would give the file chooser and the colour scheme to
+/// COSMIC; our user file keeps the system lines and sends them to GTK.
+#[test]
+fn labwc_portals_go_to_gtk() {
+    use rexon_core::appdefaults::{self as ad, ConfinedCopy};
+    let sys = "[preferred]\ndefault=wlr;*\norg.freedesktop.impl.portal.Inhibit=none\n";
+    let ConfinedCopy::Write(text) = ad::labwc_portals_action(Some(sys), None, true, true) else {
+        panic!("a file is needed");
+    };
+    assert!(text.starts_with("# Rexon: portals\n"), "{text}");
+    for l in [
+        "\n[preferred]\n",
+        "\ndefault=wlr;*\n",
+        "\norg.freedesktop.impl.portal.Inhibit=none\n",
+        "\norg.freedesktop.impl.portal.FileChooser=gtk;\n",
+        "\norg.freedesktop.impl.portal.Settings=gtk;\n",
+        "\norg.freedesktop.impl.portal.AppChooser=gtk;\n",
+    ] {
+        assert!(text.contains(l), "{l:?} in {text}");
+    }
+    assert_eq!(ad::labwc_portals_action(Some(sys), Some(&text), true, true), ConfinedCopy::Keep);
+    // The person's own file stays; without labwc, GTK portal or `*` ours goes.
+    assert_eq!(ad::labwc_portals_action(Some(sys), Some("[preferred]\ndefault=gtk\n"), true, true), ConfinedCopy::Keep);
+    assert_eq!(ad::labwc_portals_action(Some(sys), Some(&text), false, true), ConfinedCopy::Remove);
+    assert_eq!(ad::labwc_portals_action(Some(sys), None, true, false), ConfinedCopy::Keep);
+    assert_eq!(ad::labwc_portals_action(Some("[preferred]\ndefault=wlr;gtk\n"), Some(&text), true, true), ConfinedCopy::Remove);
+
+    // The executor writes it at login.
+    let io = kde_io()
+        .tool("labwc")
+        .file("/usr/share/xdg-desktop-portal/labwc-portals.conf", sys)
+        .file("/usr/share/xdg-desktop-portal/portals/gtk.portal", "[portal]\n");
+    DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
+    assert_eq!(io.content(&format!("{CFG}/xdg-desktop-portal/labwc-portals.conf")).as_deref(), Some(text.as_str()));
+}
+
+/// Login moves Rexon's Cinnamon list from the unread `cinnamon-mimeapps.list`
+/// to `x-cinnamon-mimeapps.list` (what GLib reads under `X-Cinnamon`); a file
+/// of the person under the old name stays.
+#[test]
+fn login_moves_misnamed_cinnamon_list() {
+    let ours = rexon_core::defaults::serialize_mimeapps_list(
+        &[("image/jpeg".into(), "xviewer.desktop".into())],
+        "2026-11-25T00:09:01",
+    );
+    let io = kde_io().file(&format!("{CFG}/cinnamon-mimeapps.list"), &ours);
+    DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
+    assert!(io.content(&format!("{CFG}/cinnamon-mimeapps.list")).is_none());
+    assert_eq!(io.content(&format!("{CFG}/x-cinnamon-mimeapps.list")).as_deref(), Some(ours.as_str()));
+
+    let mine = "[Default Applications]\nimage/jpeg=gimp.desktop\n";
+    let io = kde_io().file(&format!("{CFG}/cinnamon-mimeapps.list"), mine);
+    DeAppSwitcher::new(&io, env_for("KDE")).apply_for_current_de();
+    assert_eq!(io.content(&format!("{CFG}/cinnamon-mimeapps.list")).as_deref(), Some(mine));
+    assert!(io.content(&format!("{CFG}/x-cinnamon-mimeapps.list")).is_none());
 }

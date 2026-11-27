@@ -125,7 +125,7 @@ MenuBar {
         const out = [];
         for (const it of root.entryItems)
             if (it && it.labelClipped)
-                out.push(it.text + " (" + Math.round(it.labelHas) + " из "
+                out.push(it.text + " (" + Math.round(it.labelHas) + " of "
                          + Math.ceil(it.labelNeeds) + ")");
         return out;
     }
@@ -137,9 +137,9 @@ MenuBar {
         for (const it of root.entryItems)
             if (it)
                 widest = Math.max(widest, it.labelNeeds);
-        return "меню " + Math.round(burger.width)
-             + " | пункту доступно " + Math.round(burger.availableWidth)
-             + " | самой длинной подписи нужно " + Math.ceil(widest);
+        return "menu " + Math.round(burger.width)
+             + " | available to an item " + Math.round(burger.availableWidth)
+             + " | the longest label needs " + Math.ceil(widest);
     }
 
     /// Menu parts painted NOT with the skin — for the window run.
@@ -151,20 +151,20 @@ MenuBar {
     function offSkinParts() {
         const out = [];
         if (!Qt.colorEqual(menuSurface.color, root.pal.bg_card))
-            out.push("подложка меню " + menuSurface.color
-                     + " вместо " + root.pal.bg_card);
+            out.push("menu background " + menuSurface.color
+                     + " instead of " + root.pal.bg_card);
         for (const it of root.entryItems) {
             if (!it)
                 continue;
             const want = it.enabled ? root.pal.text_primary : root.pal.text_disabled;
             if (!it.highlighted && !Qt.colorEqual(it.inkColor, want))
-                out.push("подпись «" + it.text + "» " + it.inkColor
-                         + " вместо " + want);
+                out.push("label \"" + it.text + "\" " + it.inkColor
+                         + " instead of " + want);
         }
         if (root.dangerTone === null
                 && root.entryItems.some(it => it && it.destructive))
-            out.push("у опасного пункта нет краски опасной кнопки "
-                     + "(в палитре окна нет destructive_tone)");
+            out.push("the dangerous item has no dangerous button paint "
+                     + "(the window palette has no destructive_tone)");
         return out;
     }
 
@@ -371,7 +371,7 @@ MenuBar {
                 if (item === null) {
                     // Staying silent is not allowed: a missing item is a missing door to
                     // uninstalling the program or to resetting a broken theme.
-                    console.warn("пункт меню «" + e.id + "» не построился");
+                    console.warn("menu item \"" + e.id + "\" was not built");
                     continue;
                 }
                 burger.addItem(item);
@@ -388,8 +388,8 @@ MenuBar {
                         sequence: e.shortcut
                     });
                     if (key === null) {
-                        console.warn("горячая клавиша пункта «" + e.id
-                                     + "» не построилась");
+                        console.warn("the shortcut of item \"" + e.id
+                                     + "\" was not built");
                     } else {
                         ++root.builtShortcuts;
                         // The item shows the shortcut label in the system language ("Strg+Q" in

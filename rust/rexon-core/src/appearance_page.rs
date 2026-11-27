@@ -28,6 +28,7 @@ use crate::ocs_store;
 use crate::translator;
 use crate::models::{CatalogSource, ThemeCategory, ThemeItem};
 use crate::ui_base;
+use crate::wallpaper_screens::WallpaperOrientation;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Catalog geometry
@@ -1456,6 +1457,9 @@ pub struct CatalogView {
     /// it (`local_preview::tone_filter` decides which one is in effect); empty
     /// means "All".
     pub tone_filter: String,
+    /// The "Orientation" filter of a store that knows the picture size
+    /// (Wallhaven): a [`WallpaperOrientation`] key, empty means "All".
+    pub orientation_filter: String,
     /// The "Running" chip of the "Conky widgets" section.
     pub running_only: bool,
     /// We run on SteamOS (Steam Deck or Steam Machine): the login screen and
@@ -1472,6 +1476,11 @@ pub struct CatalogView {
     pub conky_installable: bool,
     /// A Wayland session: Conky on Wayland has its own caveat.
     pub wayland: bool,
+    /// A desktop with its own Qt integration (Plasma, LXQt, Deepin) is
+    /// installed: the Qt style caveat on sway/river/Wayfire names Rexon's
+    /// desktop-bound variables file (`categories::category_condition_on`).
+    /// Set by the window; no by default.
+    pub qt_desktop_installed: bool,
     /// The catalog section's "⚙️ Settings" view is open (system fonts in
     /// "Fonts", icons and toolbars in "Icons", launch feedback in "Cursors",
     /// program animation in "GTK themes": `categories::SECTION_SETTINGS`)
@@ -1512,12 +1521,14 @@ impl CatalogView {
             lock_mode: LOCK_MODE_WALLPAPER.to_string(),
             style_sub: None,
             tone_filter: String::new(),
+            orientation_filter: String::new(),
             running_only: false,
             steamos: false,
             login_manager: String::new(),
             conky_installed: true,
             conky_installable: false,
             wayland: false,
+            qt_desktop_installed: false,
             section_settings: false,
             session: categories::Session::Any,
             ego_compatible_only: true,
@@ -1672,6 +1683,24 @@ impl CatalogView {
     /// The section's tone filter in effect (`local_preview::tone_filter`).
     pub fn active_tone_filter(&self) -> &'static str {
         crate::local_preview::tone_filter(&self.category.key, &self.tone_filter)
+    }
+
+    /// Whether the "Orientation: All / Horizontal / Vertical" line is
+    /// visible: in a store whose cards carry the picture size and whose
+    /// server filters by it (Wallhaven). The Razer Axon source has the same
+    /// group in its own filter panel (`axon_window::Filters`); KDE Store
+    /// cards carry no size, so it has no such line.
+    pub fn orientation_bar(&self) -> bool {
+        self.wallhaven_mode()
+    }
+
+    /// The orientation filter in effect; `None` — "All" or no such line.
+    pub fn active_orientation(&self) -> Option<WallpaperOrientation> {
+        if self.orientation_bar() {
+            WallpaperOrientation::from_key(&self.orientation_filter)
+        } else {
+            None
+        }
     }
 
     /// Whether the installed grid is narrowed by a filter that has no store
@@ -1972,7 +2001,7 @@ impl CatalogView {
         });
         let parts: Vec<String> = [
             categories::system_section_note(key, &self.login_manager),
-            categories::category_condition(key, &self.de),
+            categories::category_condition_on(key, &self.de, self.qt_desktop_installed),
             conky.flatten(),
         ]
         .into_iter()
@@ -2097,7 +2126,8 @@ impl CatalogView {
             return format!("spices:{json}:{}:{}:{}", self.page, self.active_sort(), self.query);
         }
         if self.wallhaven_mode() {
-            return format!("wallhaven:{}:{}:{}", self.page, self.active_sort(), self.query);
+            let orientation = self.active_orientation().map_or("", WallpaperOrientation::key);
+            return format!("wallhaven:{}:{}:{orientation}:{}", self.page, self.active_sort(), self.query);
         }
         // The Axon library is read by the source model, not the catalog: the key
         // is its own, so as not to merge with the KDE Store showcase of the same
@@ -5309,6 +5339,33 @@ pub fn style_filter_chips() -> Vec<Chip> {
             tooltip: tr("Kvantum themes (Kvantum engine)"),
         },
     ]
+}
+
+/// The label before the orientation chips.
+pub fn orientation_bar_label() -> String {
+    tr("Orientation:")
+}
+
+/// The orientation chips of a store that knows the picture size
+/// ([`CatalogView::orientation_bar`]): "All" (empty key), then the shared
+/// [`WallpaperOrientation`] items with the same labels as in the Razer Axon
+/// filter panel.
+pub fn orientation_chips() -> Vec<Chip> {
+    let mut chips = vec![Chip {
+        key: "",
+        label: trc("orientation filter", "All"),
+        tooltip: tr("Horizontal and vertical wallpapers together"),
+    }];
+    for o in WallpaperOrientation::ALL {
+        let tooltip = match o {
+            WallpaperOrientation::Landscape => tr("Wallpapers wider than tall — for a regular monitor"),
+            WallpaperOrientation::Portrait => {
+                tr("Wallpapers taller than wide — for a screen turned upright or for a phone")
+            }
+        };
+        chips.push(Chip { key: o.key(), label: o.label(), tooltip });
+    }
+    chips
 }
 
 /// Which Qt styles to show as "Application style" cards.

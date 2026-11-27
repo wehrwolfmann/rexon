@@ -417,7 +417,7 @@ fn real_helper_file_operations() {
 
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "всё одним сеансом — один пароль");
     c.shutdown();
-    ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
+    ns.wait_for("stderr.log", "session end: Revoked(WindowClosed)");
 }
 
 /// Fonts "for all users" via the real helper: the file lands in
@@ -515,7 +515,7 @@ fn real_helper_shared_fonts() {
     assert!(left.is_empty(), "остались рабочие каталоги: {left:?}");
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "всё одним сеансом — один пароль");
     c.shutdown();
-    ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
+    ns.wait_for("stderr.log", "session end: Revoked(WindowClosed)");
 }
 
 /// The SDDM login screen via the real helper: the theme background lands as a 0644 file in
@@ -649,7 +649,7 @@ fn real_helper_changes_sddm_background_and_look() {
 
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "всё одним сеансом — один пароль");
     c.shutdown();
-    ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
+    ns.wait_for("stderr.log", "session end: Revoked(WindowClosed)");
 }
 
 /// The window is closed (EOF) in the middle of a pacman transaction: the real helper finishes
@@ -664,10 +664,10 @@ fn real_helper_finishes_transaction_after_eof() {
     ns.wait_for("pacman.log", "start -S");
     c.shutdown();
     std::thread::sleep(Duration::from_millis(300));
-    assert!(!ns.read("stderr.log").contains("выход:"), "вышел посреди транзакции:\n{}", ns.read("stderr.log"));
+    assert!(!ns.read("stderr.log").contains("session end:"), "вышел посреди транзакции:\n{}", ns.read("stderr.log"));
     std::fs::remove_file(ns.t.join("hold")).unwrap();
     ns.wait_for("pacman.log", "done -S --needed --noconfirm yt-dlp");
-    ns.wait_for("stderr.log", "выход: Revoked(WindowClosed), операций исполнено 1");
+    ns.wait_for("stderr.log", "session end: Revoked(WindowClosed), operations executed 1");
     assert!(pending.wait(&mut |_| {}).is_err(), "окно ушло раньше итога");
 }
 
@@ -703,7 +703,7 @@ fn real_helper_exits_on_parent_death_signal() {
         std::thread::sleep(Duration::from_millis(50));
     };
     assert_eq!(status.code(), Some(0), "{}", ns.read("stderr.log"));
-    assert!(ns.read("stderr.log").contains("выход: Revoked(WindowClosed)"), "{}", ns.read("stderr.log"));
+    assert!(ns.read("stderr.log").contains("session end: Revoked(WindowClosed)"), "{}", ns.read("stderr.log"));
     drop(sock); // the socket lived until the end: the helper did not exit because of EOF
 }
 

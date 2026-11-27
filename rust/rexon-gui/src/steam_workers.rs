@@ -125,6 +125,11 @@ pub enum SteamEvent {
     /// `still` is the picture, `movie` the clip of an animated background; an
     /// empty string means this part is missing or did not download.
     Full { id: String, still: String, movie: String },
+    /// Adding the person's own clip: the current stage for the progress line.
+    MovieImportStage(String),
+    /// Adding (or keeping a copy of the old selection) ended: the line for the
+    /// status, `ok` — the showcase must be re-read.
+    MovieImportDone { ok: bool, message: String },
 }
 
 // ============================================================================
@@ -267,6 +272,8 @@ pub struct SteamTasks {
     /// Whether applying a wallpaper is in progress (the original's
     /// `_wp_worker.isRunning()`).
     applying: Arc<AtomicBool>,
+    /// Cancellation node of adding the person's own clip; `Some` while it runs.
+    import: Arc<Mutex<Option<CancellationToken>>>,
     env: SteamEnv,
 }
 
@@ -308,8 +315,75 @@ impl SteamTasks {
             thumbs: Mutex::new(None),
             posters: Mutex::new(None),
             applying: Arc::new(AtomicBool::new(false)),
+            import: Arc::new(Mutex::new(None)),
             env,
         })
+    }
+
+    // ── Adding the person's own startup clip ──────────────────────────
+
+    /// Whether a clip is being added right now.
+    pub fn is_importing(&self) -> bool {
+        self.import.lock().map(|g| g.is_some()).unwrap_or(false)
+    }
+
+    /// Add the clip `src` (`migrate` — keep a copy of the OLD selection) in
+    /// the blocking pool: ffprobe/ffmpeg and a password window for installing
+    /// ffmpeg must not freeze the window. All decisions are the core's
+    /// (`Splash::import_movie` / `migrate_movie`); here only the thread, the
+    /// cancellation and the events. `false` — something is already being added.
+    pub fn start_movie_import(&self, src: String, migrate: bool) -> bool {
+        let token = self.root.child_token();
+        {
+            let Ok(mut slot) = self.import.lock() else {
+                return false;
+            };
+            if slot.is_some() {
+                return false;
+            }
+            *slot = Some(token.clone());
+        }
+        let tx = self.tx.clone();
+        let slot = self.import.clone();
+        let home = self.env.home.clone();
+        self.spawn(async move {
+            let t = token.clone();
+            let tx2 = tx.clone();
+            let res = tokio::task::spawn_blocking(move || {
+                let mut io = rexon_core::splash_exec::LiveSplashIo::new(&home, "");
+                let mut splash = ss::Splash::new(&mut io, &home);
+                if migrate {
+                    splash.migrate_movie(&src)
+                } else {
+                    let cancelled = || t.is_cancelled();
+                    let mut progress = |stage: ss::ImportStage| {
+                        let _ = tx2.send(SteamEvent::MovieImportStage(ss::import_stage_text(stage)));
+                    };
+                    splash.import_movie(&src, &cancelled, &mut progress)
+                }
+            })
+            .await;
+            if let Ok(mut g) = slot.lock() {
+                *g = None;
+            }
+            let outcome = match res {
+                Ok(o) => o,
+                Err(e) => ss::ImportOutcome::failed(ss::msg_import_failed(&e.to_string())),
+            };
+            // A cancelled addition says so too; into a closed tab the event
+            // simply does not arrive.
+            let _ = tx.send(SteamEvent::MovieImportDone { ok: outcome.ok, message: outcome.message });
+        });
+        true
+    }
+
+    /// Stop the running addition (the conversion is killed, the partial file removed).
+    pub fn cancel_movie_import(&self) {
+        if let Ok(g) = self.import.lock() {
+            if let Some(t) = g.as_ref() {
+                t.cancel();
+            }
+        }
     }
 
     /// Take the next event; `None` means the queue is empty. Called from the

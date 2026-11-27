@@ -653,16 +653,16 @@ fn bash_block_with(
     let keys = keys_used(script);
     let mut out = String::new();
     out.push_str(
-        "# ── Язык сообщений ─────────────────────────────────────────────────\n\
-         # Отметка ниже говорит Rexon, что помощник понимает --lang.\n",
+        "# ── Message language ──────────────────────────────────────────────\n\
+         # The mark below tells Rexon that the helper understands --lang.\n",
     );
     out.push_str(LANG_MARKER);
     out.push('\n');
     out.push_str(
-        "# Первый аргумент --lang=<код> необязателен; код сверяется с белым\n\
-         # списком из po/LINGUAS, всё прочее — английский. Тексты — ТОЛЬКО из\n\
-         # таблицы ниже (вшиты при генерации); вставки %1..%9 подставляются как\n\
-         # данные, а не как формат printf и не как команды.\n\
+        "# The first argument --lang=<code> is optional; the code is checked against the\n\
+         # allowlist from po/LINGUAS, anything else is English. Texts come ONLY from\n\
+         # the table below (embedded at generation); the inserts %1..%9 are substituted as\n\
+         # data, not as a printf format and not as commands.\n\
          rx_lang=en\n\
          case \"${1:-}\" in\n\
          \x20   --lang=*)\n\
@@ -918,7 +918,7 @@ mod tests {
     /// nothing. A broken translation (other placeholders, a newline) does not get
     /// into the script at all; English is used instead.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn translation_never_becomes_code() {
         let hostile = "zz'; touch /tmp/rexon-pwned; echo '$(id) `id` \\ %s %n %1";
         let po_hostile = format!(
@@ -949,7 +949,7 @@ mod tests {
 
     /// Language: from the whitelist, a translation; anything else, English, with no error.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn unknown_language_falls_back_to_english() {
         let cats: &[(&str, &str)] = &[("ru", "msgid \"bad de_id: %1\"\nmsgstr \"плохой de_id: %1\"\n")];
         let call = "rx_say bad_de_id \"$1\"";
@@ -966,7 +966,7 @@ mod tests {
 
     /// Something that looks like a placeholder inside a placeholder is not expanded a second time.
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn placeholders_single_pass() {
         let call = "rx_say family_mismatch \"$1\" \"$2\"";
         let (out, _) = run_block(&[], call, &["%2", "arch"]);
@@ -990,7 +990,7 @@ mod tests {
     /// read before the first argument check: a wrong call answers in the chosen
     /// language (Russian: word for word the old text).
     #[test]
-    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
+    #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
     fn all_helpers_speak_the_requested_language() {
         let ru = languages().contains(&"ru");
         for (name, text) in helpers() {

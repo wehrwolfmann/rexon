@@ -252,7 +252,7 @@ fn expected_log(v: &Value) -> Vec<String> {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn all_cases_byte_identical() {
     // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -663,7 +663,7 @@ fn unattended_never_asks_password_or_network() {
         &["ubuntu-mate-themes", "ttf-ubuntu-font-family", "mate-tweak", "cosmic-wallpapers"],
         &[
             "ubuntu-mate-themes", "ubuntu-mate-icon-themes", "ttf-ubuntu-font-family",
-            "mate-tweak", "brisk-menu", "mate-indicator-applet", "vala-panel-appmenu-mate",
+            "mate-tweak", "mate-indicator-applet", "vala-panel-appmenu-mate",
             "vala-panel-appmenu-registrar",
             "ayatana-indicator-application", "ayatana-indicator-session",
             "ayatana-indicator-datetime", "ayatana-indicator-sound",
@@ -781,7 +781,7 @@ fn detect_current_de_maps() {
 // ══════════════════════════════════════════════════════════════════════════
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn run_texts_match_python() {
     // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
@@ -988,8 +988,8 @@ netbook, traditional",
             "    ⚠️ Ubuntu fonts aren't installed",
             "    ⚠️ Installation failed",
             "  📦 Checking MATE AUR packages and the Ayatana stack...",
-            "    ⚠️ Not installed (10): mate-tweak, brisk-menu, mate-indicator-applet, \
-vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
+            "    ⚠️ Not installed (9): mate-tweak, mate-indicator-applet, vala-panel-appmenu-mate, \
+vala-panel-appmenu-registrar, ayatana-indicator-application...",
             "    📥 Installing with yay...",
             "    ⚠️ Couldn't install (try installing manually)",
             "  🖱️ Checking the Yaru cursor...",
@@ -1014,7 +1014,7 @@ vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
 /// skipping package steps, deferred repair, a summary with «требуют
 /// доустановки» and «пропущено», captions of the missing items and Hyprland components.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_log_as_before() {
     use rexon_core::compliance::{
         de_banner_lines, fix_label, hyprland_component_label, msg_unknown_de,
@@ -1088,8 +1088,8 @@ netbook, traditional",
             "    ⚠️ Шрифты Ubuntu не установлены",
             "    ⚠️ Не удалось установить",
             "  📦 Проверка AUR-пакетов MATE + Ayatana-стек...",
-            "    ⚠️ Не установлены (10): mate-tweak, brisk-menu, mate-indicator-applet, \
-vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
+            "    ⚠️ Не установлены (9): mate-tweak, mate-indicator-applet, vala-panel-appmenu-mate, \
+vala-panel-appmenu-registrar, ayatana-indicator-application...",
             "    📥 Установка через yay...",
             "    ⚠️ Не удалось установить (попробуйте вручную)",
             "  🖱️ Проверка курсора Yaru...",
@@ -1113,6 +1113,7 @@ vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
         ("cosmic_icons", "значки COSMIC"),
         ("cinnamon_themes", "темы оформления Linux Mint (из AUR)"),
         ("budgie_extras", "дополнения Budgie"),
+        ("mate_menu", "меню MATE Menu вместо меню Brisk (из AUR)"),
     ];
     assert_eq!(LABELS_BEFORE.len(), FIX_LABELS.len());
     for (key, before) in LABELS_BEFORE {
@@ -1403,4 +1404,175 @@ fn chosen_terminal_wins_over_native_in_gnome() {
     let mut io = TermIo::new(&["alacritty", "gnome-terminal"]).gset(GNOME_SCHEMA, "kgx");
     term_run(&mut io, "GNOME");
     assert!(io.sets(GNOME_SCHEMA).is_empty(), "{:?}", io.argv_log);
+}
+
+// ============================================================================
+// The Brisk menu on the panel → the MATE Menu (Wehrwolfmann's decision 24.11.2026)
+// ============================================================================
+
+/// A MATE machine for the panel menu step: the panel snapshot (`dconf dump`),
+/// applet descriptions, installed packages, whether the AUR build succeeds.
+#[derive(Default)]
+struct PanelIo {
+    dump: String,
+    files: std::collections::BTreeMap<String, String>,
+    installed: Vec<String>,
+    yay: bool,
+    yay_builds: bool,
+    argv_log: Vec<Vec<String>>,
+}
+
+const APPLETS: &str = "/usr/share/mate-panel/applets";
+const BRISK_APPLET: &str = "[Applet Factory]\nId=BriskMenuFactory\n\n[BriskMenu]\nName=Brisk\n";
+const MATE_MENU_APPLET: &str = "[Applet Factory]\nId=MateMenuAppletFactory\n\n[MateMenuApplet]\nName=MATE Menu\n";
+const BRISK_PANEL: &str = "[general]\nobject-id-list=['briskmenu', 'clock']\n\n[objects/briskmenu]\n\
+applet-iid='BriskMenuFactory::BriskMenu'\nobject-type='applet'\nposition=0\ntoplevel-id='bottom'\n";
+
+impl PanelIo {
+    fn new(applets: &[(&str, &str)]) -> Self {
+        let mut io = PanelIo { dump: BRISK_PANEL.into(), ..Default::default() };
+        for (name, text) in applets {
+            io.files.insert(format!("{APPLETS}/{name}"), text.to_string());
+        }
+        io
+    }
+    fn writes(&self) -> Vec<String> {
+        self.argv_log.iter().filter(|a| a[0] == "dconf" && a[1] != "dump").map(|a| a.join(" ")).collect()
+    }
+}
+
+impl ComplianceIo for PanelIo {
+    fn run(&mut self, argv: &[String], _timeout: Option<u64>) -> Option<RunResult> {
+        self.argv_log.push(argv.to_vec());
+        if let Some(pkg) = queried_pkg(PkgFamily::Arch, argv) {
+            return Some(RunResult { ok: self.installed.iter().any(|p| p == pkg), stdout: String::new() });
+        }
+        match argv[0].as_str() {
+            "dconf" if argv[1] == "dump" => Some(RunResult { ok: true, stdout: self.dump.clone() }),
+            "dconf" => Some(RunResult { ok: true, stdout: String::new() }),
+            "yay" => {
+                if self.yay_builds && argv.iter().any(|a| a == "mate-menu") {
+                    self.files.insert(format!("{APPLETS}/org.mate.panel.MateMenuApplet.mate-panel-applet"), MATE_MENU_APPLET.into());
+                }
+                Some(RunResult { ok: self.yay_builds, stdout: String::new() })
+            }
+            _ => None,
+        }
+    }
+    fn which(&mut self, name: &str) -> bool {
+        self.yay && name == "yay"
+    }
+    fn env(&mut self, _name: &str) -> String {
+        String::new()
+    }
+    fn exists(&mut self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+    fn is_file(&mut self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+    fn is_dir(&mut self, _path: &str) -> bool {
+        false
+    }
+    fn read_text(&mut self, path: &str) -> Option<String> {
+        self.files.get(path).cloned()
+    }
+    fn scandir(&mut self, _path: &str) -> Option<Vec<ScanEntry>> {
+        None
+    }
+    fn listdir(&mut self, path: &str) -> Vec<String> {
+        let prefix = format!("{path}/");
+        self.files.keys().filter_map(|k| k.strip_prefix(&prefix)).map(str::to_string).collect()
+    }
+    fn makedirs(&mut self, _path: &str) {}
+    fn write_text(&mut self, _path: &str, _content: &str) {}
+    fn replace(&mut self, _src: &str, _dst: &str) {}
+    fn realpath(&mut self, path: &str) -> String {
+        path.to_string()
+    }
+    fn mkdtemp(&mut self, _prefix: &str, _dir: Option<&str>) -> String {
+        String::new()
+    }
+    fn mkstemp(&mut self, _prefix: &str, _suffix: &str) -> String {
+        String::new()
+    }
+    fn chmod(&mut self, _path: &str, _mode: u32) {}
+    fn remove_file(&mut self, _path: &str) {}
+    fn remove_tree(&mut self, _path: &str) {}
+    fn copy_file(&mut self, _src: &str, _dst: &str) {}
+}
+
+fn panel_run(io: &mut PanelIo, allow: bool) -> (Results, Vec<String>) {
+    let mut log = Vec::new();
+    let results = Compliance::new(io, "/home/tester", PkgFamily::Arch, allow, true, true).run_for_de("mate", &mut log);
+    (results, log)
+}
+
+/// mate-menu is on the system: the Brisk object is replaced with its applet in
+/// the same place, and the panel's object list points at the new object.
+#[test]
+fn brisk_menu_on_the_panel_becomes_mate_menu() {
+    let _lang = i18n_pin::en();
+    let mut io = PanelIo::new(&[("brisk.mate-panel-applet", BRISK_APPLET), ("matemenu.mate-panel-applet", MATE_MENU_APPLET)]);
+    let (results, log) = panel_run(&mut io, false);
+    assert_eq!(result_of(&results, "mate_menu"), Some("fixed"));
+    let w = io.writes();
+    assert!(w.contains(&"dconf write /org/mate/panel/objects/briskmenu-menu/applet-iid 'MateMenuAppletFactory::MateMenuApplet'".to_string()), "{w:#?}");
+    assert!(w.contains(&"dconf write /org/mate/panel/general/object-id-list ['briskmenu-menu', 'clock']".to_string()), "{w:#?}");
+    assert_eq!(w.last().unwrap(), "dconf reset -f /org/mate/panel/objects/briskmenu/");
+    assert!(log.iter().any(|l| l.contains("Brisk menu → MATE Menu")), "{log:#?}");
+    // Nothing was built: mate-menu is already there.
+    assert!(!io.argv_log.iter().any(|a| a[0] == "yay"));
+}
+
+/// Without mate-menu: Rexon builds it on its own; if the build fails — the
+/// built-in menu button, never an empty place.
+#[test]
+fn brisk_menu_without_mate_menu_never_leaves_the_panel_without_a_menu() {
+    let _lang = i18n_pin::en();
+    // The build succeeds — the MATE Menu.
+    let mut io = PanelIo::new(&[("brisk.mate-panel-applet", BRISK_APPLET)]);
+    io.yay = true;
+    io.yay_builds = true;
+    let (results, _) = panel_run(&mut io, true);
+    assert_eq!(result_of(&results, "mate_menu"), Some("fixed"));
+    let yay: Vec<&Vec<String>> = io.argv_log.iter().filter(|a| a[0] == "yay" && a.iter().any(|x| x == "mate-menu")).collect();
+    assert_eq!(yay.len(), 1, "mate-menu is built on its own: {:#?}", io.argv_log);
+    assert_eq!(yay[0].last().unwrap(), "mate-menu", "mate-menu alone, without the rest of the set");
+    assert!(io.writes().iter().any(|c| c.ends_with("applet-iid 'MateMenuAppletFactory::MateMenuApplet'")));
+
+    // The build fails (the AUR package is broken) — the built-in button.
+    let mut io = PanelIo::new(&[("brisk.mate-panel-applet", BRISK_APPLET)]);
+    io.yay = true;
+    let (results, log) = panel_run(&mut io, true);
+    assert_eq!(result_of(&results, "mate_menu"), Some("fixed"));
+    let w = io.writes();
+    assert!(w.contains(&"dconf write /org/mate/panel/objects/briskmenu-menu/object-type 'menu'".to_string()), "{w:#?}");
+    assert!(!w.iter().any(|c| c.contains("applet-iid")), "{w:#?}");
+    assert!(log.iter().any(|l| l.contains("standard MATE menu")), "{log:#?}");
+}
+
+/// At login (no password, no network): a working Brisk menu waits for "Check my
+/// desktop"; a Brisk menu whose applet is gone gets the built-in button at once.
+#[test]
+fn brisk_menu_at_login() {
+    let _lang = i18n_pin::en();
+    let mut io = PanelIo::new(&[("brisk.mate-panel-applet", BRISK_APPLET)]);
+    io.yay = true;
+    let (results, _) = panel_run(&mut io, false);
+    assert_eq!(result_of(&results, "mate_menu"), Some(rexon_core::compliance::NEEDS_ACTION));
+    assert!(io.writes().is_empty(), "{:#?}", io.writes());
+    assert!(!io.argv_log.iter().any(|a| a[0] == "yay"));
+
+    let mut io = PanelIo::new(&[]);
+    let (results, _) = panel_run(&mut io, false);
+    assert_eq!(result_of(&results, "mate_menu"), Some("fixed"));
+    assert!(io.writes().iter().any(|c| c.ends_with("object-type 'menu'")), "{:#?}", io.writes());
+
+    // No Brisk on the panel — the step is silent.
+    let mut io = PanelIo::new(&[]);
+    io.dump = "[general]\nobject-id-list=['clock']\n".into();
+    let (results, log) = panel_run(&mut io, true);
+    assert_eq!(result_of(&results, "mate_menu"), None);
+    assert!(!log.iter().any(|l| l.contains("Brisk")), "{log:#?}");
 }

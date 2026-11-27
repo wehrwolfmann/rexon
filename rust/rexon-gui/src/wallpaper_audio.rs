@@ -147,7 +147,7 @@ impl cxx_qt::Initialize for qobject::WallpaperAudio {
         let settings = load_settings();
         let decision = settings.decide(&Conditions::default());
         let mut this = self;
-        this.as_mut().apply(decision, "начальные настройки");
+        this.as_mut().apply(decision, "initial settings");
     }
 }
 
@@ -196,8 +196,8 @@ impl qobject::WallpaperAudio {
         if let Err(e) = spawned {
             rexon_core::log_warn!(
                 "wallpaper-host",
-                "REXON-WPH-AUDIO наблюдение не поднялось ({e}) — звук обоев \
-                 останется таким, каким его застали настройки"
+                "REXON-WPH-AUDIO watching did not start ({e}) — the wallpaper sound \
+                 stays as the settings had it at start"
             );
         }
     }
@@ -561,37 +561,38 @@ fn run(argv: &[String]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Why it is so right now — in one line, in human terms.
+/// Why it is so right now — in one line, for the host log (`audioReason=`),
+/// so in English and not translated.
 fn explain(settings: &AudioSettings, c: &Conditions, d: &Decision) -> String {
     if !settings.enabled {
-        return "звук обоев выключен в настройках".into();
+        return "wallpaper sound is off in the settings".into();
     }
     if d.paused {
         let a = settings.actions;
         return if c.session_inactive && a.session_inactive.pauses() {
-            "сеанс неактивен — обои на паузе".into()
+            "session inactive — wallpaper paused".into()
         } else if c.session_locked && a.session_locked.pauses() {
-            "сеанс заблокирован — обои на паузе".into()
+            "session locked — wallpaper paused".into()
         } else if c.gamemode && a.gamemode.pauses() {
-            "идёт игра — обои на паузе".into()
+            "a game is running — wallpaper paused".into()
         } else if c.on_battery && a.on_battery.pauses() {
-            "работа от батареи — обои на паузе".into()
+            "running on battery — wallpaper paused".into()
         } else if c.fullscreen {
-            "полноэкранное окно — обои на паузе".into()
+            "fullscreen window — wallpaper paused".into()
         } else {
-            "обои на паузе по настройке".into()
+            "wallpaper paused by a setting".into()
         };
     }
     if !d.audio_on {
         if settings.mute_when_other_audio && c.other_audio {
-            return "звук играет другая программа".into();
+            return "another program is playing sound".into();
         }
         if c.maximized {
-            return "окно закрывает обои".into();
+            return "a window covers the wallpaper".into();
         }
-        return "заглушено по настройке".into();
+        return "muted by a setting".into();
     }
-    format!("играет, громкость {}%", (d.volume01 * 100.0).round() as i64)
+    format!("playing, volume {}%", (d.volume01 * 100.0).round() as i64)
 }
 
 #[cfg(test)]
@@ -651,37 +652,37 @@ mod tests {
             ..AudioSettings::default()
         };
         let c = Conditions::default();
-        assert!(explain(&off, &c, &off.decide(&c)).contains("выключен"));
+        assert!(explain(&off, &c, &off.decide(&c)).contains("is off"));
 
         let on = AudioSettings::default();
         let loud = Conditions {
             other_audio: true,
             ..Conditions::default()
         };
-        assert!(explain(&on, &loud, &on.decide(&loud)).contains("другая программа"));
+        assert!(explain(&on, &loud, &on.decide(&loud)).contains("another program"));
 
         let full = Conditions {
             fullscreen: true,
             ..Conditions::default()
         };
-        assert!(explain(&on, &full, &on.decide(&full)).contains("полноэкранное"));
+        assert!(explain(&on, &full, &on.decide(&full)).contains("fullscreen"));
 
         let battery = Conditions {
             on_battery: true,
             ..Conditions::default()
         };
-        assert!(explain(&on, &battery, &on.decide(&battery)).contains("батареи"));
+        assert!(explain(&on, &battery, &on.decide(&battery)).contains("battery"));
         let game = Conditions {
             gamemode: true,
             on_battery: true,
             ..Conditions::default()
         };
-        assert!(explain(&on, &game, &on.decide(&game)).contains("игра"));
+        assert!(explain(&on, &game, &on.decide(&game)).contains("game"));
         let away = Conditions {
             session_inactive: true,
             ..Conditions::default()
         };
-        assert!(explain(&on, &away, &on.decide(&away)).contains("неактивен"));
+        assert!(explain(&on, &away, &on.decide(&away)).contains("inactive"));
         assert!(explain(&on, &c, &on.decide(&c)).contains("50%"));
     }
 }

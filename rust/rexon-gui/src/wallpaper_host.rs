@@ -1681,6 +1681,8 @@ pub const USAGE: &str = "\
 
 Ключи всех режимов:
   -w, --windowed        окно 1280×720 вместо обоев (для проверки)
+      --preview         web only: full screen on top of everything, any key
+                        or click closes it (screensaver preview)
   -v, --verbose         подробный вывод
       --selftest[=мс]   отчитаться о состоянии и закрыться
                         (умолчание: видео 3000, веб 6000, Flash 3000)

@@ -217,7 +217,7 @@ fn de_database_matches_python() {
 /// the same way the interface shows them (`description_text`/`compositor_text`,
 /// load — as the `CpuLoad` label).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn de_meta_matches_python_in_russian() {
     let _lang = i18n_pin::ru();
     let fx = db_fx();
@@ -765,7 +765,7 @@ fn filter_removable_matches_python() {
 /// Without pkexec everything privileged silently fails — the message about it
 /// is one for the whole project and carries the package name for the current distro.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn polkit_missing_message_matches_python() {
     // The reference is the original's Russian texts: checked via po/ru.po.
     let _lang = i18n_pin::ru();
@@ -877,8 +877,11 @@ fn detect_handles_case_and_session_fallback() {
 ///     `lightdm-gtk-greeter` with XFCE and MATE: on such a machine pacman would
 ///     refuse to install Cinnamon, and without the refusal it would wipe the
 ///     foreign login screen.
+/// * packages Rexon deliberately does not install: `brisk-menu` (abandoned)
+///   and, until a fixed release, `mate-layouts` (broken GSettings schema).
 /// All places Rexon installs desktop packages from are guarded: the desktop
-/// database, the MATE compliance check and the MATE post-install.
+/// database, the MATE compliance check, the MATE post-install and the MATE
+/// panel layout parts.
 #[test]
 fn de_package_sets_do_not_pull_foreign_desktops() {
     use rexon_core::compliance::MATE_AUR_PACKAGES;
@@ -891,6 +894,12 @@ fn de_package_sets_do_not_pull_foreign_desktops() {
         ("vala-panel-appmenu-valapanel", "тянет vala-panel"),
     ];
     const CONFLICTS_WITH_GTK_GREETER: &[&str] = &["mint-artwork"];
+    // Packages Rexon does not install, with the reason (see the MATE entry of
+    // `system::DE_DATABASE`).
+    const NOT_INSTALLED: &[(&str, &str)] = &[
+        ("brisk-menu", "abandoned, the MATE Menu takes its place (24.11.2026)"),
+        ("mate-layouts", "broken GSettings schema — bring back after a fixed release (25.11.2026)"),
+    ];
 
     let mut sets: Vec<(String, Vec<String>)> = Vec::new();
     for (de_id, entry) in DE_DATABASE {
@@ -906,6 +915,12 @@ fn de_package_sets_do_not_pull_foreign_desktops() {
         sets.push((
             format!("пост-установка MATE «{tag}»"),
             pkgs.iter().map(|p| p.to_string()).collect(),
+        ));
+    }
+    for family in ["arch", "debian", "fedora", "suse"] {
+        sets.push((
+            format!("MATE panel layout parts ({family})"),
+            rexon_core::mate_panel::all_part_packages(family).iter().map(|p| p.to_string()).collect(),
         ));
     }
 
@@ -924,6 +939,9 @@ fn de_package_sets_do_not_pull_foreign_desktops() {
             }
             if CONFLICTS_WITH_GTK_GREETER.contains(&p.as_str()) {
                 bad.push(format!("{where_}: {p} — конфликтует с lightdm-gtk-greeter"));
+            }
+            if let Some((_, why)) = NOT_INSTALLED.iter().find(|(n, _)| n == p) {
+                bad.push(format!("{where_}: {p} — {why}"));
             }
         }
     }

@@ -183,8 +183,8 @@ ApplicationWindow {
     Component.onCompleted: {
         if (root.startSection !== ""
                 && !root.openSection(root.startSection, root.startSubpage))
-            console.warn("раздела «" + root.startSection + "» нет; "
-                         + "открыт первый");
+            console.warn("there is no section \"" + root.startSection + "\"; "
+                         + "the first one is open");
         if (root.tourMode) {
             // The tour shows neither the wizard, nor the tutorial, nor the look
             // reconciliation — for the same reason as the self-test.
@@ -313,7 +313,7 @@ ApplicationWindow {
         root.onboardingPending = false;
         const decision = onboardingCore.start();
         // To the log: it shows why the tutorial appeared or not.
-        console.info("обучение при запуске: " + decision.kind
+        console.info("onboarding at startup: " + decision.kind
                      + (decision.step ? " " + decision.step : ""));
         onboarding.begin(decision);
     }
@@ -433,6 +433,11 @@ ApplicationWindow {
                 required property var modelData
 
                 text: tabButton.modelData.label
+                // Qt publishes a TabButton to AT-SPI with the "page tab" role and
+                // only the focus action: a screen reader (and the accessibility
+                // robot, `rexon-a11y-robot`) could not activate a section without
+                // synthesising a key press. The handler adds the standard "Press".
+                Accessible.onPressAction: tabButton.click()
                 // Height ≥ 40 px is a Big Picture requirement (architecture rule #16),
                 // not a number of taste.
                 implicitHeight: 44
@@ -559,9 +564,9 @@ ApplicationWindow {
                 Component.onCompleted: {
                     if (section.modelData.page !== ""
                             && section.pageComponent === null)
-                        console.warn("страница «" + section.modelData.page
-                                     + "» раздела «" + section.modelData.id
-                                     + "» не значится в карте pageComponents");
+                        console.warn("page \"" + section.modelData.page
+                                     + "\" of section \"" + section.modelData.id
+                                     + "\" is missing from the pageComponents map");
                 }
 
                 Loader {
@@ -881,12 +886,12 @@ ApplicationWindow {
     /// allowed it.
     function tourInvoke(cmd, arg) {
         if (!shell.tourCallAllowed(cmd.method)) {
-            tour.result.error = "вызов «" + cmd.method + "» запрещён ядром";
+            tour.result.error = "call \"" + cmd.method + "\" is forbidden by the core";
             return false;
         }
         const target = cmd.method === "openSection" ? root : root.tourPage();
         if (!target || typeof target[cmd.method] !== "function") {
-            tour.result.error = "у страницы нет «" + cmd.method + "»";
+            tour.result.error = "the page has no \"" + cmd.method + "\"";
             return false;
         }
         return target[cmd.method](arg) !== false;
@@ -908,7 +913,7 @@ ApplicationWindow {
         switch (cmd.cmd) {
         case "openSection":
             if (!root.tourInvoke(cmd, cmd.section)) {
-                root.tourSend({ built: false, error: tour.result.error || "раздела нет в окне" });
+                root.tourSend({ built: false, error: tour.result.error || "the window has no such section" });
                 return;
             }
             root.tourPhase("page");
@@ -934,7 +939,7 @@ ApplicationWindow {
             root.tourPhase("load");
             return;
         default:
-            root.tourSend({ error: "незнакомая команда «" + cmd.cmd + "»" });
+            root.tourSend({ error: "unknown command \"" + cmd.cmd + "\"" });
         }
     }
 
@@ -1091,18 +1096,18 @@ ApplicationWindow {
         const wanted = holder !== null && holder.pageComponent !== null;
 
         if (holder === null)
-            root.selftestFailures.push("раздел «" + id + "» не построен вовсе");
+            root.selftestFailures.push("section \"" + id + "\" was not built at all");
         else if (sections[index].page !== "" && !wanted)
             // The section table named a page that the window map does not know.
             // Without this check the run would stay green: the section shows the
             // explanation "not ported yet", which looks like a regular placeholder —
             // so the divergence would hide behind a healthy look.
-            root.selftestFailures.push("страницы «" + sections[index].page
-                                       + "» раздела «" + id
-                                       + "» нет в карте pageComponents");
+            root.selftestFailures.push("page \"" + sections[index].page
+                                       + "\" of section \"" + id
+                                       + "\" is not in the pageComponents map");
         else if (wanted && !page)
-            root.selftestFailures.push("страница раздела «" + id
-                                       + "» не построена");
+            root.selftestFailures.push("the page of section \"" + id
+                                       + "\" was not built");
 
         // The title from the Rust model is an end-to-end check "window host →
         // page → model". Not all pages provide one: the Wallpaper Engine page has
@@ -1110,11 +1115,11 @@ ApplicationWindow {
         // of nothing.
         const hasTitle = page !== null && page.windowTitle !== undefined;
         console.log("REXON-MAINWINDOW-PAGE " + id
-                    + " | " + (page ? "построена" : (wanted ? "НЕТ" : "заглушка"))
+                    + " | " + (page ? "built" : (wanted ? "NO" : "placeholder"))
                     + " | " + (hasTitle ? page.windowTitle : "—"));
         if (hasTitle && page.windowTitle === "")
-            root.selftestFailures.push("страница раздела «" + id
-                                       + "» не отдала заголовок от Rust-модели");
+            root.selftestFailures.push("the page of section \"" + id
+                                       + "\" gave no title from the Rust model");
 
         if (index + 1 < sections.length) {
             bar.currentIndex = index + 1;
@@ -1162,14 +1167,14 @@ ApplicationWindow {
         }
         console.log("REXON-MAINWINDOW-PAGES " + withPage + "/" + sections.length);
         if (sections.length === 0)
-            failures.push("состав разделов пуст");
+            failures.push("the section list is empty");
         if (shell.windowTitle === "")
-            failures.push("заголовок окна пуст");
+            failures.push("the window title is empty");
         // This is what the run was set up for: EVERY section must have its own
         // page. As long as even one opens with a placeholder, the Rust window
         // cannot replace the Python window.
         if (withPage !== sections.length)
-            failures.push("разделов без своей страницы: "
+            failures.push("sections without a page of their own: "
                           + (sections.length - withPage));
 
         // A side action must ANSWER, not stay silent. The actions object of
@@ -1183,7 +1188,7 @@ ApplicationWindow {
         desktopsActions.install("kde");
         console.log("REXON-MAINWINDOW-DESKTOPS-STATUS " + desktopsActions.status);
         if (desktopsActions.status === "")
-            failures.push("побочное действие «Рабочих столов» ничего не сказало");
+            failures.push("the \"Desktops\" side action said nothing");
         desktopsActions.dismissOperation();
 
         // The same question to the "Steam" actions object. We ask TWO things, and
@@ -1202,9 +1207,9 @@ ApplicationWindow {
                 missing.push(key);
         console.log("REXON-MAINWINDOW-STEAM-SNAPSHOT "
                     + (snapshot ? Object.keys(snapshot).length : -1)
-                    + " | пропущено: " + (missing.length ? missing.join(",") : "—"));
+                    + " | missing: " + (missing.length ? missing.join(",") : "—"));
         if (missing.length)
-            failures.push("снимок вкладки «Steam» без ключей: " + missing.join(","));
+            failures.push("the \"Steam\" tab snapshot lacks keys: " + missing.join(","));
 
         // The third question is about the Steam root, and it is about a silent
         // loss.
@@ -1222,16 +1227,16 @@ ApplicationWindow {
         const knownRoot = pageRoot ? pageRoot.steamFoundPath : "";
         console.log("REXON-MAINWINDOW-STEAM-ROOT "
                     + (knownRoot === "" ? "—" : knownRoot)
-                    + " | у объекта действий: "
+                    + " | the actions object has: "
                     + (actionsRoot === "" ? "—" : actionsRoot));
         if (knownRoot !== actionsRoot)
-            failures.push("страница «Steam» не знает корня Steam: у неё «"
-                          + knownRoot + "», а найден «" + actionsRoot + "»");
+            failures.push("the \"Steam\" page does not know the Steam root: it has \""
+                          + knownRoot + "\", but \"" + actionsRoot + "\" was found");
 
         const steamRefusal = steamActions.play("", false);
         console.log("REXON-MAINWINDOW-STEAM-PLAY " + steamRefusal);
         if (steamRefusal === "")
-            failures.push("вкладка «Steam» промолчала об отказе показать заставку");
+            failures.push("the \"Steam\" tab kept quiet about refusing to show the movie");
 
         // "DE comparison" is no longer a separate section but the second page of
         // "Desktops". If the request led nowhere, the comparison would simply
@@ -1243,17 +1248,17 @@ ApplicationWindow {
         // the session is not recognized, there is nothing to compare against.
         if (desktopsRoot) {
             console.log("REXON-MAINWINDOW-DESKTOPS-SELECTED " + desktopsRoot.selectedDe
-                        + " | сеанс: " + (desktopsRoot.currentDe || "—"));
+                        + " | session: " + (desktopsRoot.currentDe || "—"));
             if (desktopsRoot.currentDe !== ""
                     && desktopsRoot.selectedDe !== desktopsRoot.currentDe)
-                failures.push("«Рабочие столы» открылись на «" + desktopsRoot.selectedDe
-                              + "», а не на столе сеанса «" + desktopsRoot.currentDe + "»");
+                failures.push("\"Desktops\" opened on \"" + desktopsRoot.selectedDe
+                              + "\", not on the session desktop \"" + desktopsRoot.currentDe + "\"");
         }
         desktopsActions.openCompare();
         console.log("REXON-MAINWINDOW-DESKTOPS-SUBPAGE "
                     + (desktopsRoot ? desktopsRoot.subPage : -1));
         if (!desktopsRoot || desktopsRoot.subPage !== 1)
-            failures.push("просьба показать «Сравнение DE» никуда не привела");
+            failures.push("the request to show \"DE comparison\" led nowhere");
 
         // ── Window menu ──────────────────────────────────────────────
         //
@@ -1264,31 +1269,31 @@ ApplicationWindow {
         const menuItems = menuCore.items;
         const wantShortcuts = menuItems.filter(e => e.shortcut !== "").length;
         console.log("REXON-MAINWINDOW-MENU " + menuItems.length
-                    + " | построено: " + menuBarItem.builtItems
-                    + " | разделителей: " + menuBarItem.builtSeparators
-                    + " | клавиш: " + menuBarItem.builtShortcuts
-                    + " из " + wantShortcuts
-                    + " | кнопка: " + menuCore.buttonText);
+                    + " | built: " + menuBarItem.builtItems
+                    + " | separators: " + menuBarItem.builtSeparators
+                    + " | shortcuts: " + menuBarItem.builtShortcuts
+                    + " of " + wantShortcuts
+                    + " | button: " + menuCore.buttonText);
         for (const e of menuItems)
             console.log("REXON-MAINWINDOW-MENU-ITEM " + e.id + " | " + e.label
                         + " | " + (e.shortcut === "" ? "—" : e.shortcut)
-                        + " | " + (e.separatorBefore ? "черта выше" : "—")
-                        + " | " + (e.enabled ? "доступен" : "НЕДОСТУПЕН"));
+                        + " | " + (e.separatorBefore ? "line above" : "—")
+                        + " | " + (e.enabled ? "enabled" : "DISABLED"));
         if (menuItems.length === 0)
-            failures.push("меню окна пусто");
+            failures.push("the window menu is empty");
         if (menuBarItem.builtItems !== menuItems.length)
-            failures.push("пунктов меню построено " + menuBarItem.builtItems
-                          + " из " + menuItems.length);
+            failures.push("menu items built: " + menuBarItem.builtItems
+                          + " of " + menuItems.length);
         if (menuBarItem.builtSeparators !== 1)
-            failures.push("разделителей в меню построено "
-                          + menuBarItem.builtSeparators + ", а нужен один");
+            failures.push("menu separators built: "
+                          + menuBarItem.builtSeparators + ", but one is needed");
         // The shortcut lives as an object separate from the item: if it were not
         // created, the menu would look intact while "Ctrl+Q" did not work at all.
         if (menuBarItem.builtShortcuts !== wantShortcuts)
-            failures.push("горячих клавиш построено "
-                          + menuBarItem.builtShortcuts + " из " + wantShortcuts);
+            failures.push("shortcuts built: "
+                          + menuBarItem.builtShortcuts + " of " + wantShortcuts);
         if (menuCore.buttonText === "")
-            failures.push("кнопка меню без подписи — её не увидеть");
+            failures.push("the menu button has no label — it cannot be seen");
 
         // Warning: AN ITEM'S WIDTH IS A SEPARATE MEASURE, AND HERE IS WHY IT IS
         // HERE. The item count above is green even when all four are built but
@@ -1297,44 +1302,44 @@ ApplicationWindow {
         // label was not. Now the menu is opened and the width is measured, and an
         // elided label fails the run.
         if (!menuBarItem.laidOut())
-            failures.push("меню окна не разложилось — ширину подписей "
-                          + "измерить нечем");
+            failures.push("the window menu was not laid out — there is nothing to "
+                          + "measure the label width with");
         console.log("REXON-MAINWINDOW-MENU-WIDTH " + menuBarItem.widthReport());
         const menuClipped = menuBarItem.clippedLabels();
         console.log("REXON-MAINWINDOW-MENU-CLIPPED "
-                    + (menuClipped.length ? menuClipped.join(" | ") : "нет"));
+                    + (menuClipped.length ? menuClipped.join(" | ") : "none"));
         for (const c of menuClipped)
-            failures.push("подпись пункта меню обрезана: " + c);
+            failures.push("a menu item label is clipped: " + c);
         // The menu must be in the window skin: a white Basic-style menu over the
         // dark window passed all the counts above (screenshot 30.09.2026).
         const menuOffSkin = menuBarItem.offSkinParts();
         console.log("REXON-MAINWINDOW-MENU-SKIN "
-                    + (menuOffSkin.length ? menuOffSkin.join(" | ") : "в скине"));
+                    + (menuOffSkin.length ? menuOffSkin.join(" | ") : "in the skin"));
         for (const c of menuOffSkin)
-            failures.push("меню окна не в скине: " + c);
+            failures.push("the window menu is off the skin: " + c);
         // Next come the item windows, and an open menu would only get in their
         // way: the run checks the focus in the uninstall window by pressing keys.
         menuBarItem.closeAfterCheck();
         for (const e of menuItems) {
             if (e.label === "")
-                failures.push("пункт меню «" + e.id + "» без подписи");
+                failures.push("menu item \"" + e.id + "\" has no label");
             if (!e.enabled)
-                failures.push("пункт меню «" + e.id + "» недоступен");
+                failures.push("menu item \"" + e.id + "\" is disabled");
         }
 
         // Dialog texts must belong to the core rather than be assembled by the
         // markup. The customer would take an empty text for a breakage (rule #13).
         const about = menuCore.aboutHtml();
         console.log("REXON-MAINWINDOW-MENU-ABOUT " + menuCore.aboutTitle()
-                    + " | " + about.length + " знаков");
+                    + " | " + about.length + " characters");
         if (menuCore.aboutTitle() === "" || about.length === 0)
-            failures.push("справка «О программе» пуста");
+            failures.push("the \"About\" text is empty");
 
         const recover = menuCore.recoverPrompt();
         console.log("REXON-MAINWINDOW-MENU-RECOVER " + recover.title
-                    + " | тема: " + recover.target);
+                    + " | theme: " + recover.target);
         if (!recover.title || !recover.text || !recover.target)
-            failures.push("вопрос о сбросе темы KDE неполон");
+            failures.push("the KDE theme reset question is incomplete");
 
         // The uninstall window is queried IN FULL but removes nothing: this is
         // reading the file system and querying the package manager. The removal
@@ -1349,16 +1354,16 @@ ApplicationWindow {
                 missingKeys.push(key);
         console.log("REXON-MAINWINDOW-MENU-UNINSTALL "
                     + (uninstall.files ? uninstall.files.length : -1)
-                    + " путей | по умолчанию: " + uninstall.defaultId
-                    + " | пропущено: "
+                    + " paths | default: " + uninstall.defaultId
+                    + " | missing: "
                     + (missingKeys.length ? missingKeys.join(",") : "—"));
         if (missingKeys.length)
-            failures.push("окно удаления без ключей: " + missingKeys.join(","));
+            failures.push("the uninstall window lacks keys: " + missingKeys.join(","));
         if (uninstall.defaultId !== "cancel")
-            failures.push("кнопка по умолчанию окна удаления не «Отмена»: "
+            failures.push("the default button of the uninstall window is not \"Cancel\": "
                           + uninstall.defaultId);
         if (menuCore.busy())
-            failures.push("удаление считает себя уже запущенным");
+            failures.push("the uninstall thinks it is already running");
 
         // A menu item must lead SOMEWHERE, and this must be checked for EVERY one:
         // the model may be complete, the delegates built, and still the door
@@ -1375,9 +1380,9 @@ ApplicationWindow {
             menuDialogs.activate(e.id);
             console.log("REXON-MAINWINDOW-MENU-OPENED " + e.id + " → "
                         + (menuDialogs.openDialog === ""
-                           ? "никуда" : menuDialogs.openDialog));
+                           ? "nowhere" : menuDialogs.openDialog));
             if (menuDialogs.openDialog !== e.id)
-                failures.push("пункт меню «" + e.id + "» никуда не привёл");
+                failures.push("menu item \"" + e.id + "\" led nowhere");
             // The uninstall window buttons are labelled when it opens. An empty label
             // here is a nameless button with the removal of the program from the
             // customer's machine behind it.
@@ -1387,22 +1392,22 @@ ApplicationWindow {
                             + labels.join(" | "));
                 for (const t of labels)
                     if (t === "")
-                        failures.push("кнопка окна удаления без подписи");
+                        failures.push("an uninstall window button has no label");
                 // The "keep" label names what will be kept; elided, it hides exactly that.
                 const clipped = menuDialogs.uninstallClippedLabels();
                 console.log("REXON-MAINWINDOW-MENU-UNINSTALL-CLIPPED "
-                            + (clipped.length ? clipped.join(" | ") : "нет"));
+                            + (clipped.length ? clipped.join(" | ") : "none"));
                 for (const c of clipped)
-                    failures.push("подпись кнопки окна удаления обрезана: " + c);
+                    failures.push("an uninstall window button label is clipped: " + c);
                 // Focus on "Cancel" is the same foolproofing as `setDefaultButton(Cancel)`
                 // in the product. It cannot be checked by pressing: get it wrong, and the
                 // program is removed for real.
                 console.log("REXON-MAINWINDOW-MENU-UNINSTALL-FOCUS "
                             + (menuDialogs.uninstallDefaultHasFocus()
-                               ? "на «Отмене»" : "НЕ на «Отмене»"));
+                               ? "on \"Cancel\"" : "NOT on \"Cancel\""));
                 if (!menuDialogs.uninstallDefaultHasFocus())
-                    failures.push("в открытом окне удаления фокус не на "
-                                  + "«Отмене» — случайный Enter снёс бы Rexon");
+                    failures.push("in the open uninstall window the focus is not on "
+                                  + "\"Cancel\" — a stray Enter would remove Rexon");
             }
             menuDialogs.closeOpenDialog();
         }
@@ -1416,9 +1421,9 @@ ApplicationWindow {
         console.log("REXON-MAINWINDOW-ONBOARDING " + obTexts.askTitle
                     + " | " + (obFirst.title ?? "—"));
         if (!obTexts.askTitle || !obTexts.askYes || !obTexts.askNo)
-            failures.push("вопрос обучения без текста");
+            failures.push("the onboarding question has no text");
         if (!obFirst.title || !obFirst.nextText)
-            failures.push("первый шаг обучения без карточки");
+            failures.push("the first onboarding step has no card");
 
         // ── Translation: QML and Rust speak the same language ──────
         //
@@ -1431,8 +1436,8 @@ ApplicationWindow {
         console.log("REXON-MAINWINDOW-L10N qml «" + qmlNext + "» | rust «"
                     + obFirst.nextText + "»");
         if (qmlNext !== obFirst.nextText)
-            failures.push("QML и Rust перевели «Next» по-разному: «" + qmlNext
-                          + "» против «" + obFirst.nextText + "»");
+            failures.push("QML and Rust translated \"Next\" differently: \"" + qmlNext
+                          + "\" vs \"" + obFirst.nextText + "\"");
 
         for (const f of failures)
             console.log("REXON-MAINWINDOW-FAIL " + f);

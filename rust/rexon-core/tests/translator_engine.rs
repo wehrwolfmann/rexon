@@ -833,7 +833,7 @@ fn stand_model_dir() -> String {
 /// The model directory is `REXON_TRANSLATE_MODEL_DIR` (the same variable
 /// the vendor watchdog uses).
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_paragraph_is_translated_by_the_real_engine() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
@@ -927,7 +927,7 @@ fn live_paragraph_is_translated_by_the_real_engine() {
 /// темой.» (the word `kde` is NOT in the translation), full path — «Красочная тема,
 /// вдохновленная сладкой kde темой.».
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_names_survive_the_real_engine() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
@@ -992,7 +992,7 @@ fn live_names_survive_the_real_engine() {
 ///     -- --ignored --nocapture live_technique
 /// ```
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_technique_inside_prose_survives_the_real_engine() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
@@ -1110,7 +1110,7 @@ fn live_technique_inside_prose_survives_the_real_engine() {
 ///     after «Темная и тихая тема для всех»: the lowercase `dark` does NOT count as a title
 ///     and is translated, as it should be.
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_item_name_survives_the_real_engine() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
@@ -1233,7 +1233,7 @@ fn live_item_name_survives_the_real_engine() {
 /// «цветовая палитра цветов» (the same tautology from the bare engine on the same
 /// fragment). Our placeholders have nothing to do with it — there are no names in the tail.
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_acceptance_defects_of_24_09_are_fixed() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());
@@ -1324,7 +1324,7 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
 /// (3) the dictionary did not touch the control phrases — «извлеч…» is in place; (4) technical bits
 /// are intact, there are no placeholders in the output.
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_term_fixes_survive_the_real_engine() {
     use rexon_core::translator::{apply_term_fixes, technical_spans};
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
@@ -1860,7 +1860,7 @@ fn candy_stable_terms_are_fixed() {
 
 /// Live check of the whole description on the real model.
 #[test]
-#[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
+#[ignore = "needs the downloaded Firefox en→ru model (REXON_TRANSLATE_MODEL_DIR), not kept in the tree"]
 fn live_candy_icons_description_is_fixed() {
     if std::env::var_os(te::MODEL_DIR_ENV).is_none() {
         std::env::set_var(te::MODEL_DIR_ENV, stand_model_dir());

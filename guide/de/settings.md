@@ -7,7 +7,7 @@ Infobereich) und einige Dinge für den ganzen Computer: welcher Dateimanager
 Ordner öffnet, welche Programme Dateien standardmäßig öffnen, Hintergründe
 aus einem Bild oder Video, Hintergrundgeräusche und Systemklänge. Die
 Abschnitte stehen untereinander in einer Liste; manche erscheinen nur dort,
-wo sie Sinn ergeben (zum Beispiel der Leistenschutz nur mit KDE Plasma).
+wo sie Sinn ergeben (zum Beispiel der Leistenschutz nur auf Desktops, deren Leiste Rexon sichern kann).
 
 ![Der Reiter „Einstellungen“: Sprache, Oberflächen-Skin, Einführung](../images/settings-top.png)
 
@@ -26,7 +26,7 @@ wo sie Sinn ergeben (zum Beispiel der Leistenschutz nur mit KDE Plasma).
 | 📚 **Hintergrundbibliothek** | Hintergrundpakete von Rexon (.rxn) |
 | 🪟 **Windows-Designs importieren** | Das Aussehen des alten Windows-PCs übernehmen |
 | 🔒 **Schutz der Standardanwendungen** | Verhindert, dass eine neue Arbeitsfläche Ihre Programme ersetzt |
-| 🛡️ **Schutz der KDE-Plasma-Leiste** | Nur mit Plasma: Sicherungen von Leiste, Widgets und Tastenkürzeln |
+| 🛡️ **Leistenschutz** | Kopien von Leisten, Applets und Tastenkürzeln jedes Desktops |
 | 🪟 **Erscheinungsbild der Desktop-Umgebung** | Nur mit einem installierten Plasma-Ableger (AeroShell u. Ä.) |
 
 Animation, Schriftarten, Titelleistenknöpfe, Startrückmeldung, Symbole
@@ -143,17 +143,26 @@ hellem bei einem hellen.
   **„↩️ Zurücksetzen“** bei einem Aussehen „Wie in einer Distribution“)
   holt auch sie zurück.
 
-## Sicherungen der KDE-Plasma-Leiste
+## Kopien der Leiste
 
-**🛡️ Schutz der KDE-Plasma-Leiste** erscheint, wenn Plasma läuft oder
-Sicherungen davon vorhanden sind.
+**🛡️ Leistenschutz** speichert das Aussehen der Leiste, die Applets und die
+Tastenkürzel Ihres Desktops und stellt sie wieder her, wenn nach der
+Installation eines anderen Desktops etwas kaputtgegangen ist. Er funktioniert
+auf allen Desktops, die Rexon kennt.
 
-1. Klicken Sie auf **„📦 Sicherung erstellen“** — Rexon sichert Aussehen der
-   Leiste, Widgets und Tastenkürzel.
-2. Die Sicherungen erscheinen in der Liste „Gespeicherte Sicherungen“.
-3. Ist die Leiste nach der Installation einer anderen Arbeitsfläche kaputt,
-   klicken Sie bei der gewünschten Sicherung auf **„Wiederherstellen“** und
-   bestätigen. Das aktuelle Aussehen der Leiste wird ersetzt.
+1. Klicken Sie auf **„📦 Sicherung erstellen“**. Der Hinweis über der
+   Schaltfläche sagt, was auf diesem Desktop kopiert wird.
+2. Pro Desktop werden bis zu 10 Kopien aufbewahrt; die allererste
+   (**„⭐ das Original, vor Rexon“**) wird nie gelöscht.
+3. Vor dem Installieren oder Wechseln eines Desktops kopiert Rexon die Leisten
+   **aller installierten Desktops** selbst.
+4. Ist eine Leiste kaputt, klicken Sie bei der gewünschten Kopie auf
+   **„Wiederherstellen“**. Kopien anderer Desktops liegen im eingeklappten
+   Block **„Kopien anderer Desktops“**; der Desktop übernimmt sie bei der
+   nächsten Anmeldung.
+
+GNOME, Budgie und Pantheon teilen sich einen Teil der Tastenkürzel: Rexon
+nennt die mitbetroffenen Desktops in der Rückfrage.
 
 ## Hintergrund, Klänge und mehr
 

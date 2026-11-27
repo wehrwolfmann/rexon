@@ -1,12 +1,12 @@
-# rexon-splash-overlay — проигрывание видео на самом верхнем слое
-# (wlr-layer-shell OVERLAY) в сессии KWin Wayland (Plasma 6).
+# rexon-splash-overlay — playing video on the very top layer
+# (wlr-layer-shell OVERLAY) in a KWin Wayland session (Plasma 6).
 #
-# Переиспользуемый компонент заставки входа Rexon: рисует видео поверх всего
-# экрана через встроенную libmpv (render API, OpenGL/GLES2) на EGL-поверхности
-# wl_egl_window. Внешний контроллер управляет проигрывателем по обычному
-# JSON IPC mpv (--ipc). Процесс держит последний кадр до SIGTERM или команды
-# «quit» по IPC — ровно как самостоятельный mpv, которым сейчас пользуется
-# оркестратор заставки.
+# A reusable component of the Rexon login splash: draws video over the whole
+# screen through the embedded libmpv (render API, OpenGL/GLES2) on an EGL surface of a
+# wl_egl_window. An external controller drives the player over the ordinary
+# mpv JSON IPC (--ipc). The process keeps the last frame until SIGTERM or the
+# «quit» command over IPC — exactly like a standalone mpv, which the splash
+# orchestrator uses now.
 
 [package]
 name = "rexon-splash-overlay"
@@ -19,14 +19,14 @@ name = "rexon-splash-overlay"
 path = "src/main.rs"
 
 [dependencies]
-# Слой-шелл, реестр, вывод, композитор; ре-экспортирует wayland-client.
+# Layer shell, registry, output, compositor; re-exports wayland-client.
 smithay-client-toolkit = "0.19"
-# WlEglSurface → *mut wl_egl_window (нативное окно для EGL).
+# WlEglSurface → *mut wl_egl_window (the native window for EGL).
 wayland-egl = "0.32"
-# Линкует libEGL, даёт EGL 1.4/1.5 API.
+# Links libEGL, provides the EGL 1.4/1.5 API.
 khronos-egl = { version = "6", features = ["static"] }
 # eventfd/poll/signal.
 libc = "0.2"
-# Общий журнал Rexon (`applog`): строки заставки ложатся в тот же файл, что и
-# строки окна, с той же ротацией. Ядро без Qt — заставке оно Qt не приносит.
+# The shared Rexon journal (`applog`): splash lines go to the same file as the
+# window lines, with the same rotation. The core without Qt — it brings no Qt to the splash.
 rexon-core = { path = "../rexon-core" }

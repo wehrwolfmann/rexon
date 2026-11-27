@@ -106,6 +106,17 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openFolder"]
         fn open_folder(self: &AxonActions, path: &QString) -> bool;
+        /// Whether there is something to launch Razer Axon with (the "Open
+        /// Razer Axon" button under the "Available to sync" section); decided
+        /// when the library is read.
+        #[qinvokable]
+        #[cxx_name = "canLaunch"]
+        fn can_launch(self: &AxonActions) -> bool;
+        /// "Open Razer Axon": launch it separately from Rexon. Returns the
+        /// result line for the status bar.
+        #[qinvokable]
+        #[cxx_name = "launchAxon"]
+        fn launch_axon(self: &AxonActions) -> QString;
 
         /// Remember the Axon wallpaper folder (`WallpaperSource`) chosen by the user
         /// (`file://…` or a path). JSON `{ok, message}`.
@@ -145,6 +156,7 @@ use serde_json::{json, Value};
 use rexon_core::axon_library::{self as ax, AxonLibrary};
 use rexon_core::axon_prepare as ap;
 use rexon_core::axon_window::{self as aw, EffectKind, FilterFlag, Query, SearchMode, SortOrder};
+use rexon_core::wallpaper_screens::{orientation_group_label, WallpaperOrientation};
 
 /// The library that was read and the grid query.
 #[derive(Default)]
@@ -155,6 +167,9 @@ pub struct AxonActionsRust {
     /// this session: entering the source again does not ask for them a second
     /// time.
     covers_asked: std::collections::HashSet<String>,
+    /// How to launch Razer Axon itself (`axon_library::launch_plan_for`);
+    /// `None` — nothing to launch it with, and there is no button.
+    launch: Option<ax::AxonLaunch>,
 }
 
 /// A ready copy of a cover by address — in the shared "Appearance" preview
@@ -184,7 +199,7 @@ fn fetch_covers(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, urls: Vec<Str
             .filter(|p| crate::appearance_actions::usable_preview(p, &preview_dir))
         {
             Some(p) => done.push((url, p.into())),
-            None => rexon_core::log_warn!("axon", "обложка не скачалась: {url}"),
+            None => rexon_core::log_warn!("axon", "cover not downloaded: {url}"),
         }
         if !done.is_empty() && (done.len() >= BATCH || n + 1 == total) {
             let batch = std::mem::take(&mut done);
@@ -204,12 +219,34 @@ fn fetch_covers(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, urls: Vec<Str
             });
             if let Err(e) = queued {
                 if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-                    rexon_core::log_warn!("axon", "обложки не доставлены: {e:?}");
+                    rexon_core::log_warn!("axon", "covers not delivered: {e:?}");
                 }
                 return;
             }
         }
     }
+}
+
+/// Launch Razer Axon in its own process group, without input or output:
+/// closing Rexon does not kill it. It is waited for on a side thread so a
+/// closed Axon does not linger as a zombie.
+fn spawn_launch(plan: &ax::AxonLaunch) -> Result<(), String> {
+    use std::os::unix::process::CommandExt;
+    let Some((program, args)) = plan.argv.split_first() else {
+        return Err(rexon_core::i18n::tr("empty command"));
+    };
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0);
+    if let Some(dir) = plan.dir.as_ref().filter(|d| d.is_dir()) {
+        cmd.current_dir(dir);
+    }
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 /// Axon library environment: the process plus the folders from the Rexon
@@ -224,7 +261,7 @@ fn deliver(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, status: String) {
         object.as_mut().finished(QString::from(&status));
     }) {
         if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-            rexon_core::log_warn!("axon", "итог не доставлен: {e:?}");
+            rexon_core::log_warn!("axon", "result not delivered: {e:?}");
         }
     }
 }
@@ -245,11 +282,14 @@ impl qobject::AxonActions {
                 "flags": pairs(FilterFlag::ALL.iter().map(|f| (f.key(), f.label())).collect()),
                 "typeLabel": aw::type_label(),
                 "kinds": pairs(EffectKind::ALL.iter().map(|k| (k.key(), k.label())).collect()),
+                "orientationLabel": orientation_group_label(),
+                "orientations": pairs(WallpaperOrientation::ALL.iter().map(|o| (o.key(), o.label())).collect()),
                 "clear": aw::clear_text(),
                 "clearFilter": aw::clear_filter_text(),
                 "apply": aw::apply_text(),
                 "applyTooltip": aw::apply_tooltip(),
                 "openLocation": aw::open_location_text(),
+                "launch": aw::launch_text(),
                 "details": aw::details_text(),
                 "tileTooltip": aw::tile_tooltip(),
                 "close": tr("Close"),
@@ -272,11 +312,17 @@ impl qobject::AxonActions {
     }
 
     fn reload(mut self: Pin<&mut Self>) {
-        let lib = ax::load_library(&axon_env());
+        let env = axon_env();
+        let lib = ax::load_library(&env);
         for p in &lib.problems {
-            rexon_core::log_warn!("axon", "библиотека не прочитана: {p}");
+            rexon_core::log_warn!("axon", "library not read: {p}");
         }
-        self.as_mut().rust_mut().lib = lib;
+        let launch = ax::launch_plan_for(&env, &lib);
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.lib = lib;
+            me.launch = launch;
+        }
         self.as_mut().resolve_covers();
     }
 
@@ -331,6 +377,8 @@ impl qobject::AxonActions {
             me.query.filters.set(flag, on);
         } else if let Some(kind) = EffectKind::from_axon(&key) {
             me.query.filters.set_kind(kind, on);
+        } else if let Some(o) = WallpaperOrientation::from_key(&key) {
+            me.query.filters.set_orientation(o, on);
         }
     }
 
@@ -364,7 +412,7 @@ impl qobject::AxonActions {
             // the cache.
             let status = match ap::prepare_for_apply(&w, Some(extractor.as_ref()), &env) {
                 Ok(ready) => {
-                    rexon_core::log_info!("axon", "обои {} готовы: {}", w.id, ready.path.display());
+                    rexon_core::log_info!("axon", "wallpaper {} ready: {}", w.id, ready.path.display());
                     let path = ready.path.to_string_lossy().into_owned();
                     // The same core door as "Apply" of a wallpaper set: one executor per
                     // process, and it decides the output for the environment.
@@ -394,6 +442,23 @@ impl qobject::AxonActions {
         crate::extensions_actions::qobject::open_folder_url(path)
     }
 
+    fn can_launch(&self) -> bool {
+        self.rust().launch.is_some()
+    }
+
+    fn launch_axon(&self) -> QString {
+        let Some(plan) = self.rust().launch.clone() else {
+            return QString::default();
+        };
+        QString::from(&match spawn_launch(&plan) {
+            Ok(()) => aw::launch_started_text(),
+            Err(why) => {
+                rexon_core::log_warn!("axon", "Razer Axon did not start: {why}");
+                aw::launch_failed_text(&why)
+            }
+        })
+    }
+
     fn add_folder(mut self: Pin<&mut Self>, url: &QString) -> QString {
         let raw = url.to_string();
         let path = std::path::PathBuf::from(rexon_core::local_install::file_url_to_path(&raw));
@@ -411,7 +476,7 @@ impl qobject::AxonActions {
             Err(e) => Err(e.to_string()),
         };
         if let Err(e) = saved {
-            rexon_core::log_warn!("axon", "папка {} не сохранена в настройках: {e}", dir.display());
+            rexon_core::log_warn!("axon", "folder {} not saved in the settings: {e}", dir.display());
         }
         // A new folder — prepare its wallpapers in advance too (when off, the
         // thread exits at once).
@@ -440,10 +505,10 @@ impl qobject::AxonActions {
         match rexon_core::settings::SettingsManager::new() {
             Ok(mut m) => {
                 if let Err(e) = m.set(ap::PREPARE_AHEAD_KEY, Value::Bool(on)) {
-                    rexon_core::log_warn!("axon", "настройка подготовки заранее не сохранена: {e}");
+                    rexon_core::log_warn!("axon", "the prepare-in-advance setting not saved: {e}");
                 }
             }
-            Err(e) => rexon_core::log_warn!("axon", "настройки не открылись: {e}"),
+            Err(e) => rexon_core::log_warn!("axon", "settings did not open: {e}"),
         }
         if on {
             ap::spawn_background(std::time::Duration::ZERO);
@@ -458,7 +523,7 @@ impl qobject::AxonActions {
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
             let report = ap::restore_originals(&root);
-            rexon_core::log_info!("axon", "возврат исходных описаний: {report:?}");
+            rexon_core::log_info!("axon", "restoring the original descriptions: {report:?}");
             deliver(handle, ap::restore_done_text(report));
         });
     }

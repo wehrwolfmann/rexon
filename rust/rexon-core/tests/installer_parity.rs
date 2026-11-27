@@ -683,7 +683,7 @@ fn pkg_remove_cmd_matches() {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn get_installed_files_matches() {
     // The Python golden is Russian: the package line in the list comes from po/ru.po.
     let _lang = i18n_pin::ru();
@@ -952,7 +952,7 @@ fn assert_same_texts(now: &Value, want: &Value) {
 
 /// In Russian — word for word as before the move to the catalog.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_installer_texts_as_before() {
     let _lang = i18n_pin::ru();
     let now = all_installer_texts(Lang::Ru);
@@ -973,7 +973,7 @@ fn english_installer_texts() {
 /// word for word the former ones. The executor has no check file of its own, install
 /// refusals are checked here, next to the other install labels.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn ext_exec_errors_in_russian_as_before() {
     use rexon_core::ext_exec;
     let _lang = i18n_pin::ru();
@@ -1014,7 +1014,7 @@ fn ext_exec_errors_in_russian_as_before() {
 /// under a step refusal in Russian are word for word the former ones (one by one from the catalog;
 /// `%1`/`%2` stand where paths and the exit code used to be substituted).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn installer_exec_details_in_russian_as_before() {
     let cat = i18n_pin::ru_catalog();
     for (msgid, before) in [

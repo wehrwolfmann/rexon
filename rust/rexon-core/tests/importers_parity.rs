@@ -319,7 +319,7 @@ impl ImpIo for MockIo {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn importers_match_python() {
     // The Python golden has Russian manifest and error texts.
     let _lang = i18n_pin::ru();
@@ -399,7 +399,7 @@ fn has_cyrillic(s: &str) -> bool {
 /// Refusals, warnings and the file picker filter are in Russian word for word as before
 /// the move to the catalog (phrase assembly at `ca42e74^`).
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_texts_as_before() {
     let _lang = i18n_pin::ru();
     assert_eq!(

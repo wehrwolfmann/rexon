@@ -42,6 +42,7 @@ use std::time::SystemTime;
 use serde_json::Value;
 
 use crate::i18n::{tr, trf};
+use crate::wallpaper_screens::WallpaperOrientation;
 
 /// The path from the Windows user directory to the Axon root.
 pub const AXON_SUBDIR: &[&str] = &["AppData", "Local", "Razer", "RazerAxon"];
@@ -277,6 +278,133 @@ pub fn find_roots(env: &AxonEnv) -> Vec<AxonRoot> {
         .flat_map(|p| roots_in_prefix(p))
         .filter(|r| !account_dirs(&r.root).is_empty())
         .collect()
+}
+
+// ============================================================================
+// Launching Razer Axon itself
+// ============================================================================
+
+/// How to launch Razer Axon (the "Open Razer Axon" button under the
+/// "Available to sync" section: only Axon itself downloads cloud wallpapers).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AxonLaunch {
+    /// Command: from a menu entry or `env WINEPREFIX=… wine RazerAxon.exe`.
+    pub argv: Vec<String>,
+    /// Working directory (the entry's `Path=` or the program folder); `None` — any.
+    pub dir: Option<PathBuf>,
+}
+
+/// Where Axon installs the program inside a prefix (`Program Files (x86)` in
+/// a 64-bit prefix, `Program Files` in a 32-bit one).
+const AXON_EXE_PATHS: [&str; 2] = [
+    "drive_c/Program Files (x86)/Razer/Razer Axon/RazerAxon.exe",
+    "drive_c/Program Files/Razer/Razer Axon/RazerAxon.exe",
+];
+
+/// The value of `key` in the `[Desktop Entry]` group (localized variants
+/// such as `key[de]` are not matched).
+fn desktop_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    let mut in_main = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_main = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_main {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            if k.trim() == key {
+                return Some(v.trim());
+            }
+        }
+    }
+    None
+}
+
+/// A menu entry that launches Razer Axon itself: `Name=Razer Axon`, an
+/// application, not hidden. "Uninstall Razer Axon" and similar entries do
+/// not match — their name differs.
+fn launch_from_desktop(text: &str) -> Option<AxonLaunch> {
+    let yes = |k: &str| desktop_value(text, k).is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    if desktop_value(text, "Name") != Some("Razer Axon")
+        || desktop_value(text, "Type").is_some_and(|t| t != "Application")
+        || yes("Hidden")
+        || yes("NoDisplay")
+    {
+        return None;
+    }
+    let argv = crate::compositor_autostart::exec_argv(desktop_value(text, "Exec")?)?;
+    if argv.is_empty() {
+        return None;
+    }
+    let dir = desktop_value(text, "Path").filter(|p| !p.is_empty()).map(PathBuf::from);
+    Some(AxonLaunch { argv, dir })
+}
+
+/// `*.desktop` files directly in a directory (sorted by name).
+fn desktop_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = match fs::read_dir(dir) {
+        Ok(rd) => rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "desktop") && p.is_file())
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    out.sort();
+    out
+}
+
+/// How to launch Razer Axon on this machine; `None` — there is nothing to
+/// launch it with.
+///
+/// Order:
+/// 1. the person's own menu entry (`~/.local/share/applications/*.desktop`)
+///    — it carries their prefix and the launch variables Axon under Wine
+///    sometimes needs (e.g. a separate prefix and software rendering);
+/// 2. the entry Wine itself created on install
+///    (`applications/wine/Programs/<folder>/*.desktop`);
+/// 3. `RazerAxon.exe` in a prefix from `prefixes` (prefixes where the
+///    library was found come first): `env WINEPREFIX=<prefix> wine <exe>`.
+///
+/// Only reads files: the decision is fast and does not stall the window.
+pub fn launch_plan(env: &AxonEnv, prefixes: &[PathBuf]) -> Option<AxonLaunch> {
+    let apps = env.data_home().join("applications");
+    let mut menus = desktop_files(&apps);
+    for sub in children(&apps.join("wine/Programs")) {
+        menus.extend(desktop_files(&sub));
+    }
+    if let Some(l) = menus.iter().find_map(|p| fs::read_to_string(p).ok().and_then(|t| launch_from_desktop(&t))) {
+        return Some(l);
+    }
+    for prefix in prefixes {
+        if let Some(exe) = AXON_EXE_PATHS.iter().map(|p| prefix.join(p)).find(|p| p.is_file()) {
+            return Some(AxonLaunch {
+                argv: vec![
+                    "env".into(),
+                    format!("WINEPREFIX={}", prefix.display()),
+                    "wine".into(),
+                    exe.to_string_lossy().into_owned(),
+                ],
+                dir: exe.parent().map(Path::to_path_buf),
+            });
+        }
+    }
+    None
+}
+
+/// [`launch_plan`] for a library that has been read: the prefixes of its
+/// wallpapers first, then all known Wine prefixes.
+pub fn launch_plan_for(env: &AxonEnv, lib: &AxonLibrary) -> Option<AxonLaunch> {
+    let mut prefixes: Vec<PathBuf> = Vec::new();
+    for p in lib.wallpapers.iter().map(|w| w.prefix.clone()).chain(candidate_prefixes(env)) {
+        if !p.as_os_str().is_empty() && !prefixes.contains(&p) {
+            prefixes.push(p);
+        }
+    }
+    launch_plan(env, &prefixes)
 }
 
 // ============================================================================
@@ -1408,12 +1536,22 @@ pub fn display_title(w: &AxonWallpaper) -> String {
     }
 }
 
-/// The line under the tile title: kind, sound, resolution; for those not downloaded —
-/// that they are not on disk.
+/// Wallpaper orientation from the record's resolution (`Resolution`,
+/// width×height): `2160x3840` in Axon is a vertical video. Without a
+/// resolution it is unknown.
+pub fn orientation(w: &AxonWallpaper) -> Option<WallpaperOrientation> {
+    w.resolution.and_then(|(x, y)| WallpaperOrientation::of(x, y))
+}
+
+/// The line under the tile title: kind, sound, "Vertical" for vertical
+/// ones, resolution; for those not downloaded — that they are not on disk.
 pub fn tile_line(w: &AxonWallpaper) -> String {
     let mut parts = vec![w.kind.label()];
     if w.audible && w.kind == AxonKind::Video {
         parts.push(tr("🔊 Sound"));
+    }
+    if let Some(o) = orientation(w).filter(|o| o.shown_on_tile()) {
+        parts.push(o.label());
     }
     if let Some((x, y)) = w.resolution {
         parts.push(format!("{x}×{y}"));
@@ -1530,6 +1668,52 @@ pub fn folder_added_text(count: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The person's own entry wins over Wine's, "Uninstall" and hidden
+    /// entries do not count, without entries — `RazerAxon.exe` in a prefix.
+    #[test]
+    fn launch_plan_prefers_menu_entry_then_exe() {
+        let home = std::env::temp_dir().join(format!("rexon-axon-launch-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let env = AxonEnv::with_home(&home);
+        let apps = home.join(".local/share/applications");
+        let wine_dir = apps.join("wine/Programs/Razer Axon");
+        fs::create_dir_all(&wine_dir).unwrap();
+        let prefix = home.join(".wine");
+        let exe = prefix.join(AXON_EXE_PATHS[0]);
+        assert_eq!(launch_plan(&env, &[prefix.clone()]), None, "nothing to launch with — no button");
+
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"MZ").unwrap();
+        let by_exe = launch_plan(&env, &[prefix.clone()]).unwrap();
+        assert_eq!(by_exe.argv[..3], ["env".to_string(), format!("WINEPREFIX={}", prefix.display()), "wine".into()]);
+        assert_eq!(by_exe.dir.as_deref(), exe.parent());
+
+        fs::write(
+            wine_dir.join("Uninstall Razer Axon.desktop"),
+            "[Desktop Entry]\nName=Uninstall Razer Axon\nExec=wine uninstall.exe\nType=Application\n",
+        )
+        .unwrap();
+        fs::write(
+            wine_dir.join("Razer Axon.desktop"),
+            "[Desktop Entry]\nName=Razer Axon\nExec=env \"WINEPREFIX=/w\" wine \"C:\\\\\\\\x.lnk\"\nType=Application\nPath=/w/drive_c\n",
+        )
+        .unwrap();
+        let by_wine = launch_plan(&env, &[prefix.clone()]).unwrap();
+        assert_eq!(by_wine.argv, ["env", "WINEPREFIX=/w", "wine", "C:\\x.lnk"]);
+        assert_eq!(by_wine.dir, Some(PathBuf::from("/w/drive_c")));
+
+        fs::write(apps.join("hidden.desktop"), "[Desktop Entry]\nName=Razer Axon\nExec=nope\nNoDisplay=true\n").unwrap();
+        fs::write(
+            apps.join("razer-axon.desktop"),
+            "[Desktop Entry]\nName=Razer Axon\nName[de]=Andere\nExec=/home/u/.local/bin/razer-axon %U\n\n[Desktop Action x]\nName=Razer Axon\nExec=other\n",
+        )
+        .unwrap();
+        let own = launch_plan(&env, &[prefix]).unwrap();
+        assert_eq!(own.argv, ["/home/u/.local/bin/razer-axon"], "the person's entry comes first, field codes dropped");
+        assert_eq!(own.dir, None);
+        let _ = fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn resolution_parses() {

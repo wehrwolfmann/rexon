@@ -232,7 +232,7 @@ fn side_effect_pure_parts() {
 /// to the buyer: what works and which desktops are installed as images (since 25.10.2026),
 /// without dates and without commands.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn steamos_texts_in_russian_catalog() {
     use rexon_core::distro_compat as dc;
     let po = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../po/ru.po");
@@ -274,7 +274,7 @@ fn steamos_texts_in_russian_catalog() {
 /// Warnings and the badge in Russian — word for word what was captured from Python
 /// before switching to the translation catalog.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn warnings_in_russian_as_before() {
     let before: Value =
         serde_json::from_str(include_str!("golden/distro_compat_ru_before.json")).unwrap();

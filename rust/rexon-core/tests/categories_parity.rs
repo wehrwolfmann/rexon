@@ -309,7 +309,7 @@ fn hidden_section_explains_itself() {
 
 /// A section that works under a condition is shown — but the condition is named.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn conditional_section_names_its_condition() {
     use rexon_core::categories::{category_available, category_condition};
 
@@ -336,6 +336,12 @@ fn conditional_section_names_its_condition() {
         // XFCE get them — we write nothing extra there.
         let sway = category_condition(key, "sway").expect("оговорка sway");
         assert!(sway.starts_with(&note) && sway.contains("sway") && sway.contains("uwsm"), "{sway}");
+        // With Plasma installed the variables are not in environment.d: uwsm
+        // would not help, and the file to copy from is Rexon's own.
+        let bound = rexon_core::categories::category_condition_on(key, "sway", true).expect("оговорка sway");
+        assert!(bound.starts_with(&note) && !bound.contains("uwsm"), "{bound}");
+        assert!(bound.contains("~/.config/rexon/session-env/rexon-qt-style.conf"), "{bound}");
+        assert_eq!(rexon_core::categories::category_condition_on(key, "gnome", true).as_deref(), Some(note.as_str()));
         for de in ["hyprland", "niri", "xfce", "mate"] {
             assert!(!category_condition(key, de).unwrap().contains("uwsm"), "{de}");
         }

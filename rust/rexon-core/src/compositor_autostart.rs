@@ -1607,6 +1607,11 @@ pub fn remove_all_rexon_live() {
 // There is one source of truth — the `environment.d` files: these blocks mirror them and
 // are rebuilt after every write there ([`sync_session_env`]).
 //
+// Variables that must not reach Plasma live in Rexon's own directory instead
+// ([`crate::themes::DESKTOP_BOUND_ENV_DIR`]); they are mirrored into the same
+// blocks, and GNOME and niri get them through a drop-in of their shell's unit
+// ([`session_unit_targets`]).
+//
 // ⚠️ The labwc environment files of XFCE and Budgie are copied by their launch scripts from
 // a system template only if the file does not exist yet. If Rexon created the file from its single
 // block, the template (the keyboard layout) would no longer arrive, so
@@ -1622,9 +1627,26 @@ const X11_ENV_SESSION_BINS: &[&str] = &["cinnamon-session", "mate-session", "xfc
 
 /// Variables from `~/.config/environment.d/rexon-*.conf` (files by name,
 /// inside — in order; a repeated key — the last one wins).
+///
+/// Also read: Rexon's desktop-bound directory
+/// ([`crate::themes::DESKTOP_BOUND_ENV_DIR`]) — variables that must not go
+/// into `environment.d` because it would carry them into Plasma too. Its files
+/// come FIRST, so a value in `environment.d` (the newer, shared choice) wins.
 pub fn rexon_environment_vars(config_home: &str) -> Vec<(String, String)> {
-    let dir = join(config_home, "environment.d");
-    let mut files: Vec<String> = std::fs::read_dir(&dir)
+    let mut out: Vec<(String, String)> = Vec::new();
+    for rel in [crate::themes::DESKTOP_BOUND_ENV_DIR, "environment.d"] {
+        for (k, v) in rexon_env_dir_vars(&join(config_home, rel)) {
+            out.retain(|(ek, _)| *ek != k);
+            out.push((k, v));
+        }
+    }
+    out
+}
+
+/// The variables of the `rexon-*.conf` files of one directory (files by name,
+/// a repeated key — the last one wins).
+fn rexon_env_dir_vars(dir: &str) -> Vec<(String, String)> {
+    let mut files: Vec<String> = std::fs::read_dir(dir)
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -1635,13 +1657,102 @@ pub fn rexon_environment_vars(config_home: &str) -> Vec<(String, String)> {
     files.sort();
     let mut out: Vec<(String, String)> = Vec::new();
     for f in files {
-        let Ok(text) = std::fs::read_to_string(join(&dir, &f)) else { continue };
+        let Ok(text) = std::fs::read_to_string(join(dir, &f)) else { continue };
         for (k, v) in parse_environment_d(&text) {
             out.retain(|(ek, _)| *ek != k);
             out.push((k, v));
         }
     }
     out
+}
+
+/// The variables that live ONLY in Rexon's desktop-bound directory
+/// ([`crate::themes::DESKTOP_BOUND_ENV_DIR`]), not in `environment.d`. A
+/// systemd session does not get these from its manager, so
+/// [`session_unit_targets`] hands them to its shell's unit.
+pub fn desktop_bound_vars(config_home: &str) -> Vec<(String, String)> {
+    let shared = rexon_env_dir_vars(&join(config_home, "environment.d"));
+    rexon_env_dir_vars(&join(config_home, crate::themes::DESKTOP_BOUND_ENV_DIR))
+        .into_iter()
+        .filter(|(k, _)| !shared.iter().any(|(s, _)| s == k))
+        .collect()
+}
+
+// ── systemd sessions: the variable goes to the shell's own unit ─────────────
+//
+// GNOME and niri (through `niri-session`) take their environment from the
+// systemd user manager, which reads `~/.config/environment.d`. A variable kept
+// out of it (because Plasma imports that environment too) must reach them some
+// other way that stays inside their session. Both run their shell or compositor
+// as ONE user unit, and the programs started from its launcher, keybindings
+// and app grid are its children and inherit its environment. So `Environment=`
+// in a drop-in of exactly that unit:
+//   * GNOME: `org.gnome.Shell@wayland.service` / `@x11.service` — a drop-in of the
+//     template (`org.gnome.Shell@.service.d/`) covers both instances;
+//   * niri: `niri.service` (started by `niri-session` with
+//     `systemctl --user --wait start niri.service`).
+// The manager's environment (`systemctl --user show-environment`, which
+// `startplasma` imports) stays untouched, and no other unit sees the variable.
+// Bench of 25.11.2026: an isolated `systemd --user` (bwrap in a delegated
+// scope) with these two drop-ins and a Plasma-like unit — the variable was in
+// the GNOME and niri units and in their children, NOT in the Plasma unit and
+// NOT in `show-environment`.
+// ⚠️ What this does not reach: programs started by D-Bus activation or by the
+// xdg-autostart generator (they are children of the manager) — e.g. a Qt
+// program started from GNOME's terminal, which is D-Bus activated.
+//
+// COSMIC has no such unit: cosmic-session is started by `start-cosmic` from
+// the login screen, and `start-cosmic` sets `QT_QPA_PLATFORMTHEME` itself
+// (`cosmic` with CuteCosmic, otherwise `qt5ct` — a key the qt6ct plugin also
+// answers to), and cosmic-session takes from the manager only what is still
+// unset. So the variable from `environment.d` never won there anyway, and the
+// style chosen in the qt6ct config still applies.
+
+/// Units whose drop-in carries the desktop-bound variables, and the program
+/// that says the desktop is installed.
+pub const SESSION_UNITS: &[(&str, &str)] = &[("org.gnome.Shell@.service", "gnome-shell"), ("niri.service", "niri")];
+
+/// Name of Rexon's drop-in file in `<unit>.d/`.
+pub const SESSION_UNIT_DROPIN: &str = "rexon-session-env.conf";
+
+/// Where Rexon's drop-in for `unit` lies.
+pub fn session_unit_dropin_path(config_home: &str, unit: &str) -> String {
+    join(config_home, &format!("systemd/user/{unit}.d/{SESSION_UNIT_DROPIN}"))
+}
+
+/// `Environment="K=V"` with systemd's quoting: `\` and `"` escaped, `%` doubled
+/// (it starts a specifier otherwise).
+fn systemd_environment_line(k: &str, v: &str) -> String {
+    let v = v.replace('\\', "\\\\").replace('"', "\\\"").replace('%', "%%");
+    format!("Environment=\"{k}={v}\"")
+}
+
+/// The drop-ins this machine needs: one per installed desktop of
+/// [`SESSION_UNITS`], with the [`desktop_bound_vars`]. No such variables —
+/// none (existing ones are then removed by [`sync_session_env`]).
+pub fn session_unit_targets(env: &SessionEnv, bound: &[(String, String)], has_bin: &dyn Fn(&str) -> bool) -> Vec<EnvTarget> {
+    if bound.is_empty() {
+        return Vec::new();
+    }
+    let mut body = vec!["[Service]".to_string()];
+    body.extend(bound.iter().map(|(k, v)| systemd_environment_line(k, v)));
+    SESSION_UNITS
+        .iter()
+        .filter(|(_, bin)| has_bin(bin))
+        .map(|(unit, _)| EnvTarget {
+            path: session_unit_dropin_path(&env.config_home, unit),
+            syntax: Syntax::Shell,
+            body: body.clone(),
+            seed: None,
+            create: true,
+        })
+        .collect()
+}
+
+/// Whether `path` is one of Rexon's unit drop-ins: a change there takes effect
+/// only after `systemctl --user daemon-reload`.
+pub fn is_session_unit_dropin(path: &str) -> bool {
+    path.contains("/systemd/user/") && path.ends_with(&format!(".d/{SESSION_UNIT_DROPIN}"))
 }
 
 /// Parsing an `environment.d` file: `KEY=value` lines, `#` comments.
@@ -1765,7 +1876,17 @@ fn session_env_candidates(env: &SessionEnv) -> Vec<(String, Syntax)> {
         (join(&env.config_home, "labwc/environment"), Syntax::Shell),
     ];
     out.extend(all_candidates(Compositor::Hyprland, env));
+    out.extend(SESSION_UNITS.iter().map(|(unit, _)| (session_unit_dropin_path(&env.config_home, unit), Syntax::Shell)));
     out
+}
+
+/// Every target: the desktop-bound places of [`session_env_targets`] plus the
+/// unit drop-ins of [`session_unit_targets`].
+fn all_session_env_targets(env: &SessionEnv, has_bin: &dyn Fn(&str) -> bool) -> Vec<EnvTarget> {
+    let vars = rexon_environment_vars(&env.config_home);
+    let mut targets = session_env_targets(env, &vars, has_bin, &|p| is_file(p));
+    targets.extend(session_unit_targets(env, &desktop_bound_vars(&env.config_home), has_bin));
+    targets
 }
 
 /// Install the block `id` with the body `body`, replacing the previous one ENTIRELY (a regular
@@ -1801,8 +1922,7 @@ fn replace_block(path: &str, syntax: Syntax, id: &str, body: &[String], create: 
 /// without systemd read them (see the table above). No variables — the blocks are removed.
 /// The result for each file where something was done.
 pub fn sync_session_env(env: &SessionEnv, has_bin: &dyn Fn(&str) -> bool) -> Vec<(String, Result<Change, Refusal>)> {
-    let vars = rexon_environment_vars(&env.config_home);
-    let targets = session_env_targets(env, &vars, has_bin, &|p| is_file(p));
+    let targets = all_session_env_targets(env, has_bin);
     let mut out = Vec::new();
     for t in &targets {
         if !is_file(&t.path) {
@@ -1832,7 +1952,25 @@ pub fn sync_session_env(env: &SessionEnv, has_bin: &dyn Fn(&str) -> bool) -> Vec
 /// [`sync_session_env`] on the live machine.
 pub fn sync_session_env_live() -> Vec<(String, Result<Change, Refusal>)> {
     let path = std::env::var("PATH").ok();
-    sync_session_env(&SessionEnv::live(), &|b| crate::utils::which(b, path.as_deref()).is_some())
+    let out = sync_session_env(&SessionEnv::live(), &|b| crate::utils::which(b, path.as_deref()).is_some());
+    if needs_daemon_reload(&out) {
+        // A running user manager keeps the unit files it has loaded: without the
+        // reload a drop-in written now would be missed if this manager outlives
+        // the session (lingering) and starts the desktop's unit again.
+        let spec = crate::utils::RunSpec {
+            argv: vec!["systemctl".into(), "--user".into(), "daemon-reload".into()],
+            output: crate::utils::RunOutput::Capture,
+            timeout_secs: Some(30),
+            ..crate::utils::RunSpec::default()
+        };
+        let _ = crate::utils::run(&spec, path.as_deref());
+    }
+    out
+}
+
+/// Whether [`sync_session_env`] changed one of the unit drop-ins.
+pub fn needs_daemon_reload(results: &[(String, Result<Change, Refusal>)]) -> bool {
+    results.iter().any(|(p, r)| is_session_unit_dropin(p) && matches!(r, Ok(c) if *c != Change::Unchanged))
 }
 
 /// Paths [`sync_session_env_live`] may touch (captured before
@@ -1841,9 +1979,8 @@ pub fn sync_session_env_live() -> Vec<(String, Result<Change, Refusal>)> {
 pub fn session_env_paths_live() -> Vec<String> {
     let env = SessionEnv::live();
     let path = std::env::var("PATH").ok();
-    let vars = rexon_environment_vars(&env.config_home);
     let has = |b: &str| crate::utils::which(b, path.as_deref()).is_some();
-    let mut out: Vec<String> = session_env_targets(&env, &vars, &has, &|p| is_file(p)).into_iter().map(|t| t.path).collect();
+    let mut out: Vec<String> = all_session_env_targets(&env, &has).into_iter().map(|t| t.path).collect();
     for (p, _) in session_env_candidates(&env) {
         if !out.contains(&p) {
             out.push(p);
@@ -1852,9 +1989,10 @@ pub fn session_env_paths_live() -> Vec<String> {
     out
 }
 
-/// Whether writing at this path concerns session variables (`environment.d`).
+/// Whether writing at this path concerns session variables (`environment.d`
+/// or Rexon's desktop-bound directory — both are mirrored).
 pub fn is_environment_d_path(path: &str) -> bool {
-    path.contains("/environment.d/")
+    path.contains("/environment.d/") || path.contains(&format!("/{}/", crate::themes::DESKTOP_BOUND_ENV_DIR))
 }
 
 #[cfg(test)]
@@ -2001,6 +2139,84 @@ mod tests {
         sync_session_env(&env, &|b| b == "mate-session");
         assert!(!std::path::Path::new(&format!("{home}/.xprofile")).exists());
         assert_eq!(std::fs::read_to_string(format!("{cfg}/hypr/hyprland.conf")).unwrap(), "monitor=,preferred,auto,1\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Variables kept out of `environment.d` (Rexon's desktop-bound directory)
+    /// still reach the desktop-bound places; a shared value wins over a stale one.
+    #[test]
+    fn desktop_bound_variables_are_mirrored() {
+        let dir = std::env::temp_dir().join(format!("rexon-senv-bound-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cfg = dir.to_string_lossy().into_owned();
+        std::fs::create_dir_all(format!("{cfg}/rexon/session-env")).unwrap();
+        std::fs::create_dir_all(format!("{cfg}/environment.d")).unwrap();
+        std::fs::write(format!("{cfg}/rexon/session-env/rexon-qt-style.conf"), "QT_QPA_PLATFORMTHEME=qt6ct\nA=old\n").unwrap();
+        std::fs::write(format!("{cfg}/environment.d/rexon-x.conf"), "A=new\n").unwrap();
+        assert_eq!(
+            rexon_environment_vars(&cfg),
+            [("QT_QPA_PLATFORMTHEME".to_string(), "qt6ct".to_string()), ("A".to_string(), "new".to_string())]
+        );
+        assert!(is_environment_d_path(&format!("{cfg}/rexon/session-env/rexon-qt-style.conf")));
+        assert!(!is_environment_d_path(&format!("{cfg}/rexon/other.json")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GNOME and niri read only the systemd environment: a variable kept out of
+    /// `environment.d` reaches them through a drop-in of their shell's unit —
+    /// only while it is desktop-bound, only for an installed desktop, and the
+    /// drop-in goes away with the variable.
+    #[test]
+    fn desktop_bound_variables_reach_gnome_and_niri_units() {
+        let dir = std::env::temp_dir().join(format!("rexon-senv-unit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let home = dir.to_string_lossy().into_owned();
+        let cfg = format!("{home}/.config");
+        std::fs::create_dir_all(format!("{cfg}/rexon/session-env")).unwrap();
+        std::fs::create_dir_all(format!("{cfg}/environment.d")).unwrap();
+        std::fs::write(format!("{cfg}/rexon/session-env/rexon-qt-style.conf"), "QT_QPA_PLATFORMTHEME=qt6ct\nX=a%b\\c \"q\" d\n").unwrap();
+        // A shared variable is already in the manager's environment — not repeated.
+        std::fs::write(format!("{cfg}/environment.d/rexon-cursor.conf"), "XCURSOR_THEME=Bibata\n").unwrap();
+        let env = SessionEnv { home: home.clone(), config_home: cfg.clone(), sysconf: "/nonexistent".into(), ..Default::default() };
+        let gnome = session_unit_dropin_path(&cfg, "org.gnome.Shell@.service");
+        let niri = session_unit_dropin_path(&cfg, "niri.service");
+        assert_eq!(gnome, format!("{cfg}/systemd/user/org.gnome.Shell@.service.d/rexon-session-env.conf"));
+        assert!(is_session_unit_dropin(&gnome) && is_session_unit_dropin(&niri));
+        assert!(!is_session_unit_dropin(&format!("{home}/.xprofile")));
+
+        let bound = desktop_bound_vars(&cfg);
+        assert_eq!(
+            bound,
+            [("QT_QPA_PLATFORMTHEME".to_string(), "qt6ct".to_string()), ("X".to_string(), "a%b\\c \"q\" d".to_string())]
+        );
+        let targets = session_unit_targets(&env, &bound, &|b| b == "gnome-shell");
+        assert_eq!(targets.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(), [gnome.as_str()], "niri is not installed");
+        assert_eq!(
+            targets[0].body,
+            s(&["[Service]", "Environment=\"QT_QPA_PLATFORMTHEME=qt6ct\"", "Environment=\"X=a%%b\\\\c \\\"q\\\" d\""])
+        );
+        assert!(session_unit_targets(&env, &[], &|_| true).is_empty());
+
+        // On disk: both drop-ins, a valid unit fragment; a repeat changes nothing.
+        let both = |b: &str| b == "gnome-shell" || b == "niri";
+        let r = sync_session_env(&env, &both);
+        assert!(needs_daemon_reload(&r), "{r:?}");
+        for p in [&gnome, &niri] {
+            let text = std::fs::read_to_string(p).unwrap();
+            assert!(text.contains("\n[Service]\nEnvironment=\"QT_QPA_PLATFORMTHEME=qt6ct\"\n"), "{text}");
+            assert!(text.lines().all(|l| l.is_empty() || l.starts_with('#') || l.starts_with('[') || l.starts_with("Environment=")), "{text}");
+        }
+        let again = sync_session_env(&env, &both);
+        assert!(!needs_daemon_reload(&again), "{again:?}");
+
+        // The variable moved to the shared file (no own-Qt desktop any more) —
+        // the manager carries it, the drop-ins are deleted.
+        std::fs::remove_file(format!("{cfg}/rexon/session-env/rexon-qt-style.conf")).unwrap();
+        std::fs::write(format!("{cfg}/environment.d/rexon-qt-style.conf"), "QT_QPA_PLATFORMTHEME=qt6ct\n").unwrap();
+        assert!(desktop_bound_vars(&cfg).is_empty());
+        let r = sync_session_env(&env, &both);
+        assert!(needs_daemon_reload(&r), "{r:?}");
+        assert!(!std::path::Path::new(&gnome).exists() && !std::path::Path::new(&niri).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

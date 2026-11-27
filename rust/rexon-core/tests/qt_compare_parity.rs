@@ -843,7 +843,7 @@ fn install_and_switch_texts_are_intact() {
 /// are compared with the former literals word for word (taken from HEAD on 28.09);
 /// the rest is guarded by the golden checks above, which run on `po/ru.po`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_catalog_keeps_old_texts() {
     let _lang = i18n_pin::ru();
     assert_eq!(qc::window_title(), "Rexon — Сравнение рабочих столов");
@@ -959,7 +959,7 @@ fn english_phrases_read_naturally() {
 
 /// The load colour is the same in any language: the feature decides, not the label.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn cpu_color_does_not_depend_on_language() {
     let colors = |_: ()| -> Vec<&'static str> {
         DE_META.iter().map(|m| qc::specs(m.id).last().unwrap().color).collect()

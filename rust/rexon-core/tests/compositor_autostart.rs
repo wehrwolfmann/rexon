@@ -407,7 +407,7 @@ fn foreign_block_helper_roundtrip() {
 /// The refusal strings are in the catalog and translated into Russian and German
 /// (Russian is the source of meaning). The catalog is built by a real `msgfmt`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po with the real msgfmt")]
 fn refusal_texts_are_translated() {
     use rexon_core::i18n;
     let msgids = [

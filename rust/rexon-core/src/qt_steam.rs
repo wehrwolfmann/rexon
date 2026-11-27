@@ -197,17 +197,48 @@ pub fn sv_search_placeholder() -> String {
     tr("🔍 Search by title, game or event…")
 }
 pub fn sv_pick_text() -> String {
-    tr("📁 Choose File…")
+    // TRANSLATORS: button: add the user's own video as a startup movie.
+    tr("➕ Add Your Own Movie…")
 }
 pub fn sv_pick_tooltip() -> String {
-    tr("Choose your own video (webm/mp4) from disk")
+    tr("Choose a video on disk. Rexon keeps a copy of it in Steam's folder for your own startup movies \
+        (converting it if Steam can't play it), so it shows up in Steam too. The original stays as it is.")
 }
 pub fn sv_pick_dialog_title() -> String {
     tr("Choose a Startup Movie")
 }
 pub fn sv_pick_filter() -> String {
     // TRANSLATORS: file dialog filter: translate only the group names ("Video", "All files"); keep the patterns in parentheses and the ";;" separator as they are.
-    tr("Video (*.webm *.mp4 *.mkv);;All files (*)")
+    tr("Video (*.webm *.mp4 *.mkv *.mov *.avi *.m4v);;All files (*)")
+}
+/// The cancel button of a running conversion.
+pub fn sv_import_cancel_text() -> String {
+    // TRANSLATORS: button: stop converting a startup movie that is being added.
+    tr("✖ Cancel")
+}
+/// The delete mark on the card of the person's own clip.
+pub const SV_DELETE_GLYPH: &str = "🗑";
+pub fn sv_delete_tooltip() -> String {
+    // TRANSLATORS: tooltip of the delete mark on the user's own startup movie card.
+    tr("Delete this movie of yours")
+}
+pub fn sv_delete_title() -> String {
+    // TRANSLATORS: title of the confirmation window before deleting the user's own startup movie.
+    tr("Delete the startup movie?")
+}
+pub fn sv_delete_confirm_text() -> String {
+    // TRANSLATORS: button in the confirmation window: delete the startup movie.
+    tr("🗑 Delete")
+}
+pub fn sv_delete_keep_text() -> String {
+    // TRANSLATORS: button in the confirmation window: keep the startup movie (do not delete).
+    tr("Keep")
+}
+/// The mark on the card of the clip Steam itself plays.
+pub const SV_STEAM_CHOICE_GLYPH: &str = "🎮";
+pub fn sv_steam_choice_tooltip() -> String {
+    // TRANSLATORS: tooltip of the mark on the startup movie card that Steam itself currently plays at startup.
+    tr("Steam plays this movie at startup (the Customization section)")
 }
 
 pub fn sv_autostart_text() -> String {
@@ -377,7 +408,7 @@ pub fn sv_fav_chip() -> String {
 }
 pub fn sv_empty_text() -> String {
     tr("No startup movies found. Steam isn't installed or the movies haven't been downloaded yet — \
-        you can pick your own video with the “Choose File…” button.")
+        you can add your own video with the “Add Your Own Movie…” button.")
 }
 pub fn sv_hero_empty_title() -> String {
     tr("No startup movie selected")

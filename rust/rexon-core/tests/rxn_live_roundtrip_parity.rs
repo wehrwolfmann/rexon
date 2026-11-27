@@ -239,7 +239,7 @@ fn theme_files(theme: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-#[ignore = "запускается дочерним процессом live_install_roundtrip_on_temp_profile"]
+#[ignore = "run as a child process by live_install_roundtrip_on_temp_profile"]
 fn live_roundtrip_child() {
     if std::env::var_os(CHILD_ENV).is_none() {
         // Not a child run — a live profile. Do nothing.
@@ -817,7 +817,7 @@ fn link_theme_files(prefix: &str) -> (Vec<(String, String)>, Vec<(String, String
 }
 
 #[test]
-#[ignore = "запускается дочерним процессом live_appearance_roundtrip_on_temp_profile"]
+#[ignore = "run as a child process by live_appearance_roundtrip_on_temp_profile"]
 fn live_appearance_child() {
     if std::env::var_os(CHILD_ENV).is_none() {
         eprintln!("live_appearance_child: только из live_appearance_roundtrip_on_temp_profile");

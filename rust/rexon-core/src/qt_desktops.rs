@@ -215,18 +215,16 @@ pub struct ToolButton {
     pub tooltip: String,
 }
 
-/// Whether Rexon can take a copy of the panel of the CURRENT desktop: KDE with
-/// its own snapshot of Plasma configs; MATE with `dconf dump /org/mate/panel/`
-/// (the same file as «Restore previous panel» in «Panel Layout», `mate_panel`);
-/// XFCE with `xfce4-panel-profiles save/load` (package in Arch extra, Debian,
-/// Fedora, openSUSE). `have(program)` is whether it is in the system.
+/// Whether Rexon can take a copy of the panel of the CURRENT desktop: the
+/// common copy spec of every desktop (`backup::panel_copy_spec`) decides, by
+/// the programs alone (`have(program)` is whether it is in the system).
 pub fn panel_backup_supported(current_de: &str, have: &dyn Fn(&str) -> bool) -> bool {
-    match current_de {
-        "kde" => true,
-        "mate" => have("mate-panel") && have("dconf"),
-        "xfce" => have("xfce4-panel-profiles"),
-        _ => false,
-    }
+    let none = |_: &str| false;
+    crate::backup::panel_copy_spec(
+        current_de,
+        &crate::backup::PanelProbe { have, home_exists: &none, gnome_extensions: &[], system_exists: &none },
+    )
+    .is_some()
 }
 
 /// Panel buttons for the CURRENT desktop. `panel_backup` is
@@ -2368,27 +2366,8 @@ pub struct PanelTexts {
     pub text: String,
 }
 
-/// The question before «Save Panel» when this desktop has a single copy and
-/// it already exists (MATE, XFCE): the new one will replace it. (heading, text)
-///
-/// `mate`: for MATE this is also the «Restore previous panel» copy of the
-/// «Panel Layout» section: say so.
-pub fn panel_backup_replace_confirm(mate: bool) -> (String, String) {
-    let text = if mate {
-        tr("A saved copy of the panel already exists — the same one “Restore previous panel” \
-            brings back. The new copy will replace it.")
-    } else {
-        tr("A saved copy of the panel already exists — the new copy will replace it.")
-    };
-    (tr("Replace the saved panel copy?"), text)
-}
-
 pub fn panel_restore_confirm_title() -> String {
     tr("Restore Panel?")
-}
-pub fn panel_restore_confirm_text() -> String {
-    tr("Restore the panel from the last saved copy?\n\n\
-        Your current panel settings will be replaced with the saved ones.")
 }
 
 /// Result of taking a panel copy.

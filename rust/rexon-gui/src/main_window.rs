@@ -352,8 +352,8 @@ fn journal_of(cfg: &tour::TourConfig) -> String {
 fn write_report(cfg: &tour::TourConfig, text: &str) {
     let path = cfg.out_dir.join(tour::REPORT_FILE);
     match std::fs::write(&path, text) {
-        Ok(()) => println!("обход: отчёт {}", path.display()),
-        Err(e) => println!("обход: отчёт {} не записан: {e}", path.display()),
+        Ok(()) => println!("tour: report {}", path.display()),
+        Err(e) => println!("tour: report {} not written: {e}", path.display()),
     }
 }
 
@@ -376,9 +376,9 @@ fn tour_step(report: &str) -> String {
     match &cmd {
         tour::Command::Finish { exit_code, report } => {
             write_report(&t.cfg, report);
-            println!("обход окончен: снимков {}, код {exit_code}", t.screens().len());
+            println!("tour finished: {} screenshots, code {exit_code}", t.screens().len());
         }
-        other => println!("обход: {}", other.to_json()),
+        other => println!("tour: {}", other.to_json()),
     }
     cmd.to_json()
 }
@@ -420,7 +420,7 @@ mod tests {
         let here: Vec<&str> = SECTION_PAGES.iter().map(|(id, _)| *id).collect();
         assert_eq!(
             core, here,
-            "таблица готовности разделов разъехалась с ядром \
+            "the section readiness table diverged from the core \
              (rexon_core::qt_main::SECTIONS)"
         );
     }
@@ -437,20 +437,20 @@ mod tests {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("qml/MainWindow.qml");
         let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("не читается {}: {e}", path.display()));
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
         let map = src
             .split_once("readonly property var pageComponents: ({")
             .and_then(|(_, rest)| rest.split_once("})"))
             .map(|(body, _)| body)
-            .expect("в qml/MainWindow.qml не найдена карта pageComponents");
+            .expect("the pageComponents map was not found in qml/MainWindow.qml");
         for (id, page) in SECTION_PAGES {
             if page.is_empty() {
                 continue;
             }
             assert!(
                 map.contains(&format!("\"{page}\":")),
-                "страница «{page}» раздела «{id}» не значится в карте \
-                 pageComponents окна (qml/MainWindow.qml)"
+                "page \"{page}\" of section \"{id}\" is missing from the window's \
+                 pageComponents map (qml/MainWindow.qml)"
             );
         }
     }
@@ -467,8 +467,8 @@ mod tests {
             assert_ne!(
                 qt_main::subsection_label(page),
                 *page,
-                "у подраздела «{page}» (раздел «{id}») нет человеческой \
-                 подписи в rexon_core::qt_main::subsection_label"
+                "subsection \"{page}\" (section \"{id}\") has no human \
+                 label in rexon_core::qt_main::subsection_label"
             );
         }
     }

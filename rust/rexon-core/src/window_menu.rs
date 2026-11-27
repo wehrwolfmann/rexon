@@ -316,7 +316,7 @@ pub const THIRD_PARTY: &[ThirdPartyComponent] = &[
         purpose: n_("The language model that translates descriptions — the same kind Firefox uses."),
         license: "MPL-2.0",
         url: "https://github.com/mozilla/translations",
-        notice_heading: "Модель перевода Firefox ",
+        notice_heading: "Firefox en→ru translation model ",
     },
     ThirdPartyComponent {
         name: "fxtranslate",
@@ -854,6 +854,18 @@ pub fn uninstall_keep_hint() -> String {
     )
 }
 
+/// What stays with EITHER choice: Rexon's protective files
+/// ([`crate::appdefaults::protective_files`]). Without this line a person who
+/// wants Rexon gone "completely" would find its files left behind and could
+/// delete them — and get back the problems they prevent.
+pub fn uninstall_kept_fixes_line() -> String {
+    tr("Whichever you choose, a few small Rexon fixes stay in place, because they \
+        keep your desktops from getting in each other's way: for example, they stop \
+        one desktop's programs (such as the fcitx5 keyboard helper) from starting in \
+        all the others, and they make labwc use its own file chooser. They don't need \
+        Rexon to work. If you delete them, those problems come back:")
+}
+
 /// Title of the details: where the person's data lies.
 pub fn uninstall_data_paths_title() -> String {
     tr("Where it is stored:")
@@ -890,7 +902,7 @@ pub fn uninstall_data_paths_text(data: &[(UserDataKind, String)]) -> String {
 
 /// The explanation under the first line: the program's list, what each
 /// choice removes in words for a human, and the data paths — as details at the end.
-pub fn uninstall_informative(files: &[String], data: &[(UserDataKind, String)]) -> String {
+pub fn uninstall_informative(files: &[String], data: &[(UserDataKind, String)], kept_fixes: &[String]) -> String {
     // Inside <pre> a line break stays a line break: the shared
     // escaper turns it into <br>, and a literal «<br>» from a path it has
     // already turned into &lt;br&gt;, so the reverse replacement touches only ours.
@@ -906,6 +918,10 @@ pub fn uninstall_informative(files: &[String], data: &[(UserDataKind, String)]) 
         uninstall_delete_all_active_line(),
         uninstall_keep_hint(),
     );
+    if !kept_fixes.is_empty() {
+        let list = kept_fixes.iter().map(|f| format!("  • {f}")).collect::<Vec<_>>().join("\n");
+        out.push_str(&format!("<p>{}</p>{}", uninstall_kept_fixes_line(), pre(&list)));
+    }
     if !data.is_empty() {
         out.push_str(&format!(
             "<p>{}</p>{}",
@@ -1153,7 +1169,7 @@ mod tests {
             (Content, "/h/.local/share/rexon/wallpapers".into()),
             (Content, "/h/.local/share/rexon/a&b".into()),
         ];
-        let text = uninstall_informative(&["/h/.local/lib/rexon".to_string()], &data);
+        let text = uninstall_informative(&["/h/.local/lib/rexon".to_string()], &data, &[]);
         for must in [
             uninstall_always_line(),
             uninstall_delete_all_line(),
@@ -1192,7 +1208,29 @@ mod tests {
         );
         assert!(text.contains("a&amp;b") && !text.contains("a&b"), "пути экранированы: {text}");
         // No data — no details.
-        assert!(!uninstall_informative(&[], &[]).contains(&uninstall_data_paths_title()));
+        assert!(!uninstall_informative(&[], &[], &[]).contains(&uninstall_data_paths_title()));
+        assert!(!text.contains(&uninstall_kept_fixes_line()), "no protective files — no line");
+    }
+
+    /// Rexon's protective files stay with either choice: the window says so in
+    /// plain words and names them, so they are not mistaken for leftovers.
+    #[test]
+    fn uninstall_prompt_names_the_fixes_that_stay() {
+        english();
+        let kept = vec![
+            "/h/.config/autostart/org.fcitx.Fcitx5.desktop".to_string(),
+            "/h/.config/xdg-desktop-portal/labwc-portals.conf".to_string(),
+        ];
+        let text = uninstall_informative(&["/h/.local/lib/rexon".to_string()], &[], &kept);
+        let line = uninstall_kept_fixes_line();
+        assert!(text.contains(&line), "{text}");
+        for p in &kept {
+            assert!(text.contains(p.as_str()), "{p} is not named: {text}");
+        }
+        assert!(text.find(&line) > text.find(&uninstall_keep_hint()), "after the choice lines: {text}");
+        let lower = line.to_lowercase();
+        assert!(lower.contains("whichever you choose") && lower.contains("come back"), "{line}");
+        assert!(!line.contains('/') && !lower.contains("autostart") && !lower.contains("portal"), "no jargon: {line}");
     }
 
     #[test]

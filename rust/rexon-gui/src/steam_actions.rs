@@ -9,6 +9,11 @@
 // the showcase was empty, the buttons pressed and did nothing. Here the
 // object appears, and the section starts working.
 //
+// Since 24.11.2026 two more: the deletion question and the deletion of the
+// person's own clip (`deleteQuestion`, `deleteMovie`). Adding a clip is NOT
+// here: copying and converting take seconds to minutes, so the page model
+// runs it as a background task (`SteamModel::importMovie`).
+//
 // Warning: the ninth method, `webapiToken()`, has not existed since
 // 13.10.2026. It went to the network from the interface thread, and since
 // 08.09.2026 it was moreover not visible from QML (`#[qinvokable]` was
@@ -120,6 +125,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setSound"]
         fn set_sound(self: &SteamActions, on: bool) -> bool;
+
+        /// The confirmation text before deleting the person's own clip (with a
+        /// warning if Steam itself plays it).
+        #[qinvokable]
+        #[cxx_name = "deleteQuestion"]
+        fn delete_question(self: &SteamActions, path: &QString) -> QString;
+
+        /// Delete the person's own clip (only from our folders — the core
+        /// refuses the others). The answer is `{ok, message}`.
+        #[qinvokable]
+        #[cxx_name = "deleteMovie"]
+        fn delete_movie(self: &SteamActions, path: &QString) -> QVariant;
     }
 }
 
@@ -183,9 +200,12 @@ impl qobject::SteamActions {
             .get("sound")
             .map(|v| v.as_bool().unwrap_or(true))
             .unwrap_or(true);
+        // An old selection is a path to someone else's file: the page asks the
+        // model to keep a copy of it (in the background).
+        let migrate = splash.migration_candidate().unwrap_or_default();
 
         crate::qvalue::json_to_variant(&snapshot(
-            movies, &current, &favorites, enabled, rotate, sound,
+            movies, &current, &favorites, enabled, rotate, sound, &migrate,
         ))
     }
 
@@ -300,6 +320,23 @@ impl qobject::SteamActions {
         }
         splash.save_config(&path, on).is_none()
     }
+
+    fn delete_question(&self, path: &QString) -> QString {
+        let mut io = live_io();
+        QString::from(&Splash::new(&mut io, &home()).delete_question(&path.to_string()))
+    }
+
+    fn delete_movie(&self, path: &QString) -> QVariant {
+        let mut io = live_io();
+        let (ok, message) = match Splash::new(&mut io, &home()).delete_own_movie(&path.to_string()) {
+            Ok(m) => (true, m),
+            Err(m) => (false, m),
+        };
+        let mut out = Map::new();
+        out.insert("ok".into(), Value::from(ok));
+        out.insert("message".into(), Value::from(message));
+        crate::qvalue::json_to_variant(&Value::Object(out))
+    }
 }
 
 // ============================================================================
@@ -381,7 +418,8 @@ fn strings_to_json(items: &[String]) -> Value {
 /// forgotten key arrives in QML as `undefined`, and `undefined` in a toggle
 /// is a silent "off". Such a divergence is visible neither at build time
 /// nor to the eye.
-const SNAPSHOT_KEYS: [&str; 6] = ["movies", "current", "favorites", "enabled", "rotate", "sound"];
+const SNAPSHOT_KEYS: [&str; 7] =
+    ["movies", "current", "favorites", "enabled", "rotate", "sound", "migrate"];
 
 /// Build the snapshot of the showcase and the toggles — the only place where
 /// the composition of the `scan()` answer is written down.
@@ -392,6 +430,7 @@ fn snapshot(
     enabled: bool,
     rotate: bool,
     sound: bool,
+    migrate: &str,
 ) -> Value {
     // The map is built FROM THE LIST of keys, not with scattered inserts: that
     // way the composition of the answer is written exactly once, and the guard
@@ -403,6 +442,7 @@ fn snapshot(
         Value::from(enabled),
         Value::from(rotate),
         Value::from(sound),
+        Value::from(migrate),
     ];
     let mut out = Map::new();
     for (key, value) in SNAPSHOT_KEYS.into_iter().zip(values) {
@@ -439,20 +479,20 @@ mod tests {
         assert_eq!(stem, "");
     }
 
-    /// The snapshot must name ALL six keys — on an empty machine too. The page
+    /// The snapshot must name ALL seven keys — on an empty machine too. The page
     /// reads them with a dot, and a forgotten key would arrive in it as
     /// `undefined`, that is, the toggle would silently go to "off".
     ///
     /// Warning: the names here are written out ANEW, not taken from
     /// `SNAPSHOT_KEYS`. Comparing with the list that is itself being checked
     /// would go green on any renaming of it — that is, it would check nothing.
-    /// The real source of these six words is `qml/SteamPage.qml`
+    /// The real source of these seven words is `qml/SteamPage.qml`
     /// (`snapshot.movies`, `snapshot.rotate`…), and they can only be rewritten
     /// together with it.
     #[test]
     fn snapshot_names_every_key_the_page_reads() {
-        let wanted = ["movies", "current", "favorites", "enabled", "rotate", "sound"];
-        let empty = snapshot(Vec::new(), "", &[], false, false, true);
+        let wanted = ["movies", "current", "favorites", "enabled", "rotate", "sound", "migrate"];
+        let empty = snapshot(Vec::new(), "", &[], false, false, true, "");
         let map = empty.as_object().expect("снимок обязан быть объектом");
         for key in wanted {
             assert!(map.contains_key(key), "в снимке нет ключа «{key}»");
@@ -473,7 +513,9 @@ mod tests {
             true,
             false,
             true,
+            "/дом/старый.mp4", // i18n-exempt: a Cyrillic path the migration must carry over
         );
+        assert!(full["migrate"].is_string());
         assert!(full["movies"].is_array());
         assert!(full["favorites"].is_array());
         assert_eq!(full["current"], Value::from("/дом/ролик.webm"));

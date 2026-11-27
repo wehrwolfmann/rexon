@@ -1,0 +1,194 @@
+{
+  "confirm": {
+    "Ask": {
+      "title": "Apply “Windows 7 style”?",
+      "text": "The look <b>Windows 7 style</b> will be applied to your desktop.<br><br>What will change: GTK theme, window frames, icons, panel layout, desktop behaviour.<br><br>Rexon builds these parts itself from what your desktop has, close to the original: panel layout, desktop behaviour.<br><br>Rexon will install the programs it needs: mate-menu. Your system will ask for your password.<br><br>You can put everything back at any time with the “Put Back as It Was” button.",
+      "yes_text": "Apply",
+      "no_text": "Cancel",
+      "choices": [],
+      "option": null
+    }
+  },
+  "plan": {
+    "id": "windows-7",
+    "name": "Windows 7 style",
+    "items": [
+      {
+        "index": 0,
+        "kind": "gtk-theme",
+        "consumer": "gtk",
+        "path": "sources/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "gtk",
+          "path": "sources/Windows-7"
+        }
+      },
+      {
+        "index": 1,
+        "kind": "window-decoration",
+        "consumer": "metacity-1",
+        "path": "sources/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "metacity-1",
+          "path": "sources/Windows-7"
+        }
+      },
+      {
+        "index": 2,
+        "kind": "icons",
+        "consumer": "freedesktop",
+        "path": "sources/w7-icons/Windows-7",
+        "choice": {
+          "choice": "native",
+          "consumer": "freedesktop",
+          "path": "sources/w7-icons/Windows-7"
+        }
+      },
+      {
+        "index": 3,
+        "kind": "panel-layout",
+        "consumer": "mate-panel",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "mate-panel",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      },
+      {
+        "index": 4,
+        "kind": "behaviour",
+        "consumer": "marco",
+        "path": "native/desktop-model.json",
+        "choice": {
+          "choice": "generate",
+          "consumer": "marco",
+          "model": "native/desktop-model.json",
+          "accuracy": "approximate"
+        }
+      }
+    ],
+    "skipped": [],
+    "install": [
+      {
+        "role": "mate-menu",
+        "resolved": {
+          "source": "repo",
+          "names": [
+            "mate-menu"
+          ]
+        }
+      }
+    ],
+    "aur": [],
+    "roles": [
+      "mate-menu"
+    ],
+    "fetch": [
+      {
+        "id": "Windows-7",
+        "url": "https://github.com/B00merang-Project/Windows-7.git",
+        "pin": {
+          "pin": "git",
+          "value": "943b5307b349d3526068be0fa32f7549ee37ab45"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/Windows-7-943b5307b349"
+      },
+      {
+        "id": "w7-icons",
+        "url": "https://www.pling.com/p/2370808/#Windows-7-v1.1.1.tar.xz",
+        "pin": {
+          "pin": "sha256",
+          "value": "b825c52df773e286954ec66bca15d2ca65192792c5bc27ac2dad39c217c7a647"
+        },
+        "dir": "$HOME/.cache/rexon/distro-looks/sources/w7-icons-b825c52df773"
+      }
+    ],
+    "uses_settings": false,
+    "values": {}
+  },
+  "calls": [
+    "gsettings get org.mate.interface gtk-theme",
+    "gsettings get org.mate.Marco.general theme",
+    "gsettings get org.mate.interface icon-theme",
+    "gsettings get org.mate.interface gtk-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.interface gtk-theme",
+    "gsettings get org.mate.interface gtk-theme",
+    "gsettings set org.mate.interface gtk-theme Windows-7",
+    "gsettings get org.mate.Marco.general theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.Marco.general theme",
+    "gsettings get org.mate.Marco.general theme",
+    "gsettings set org.mate.Marco.general theme Windows-7",
+    "gsettings get org.mate.interface icon-theme",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.interface icon-theme",
+    "gsettings get org.mate.interface icon-theme",
+    "gsettings set org.mate.interface icon-theme Windows-7",
+    "sh -c mkdir -p \"$(dirname \"$2\")\" && dconf dump /org/mate/panel/ > \"$2\" && mate-panel --layout \"$1\" --reset sh $HOME/.local/share/mate-panel/layouts/rexon-windows-7.layout $HOME/.config/rexon/looks/windows-7/mate-panel.dconf",
+    "dconf dump /org/mate/panel/",
+    "mate-panel --layout $HOME/.local/share/mate-panel/layouts/rexon-windows-7.layout --reset",
+    "gsettings get org.mate.mate-menu applet-text",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.mate-menu applet-text",
+    "gsettings get org.mate.mate-menu applet-text",
+    "gsettings set org.mate.mate-menu applet-text Start",
+    "gsettings get org.mate.Marco.general button-layout",
+    "env GSETTINGS_BACKEND=memory gsettings get org.mate.Marco.general button-layout",
+    "gsettings get org.mate.Marco.general button-layout",
+    "gsettings set org.mate.Marco.general button-layout :minimize,maximize,close",
+    "gsettings get org.mate.interface gtk-theme"
+  ],
+  "missing": [],
+  "message": "“Windows 7 style” applied.",
+  "installed": [
+    "mate-menu"
+  ],
+  "profile": {
+    ".config/": "",
+    ".config/gtk-3.0/": "",
+    ".config/gtk-3.0/settings.ini": "[Settings]\ngtk-theme-name=Menta\ngtk-icon-theme-name=Windows-7\n",
+    ".config/gtk-4.0/": "",
+    ".config/gtk-4.0/settings.ini": "[Settings]\ngtk-icon-theme-name=Windows-7\n",
+    ".config/kdeglobals": "\n[Icons]\nTheme=Windows-7\n",
+    ".config/qt6ct/": "",
+    ".config/qt6ct/qt6ct.conf": "[Appearance]\nstyle=Fusion\nicon_theme=Windows-7\n",
+    ".dconfstore/": "",
+    ".dconfstore/mate-panel.txt": "layout=$HOME/.local/share/mate-panel/layouts/rexon-windows-7.layout\n",
+    ".gsstore/": "",
+    ".gsstore/org.mate.Marco.general/": "",
+    ".gsstore/org.mate.Marco.general/button-layout": ":minimize,maximize,close",
+    ".gsstore/org.mate.Marco.general/theme": "Windows-7",
+    ".gsstore/org.mate.interface/": "",
+    ".gsstore/org.mate.interface/gtk-theme": "Windows-7",
+    ".gsstore/org.mate.interface/icon-theme": "Windows-7",
+    ".gsstore/org.mate.mate-menu/": "",
+    ".gsstore/org.mate.mate-menu/applet-text": "Start",
+    ".local/": "",
+    ".local/share/": "",
+    ".local/share/icons/": "",
+    ".local/share/icons/Windows-7/": "",
+    ".local/share/icons/Windows-7/.rexon-owner": "look:windows-7\n",
+    ".local/share/icons/Windows-7/COPYING": "GPL-3\n",
+    ".local/share/icons/Windows-7/index.theme": "[Icon Theme]\nName=Windows-7\nInherits=Adwaita,hicolor\nDirectories=places\n\n[places]\nSize=48\n",
+    ".local/share/icons/Windows-7/places/": "",
+    ".local/share/icons/Windows-7/places/start-here.png": "author-logo",
+    ".local/share/mate-panel/": "",
+    ".local/share/mate-panel/layouts/": "",
+    ".local/share/mate-panel/layouts/rexon-windows-7.layout": "[Toplevel dock]\nexpand=true\norientation=bottom\nsize=40\n\n[Object dock-mate-menu]\nobject-type=applet\napplet-iid=MateMenuAppletFactory::MateMenuApplet\ntoplevel-id=dock\nposition=0\nlocked=true\n\n[Object dock-window-list]\nobject-type=applet\napplet-iid=WnckletFactory::WindowListApplet\ntoplevel-id=dock\nposition=10\nlocked=true\n\n[Object dock-show-desktop]\nobject-type=applet\napplet-iid=WnckletFactory::ShowDesktopApplet\ntoplevel-id=dock\nposition=0\npanel-right-stick=true\nlocked=true\n\n[Object dock-clock]\nobject-type=applet\napplet-iid=ClockAppletFactory::ClockApplet\ntoplevel-id=dock\nposition=10\npanel-right-stick=true\nlocked=true\n\n[Object dock-notification-area]\nobject-type=applet\napplet-iid=NotificationAreaAppletFactory::NotificationArea\ntoplevel-id=dock\nposition=20\npanel-right-stick=true\nlocked=true\n",
+    ".local/share/themes/": "",
+    ".local/share/themes/Windows-7/": "",
+    ".local/share/themes/Windows-7/.rexon-owner": "look:windows-7\n",
+    ".local/share/themes/Windows-7/gtk-2.0/": "",
+    ".local/share/themes/Windows-7/gtk-2.0/gtkrc": "x\n",
+    ".local/share/themes/Windows-7/gtk-3.0/": "",
+    ".local/share/themes/Windows-7/gtk-3.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows-7/gtk-4.0/": "",
+    ".local/share/themes/Windows-7/gtk-4.0/gtk.css": "* {}\n",
+    ".local/share/themes/Windows-7/index.theme": "[Desktop Entry]\nName=Windows-7\n",
+    ".local/share/themes/Windows-7/metacity-1/": "",
+    ".local/share/themes/Windows-7/metacity-1/metacity-theme-3.xml": "<metacity_theme/>\n",
+    ".local/share/themes/Windows-7/xfwm4/": "",
+    ".local/share/themes/Windows-7/xfwm4/themerc": "x=1\n"
+  }
+}

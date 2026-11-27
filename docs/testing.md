@@ -158,6 +158,76 @@ through a single door, `tourInvoke`, and only the methods allowed by
 `--selftest`, the tour does not take the lock, the tray or the profile log. The other window sections (not "Appearance") get
 one screenshot per section for now.
 
+### Accessibility robot: `rexon-a11y-robot`
+
+The second path next to `--tour`. The tour walks the window from inside; the robot
+drives it from OUTSIDE, through the accessibility tree (AT-SPI2 over D-Bus) — the
+same tree a screen reader (Orca) sees. It finds elements only by role and name,
+acts like a person (switches section tabs, types into the search field, presses
+Enter and search buttons, walks the focus with Tab) and writes down what it
+could not find. So every run is also an accessibility audit: controls without a
+name, controls that cannot take keyboard focus, clickable things without a role.
+
+```bash
+cd rust && cargo build-app                     # builds the robot next to the window
+rust/target/release/rexon-a11y-robot           # all sections, report in ~/.cache/rexon/a11y
+rust/target/release/rexon-a11y-robot --sections=оформ,steam --out ~/a11y
+#   --window <path>    the window binary (default: rexon-main-window next to the robot)
+#   --query <word>     the search word (default: girl)
+#   --settle <s>       wait after every action (default: 2.5)
+#   --tabs <n>         Tab presses for the keyboard walk (default: 30, 0 = off)
+```
+
+`--sections` matches substrings of the TAB LABELS as the window shows them (in the
+interface language), not section ids: the robot knows only what is on screen.
+Output folder: `report.txt` (summary at the end), `tree-NN.txt` — the whole tree of
+every section (`[role] «name» (description) {actions} ✎=editable <S showing,
+s sensitive, F focusable, * focused>`), `tree-NN-search.txt` — after the search,
+`window.log`, `dbus.log`, `xvfb.log`. Exit codes: 0 — the run finished (findings do
+not fail it), 1 — the stand could not start or the window never appeared on the
+accessibility bus, 2 — bad arguments.
+
+Isolation — nothing on the live desktop is touched, nothing is installed:
+
+* its own X server: `Xvfb` on a free display number (`:140` and up), the window is
+  invisible, synthetic key presses (XTest through the AT-SPI registry) go only there;
+* its own session bus (`dbus-daemon --session`); the AT-SPI bus launcher and the
+  registry from at-spi2-core are D-Bus activated on it — not the live Plasma, tray
+  or notification daemons;
+* its own profile: `HOME`, `XDG_{CONFIG,DATA,CACHE,STATE}_HOME`, `XDG_RUNTIME_DIR` in
+  `$TMPDIR/rexon-a11y-<pid>`, removed at the end; the first-run wizard
+  (`REXON_FIRST_RUN=never`) and the tutorial (`onboarding_enabled=false`) are off;
+* Qt: `QT_QPA_PLATFORM=xcb`, `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` (the offscreen
+  platform has no accessibility bridge, so the robot cannot use it), the AT-SPI
+  bus address is exported as `AT_SPI_BUS_ADDRESS` too.
+
+⛔ Every action goes through one door, `action_allowed` (tests in the same file,
+`cargo test-core`): section tabs; focus; text only into a field whose name says
+"search"/"поиск"; Press only on a button whose name says "search"/"найти". A name
+with install/remove/apply/reset/… (`DENY_WORDS`) is refused even if it also says
+"search". The report ends with the list of every action performed.
+
+For QML: Qt Quick Controls (`Button`, `TabButton`, `TextField`, `CheckBox`,
+`ItemDelegate`…) publish role and name by themselves (name = `text`). Three gaps
+the robot found are closed in the shared components, so every section gets them:
+
+* `RexonTextField` — Qt publishes the placeholder only as the description; the
+  placeholder is now also the accessible name;
+* `RexonButton`, `RexonDangerButton` — a label made only of symbols ("🔍", "✕",
+  "🗑️") takes the (already translated) tooltip as its accessible name: its own,
+  or that of the wrapper item (a disabled button does not catch hover, so the
+  tooltip often hangs on the wrapper);
+* the section tabs (`MainWindow.qml`) — a `TabButton` has only the focus action;
+  `Accessible.onPressAction` adds the standard "Press".
+
+A bare `MouseArea`/`TapHandler` publishes NOTHING — give the item
+`Accessible.role`, `Accessible.name` and `Accessible.onPressAction` (as in
+`DayNightSection.qml`, `ConkyScreenMap.qml`), the name from a string that is
+already translated.
+
+Inspecting by hand: Accerciser (GUI tree browser) shows the same tree; KDE's
+selenium-webdriver-at-spi drives the same AT-SPI interfaces from Python tests.
+
 ---
 
 

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Сборка QML-плагина Qcm.Material (QmlMaterial, MIT) для QML-интерфейса
-# вкладки WE. Пин коммита ЕДЕТ ВМЕСТЕ С ВЕНДОРОМ: его выписывает
-# scripts/sync-waywallen-qml.py из lito.lock waywallen на теге из
-# ui/UPSTREAM_TAG и кладёт рядом файлом ui/QML_MATERIAL_PIN.
+# Build of the Qcm.Material QML plugin (QmlMaterial, MIT) for the QML interface
+# of the WE tab. The commit pin TRAVELS WITH THE VENDOR: it is written by
+# scripts/sync-waywallen-qml.py from the waywallen lito.lock at the tag from
+# ui/UPSTREAM_TAG and put next to it as the file ui/QML_MATERIAL_PIN.
 #
-# ⚠️ Почему не литерал: разъехавшись, пин даёт самый неприятный класс
-# дефектов — вендорный QML новый, библиотека под ним старая, и расхождение
-# видно только глазами на живой странице. Пойманный случай (07.09.2026):
-# пин тут отставал от вендора на пять выпусков, и починенный у hypengw
-# заголовочный регистр русских подписей (043c09e, влит 27.08) до нашей
-# сборки не доезжал — вместо него держались четыре патча поверх вендора.
+# ⚠️ Why not a literal: once diverged, the pin gives the nastiest class of
+# defects — the vendored QML is new, the library under it is old, and the mismatch
+# is visible only by eye on a live page. A caught case (07.09.2026):
+# the pin here lagged behind the vendor by five releases, and the title case of
+# Russian labels fixed by hypengw (043c09e, merged 27.08) did not reach our
+# build — four patches on top of the vendor were kept instead.
 #
-# Требования: cmake, ninja, g++, qt6-{base,declarative,shadertools,svg}
-# (версия Qt == версии Qt у PySide6 — плагин использует QuickPrivate).
+# Requirements: cmake, ninja, g++, qt6-{base,declarative,shadertools,svg}
+# (the Qt version == the Qt version of PySide6 — the plugin uses QuickPrivate).
 #
-# ВАЖНО: шрифты Material Symbols в репо лежат как git-lfs pointers;
-# скрипт скачивает настоящие с media.githubusercontent.com.
+# IMPORTANT: the Material Symbols fonts lie in the repo as git-lfs pointers;
+# the script downloads the real ones from media.githubusercontent.com.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,23 +35,23 @@ if [ ! -d "$WORK/.git" ]; then
     git clone --no-checkout "$REPO" "$WORK"
 fi
 git -C "$WORK" fetch origin "$PIN" 2>/dev/null || git -C "$WORK" fetch origin
-# `-f`: в кэше клона шрифты ниже уже заменены настоящими (это правка
-# отслеживаемых файлов), и без него переход на НОВЫЙ пин отказывает
-# «Сделайте коммит или спрячьте ваши изменения» (пойман 24.10.2026 на
-# переходе 98b8acd → f1464c5). Шрифты под новый пин скачиваются заново.
+# `-f`: in the clone cache the fonts below are already replaced with the real ones (an edit
+# of tracked files), and without it switching to a NEW pin refuses with
+# «Сделайте коммит или спрячьте ваши изменения» (caught 24.10.2026 when
+# switching 98b8acd → f1464c5). The fonts for the new pin are downloaded again.
 #
-# ⛔ Только если дерево НЕ на пине. `checkout -f` на том же коммите тоже
-# сбрасывает правки отслеживаемых файлов — а пакет (PKGBUILD, prepare())
-# кладёт настоящие шрифты в дерево заранее, чтобы собираться без сети.
-# Сброс возвращал указатели git-lfs, скачать их заново без сети не
-# выходило, и в пакет молча уезжали 131-байтные указатели вместо шрифтов:
-# все значки вкладки обоев — пустые квадраты (ВМ, 30.10.2026, r1893).
+# ⛔ Only if the tree is NOT on the pin. `checkout -f` on the same commit also
+# resets edits of tracked files — while the package (PKGBUILD, prepare())
+# puts the real fonts into the tree in advance, to build without network.
+# The reset brought back the git-lfs pointers, downloading them again without network
+# was impossible, and 131-byte pointers silently went into the package instead of fonts:
+# all icons of the wallpaper tab were empty squares (VM, 30.10.2026, r1893).
 if [ "$(git -C "$WORK" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != \
      "$(git -C "$WORK" rev-parse -q --verify "$PIN^{commit}")" ]; then
     git -C "$WORK" checkout -q -f "$PIN"
 fi
 
-# git-lfs pointers → настоящие шрифты
+# git-lfs pointers → real fonts
 is_lfs_pointer() { head -1 "$1" | grep -q '^version https://git-lfs'; }
 for f in "$WORK"/assets/MaterialSymbolsRounded.*; do
     if is_lfs_pointer "$f"; then
@@ -61,8 +61,8 @@ for f in "$WORK"/assets/MaterialSymbolsRounded.*; do
             -o "$f.dl" && mv "$f.dl" "$f" || rm -f "$f.dl"
     fi
 done
-# Указатель вместо шрифта — сборка проваливается, а не собирает модуль без
-# значков.
+# A pointer instead of a font — the build fails rather than building the module without
+# icons.
 for f in "$WORK"/assets/MaterialSymbolsRounded.*; do
     if is_lfs_pointer "$f"; then
         echo "ОШИБКА: $(basename "$f") — указатель git-lfs, а не шрифт (нет сети?)." >&2
@@ -84,29 +84,29 @@ cmake --build "$WORK/build"
 mkdir -p "$DEST"
 rm -rf "$DEST/Qcm"
 cp -r "$WORK/build/qml_modules/Qcm" "$DEST/"
-# Плагины линкуются с общими библиотеками модуля — кладём их рядом
-# (rpath $ORIGIN). Со сборки waywallen v0.2.6 их ДВЕ: у Qcm.Material
-# появился подмодуль Layouts со своей libqml_material_layouts.so; без неё
-# QML-движок не грузит весь Qcm.Material («Failed to load dependent
-# import Qcm.Material.Layouts»). Копируем всё, что собралось в корне.
+# The plugins link against the module's shared libraries — we put them next to them
+# (rpath $ORIGIN). Since the waywallen v0.2.6 build there are TWO: Qcm.Material
+# gained the Layouts submodule with its own libqml_material_layouts.so; without it
+# the QML engine does not load Qcm.Material at all («Failed to load dependent
+# import Qcm.Material.Layouts»). We copy everything that was built in the root.
 for lib in "$WORK"/build/libqml_material*.so; do
     cp "$lib" "$DEST/Qcm/Material/"
 done
-# у подмодулей (Layouts) свой каталог с плагином — общая библиотека нужна
-# и там; каталоги без плагина (assets, qml) не трогаем. Кладём не копию, а
-# относительную ссылку на библиотеку уровнем выше: вторая копия
-# libqml_material.so — это +20,8 МиБ в пакете (6–7 МиБ в сжатом), а
-# загрузчик всё равно держит одну библиотеку на SONAME, так что копия
-# ничего не давала. rpath $ORIGIN плагина находит ссылку как обычный файл.
+# submodules (Layouts) have their own directory with a plugin — the shared library is needed
+# there too; directories without a plugin (assets, qml) are left alone. We put not a copy but
+# a relative link to the library one level up: a second copy of
+# libqml_material.so is +20.8 MiB in the package (6–7 MiB compressed), and
+# the loader keeps one library per SONAME anyway, so the copy
+# gave nothing. The plugin's rpath $ORIGIN finds the link like a regular file.
 for plug in "$DEST"/Qcm/Material/*/*plugin.so; do
     [ -e "$plug" ] || continue
     for lib in "$WORK"/build/libqml_material*.so; do
         ln -sfn "../$(basename "$lib")" "$(dirname "$plug")/$(basename "$lib")"
     done
 done
-# Отметка собранной редакции рядом с модулем. ⚠️ Без неё «пин уехал с
-# вендором, а модуль остался вчерашний» никак не увидеть: сам модуль своей
-# ревизии не называет, и расхождение вылезало только глазами на живой
-# странице (пойманный случай 07.09.2026 — отставание на пять выпусков).
+# A mark of the built revision next to the module. ⚠️ Without it «the pin moved with
+# the vendor, but the module stayed yesterday's» cannot be seen at all: the module does not
+# name its revision, and the mismatch surfaced only by eye on a live
+# page (the caught case of 07.09.2026 — a lag of five releases).
 printf '%s\n' "$PIN" > "$DEST/Qcm/QML_MATERIAL_PIN"
 echo "== готово: $DEST/Qcm/Material (редакция $PIN) =="

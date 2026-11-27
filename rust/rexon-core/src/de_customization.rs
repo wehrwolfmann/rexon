@@ -685,7 +685,11 @@ pub const ROWS: &[Row] = &[
                that means VLC, qBittorrent, Krita, OBS. The difference between \
                desktops is not whether it works but WHAT selects the style: KDE — \
                widgetStyle in kdeglobals, LXQt — [Qt] style in lxqt.conf, the rest — \
-               QT_STYLE_OVERRIDE in ~/.config/environment.d. Deepin has no such \
+               QT_QPA_PLATFORMTHEME=qt6ct (or QT_STYLE_OVERRIDE) in \
+               ~/.config/environment.d; while KDE, LXQt or Deepin is installed, in \
+               ~/.config/rexon/session-env instead, mirrored only into \
+               desktop-bound places (.xprofile, labwc, Hyprland, the GNOME Shell \
+               and niri units), so Plasma does not import it. Deepin has no such \
                section: a session-wide variable would take the Chameleon style away \
                from DTK programs.",
     },
@@ -1517,15 +1521,39 @@ const NO_SESSION_ENV_NOTE: &str = n_("%1 is the exception: it has no setting Rex
      Start %1 through uwsm, or add the lines from \
      ~/.config/environment.d/rexon-qt-style.conf to its environment yourself.");
 
+// TRANSLATORS: Appended to the Qt-style caveat on window managers Rexon can't pass environment variables to, while KDE Plasma, LXQt or Deepin is also installed. %1 is the window manager (sway, river…), %2 a file path.
+const NO_SESSION_ENV_BOUND_NOTE: &str = n_("%1 is the exception: it has no setting Rexon could put this in. \
+     Add the lines from %2 to its environment yourself.");
+
+/// The variables file as the person sees it while a desktop with its own Qt
+/// integration is installed (`themes::DESKTOP_BOUND_ENV_DIR`).
+const BOUND_QT_ENV_SHOWN: &str = "~/.config/rexon/session-env/rexon-qt-style.conf";
+
 /// [`condition_note`] by desktop identifier (`sway`, `xfce`…): where
 /// session variables do not reach the compositor, the caveat says so
-/// directly instead of promising "after the next login".
+/// directly instead of promising "after the next login". The file is named as
+/// it is when no desktop with its own Qt integration is installed; the window
+/// asks [`condition_note_id_on`] with the machine's answer.
 pub fn condition_note_id(kind: &str, de_id: &str) -> Option<String> {
+    condition_note_id_on(kind, de_id, false)
+}
+
+/// [`condition_note_id`] for a machine where a desktop with its own Qt
+/// integration (`themes::own_qt_desktop_installed`) is or is not installed.
+/// With one, the variables are not in `environment.d` (Plasma would import
+/// them), so uwsm, which reads that directory, does not help — and the file
+/// to copy from is Rexon's desktop-bound one.
+pub fn condition_note_id_on(kind: &str, de_id: &str, qt_desktop_installed: bool) -> Option<String> {
     let note = condition_note(kind, de_from_id(de_id)?)?;
     // A color scheme outside Plasma also drives Qt programs through the variable
     // `QT_QPA_PLATFORMTHEME` in the same file (`shell_palette::plan_scheme_layer`).
     if matches!(kind, "theme-kvantum" | "theme-kde-colors") && NO_SESSION_ENV_IDS.contains(&de_id) {
-        return Some(format!("{note} {}", crate::i18n::trf(NO_SESSION_ENV_NOTE, &[&de_id])));
+        let extra = if qt_desktop_installed {
+            crate::i18n::trf(NO_SESSION_ENV_BOUND_NOTE, &[&de_id, &BOUND_QT_ENV_SHOWN])
+        } else {
+            crate::i18n::trf(NO_SESSION_ENV_NOTE, &[&de_id])
+        };
+        return Some(format!("{note} {extra}"));
     }
     Some(note)
 }

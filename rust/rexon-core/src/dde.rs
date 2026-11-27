@@ -163,6 +163,119 @@ pub fn dconfig_cli_value(raw: &str) -> String {
     t.to_string()
 }
 
+// ── DConfig subpaths (Deepin shortcuts of dde-services) ───────────────
+
+/// Whether a DConfig subpath is fit for a command: a leading `/` (dtkcore
+/// refuses one without it), then names fit for keys.
+pub fn dconfig_subpath_ok(subpath: &str) -> bool {
+    subpath
+        .strip_prefix('/')
+        .is_some_and(|rest| rest.split('/').all(|c| dconfig_key_ok(c) && c != "." && c != ".."))
+}
+
+/// The schema of resource `resource` under subpath `subpath`:
+/// `/usr/share/dsg/configs/<appid><subpath>/<resource>.json`.
+pub fn dconfig_subpath_schema_path(appid: &str, subpath: &str, resource: &str) -> String {
+    format!("/usr/share/dsg/configs/{appid}{subpath}/{resource}.json")
+}
+
+fn with_subpath(mut argv: Vec<String>, subpath: &str) -> Vec<String> {
+    // `dde-dconfig <op> -a <appid> -r <resource>` — the subpath goes after the resource.
+    argv.splice(6..6, ["-s".to_string(), subpath.to_string()]);
+    argv
+}
+
+pub fn dconfig_get_sub_argv(appid: &str, resource: &str, subpath: &str, key: &str) -> Vec<String> {
+    with_subpath(dconfig_get_key_argv(appid, resource, key), subpath)
+}
+
+pub fn dconfig_is_default_sub_argv(appid: &str, resource: &str, subpath: &str, key: &str) -> Vec<String> {
+    with_subpath(dconfig_is_default_argv(appid, resource, key), subpath)
+}
+
+pub fn dconfig_set_sub_argv(appid: &str, resource: &str, subpath: &str, key: &str, value: &str) -> Vec<String> {
+    with_subpath(dconfig_set_key_argv(appid, resource, key, value), subpath)
+}
+
+pub fn dconfig_reset_sub_argv(appid: &str, resource: &str, subpath: &str, key: &str) -> Vec<String> {
+    with_subpath(dconfig_reset_key_argv(appid, resource, key), subpath)
+}
+
+/// The DConfig application of the dde-services shortcuts (dde-services 6.2,
+/// since dde-daemon 6.1.105 handed shortcuts over to it).
+pub const KEYBINDING_APPID: &str = "org.deepin.dde.keybinding";
+/// The resource of one shortcut entry.
+pub const SHORTCUT_RESOURCE: &str = "org.deepin.shortcut";
+/// The resource of one touchpad gesture entry.
+pub const GESTURE_RESOURCE: &str = "org.deepin.gesture";
+/// Registration files listing the entries (`[Config] SubPaths=`).
+pub const KEYBINDING_INI_DIR: &str = "/usr/share/deepin/org.deepin.dde.keybinding";
+/// The schemas of the entries, one folder per subpath.
+pub const KEYBINDING_SCHEMA_DIR: &str = "/usr/share/dsg/configs/org.deepin.dde.keybinding";
+/// Present when the shortcuts are dde-services' (the module this copy knows).
+pub const SHORTCUT_SERVICE_MARK: &str = "/usr/share/deepin-service-manager/user/plugin-dde-shortcut.json";
+/// The person's own shortcuts, in order, relative to the config home.
+pub const CUSTOM_SHORTCUTS_INI: &str = "deepin/dde-services/shortcut/custom-shortcuts.ini";
+/// The user service group that runs dde-services (shortcuts, power, theme,
+/// wallpaper slideshow).
+pub const SERVICE_GROUP_UNIT: &str = "deepin-service-group@dde.service";
+
+/// `SubPaths=` of a registration file's `[Config]` group: the value may go
+/// on over lines ending in `\`, entries are comma-separated. Subpaths come
+/// back with their leading `/`.
+pub fn keybinding_ini_subpaths(text: &str) -> Vec<String> {
+    let mut in_config = false;
+    let mut value: Option<String> = None;
+    let mut lines = text.lines();
+    while let Some(line) = lines.next() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            in_config = t == "[Config]";
+            continue;
+        }
+        if !in_config {
+            continue;
+        }
+        let Some((key, rest)) = t.split_once('=') else { continue };
+        if key.trim() != "SubPaths" {
+            continue;
+        }
+        let mut v = rest.trim().to_string();
+        while v.ends_with('\\') {
+            v.pop();
+            match lines.next() {
+                Some(next) => v.push_str(next.trim()),
+                None => break,
+            }
+        }
+        value = Some(v);
+        break;
+    }
+    value
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| if s.starts_with('/') { s.to_string() } else { format!("/{s}") })
+        .filter(|s| dconfig_subpath_ok(s))
+        .collect()
+}
+
+/// `busctl` call that makes dde-services reread its registration files and
+/// the person's own shortcuts.
+pub fn keybinding_reload_argv() -> Vec<String> {
+    s(&[
+        "busctl",
+        "--user",
+        "--auto-start=no",
+        "call",
+        "org.deepin.dde.Keybinding1",
+        "/org/deepin/dde/Keybinding1",
+        "org.deepin.dde.Keybinding1",
+        "ReloadConfigs",
+    ])
+}
+
 /// The value from a `dde-dconfig get` or `busctl get-property` answer, without
 /// the type signature (`i `, `s `, `d `, `b `) and quotes.
 pub fn parse_value(raw: &str) -> String {

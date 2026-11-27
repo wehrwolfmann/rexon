@@ -83,9 +83,9 @@
 //     shim with a nested event loop with which "Extensions" chooses an .rxn
 //     file (`cpp/rexon_ext_dialogs.h`) — no second shim was created for
 //     this.
-//   * PLASMA PANEL COPIES. The `PlasmaProtector` executor was written — but
-//     not here, rather next to the decisions, in the core's `backup.rs`
-//     (`plasma_backup_run`, `plasma_restore_run`, `plasma_restart_shell`):
+//   * PANEL COPIES (every desktop since 25.11.2026). The executor lives
+//     not here but next to the decisions, in the core's `backup.rs`
+//     (`panel_save_live`, `panel_restore_live`, `panel_inventory_live`):
 //     the same buttons exist in the "Desktops" tab too, and there must not
 //     be a second copy of the executor in the product (rule #12). What is
 //     left to the tab is what only it can see: where the copies directory
@@ -571,23 +571,23 @@ pub mod qobject {
         #[cxx_name = "setTerminalColorsGuard"]
         fn set_terminal_colors_guard(self: &SettingsActions, enabled: bool) -> QString;
 
-        // ── Plasma panel copies ──────────────────────────────────────────
+        // ── Panel protection ─────────────────────────────────────────────
 
-        /// Take a copy of the Plasma panel.
+        /// Take a copy of the current desktop's panel.
         #[qinvokable]
-        #[cxx_name = "plasmaBackup"]
-        fn plasma_backup(self: &SettingsActions) -> QString;
+        #[cxx_name = "panelBackup"]
+        fn panel_backup(self: &SettingsActions) -> QString;
 
-        /// Texts of the question before restoring a copy: `{title, question}`
-        /// (JSON).
+        /// Texts of the question before restoring copy `id` (its folder):
+        /// `{title, question}` (JSON).
         #[qinvokable]
-        #[cxx_name = "plasmaConfirm"]
-        fn plasma_confirm(self: &SettingsActions, timestamp: &QString) -> QString;
+        #[cxx_name = "panelConfirm"]
+        fn panel_confirm(self: &SettingsActions, id: &QString) -> QString;
 
-        /// Restore a copy of the Plasma panel.
+        /// Restore panel copy `id`, of any desktop.
         #[qinvokable]
-        #[cxx_name = "plasmaRestore"]
-        fn plasma_restore(self: &SettingsActions, timestamp: &QString) -> QString;
+        #[cxx_name = "panelRestore"]
+        fn panel_restore(self: &SettingsActions, id: &QString) -> QString;
 
         // ── Desktop look ─────────────────────────────────────────────────
 
@@ -627,6 +627,7 @@ use serde_json::{json, Map, Value};
 use crate::desktops_actions::OpView;
 use rexon_core::de_progress as dp;
 use rexon_core::qt_settings::{self as qs, SoundSetting};
+use rexon_core::screensaver_guard as sg;
 use rexon_core::system_de_exec as dx;
 use rexon_core::wallpaper_exec::{
     self, live_slot, try_with_slot, LiveSys, WallpaperExec, WallpaperResult, WpSys,
@@ -713,6 +714,10 @@ pub struct SettingsActionsRust {
     /// What the update watcher found besides after removing an orphan: it will
     /// be shown when the user closes the window with the removal outcome.
     update_guard_rest: Option<rexon_core::update_guard::Advice>,
+    /// The completeness check found that the desktop's own screen saver is not
+    /// running or a foreign one is (`sg::survey_live`): the question comes when
+    /// nothing else is open.
+    screensaver_offer: Option<sg::Restore>,
 }
 
 /// An operation waiting for "Yes" in the question window.
@@ -734,6 +739,8 @@ enum PendingOp {
     RollbackAsk(rexon_core::update_guard::RollbackOffer),
     /// Confirmed: restore the previous versions of the set.
     Rollback(rexon_core::update_guard::RollbackOffer),
+    /// Bring the desktop's own screen saver back (found by the completeness check).
+    ScreensaverRestore(sg::Restore),
 }
 
 /// Whether checking or rebuilding the look is in progress — for the WHOLE
@@ -1162,7 +1169,7 @@ fn pkg_family() -> String {
 /// divergence is visible neither in the build nor by eye.
 const STATE_KEYS: [&str; 18] = [
     "polkit", "lang", "skin", "onboarding", "tray", "fm", "quickfix", "compl", "wp", "lib", "imp",
-    "blur", "amb", "snd", "font", "prot", "plasma", "aero",
+    "blur", "amb", "snd", "font", "prot", "panel", "aero",
 ];
 
 /// Assemble the snapshot by the LIST of keys — the only place where the
@@ -1187,13 +1194,15 @@ impl qobject::SettingsActions {
         // sense in the Rust process.
         let onboarding_available = !onboarding::STEPS.is_empty();
 
-        let plasma = backup::is_plasma_desktop(&xdg) || !plasma_backups().is_empty();
+        // The section is there where Rexon can copy this desktop's panel, or
+        // where copies of any desktop remain.
+        let panel = backup::panel_supported_live(&de) || !backup::panel_inventory_live().is_empty();
         let aeroshell = !plasma_forks().is_empty();
 
         QString::from(
             &json!({
                 "onboarding": onboarding_available,
-                "plasma": plasma,
+                "panel": panel,
                 "aeroshell": aeroshell,
                 "deDisplay": qs::de_display(&de, &xdg, &session),
             })
@@ -1240,7 +1249,7 @@ impl qobject::SettingsActions {
             self.sound_state(&de),
             self.fonts_state(&de),
             protection_state(),
-            plasma_state(),
+            panel_state(&de),
             json!({ "enabled": get(aeroshell_key()) != Some(Value::Bool(false)) }),
         ]);
         QString::from(&snapshot.to_string())
@@ -2051,85 +2060,95 @@ fn protection_state() -> Value {
     })
 }
 
-/// The "Plasma panel copies" section. The list is read for real: it is
-/// ordinary JSON on disk taken by the live product, and hiding it would be
-/// a lie.
-fn plasma_state() -> Value {
-    let backups = plasma_backups();
-    let shown: Vec<Value> = backups
-        .iter()
-        .take(qs::PLASMA_BACKUPS_SHOWN)
-        .map(|b| {
+/// One copy as a row of the section.
+fn panel_row(snap: &backup::PanelSnapshot) -> Value {
+    json!({
+        "id": snap.path,
+        "label": qs::panel_row_label(snap),
+        "tip": t1("panel.backup_dir", &snap.path),
+    })
+}
+
+/// A desktop's name as the "Desktops" tab shows it.
+fn de_name(de: &str) -> String {
+    system::DE_META.iter().find(|m| m.id == de).map_or_else(|| de.to_string(), |m| m.display_name.to_string())
+}
+
+/// The "Panel protection" section: copies of the current desktop on top,
+/// copies of other desktops in a folded block below. The list is read for
+/// real: it is the inventory on disk the live product writes.
+fn panel_state(current: &str) -> Value {
+    let current = backup::panel_de_key(current).to_string();
+    let all = backup::panel_inventory_live();
+    let mine = backup::panel_copies_of(&all, &current);
+    let spec = backup::live_panel_copy_spec(&current);
+    let others: Vec<Value> = backup::panel_desktops_with_copies(&all)
+        .into_iter()
+        .filter(|de| *de != current)
+        .map(|de| {
+            let copies = backup::panel_copies_of(&all, &de);
             json!({
-                "ts": b.timestamp,
-                "label": qs::backup_row_label(&b.timestamp, &b.reason, b.files.len() as i64),
-                "tip": t1("plasma.backup_dir", &b.timestamp),
+                "title": format!("{} ({})", de_name(&de), copies.len()),
+                "backups": copies.iter().take(qs::PANEL_BACKUPS_SHOWN).map(panel_row).collect::<Vec<_>>(),
             })
         })
         .collect();
     json!({
-        "header": qs::plasma_backups_header(backups.len()),
-        "backups": shown,
+        "supported": spec.is_some(),
+        "unsupported": if spec.is_some() { String::new() } else { t("panel.unsupported") },
+        "tip": spec.as_ref().map(|s| qs::panel_tip(&backup::panel_spec_parts(s))).unwrap_or_default(),
+        "header": qs::panel_backups_header(mine.len()),
+        "backups": mine.iter().take(qs::PANEL_BACKUPS_SHOWN).map(panel_row).collect::<Vec<_>>(),
+        "othersHeader": qs::panel_others_header(others.len()),
+        "others": others,
     })
+}
+
+/// The question before restoring copy `snap`: its desktop, its date, the
+/// other installed desktops whose shortcuts change with it, and whether the
+/// shortcuts wait for the next login.
+pub(crate) fn panel_restore_question(snap: &backup::PanelSnapshot) -> (String, String) {
+    let shortcuts = snap.parts.iter().any(|p| p == backup::snapshot_part::SHORTCUTS);
+    let shared: Vec<String> = if shortcuts {
+        backup::shared_shortcut_desktops(&snap.de)
+            .iter()
+            .filter(|de| system::de_installed_binaries(de).iter().all(|b| system::binary_in_path(b)))
+            .map(|de| de_name(de))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let spec = backup::panel_restore_spec(&snap.de);
+    let relogin = shortcuts && spec.as_ref().is_some_and(|s| s.needs_relogin);
+    // Deepin restarts its service group when the copy holds shortcuts.
+    let services = shortcuts && spec.as_ref().is_some_and(|s| s.restarts_services);
+    qs::panel_restore_confirm(&de_name(&snap.de), &snap.timestamp, &shared, relogin, services)
+}
+
+/// Take a copy of desktop `de`'s panel — ONE call for both tabs
+/// ("Settings" and "Desktops") -> the status line words or the reason.
+pub(crate) fn panel_save_now(de: &str) -> Result<String, String> {
+    let snap = backup::panel_save_live(de, "manual")?;
+    notify_backup_created();
+    Ok(t1("panel.saved", &qs::panel_parts_label(&snap.parts)))
+}
+
+/// Restore copy `id` (its folder) — ONE call for both tabs -> the status
+/// line words or the reason. The running desktop rereads what came back;
+/// another desktop picks it up at its next login, and the person hears so.
+pub(crate) fn panel_restore_now(id: &str) -> Result<(backup::PanelSnapshot, String), String> {
+    let (snap, notes) = backup::panel_restore_live(id)?;
+    let mut lines = vec![t1("panel.restored", &qs::pretty_backup_ts(&snap.timestamp))];
+    lines.extend(notes);
+    if backup::live_session_de().as_deref() != Some(snap.de.as_str()) {
+        lines.push(t1("panel.other_de", &de_name(&snap.de)));
+    }
+    Ok((snap, lines.join("\n")))
 }
 
 // ============================================================================
 // Observations the core does not have
 // ============================================================================
-
-/// The Plasma panel copies directory (`PlasmaProtector._backup_dir`).
-fn plasma_backup_dir() -> String {
-    format!("{}/rexon/backups/plasma-panel", data_home())
-}
-
-/// Plasma panel copies from newest to oldest; the order is set by the core.
-///
-/// There is no longer a meta file read of our own here: it is read and
-/// parsed by the same executor that writes it
-/// (`backup::plasma_meta_entries`). Two readers of one file silently drift
-/// apart — the list would show one thing, and the "Restore" button would
-/// take another.
-fn plasma_backups() -> Vec<backup::PlasmaBackup> {
-    let raw = backup::plasma_meta_entries(&plasma_backup_dir());
-    backup::plasma_backups(&backup::plasma_parse_entries(&raw))
-}
-
-/// `$XDG_CONFIG_HOME`, if it is set: with a non-standard config root the
-/// panel copy would save and restore NOT the files that Plasma reads.
-fn xdg_config_home_env() -> Option<String> {
-    std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty())
-}
-
-/// The copy's timestamp — `strftime("%Y%m%d_%H%M%S")` of local time. The
-/// product has one clock (`qt_app::Timestamp::now_local`), there is none of
-/// our own here.
-fn plasma_stamp() -> String {
-    qt_app::Timestamp::now_local()
-        .unwrap_or_default()
-        .file_stamp()
-}
-
-/// Take a copy of the Plasma panel — ONE call for both tabs ("Settings" and
-/// "Desktops", `desktops_actions.rs`), like one `PlasmaProtector` in Python.
-/// The set of panel configs and expanding `~` are the core's; the snapshot
-/// is made by its executor too. Here there is only the copies directory,
-/// the timestamp and the reason.
-///
-/// `Err` is a DISK refusal (the directory was not created, the meta file
-/// was not written); in Python this was an exception.
-pub(crate) fn panel_backup_now(reason: &str) -> Result<(bool, String), String> {
-    let configs = backup::expand_tilde_xdg(
-        backup::PANEL_CONFIGS,
-        &home(),
-        xdg_config_home_env().as_deref(),
-    );
-    let outcome =
-        backup::plasma_backup_run(&plasma_backup_dir(), &configs, reason, false, &plasma_stamp());
-    if matches!(outcome, Ok((true, _))) {
-        notify_backup_created();
-    }
-    outcome
-}
 
 /// Tell BonziBuddy about a new panel copy — as Python did
 /// (`rexon_bridge.notify("notify_backup_created")` in `PlasmaProtector`).
@@ -2156,24 +2175,6 @@ fn notify_backup_created() {
         rexon_core::log_warn!("bridge", "мост BonziBuddy: backup_created не отправлено — {e}");
     }
     bridge.cleanup_commands(300.0, now.as_secs_f64());
-}
-
-/// Restore the Plasma panel from a copy (`None` — from the last one) — the
-/// shared call of both tabs, like `PlasmaProtector.restore_panel`.
-///
-/// Restarting the shell is the only step by which restoring a copy touches
-/// the LIVE desktop, and it is done only on Plasma itself: on another
-/// desktop there is nothing to restart. How exactly to restart (a unit →
-/// kquitapp/kstart → the PID of the shell of its own session) is decided
-/// and executed by the core in one function.
-pub(crate) fn panel_restore_now(timestamp: Option<&str>) -> (bool, String) {
-    let (ok, mut message) = backup::plasma_restore_run(&plasma_backup_dir(), timestamp);
-    if ok && backup::is_plasma_desktop(&std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default())
-    {
-        let outcome = backup::plasma_restart_shell();
-        message.push_str(&backup::plasma_restart_message(outcome));
-    }
-    (ok, message)
 }
 
 /// Installed heavy Plasma forks (AeroThemePlasma/AeroShell).
@@ -2868,14 +2869,17 @@ impl qobject::SettingsActions {
         std::thread::spawn(move || {
             // A panic of the check must not leave the button disabled forever.
             let survey = std::panic::catch_unwind(dx::completeness_survey_live).ok();
-            deliver(&handle, move |object| object.survey_done(survey));
+            // The same check also looks at the session's screen saver.
+            let saver = std::panic::catch_unwind(sg::survey_live).ok().flatten();
+            deliver(&handle, move |object| object.survey_done(survey, saver));
         });
         // An empty answer: the page will re-read the snapshot and show
         // "Checking…".
         QString::default()
     }
 
-    fn survey_done(mut self: Pin<&mut Self>, survey: Option<dx::CompletenessSurvey>) {
+    fn survey_done(mut self: Pin<&mut Self>, survey: Option<dx::CompletenessSurvey>, saver: Option<sg::Restore>) {
+        self.as_mut().rust_mut().screensaver_offer = saver;
         let flag = self.as_ref().get_ref().rust().completeness_busy.clone();
         let Some(survey) = survey else {
             let msg = t1("compl.failed_log", &completeness_internal_error());
@@ -2897,6 +2901,7 @@ impl qobject::SettingsActions {
                 &msg,
                 !survey.results.is_empty(),
             )));
+            self.as_mut().show_screensaver_offer();
             return;
         }
         // Something is missing: the button stays disabled while the question is
@@ -2933,6 +2938,14 @@ impl qobject::SettingsActions {
         self.as_mut().rust_mut().cancel = Some(token.clone());
         let handle = self.as_mut().qt_thread();
         match pending {
+            PendingOp::ScreensaverRestore(offer) => {
+                self.as_mut().set_op(OpView::running(&sg::restore_operation_title()));
+                std::thread::spawn(move || {
+                    let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| sg::restore_live(&offer)))
+                        .unwrap_or_else(|_| Err(completeness_internal_error()));
+                    deliver(&handle, move |object| object.finish_screensaver(done));
+                });
+            }
             PendingOp::WaylandDefault(session, names) => {
                 use rexon_core::system_plan as sp;
                 self.as_mut().set_op(OpView::running(&sp::wayland_default_button(session)));
@@ -2955,6 +2968,7 @@ impl qobject::SettingsActions {
                     .ok();
                     // The installation may have brought one more notification daemon.
                     rexon_core::notifications_slot::sync_live();
+                    rexon_core::screensaver_guard::sync_live();
                     deliver(&handle, move |object| object.finish_completeness(done));
                 });
             }
@@ -3146,7 +3160,13 @@ impl qobject::SettingsActions {
                 // and the state has changed, or by the button.
                 // The same with the rollback: nothing changes either on "Not now" or on
                 // "Cancel".
-                Some(PendingOp::RemoveOrphans(_) | PendingOp::RollbackAsk(_) | PendingOp::Rollback(_)) | None => {}
+                Some(
+                    PendingOp::RemoveOrphans(_)
+                    | PendingOp::RollbackAsk(_)
+                    | PendingOp::Rollback(_)
+                    | PendingOp::ScreensaverRestore(_),
+                )
+                | None => {}
             }
         }
         self.as_mut().set_op(OpView::default());
@@ -3154,7 +3174,60 @@ impl qobject::SettingsActions {
         // else — say so.
         if let Some(rest) = self.as_mut().rust_mut().update_guard_rest.take() {
             self.as_mut().show_update_guard(rest);
+            return;
         }
+        // The completeness outcome (or its question) was closed, and the check
+        // also found a screen saver problem.
+        self.as_mut().show_screensaver_offer();
+    }
+
+    /// The screen saver question with the one button that fixes it — if the
+    /// check found something and no other window is open.
+    fn show_screensaver_offer(mut self: Pin<&mut Self>) {
+        if !self.rust().op.phase.is_empty() {
+            return;
+        }
+        let Some(offer) = self.as_mut().rust_mut().screensaver_offer.take() else {
+            return;
+        };
+        let text = sg::restore_text(&offer);
+        self.as_mut().rust_mut().pending = Some(PendingOp::ScreensaverRestore(offer));
+        self.as_mut().set_op(OpView {
+            phase: "confirm".to_string(),
+            title: sg::restore_title(),
+            text,
+            ..OpView::default()
+        });
+        self.as_mut()
+            .status(QString::from(&dx::awaiting_answer(&sg::restore_operation_title())));
+    }
+
+    fn finish_screensaver(mut self: Pin<&mut Self>, done: Result<String, String>) {
+        let (outcome, result) = match done {
+            Ok(message) => (
+                dx::DeOpOutcome { ok: true, message: dp::MSG_OK.to_string(), cancelled: false, restart_needed: false },
+                rexon_core::qt_desktops::look_result_html(&message),
+            ),
+            Err(why) => (
+                dx::DeOpOutcome { ok: false, message: why, cancelled: false, restart_needed: false },
+                String::new(),
+            ),
+        };
+        let mut op = self.rust().op.clone();
+        if let Some(line) = op.apply_done(&outcome, result) {
+            self.as_mut().operation_log(QString::from(&line));
+        }
+        if !outcome.ok {
+            self.as_mut().operation_log(QString::from(&format!(
+                "{}{}",
+                rexon_core::de_progress::PREFIX_ERROR,
+                outcome.message
+            )));
+        }
+        self.as_mut().rust_mut().cancel = None;
+        let footer = dx::operation_footer(&sg::restore_operation_title(), &op.status);
+        self.as_mut().set_op(op);
+        self.as_mut().status(QString::from(&footer));
     }
 
     fn cancel_operation(mut self: Pin<&mut Self>) {
@@ -4403,30 +4476,31 @@ impl qobject::SettingsActions {
         QString::from(&t("prot.restore_ok"))
     }
 
-    // ── Plasma panel copies ──────────────────────────────────────────────
+    // ── Panel protection ─────────────────────────────────────────────────
 
-    fn plasma_backup(&self) -> QString {
-        // "manual" — the user pressed the button themselves.
-        match panel_backup_now("manual") {
-            Ok((ok, message)) => QString::from(&qs::plasma_status(ok, &message)),
-            // What was an exception in Python: the directory was not created, the meta
-            // file was not written. Such trouble has its own text — the general
-            // "⚠️ …" outcome would call it a snapshot refusal, while it is a DISK
-            // refusal.
-            Err(detail) => QString::from(&t1("plasma.backup_error", &detail)),
+    fn panel_backup(&self) -> QString {
+        match panel_save_now(&current_de()) {
+            Ok(message) => QString::from(&qs::panel_status(true, &message)),
+            Err(detail) => QString::from(&t1("panel.backup_error", &detail)),
         }
     }
 
-    fn plasma_confirm(&self, timestamp: &QString) -> QString {
-        let (title, question) = qs::plasma_restore_confirm(&timestamp.to_string());
-        QString::from(&json!({ "title": title, "question": question }).to_string())
+    fn panel_confirm(&self, id: &QString) -> QString {
+        let snap = backup::panel_snapshot_by_path(&backup::panel_inventory_live(), &id.to_string());
+        let (title, question) = match snap {
+            Some(snap) => panel_restore_question(&snap),
+            None => (t("panel.confirm_title"), backup::msg_no_plasma_backups()),
+        };
+        // The dialog shows rich text: line breaks have to be tags there.
+        QString::from(&json!({ "title": title, "question": question.replace('\n', "<br>") }).to_string())
     }
 
-    fn plasma_restore(&self, timestamp: &QString) -> QString {
-        let timestamp = timestamp.to_string();
-        let (ok, message) =
-            panel_restore_now(Some(timestamp.as_str()).filter(|ts| !ts.is_empty()));
-        QString::from(&qs::plasma_status(ok, &message))
+    fn panel_restore(&self, id: &QString) -> QString {
+        let text = match panel_restore_now(&id.to_string()) {
+            Ok((_, message)) => qs::panel_status(true, &message),
+            Err(message) => qs::panel_status(false, &message),
+        };
+        QString::from(&text)
     }
 
     // ── Desktop look ─────────────────────────────────────────────────────
@@ -5188,7 +5262,29 @@ fn apply_default(app_type: &str, desktop: &str) -> bool {
             if cmds.is_empty() {
                 return false;
             }
-            cmds.iter().all(|argv| write_cmd(argv))
+            let ok = cmds.iter().all(|argv| write_cmd(argv));
+            // `xdg-mime default` writes only the shared list; Rexon's list of the
+            // current desktop is read before it and would hide the choice.
+            for argv in &cmds {
+                if let [_, _, desktop, mime] = argv.as_slice() {
+                    follow_choice(mime, desktop);
+                }
+            }
+            ok
+        }
+    }
+}
+
+/// Carry the choice into Rexon's lists of the current session (the decision is
+/// `defaults::follow_choice_in_desktop_list`).
+fn follow_choice(mime: &str, desktop: &str) {
+    let cfg = config_home();
+    let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    for name in defaults::session_desktop_lists(&xdg) {
+        let path = format!("{cfg}/{name}");
+        let Some(text) = read_file(&path) else { continue };
+        if let Some(next) = defaults::follow_choice_in_desktop_list(&text, mime, desktop) {
+            let _ = write_file_atomic(&path, &next);
         }
     }
 }
@@ -5462,7 +5558,7 @@ mod tests {
     fn state_names_every_key_the_page_reads() {
         let wanted = [
             "polkit", "lang", "skin", "onboarding", "tray", "fm", "quickfix", "compl", "wp", "lib",
-            "imp", "blur", "amb", "snd", "font", "prot", "plasma", "aero",
+            "imp", "blur", "amb", "snd", "font", "prot", "panel", "aero",
         ];
         let empty = state_object(std::array::from_fn(|_| Value::Null));
         let map = empty.as_object().expect("снимок обязан быть объектом");

@@ -248,6 +248,10 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
         let style = Some((env.env)("QT_STYLE_OVERRIDE"))
             .filter(|v| !v.trim().is_empty())
             .or_else(|| env_file_value(&env.conf("environment.d/rexon-qt-style.conf"), "QT_STYLE_OVERRIDE"))
+            .or_else(|| {
+                let bound = format!("{}/{}", crate::themes::DESKTOP_BOUND_ENV_DIR, crate::themes::QT_STYLE_ENV_FILE);
+                env_file_value(&env.conf(&bound), "QT_STYLE_OVERRIDE")
+            })
             .or_else(|| kread_path(env, WIDGET_STYLE))
             .or_else(|| env.kread("lxqt/lxqt.conf", "Qt", "style"))
             .or_else(|| env.kread("qt6ct/qt6ct.conf", "Appearance", "style"))

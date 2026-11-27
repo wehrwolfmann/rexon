@@ -20,7 +20,7 @@ use rexon_core::rxn_manifest::{
 use rexon_core::system::PkgFamily;
 use serde_json::Value;
 
-const LOOKS: &[&str] = &["garuda-dr460nized", "steamos"];
+const LOOKS: &[&str] = &["garuda-dr460nized", "steamos", "windows-xp", "windows-7"];
 
 fn look_dir(id: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/distro-looks").join(id)
@@ -39,6 +39,16 @@ fn load(id: &str) -> Package {
 fn settings(id: &str) -> Value {
     read_json(&look_dir(id).join("native/plasma-settings.json"))
 }
+
+/// An image's own description file, if it has one (`native/plasma-settings.json`,
+/// `native/desktop-model.json`).
+fn own_json(id: &str, rel: &str) -> Option<Value> {
+    let path = look_dir(id).join(rel);
+    path.is_file().then(|| read_json(&path))
+}
+
+/// Images with a Plasma part (the others are made for GTK desktops).
+const PLASMA_LOOKS: &[&str] = &["garuda-dr460nized", "steamos"];
 
 fn session(consumers: &[&str], versions: &[(&str, &str)]) -> Session {
     Session {
@@ -207,7 +217,11 @@ fn own_files_exist_and_sources_are_declared_and_used() {
                 }
             }
         }
-        source_paths(&settings(id), &mut refs);
+        for rel in ["native/plasma-settings.json", "native/desktop-model.json"] {
+            if let Some(v) = own_json(id, rel) {
+                source_paths(&v, &mut refs);
+            }
+        }
         for path in &refs {
             assert!(pkg.source(source_id(path)).is_some(), "{id}: {path} — источник не объявлен");
         }
@@ -307,7 +321,7 @@ fn nothing_of_the_distro_system_is_taken() {
                 }
             }
         }
-        let s = settings(id);
+        let Some(s) = own_json(id, "native/plasma-settings.json") else { continue };
         let text = s["kconfig"].to_string();
         for bad in ["RepeatDelay", "Autolock", "SingleClick", "environment.d", "Round-Corners", "Xwayland", "fish"] {
             assert!(!text.contains(bad), "{id}: в ключах есть {bad}");
@@ -319,6 +333,102 @@ fn nothing_of_the_distro_system_is_taken() {
             assert!(!(file == "kscreenlockerrc" && group == "Daemon"), "{id}: автоблокировка — поведение");
             assert!(!file.contains('/'), "{id}: ключи пишутся только в файлы настроек KDE");
         }
+    }
+}
+
+// ── «Windows XP/7 style» ────────────────────────────────────────────────
+
+/// Rexon ships no Microsoft logos (the owner's condition of 24.11.2026): the
+/// «Windows XP/7 style» looks only download community sets on the person's
+/// machine. Nowhere in our tree (data, code, packaging, translations) is there a
+/// menu-button icon, a distributor logo, a Start orb or Windows wallpapers and
+/// fonts; the images themselves are JSON only.
+#[test]
+fn no_windows_logos_in_rexon_tree() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let banned = |name: &str| {
+        let n = name.to_ascii_lowercase();
+        n.starts_with("start-here")
+            || n.starts_with("distributor-logo")
+            || n.contains("orb.png")
+            || n == "orbs"
+            || n.contains("windows-logo")
+            || n.contains("windows_logo")
+            || n.contains("winflag")
+            || n.starts_with("bliss.")
+            || n.starts_with("tahoma")
+            || n.starts_with("segoe")
+    };
+    let mut found = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            // Build output, VCS and tool state are not our tree.
+            if name.starts_with('.') || name.starts_with("target") {
+                continue;
+            }
+            if banned(&name) {
+                found.push(e.path().display().to_string());
+            }
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                stack.push(e.path());
+            }
+        }
+    }
+    assert!(found.is_empty(), "логотипы/шрифты/обои Microsoft в дереве Rexon: {found:?}");
+    for id in ["windows-xp", "windows-7"] {
+        let mut files = Vec::new();
+        let mut stack = vec![look_dir(id)];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                if e.path().is_dir() {
+                    stack.push(e.path());
+                } else {
+                    files.push(e.path());
+                }
+            }
+        }
+        assert!(!files.is_empty());
+        for f in files {
+            assert_eq!(f.extension().and_then(|x| x.to_str()), Some("json"), "{id}: в образе не только описания: {}", f.display());
+        }
+    }
+}
+
+/// What is taken from the community themes is declared in the image itself:
+/// only the GTK, Metacity and xfwm4 parts (never the Cinnamon/GNOME Shell/Unity
+/// parts with the menu logo and orbs); the icon archive's install script and
+/// prebuilt cache are dropped; no wallpaper, fonts or shell theme.
+#[test]
+fn windows_looks_declare_only_theme_parts() {
+    for id in ["windows-xp", "windows-7"] {
+        let pkg = load(id);
+        let kinds: Vec<&str> = pkg.items.iter().map(|i| i.kind.as_str()).collect();
+        for bad in ["wallpaper", "fonts", "shell-theme", "global-look"] {
+            assert!(!kinds.contains(&bad), "{id}: {bad}");
+        }
+        let model = own_json(id, "native/desktop-model.json").expect("модель");
+        let copy: Vec<&str> = model["copy_only"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(!copy.is_empty(), "{id}");
+        for c in &copy {
+            let part = c.rsplit('/').next().unwrap();
+            assert!(
+                part == "index.theme" || part.starts_with("gtk-") || part == "metacity-1" || part == "xfwm4",
+                "{id}: {c}"
+            );
+        }
+        // Every theme path is covered by copy_only (otherwise it is copied whole).
+        for item in pkg.items.iter().filter(|i| matches!(i.kind.as_str(), "gtk-theme" | "window-decoration")) {
+            for path in item.native.values() {
+                assert!(copy.iter().any(|c| c.starts_with(&format!("{path}/"))), "{id}: {path} копируется целиком");
+            }
+        }
+    }
+    let model = own_json("windows-7", "native/desktop-model.json").unwrap();
+    let exclude = model["exclude"].to_string();
+    for junk in ["icon-theme.cache", "install.sh", "PKGBUILD"] {
+        assert!(exclude.contains(junk), "{junk}");
     }
 }
 
@@ -417,7 +527,7 @@ fn garuda_forbids_appearing_system_parts_but_keeps_what_was_there() {
 
 #[test]
 fn plasma_looks_refuse_forked_libplasma() {
-    for id in LOOKS {
+    for id in PLASMA_LOOKS {
         let pkg = load(id);
         let stock = |n: &str| (n == "libplasma").then(|| n.to_string());
         assert!(unmet_preconditions(&pkg, &stock).is_empty(), "{id}");
@@ -584,7 +694,10 @@ mod apply {
     /// writing settings into profile files (the restore is checked against them).
     const FAKES: &[(&str, &str)] = &[
         ("kwriteconfig6", r#"f=""; g=""; k=""; while [ $# -gt 1 ]; do case "$1" in --file) f="$2"; shift 2;; --group) g="$g[$2]"; shift 2;; --key) k="$2"; shift 2;; *) shift;; esac; done
+case "$f" in /*) ;; *) f="$HOME/.config/$f";; esac
 mkdir -p "$(dirname "$f")"; printf '%s\n%s=%s\n' "$g" "$k" "$1" >> "$f""#),
+        // Like the real one: a bare file name is under `~/.config`.
+        ("dbus-send", "exit 0"),
         ("plasma-apply-lookandfeel", r#"mkdir -p "$HOME/.config"; printf '[KDE]\nLookAndFeelPackage=%s\n' "$2" >> "$HOME/.config/kdeglobals"; [ "$3" = "--resetLayout" ] && echo layout >> "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"; exit 0"#),
         ("plasma-apply-colorscheme", r#"printf '[General]\nColorScheme=%s\n' "$1" >> "$HOME/.config/kdeglobals""#),
         ("plasma-apply-desktoptheme", r#"printf '[Theme]\nname=%s\n' "$1" >> "$HOME/.config/plasmarc""#),
@@ -733,6 +846,13 @@ OpenGL renderer string: AMD Radeon 780M
         std::fs::write(path, text).unwrap();
     }
 
+    /// A file with mode 755, as theme repositories keep their pictures.
+    fn write_exec(path: &Path, text: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        write(path, text);
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     /// Fake download: the files the images need, and the pin marker.
     fn fake_fetch(job: &FetchJob) -> Result<(), String> {
         let d = &job.dir;
@@ -786,6 +906,68 @@ OpenGL renderer string: AMD Radeon 780M
                 write(&lt.join("org.garuda.desktop.defaultPanel/metadata.json"), "{}");
                 write(&lt.join("org.garuda.desktop.defaultDock/metadata.json"), "{}");
                 write(&d.join("usr/share/aurorae/themes/Sweet-Dark/Sweet-Darkrc-dr460nized"), "[General]\nGaruda=1\n");
+            }
+            // The community themes as their repositories keep them: every file with
+            // the executable bit, Cinnamon/GNOME Shell parts with the menu logo
+            // (`menu.png`, `orbs/`), the authors' own `start-here` in the icons.
+            "xp-theme" => {
+                for variant in ["Windows XP Luna", "Windows XP Royale"] {
+                    let t = d.join(variant);
+                    write(&t.join("index.theme"), &format!("[Desktop Entry]\nName={variant}\n"));
+                    write_exec(&t.join("gtk-2.0/gtkrc"), "gtk-color-scheme = \"bg:#ece9d8\"\n");
+                    write_exec(&t.join("gtk-3.0/gtk.css"), "* {}\n");
+                    write(&t.join("gtk-3.20/gtk.css"), "* {}\n");
+                    write(&t.join("gtk-4.0/gtk.css"), "* {}\n");
+                    write_exec(&t.join("metacity-1/metacity-theme-3.xml"), "<metacity_theme/>\n");
+                    write_exec(&t.join("xfwm4/themerc"), "x=1\n");
+                    write_exec(&t.join("xfwm4/close-active.png"), "png");
+                    write(&t.join("cinnamon/cinnamon.css"), "* {}\n");
+                    write(&t.join("cinnamon/menu.png"), "logo");
+                    write(&t.join("gnome-shell/gnome-shell.css"), "* {}\n");
+                    write(&t.join("unity/close.png"), "png");
+                }
+                write(&d.join("README.md"), "themes\n");
+            }
+            "Windows-XP" => {
+                write_exec(&d.join("index.theme"), "[Icon Theme]\nName=Windows XP\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\n");
+                write_exec(&d.join("48x48/apps/start-here.png"), "author-logo");
+                write_exec(&d.join("48x48/apps/firefox.png"), "png");
+                write(&d.join("LICENSE"), "GPL-2\n");
+            }
+            "modernxp" => {
+                write(&d.join("ModernXP/index.theme"), "[Icon Theme]\nName=ModernXP\n");
+                write(&d.join("ModernXP/cursors/left_ptr"), "cur");
+                std::os::unix::fs::symlink("left_ptr", d.join("ModernXP/cursors/default")).unwrap();
+            }
+            "Windows-7" => {
+                write_exec(&d.join("index.theme"), "[Desktop Entry]\nName=Windows-7\n");
+                write_exec(&d.join("gtk-2.0/gtkrc"), "x\n");
+                write_exec(&d.join("gtk-3.0/gtk.css"), "* {}\n");
+                write(&d.join("gtk-4.0/gtk.css"), "* {}\n");
+                write_exec(&d.join("metacity-1/metacity-theme-3.xml"), "<metacity_theme/>\n");
+                write_exec(&d.join("xfwm4/themerc"), "x=1\n");
+                write(&d.join("cinnamon/orbs/orb.png"), "logo");
+                write(&d.join("cinnamon/cinnamon.css"), "* {}\n");
+                write(&d.join("gnome-shell/gnome-shell.css"), "* {}\n");
+                write(&d.join("LICENSE"), "GPL-3\n");
+            }
+            "w7-icons" => {
+                let t = d.join("Windows-7");
+                write_exec(
+                    &t.join("index.theme"),
+                    "[Icon Theme]\nName=Windows-7\nInherits=elementary,Adwaita,gnome,hicolor\nDirectories=places\n\n[places]\nSize=48\n",
+                );
+                write_exec(&t.join("places/start-here.png"), "author-logo");
+                write(&t.join("icon-theme.cache"), "stale");
+                write_exec(&t.join("install.sh"), "#!/bin/sh\ncp -r . ~/.icons\n");
+                write(&t.join("PKGBUILD"), "pkgname=x\n");
+                write(&t.join(".SRCINFO"), "pkgbase = x\n");
+                write(&t.join("llms.txt"), "x\n");
+                write(&t.join("llms.md"), "x\n");
+                write(&t.join(".gitignore"), "x\n");
+                write(&t.join(".gitattributes"), "x\n");
+                write(&t.join("preview.png"), "png");
+                write(&t.join("COPYING"), "GPL-3\n");
             }
             other => return Err(format!("неожиданный источник {other}")),
         }
@@ -1304,6 +1486,145 @@ OpenGL renderer string: AMD Radeon 780M
     #[test]
     fn golden_steamos_on_mate() {
         check_golden("mate", "steamos", &mate_profile, NON_KDE_HAVE);
+    }
+
+    /// The Windows XP style on MATE: a theme name with spaces («Windows XP Luna»)
+    /// goes into the keys, the panel layout and the log as one value.
+    #[test]
+    fn golden_windows_xp_on_mate() {
+        check_golden("mate", "windows-xp", &mate_profile, NON_KDE_HAVE);
+    }
+
+    #[test]
+    fn golden_windows_xp_on_xfce() {
+        check_golden("xfce", "windows-xp", &xfce_profile, NON_KDE_HAVE);
+    }
+
+    #[test]
+    fn golden_windows_7_on_mate() {
+        check_golden("mate", "windows-7", &mate_profile, NON_KDE_HAVE);
+    }
+
+    #[test]
+    fn golden_windows_7_on_cinnamon() {
+        check_golden("cinnamon", "windows-7", &cinnamon_profile, NON_KDE_HAVE);
+    }
+
+    /// The Start menu on MATE: with mate-menu on the system — its applet with the
+    /// caption in the person's language, a «show desktop» button next to it; without
+    /// it — the built-in menu button (no "failed to load the applet" dialog), no
+    /// caption key, and mate-menu is named to the person as an AUR package.
+    #[test]
+    fn windows_xp_menu_is_mate_menu_or_the_builtin_button() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        let layout_of = |b: &Bench| std::fs::read_to_string(b.home.join(".local/share/mate-panel/layouts/rexon-windows-xp.layout")).unwrap();
+
+        let b = Bench::new("xp-menu-have");
+        mate_profile(&b);
+        let pkgs = Pkgs::new(&[("mate-menu", "mate-menu")]);
+        let (r, _) = run_apply(&b, "mate", "windows-xp", &pkgs, &|_| false, false, &[]);
+        r.unwrap();
+        let layout = layout_of(&b);
+        assert!(layout.contains("applet-iid=MateMenuAppletFactory::MateMenuApplet"), "{layout}");
+        assert!(layout.contains("applet-iid=WnckletFactory::ShowDesktopApplet"), "{layout}");
+        assert!(!layout.contains("object-type=menu\n"), "{layout}");
+        assert!(b.calls().contains("gsettings set org.mate.mate-menu applet-text Start"), "{}", b.calls());
+        assert_eq!(std::fs::read_to_string(b.home.join(".gsstore/org.mate.mate-menu/applet-text")).unwrap(), "Start");
+
+        let b = Bench::new("xp-menu-missing");
+        mate_profile(&b);
+        let before = b.snapshot();
+        let pkgs = Pkgs::new(&[]);
+        let t = b.target("mate");
+        let owner = |n: &str| pkgs.owner(n);
+        let no = |_: &str| false;
+        let plan = ready(dl::plan(&look("windows-xp"), &t, &Request::default(), &Probes { owner_of: &owner, in_repos: &no, extension_installed: &no }));
+        let aur = plan.aur.iter().find(|a| a.role == "mate-menu").expect("mate-menu в списке AUR");
+        assert_eq!(aur.packages, ["aur/mate-menu"]);
+        assert!(!aur.needed, "раскладка ставится и без mate-menu");
+        let (r, _) = run_apply(&b, "mate", "windows-xp", &pkgs, &|_| false, false, &[]);
+        r.unwrap();
+        let layout = layout_of(&b);
+        assert!(layout.contains("object-type=menu\n"), "{layout}");
+        assert!(!layout.contains("MateMenuApplet"), "{layout}");
+        assert!(!b.calls().contains("org.mate.mate-menu"), "{}", b.calls());
+        run_revert(&b, "mate", "windows-xp");
+        assert_eq!(b.snapshot(), before);
+    }
+
+    /// All file modes under `dir` that still have an executable bit.
+    fn executables(dir: &Path) -> Vec<String> {
+        use std::os::unix::fs::PermissionsExt;
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let md = std::fs::symlink_metadata(e.path()).unwrap();
+                if md.is_dir() {
+                    stack.push(e.path());
+                } else if md.is_file() && md.permissions().mode() & 0o111 != 0 {
+                    out.push(e.path().display().to_string());
+                }
+            }
+        }
+        out
+    }
+
+    /// From the community themes only the GTK, Metacity and xfwm4 parts reach the
+    /// profile: no Cinnamon/GNOME Shell/Unity parts (their menu logo and orbs), no
+    /// author install scripts, no stale icon cache, no executable bits. The menu
+    /// icon (`start-here`) is there only as the downloaded author's file inside the
+    /// author's icon set. The theme name with spaces is set as one value.
+    #[test]
+    fn windows_looks_take_only_theme_parts_and_author_icons() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        for (id, theme, icons) in [("windows-xp", "Windows XP Luna", "Windows-XP"), ("windows-7", "Windows-7", "Windows-7")] {
+            let b = Bench::new(&format!("winparts-{id}"));
+            mate_profile(&b);
+            let before = b.snapshot();
+            let pkgs = Pkgs::new(&[]);
+            let (r, _) = run_apply(&b, "mate", id, &pkgs, &|_| true, false, &[]);
+            r.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let data = b.home.join(".local/share");
+            let t = data.join("themes").join(theme);
+            for part in ["index.theme", "gtk-2.0", "gtk-3.0", "gtk-4.0", "metacity-1", "xfwm4"] {
+                assert!(t.join(part).exists(), "{id}: нет {part}");
+            }
+            for part in ["cinnamon", "gnome-shell", "unity"] {
+                assert!(!t.join(part).exists(), "{id}: {part} попал в профиль");
+            }
+            let i = data.join("icons").join(icons);
+            assert!(std::fs::read_dir(&i).unwrap().flatten().all(|e| e.file_name() != dl::PIN_MARK), "{id}: метка загрузки в теме");
+            for junk in ["icon-theme.cache", "install.sh", "PKGBUILD", ".SRCINFO", "llms.txt", "llms.md", ".gitignore", "preview.png"] {
+                assert!(!i.join(junk).exists(), "{id}: {junk} попал в профиль");
+            }
+            let index = std::fs::read_to_string(i.join("index.theme")).unwrap();
+            assert!(index.contains("Inherits=Adwaita,hicolor"), "{id}: {index}");
+            let exec = executables(&data);
+            assert!(exec.is_empty(), "{id}: исполняемые файлы в профиле: {exec:?}");
+            let start_here: Vec<PathBuf> = {
+                let mut out = Vec::new();
+                // The profile only: the download cache keeps the author's archive as downloaded.
+                let mut stack = vec![data.clone(), b.home.join(".config")];
+                while let Some(d) = stack.pop() {
+                    for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                        if e.path().is_dir() {
+                            stack.push(e.path());
+                        } else if e.file_name().to_string_lossy().starts_with("start-here") {
+                            out.push(e.path());
+                        }
+                    }
+                }
+                out
+            };
+            assert_eq!(start_here.len(), 1, "{id}: {start_here:?}");
+            assert!(start_here[0].starts_with(&i), "{id}: значок меню вне набора автора: {start_here:?}");
+            assert_eq!(std::fs::read_to_string(&start_here[0]).unwrap(), "author-logo", "{id}: это не скачанный файл автора");
+            assert_eq!(std::fs::read_to_string(b.home.join(".gsstore/org.mate.interface/gtk-theme")).unwrap(), theme, "{id}");
+            assert_eq!(std::fs::read_to_string(b.home.join(".gsstore/org.mate.Marco.general/theme")).unwrap(), theme, "{id}");
+            run_revert(&b, "mate", id);
+            assert_eq!(b.snapshot(), before, "{id}: «Вернуть как было» не вернуло профиль");
+        }
     }
 
     fn sway_profile(b: &Bench) {

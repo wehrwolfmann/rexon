@@ -679,9 +679,7 @@ impl qobject::DesktopsModel {
         // (`toolsNotice`), since a disabled button's tooltip does not pop up.
         let steamos = rexon_core::distro_compat::running_on_steamos();
         let de = self.rust().current_de.clone();
-        let have = |tool: &str| rexon_core::utils::which(tool, std::env::var("PATH").ok().as_deref()).is_some();
-        let panel_backup =
-            qd::panel_backup_supported(&de, &have) || rexon_core::backup::live_panel_copy_spec(&de).is_some();
+        let panel_backup = rexon_core::backup::panel_supported_live(&de);
         for button in qd::tool_buttons(&de, panel_backup) {
             let enabled = qd::steamos_button_block(button.kind, &de, true, steamos).is_none();
             out.append(QVariant::from(&vmap(vec![

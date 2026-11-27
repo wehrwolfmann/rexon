@@ -3451,8 +3451,16 @@ impl LiveScan {
         src.kwin_decoration_library = self.kread("kwinrc", "org.kde.kdecoration2", "library");
         src.kvantum_kvconfig = read_optional(&self.expand("~/.config/Kvantum/kvantum.kvconfig"));
         src.qt_style_override_env = env_str("QT_STYLE_OVERRIDE");
+        // The shared file or, while a desktop with its own Qt integration is
+        // installed, Rexon's desktop-bound one (`themes::qt_style_env_paths`).
         src.qt_style_env_file =
-            read_optional(&self.expand("~/.config/environment.d/rexon-qt-style.conf"));
+            read_optional(&self.expand("~/.config/environment.d/rexon-qt-style.conf")).or_else(|| {
+                read_optional(&self.expand(&format!(
+                    "~/.config/{}/{}",
+                    crate::themes::DESKTOP_BOUND_ENV_DIR,
+                    crate::themes::QT_STYLE_ENV_FILE
+                )))
+            });
         src.lxqt_conf = read_optional(&self.expand("~/.config/lxqt/lxqt.conf"));
         src.qtct_conf = ["qt6ct", "qt5ct"]
             .iter()
@@ -4313,7 +4321,7 @@ mod tests {
     #[test]
     #[cfg_attr(
         feature = "isolated-checks",
-        ignore = "нужна живая машина: спрашивает настоящий пакетный менеджер о происхождении пакетов"
+        ignore = "needs a live machine: asks the real package manager about package origins"
     )]
     fn live_system_scan_reaches_an_answer() {
         let scan = LiveScan::new(Vec::new(), HashMap::new());

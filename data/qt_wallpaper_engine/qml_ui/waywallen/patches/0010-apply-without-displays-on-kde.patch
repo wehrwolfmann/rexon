@@ -1,29 +1,30 @@
-Тема: «Применить» на KDE работает и до первого дисплея
+Subject: «Apply» on KDE works even before the first display
 
-Починка дефекта, не доработка. На KDE обои показывает Plasma-плагин
-waywallen, и дисплей у демона появляется, только когда плагин назначен
-обоями стола. Rexon назначает его сам, по нажатию «Применить» (раньше —
-при открытии вкладки, и с пустой библиотекой стол становился чёрным).
-Вендорная кнопка «Применить» включается по `hasSelection`, а для этого
-нужен хоть один дисплей: на свежей системе круг замыкался, кнопка
-оставалась серой навсегда (ВМ Arch + Plasma 6.8.2, 30.10.2026).
+A defect fix, not a feature. On KDE the wallpaper is shown by the waywallen
+Plasma plugin, and the daemon gets a display only once the plugin is assigned
+as the desktop wallpaper. Rexon assigns it itself, on pressing «Apply»
+(previously — when the tab opened, and with an empty library the desktop went
+black). The vendor «Apply» button is enabled by `hasSelection`, and that
+needs at least one display: on a fresh system the circle closed, and the
+button stayed grey forever (VM Arch + Plasma 6.8.2, 30.10.2026).
 
-* `WallpaperDetailPanel.qml`: при нуле целей кнопка доступна, если
-  `W.App.applyWithoutDisplays` — цель «все рабочие столы» (пустой
-  `wireTargets`). Кадр придерживает транспорт Rexon, пока plasmashell не
-  зарегистрирует дисплей; решение — ядро
-  (`waywallen_kde_plugin::apply_without_displays`, тот же `apply_gate`,
-  что у транспорта).
-* `KdeDisplaysHelp.qml`: при нуле дисплеев вместо «поставьте расширение
-  из GitHub/KDE Store и выберите его в настройках стола» — подсказка
-  Rexon `W.App.noDisplaysHint` («выберите обои и нажмите „Применить“»).
-  Пустая строка — вид апстрима. На X11 вне KDE (MATE, XFCE, Cinnamon X11)
-  вывод поднимает хост Rexon, и подсказка видна при любом бэкенде демона
-  (до этого под «Мониторы не зарегистрированы» было пусто, 30.10.2026).
+* `WallpaperDetailPanel.qml`: with zero targets the button is available if
+  `W.App.applyWithoutDisplays` — the target is «all desktops» (empty
+  `wireTargets`). The Rexon transport holds the frame until plasmashell
+  registers a display; the decision is the core's
+  (`waywallen_kde_plugin::apply_without_displays`, the same `apply_gate` as
+  the transport's).
+* `KdeDisplaysHelp.qml`: with zero displays, instead of «install the
+  extension from GitHub/KDE Store and select it in the desktop settings» —
+  the Rexon hint `W.App.noDisplaysHint` («choose a wallpaper and press
+  „Apply“»). An empty string — the upstream look. On X11 outside KDE (MATE,
+  XFCE, Cinnamon X11) the output is brought up by the Rexon host, and the
+  hint is visible with any daemon backend (before that, under «No monitors
+  registered» it was empty, 30.10.2026).
 
-Плейлисты (`PlaylistListSheetState`) — отдельно, патч 0011: там цели
-выбираются по одной, и при пустом списке `every()` по выбранным дисплеям
-дал бы «уже играет».
+Playlists (`PlaylistListSheetState`) are separate, patch 0011: there targets
+are chosen one by one, and with an empty list `every()` over the selected
+displays would give «already playing».
 ---
 diff --git a/ui/qml/component/KdeDisplaysHelp.qml b/ui/qml/component/KdeDisplaysHelp.qml
 index 8f336a89..796dcb06 100644
@@ -33,14 +34,14 @@ index 8f336a89..796dcb06 100644
      readonly property string githubUrl: "https://github.com/waywallen/waywallen-display"
      readonly property string kdeStoreUrl: "https://store.kde.org/p/2356221"
  
-+    // ПРАВКА REXON (починка дефекта, не доработка): Rexon сам ставит
-+    // плагин обоев Plasma и назначает его по «Применить», поэтому вместо
-+    // «поставьте расширение из GitHub/KDE Store и выберите его в настройках
-+    // стола» показываем, что делать на самом деле. На X11 вне KDE (MATE,
-+    // XFCE, Cinnamon X11) вывод поднимает хост Rexon — там подсказка
-+    // показывается при любом бэкенде демона, иначе под «Мониторы не
-+    // зарегистрированы» было пусто. Текст — ядро Rexon
-+    // (`W.App.noDisplaysHint`); пусто — вид апстрима. Правка живёт в
++    // REXON EDIT (a defect fix, not a feature): Rexon itself installs
++    // the Plasma wallpaper plugin and assigns it on «Apply», so instead of
++    // «install the extension from GitHub/KDE Store and select it in the desktop
++    // settings» we show what to actually do. On X11 outside KDE (MATE,
++    // XFCE, Cinnamon X11) the output is brought up by the Rexon host — there the hint
++    // is shown with any daemon backend, otherwise under «No monitors
++    // registered» it was empty. The text comes from the Rexon core
++    // (`W.App.noDisplaysHint`); empty — the upstream look. The edit lives in
 +    // patches/0010-apply-without-displays-on-kde.patch.
 +    readonly property string rexonHint: W.App.noDisplaysHint
 +
@@ -80,12 +81,12 @@ index ed28b537..1cc662ce 100644
          text: qsTr("Apply")
          busy: applyQuery.querying
 -        enabled: applyTargetState.hasSelection
-+        // ПРАВКА REXON (починка дефекта, не доработка): на KDE дисплей
-+        // появляется, только когда плагин обоев уже назначен, а назначает
-+        // его Rexon по нажатию «Применить» — без этой ветки кнопка была
-+        // серой на свежей системе навсегда. Пока дисплеев нет, цель — «все
-+        // рабочие столы» (пустой `wireTargets`); кадр придерживает
-+        // транспорт Rexon до регистрации дисплея. Правка живёт в
++        // REXON EDIT (a defect fix, not a feature): on KDE a display
++        // appears only once the wallpaper plugin is assigned, and Rexon
++        // assigns it on pressing «Apply» — without this branch the button stayed
++        // grey forever on a fresh system. While there are no displays, the target is «all
++        // desktops» (empty `wireTargets`); the Rexon transport holds
++        // the frame until a display registers. The edit lives in
 +        // patches/0010-apply-without-displays-on-kde.patch.
 +        enabled: applyTargetState.hasSelection || (!applyTargetState.hasTargets && W.App.applyWithoutDisplays)
          onTriggered: {

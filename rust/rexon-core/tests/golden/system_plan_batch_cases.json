@@ -162,7 +162,7 @@
    "family": "arch",
    "packages": [
     "mate-tweak",
-    "brisk-menu"
+    "mate-menu"
    ],
    "aur": true,
    "aur_helper": "yay",
@@ -187,7 +187,7 @@
       "--sudoflags",
       "",
       "mate-tweak",
-      "brisk-menu"
+      "mate-menu"
      ],
      "timeout": null,
      "lang_c": false
@@ -1137,7 +1137,7 @@
    "message": "Установка завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole dolphin\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole dolphin\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_install_TEST.log": ""
    },
    "removed_files": [
@@ -1213,7 +1213,7 @@
    ],
    "aur_packages": [
     "mate-tweak",
-    "brisk-menu"
+    "mate-menu"
    ],
    "aur_helper": "yay",
    "update_first": true,
@@ -1255,7 +1255,7 @@
       "--sudoflags",
       "",
       "mate-tweak",
-      "brisk-menu"
+      "mate-menu"
      ],
      "timeout": null,
      "lang_c": false
@@ -1265,7 +1265,7 @@
    "message": "Установка завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never mate mate-extra\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -Sy --noconfirm\npacman -S --needed --noconfirm --noprogressbar --color never mate mate-extra\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_install_TEST.log": ""
    },
    "removed_files": [
@@ -1315,7 +1315,7 @@
    "message": "Установка завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -S --needed --noconfirm --noprogressbar --color never xfce4\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\npacman -S --needed --noconfirm --noprogressbar --color never xfce4\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_install_TEST.log": ""
    },
    "removed_files": [
@@ -1366,7 +1366,7 @@
    "message": "Установка на SteamOS завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Шаг 1: Отключение read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Шаг 2: Инициализация ключей pacman ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Шаг 3: Обновление БД пакетов ──\npacman -Sy --noconfirm\n\n# ── Шаг 4: Установка пакетов ──\necho '📦 Установка пакетов: 2…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole\n\n# ── Шаг 5: Включение read-only обратно ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Всегда включаем readonly обратно при ошибке\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Step 1: disabling read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Step 2: initializing pacman keys ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Step 3: updating the package database ──\npacman -Sy --noconfirm\n\n# ── Step 4: installing packages ──\necho '📦 Установка пакетов: 2…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta konsole\n\n# ── Step 5: enabling read-only again ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Always turn readonly back on on error\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_steamos_TEST.log": ""
    },
    "removed_files": [
@@ -1440,7 +1440,7 @@
    "message": "Установка на SteamOS завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Шаг 1: Отключение read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Шаг 2: Инициализация ключей pacman ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Шаг 3: Обновление БД пакетов ──\npacman -Sy --noconfirm\n\n# ── Шаг 4: Установка пакетов ──\necho '📦 Установка пакетов: 1…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta\n\n# ── Шаг 5: Включение read-only обратно ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Всегда включаем readonly обратно при ошибке\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_steamos_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_steamos_TEST.log 2>/dev/null\n> /tmp/rexon_steamos_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\n\n# ── Step 1: disabling read-only ──\necho '🔓 Отключение steamos-readonly...'\nsteamos-readonly disable\n\n# ── Step 2: initializing pacman keys ──\necho '🔑 Инициализация ключей pacman...'\npacman-key --init 2>/dev/null || true\npacman-key --populate archlinux 2>/dev/null || true\npacman-key --populate holo 2>/dev/null || true\n\n# ── Step 3: updating the package database ──\npacman -Sy --noconfirm\n\n# ── Step 4: installing packages ──\necho '📦 Установка пакетов: 1…'\npacman -S --needed --noconfirm --noprogressbar --color never plasma-meta\n\n# ── Step 5: enabling read-only again ──\necho '🔒 Включение steamos-readonly...'\nsteamos-readonly enable\n\necho '✅ Установка на SteamOS завершена'\n) >> /tmp/rexon_steamos_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_steamos_TEST.log\n# Always turn readonly back on on error\nif [ $EXIT_CODE -ne 0 ]; then\n  steamos-readonly enable 2>/dev/null || true\nfi\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_steamos_TEST.log /tmp/rexon_steamos_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_steamos_TEST.log": ""
    },
    "removed_files": [
@@ -1495,7 +1495,7 @@
    "message": "Установка завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\napt-get update -q\napt-get install -y --no-install-recommends xfce4 xfce4-goodies lightdm\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\napt-get update -q\napt-get install -y --no-install-recommends xfce4 xfce4-goodies lightdm\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_install_TEST.log": ""
    },
    "removed_files": [
@@ -1702,7 +1702,7 @@
    "message": "Установка завершена",
    "used_de_helper": false,
    "files": {
-    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\nemerge --sync\nemerge --ask=n --quiet cosmic-base/cosmic-session\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Возвращаем владельца, чтобы user мог удалить tmp-файлы\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
+    "rexon_install_TEST.sh": "#!/bin/bash\nexec </dev/null\nchown root:root /tmp/rexon_install_TEST.log 2>/dev/null\n> /tmp/rexon_install_TEST.log\n(\n#!/bin/bash\nset -e\nexport LC_ALL=C LANG=C\nemerge --sync\nemerge --ask=n --quiet cosmic-base/cosmic-session\n) >> /tmp/rexon_install_TEST.log 2>&1\nEXIT_CODE=$?\necho \"__REXON_EXIT__$EXIT_CODE\" >> /tmp/rexon_install_TEST.log\n# Give the ownership back, so the user can delete the tmp files\nchown $PKEXEC_UID:$PKEXEC_UID /tmp/rexon_install_TEST.log /tmp/rexon_install_TEST.sh 2>/dev/null\nexit $EXIT_CODE\n",
     "rexon_install_TEST.log": ""
    },
    "removed_files": [

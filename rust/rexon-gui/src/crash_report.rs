@@ -618,10 +618,10 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.margins: 24
         spacing: 14
-        // Esc закрывает окно. Обработчик клавиш, а не Shortcut: Shortcut
-        // срабатывает только в АКТИВНОМ окне, а окно о крахе появляется из
-        // фонового процесса и активным бывает не всегда; клавиша же доходит
-        // сюда по цепочке фокуса от кнопки.
+        // Esc closes the window. A key handler, not a Shortcut: a Shortcut
+        // fires only in the ACTIVE window, while the crash window appears from
+        // a background process and is not always active; a key, however, reaches
+        // here along the focus chain from the button.
         Keys.onEscapePressed: Qt.quit()
 
         RowLayout {

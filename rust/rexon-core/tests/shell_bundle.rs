@@ -445,7 +445,7 @@ fn install_confirmation_names_packages_and_warnings() {
 
 /// In Russian: the block labels come from ru.po verbatim.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_texts() {
     let _lang = i18n_pin::ru();
     assert_eq!(qd::shells_header(), "Оболочки");

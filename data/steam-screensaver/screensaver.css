@@ -1,6 +1,6 @@
-/* Заставка Rexon: всё рисуется слоями на видеокарте — смена кадра только
-   прозрачностью, медленный наезд только transform. Ни размытия на лету,
-   ни теней: фон для вертикальных обложек Rexon готовит заранее. */
+/* Rexon screensaver: everything is drawn in layers on the GPU — a frame changes only
+   by opacity, the slow zoom only by transform. No blur on the fly,
+   no shadows: Rexon prepares the background for vertical covers in advance. */
 html, body {
   margin: 0;
   height: 100%;
@@ -37,10 +37,10 @@ html, body {
   transform: scale(1.0);
   will-change: transform;
 }
-/* Медленный наезд («Ken Burns»): длительность ставит скрипт по длине кадра. */
+/* A slow zoom («Ken Burns»): the script sets the duration by the frame length. */
 .slide.moving .pan { transform: scale(1.07) translate3d(-1%, -0.6%, 0); }
 .slide.moving.reverse .pan { transform: scale(1.07) translate3d(1%, 0.6%, 0); }
-/* Под вертикальной обложкой фон — заранее размытая копия, притушенная. */
+/* Under a vertical cover the background is a pre-blurred, dimmed copy. */
 .slide.framed .pan { opacity: 0.55; }
 
 .front {
@@ -50,7 +50,7 @@ html, body {
   background-repeat: no-repeat;
   display: none;
 }
-/* Логотип игры поверх hero — внизу слева, как подпись к кадру. */
+/* The game logo over the hero — bottom left, like a caption to the frame. */
 .slide.with-logo .front {
   display: block;
   left: 6vw;
@@ -59,7 +59,7 @@ html, body {
   height: 22vh;
   background-position: left bottom;
 }
-/* Вертикальная обложка или шапка — по центру поверх размытого фона. */
+/* A vertical cover or header — in the center over the blurred background. */
 .slide.framed .front {
   display: block;
   left: 10vw;

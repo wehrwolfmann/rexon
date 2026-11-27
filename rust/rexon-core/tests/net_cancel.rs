@@ -169,7 +169,7 @@ fn запрос_с_уже_взведённым_токеном_в_сеть_не_�
 /// Requires the internet, so it is not run by default:
 /// `cargo test -p rexon-core --test net_cancel -- --ignored`.
 #[test]
-#[ignore = "нужен интернет"]
+#[ignore = "needs the internet"]
 fn живой_https_запрос_каталога_проходит() {
     let mut net = UreqNet::new();
     let started = Instant::now();

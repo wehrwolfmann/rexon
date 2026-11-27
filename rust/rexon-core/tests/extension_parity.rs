@@ -56,7 +56,7 @@ fn enabled_map(v: &Value) -> Map<String, Value> {
 }
 
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn get_info_matches_python_all_cases() {
     // The Python golden remembers Russian type labels — the check runs on the Russian
     // catalog (`po/ru.po`); in the core the labels are English `msgid`s.
@@ -170,7 +170,7 @@ fn english_errors_and_defaults_have_no_russian() {
 
 /// In Russian the default labels are as they were.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+#[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
 fn russian_defaults_keep_old_texts() {
     let _lang = i18n_pin::ru();
     let empty = Map::new();

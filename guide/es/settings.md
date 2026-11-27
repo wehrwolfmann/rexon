@@ -8,7 +8,7 @@ archivos abre las carpetas, qué aplicaciones abren los archivos de forma
 predeterminada, fondos de pantalla a partir de una imagen o un vídeo, sonidos
 de fondo y sonidos de eventos. Las secciones van de arriba abajo en una sola
 columna; algunas solo aparecen donde tienen sentido (por ejemplo, la
-protección del panel, solo con KDE Plasma).
+protección del panel, solo en escritorios cuyo panel Rexon sabe guardar).
 
 ![La pestaña «Ajustes»: idioma, aspecto de la interfaz, recorrido](../images/settings-top.png)
 
@@ -27,7 +27,7 @@ protección del panel, solo con KDE Plasma).
 | 📚 **Biblioteca de fondos de pantalla** | Paquetes de fondos de pantalla de Rexon (.rxn) |
 | 🪟 **Importar temas de Windows** | Traer la apariencia de tu antiguo ordenador con Windows |
 | 🔒 **Protección de aplicaciones predeterminadas** | Impedir que un escritorio nuevo sustituya tus aplicaciones |
-| 🛡️ **Protección del panel de KDE Plasma** | Solo con Plasma: copias del panel, los widgets y los atajos de teclado |
+| 🛡️ **Protección del panel** | Copias de los paneles, los applets y los atajos de teclado de cualquier escritorio |
 | 🪟 **Apariencia del escritorio** | Solo si hay instalado un fork de la apariencia de Plasma (AeroShell, etc.) |
 
 Las animaciones, los tipos de letra, los botones de la barra de título, la
@@ -147,17 +147,24 @@ claro para uno claro.
   pestaña «Apariencia» (o **«↩️ Restaurar como estaba»** en el aspecto «Como
   en una distribución») también los restaura.
 
-## Copias de seguridad del panel de KDE Plasma
+## Copias del panel
 
-La sección **🛡️ Protección del panel de KDE Plasma** se ve cuando Plasma está
-en marcha o cuando quedan copias suyas.
+**🛡️ Protección del panel** guarda el aspecto del panel, los applets y los
+atajos de teclado de su escritorio y los recupera si algo se estropeó tras
+instalar otro escritorio. Funciona en todos los escritorios que conoce Rexon.
 
-1. Pulsa **«📦 Guardar copia»**: Rexon guardará el aspecto del panel, los
-   widgets y los atajos de teclado.
-2. Las copias aparecerán en la lista «Copias guardadas».
-3. Si después de instalar otro escritorio el panel se ha estropeado, pulsa
-   **«Restaurar»** en la copia que quieras y confirma. El aspecto actual del
-   panel se sustituirá.
+1. Pulse **«📦 Guardar copia»**. La pista sobre el botón dice qué se copia en
+   este escritorio.
+2. Se guardan hasta 10 copias por escritorio; la primera de todas
+   (**«⭐ la original, antes de Rexon»**) no se borra nunca.
+3. Antes de instalar o cambiar de escritorio, Rexon copia por sí mismo los
+   paneles de **todos los escritorios instalados**.
+4. Si un panel se estropeó, pulse **«Restaurar»** junto a la copia que quiera.
+   Las copias de otros escritorios están en el bloque plegado **«Copias de
+   otros escritorios»**; ese escritorio la tomará al volver a iniciar sesión.
+
+GNOME, Budgie y Pantheon comparten parte de los atajos: Rexon nombra en la
+pregunta los escritorios que también cambiarán.
 
 ## Fondos de pantalla, sonidos y demás
 

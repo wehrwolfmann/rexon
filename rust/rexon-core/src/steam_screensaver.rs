@@ -543,7 +543,7 @@ pub fn build_plan(games: &[GameArt], shots: &[ShotFile], opts: &Options, locale:
 pub fn manifest_js(manifest: &Value) -> String {
     let body = serde_json::to_string_pretty(manifest).unwrap_or_else(|_| "{}".into());
     format!(
-        "// Создано Rexon. Набор картинок заставки — обновляется из Rexon.\n\
+        "// Created by Rexon. The set of screensaver pictures — updated from Rexon.\n\
          window.REXON_SCREENSAVER = {};\n",
         body.replace("</", "<\\/")
     )
@@ -1119,6 +1119,530 @@ pub fn restart_hint() -> String {
     tr("Not in the list? Close Steam completely and start it again.")
 }
 
+// ============================================================================
+// Catalog: Steam's own screensavers, the person's own and Rexon's
+// ============================================================================
+//
+// The subtab shows every screensaver Steam can show, as cards with a preview:
+// the built-in ones of the installed Steam (`steamui/screensavers/<name>`),
+// the person's own (`config/uioverrides/screensavers/<name>`) and the Rexon
+// modes. Without Steam only the Rexon modes are left. Rexon ships no Steam
+// screensaver and no Steam logo: the built-in pages are only read from the
+// installed client, and their snapshots go to the person's cache.
+//
+// How Steam itself names and lists them (steamui, client update of
+// 13.10.2026): the game slideshow is drawn by the Steam interface itself and is
+// always first (`steam-gameslideshow`); the client adds the folders as
+// `steam-<folder>` (built-in) and `uioverride-<folder>` (user); the names come
+// from the Steam interface catalog (`steamui/localization/steamui_<lang>-json.js`),
+// an unknown built-in id is shown as is. The choice is the client setting
+// `Customization/Screensaver/CurrentScreensaver` of `config/config.vdf`; an
+// unknown or missing value means the game slideshow. Rexon only READS it.
+
+/// The game slideshow drawn by the Steam interface itself (no folder).
+pub const STEAM_SLIDESHOW_ID: &str = "steam-gameslideshow";
+/// The built-in bouncing Steam logo (`steamui/screensavers/bouncinglogo`).
+pub const STEAM_BOUNCING_ID: &str = "steam-bouncinglogo";
+/// Prefix of the built-in screensaver ids.
+pub const STEAM_BUILTIN_PREFIX: &str = "steam-";
+/// Prefix of the user screensaver ids (`uioverrides`).
+pub const STEAM_USER_PREFIX: &str = "uioverride-";
+/// Keys of the Rexon cards.
+pub const REXON_SLIDESHOW_KEY: &str = "rexon:slideshow";
+pub const REXON_BOUNCE_KEY: &str = "rexon:bounce";
+
+/// Snapshot size of a screensaver page (16:9, enough for the large card).
+pub const SNAPSHOT_SIZE: (u32, u32) = (640, 360);
+/// A browser that has not produced a snapshot in this time is stopped.
+pub const SNAPSHOT_TIMEOUT_S: u64 = 30;
+/// Browsers that can take a snapshot without a window, in order of preference.
+pub const SNAPSHOT_BROWSERS: &[&str] = &["firefox", "chromium", "google-chrome-stable", "google-chrome"];
+/// How many pictures the large view of a slideshow card pages through.
+pub const VIEWER_PICTURES_MAX: usize = 40;
+
+/// Where a screensaver comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    /// Built into the installed Steam.
+    Steam,
+    /// Put into `uioverrides` by the person (or by another program).
+    User,
+    /// A Rexon mode: Rexon builds and installs it.
+    Rexon,
+}
+
+/// What the card preview is made of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewKind {
+    /// A picture from the found game art and screenshots.
+    Slideshow,
+    /// A live bouncing Rexon logo drawn by the markup.
+    Bounce,
+    /// A snapshot of the HTML page.
+    Html,
+}
+
+/// One card of the catalog.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Entry {
+    /// `rexon:<mode>` or the Steam id.
+    pub key: String,
+    pub origin: Origin,
+    pub preview: PreviewKind,
+    pub title: String,
+    /// Source label on the card.
+    pub badge: String,
+    /// `index.html` of the screensaver; empty for the Steam game slideshow and
+    /// the Rexon modes (their page is built on demand).
+    pub page: String,
+    /// Steam shows this screensaver now (read from the Steam settings).
+    pub current: bool,
+    /// The Rexon mode the installed Rexon screensaver is built with.
+    pub installed: bool,
+    /// Second line on the card: «Selected in Steam» / «Installed».
+    pub state: String,
+}
+
+/// Folders with an `index.html` inside `dir`, sorted; hidden and temporary
+/// ones (`.rexon.new-…`) are skipped.
+fn html_folders(dir: &Path) -> Vec<(String, PathBuf)> {
+    let mut names = list_names(dir);
+    names.retain(|n| !n.starts_with('.'));
+    names.sort();
+    names
+        .into_iter()
+        .map(|n| {
+            let page = dir.join(&n).join("index.html");
+            (n, page)
+        })
+        .filter(|(_, page)| page.is_file())
+        .collect()
+}
+
+/// The built-in screensavers of the installed Steam: (id, `index.html`).
+pub fn steam_builtin_pages(root: &Path) -> Vec<(String, PathBuf)> {
+    html_folders(&root.join("steamui").join("screensavers"))
+        .into_iter()
+        .map(|(n, p)| (format!("{STEAM_BUILTIN_PREFIX}{n}"), p))
+        .collect()
+}
+
+/// The person's own screensavers: (id, `index.html`). Folders with the Rexon
+/// marker are ours and are shown as the Rexon cards instead.
+pub fn steam_user_pages(root: &Path) -> Vec<(String, PathBuf)> {
+    html_folders(&screensavers_dir(root))
+        .into_iter()
+        .filter(|(_, p)| p.parent().is_none_or(|d| read_marker(d).is_none()))
+        .map(|(n, p)| (format!("{STEAM_USER_PREFIX}{n}"), p))
+        .collect()
+}
+
+/// The chosen screensaver from the text of `config/config.vdf`: the key
+/// `CurrentScreensaver` inside a `Screensaver` block, at any depth.
+pub fn parse_current_screensaver(config_vdf: &str) -> Option<String> {
+    fn walk(node: &Kv, parent_is_screensaver: bool) -> Option<String> {
+        for (k, v) in node.entries() {
+            match v {
+                Kv::Str(s) if parent_is_screensaver && k.eq_ignore_ascii_case("CurrentScreensaver") => {
+                    let s = s.trim();
+                    if !s.is_empty() {
+                        return Some(s.to_string());
+                    }
+                }
+                Kv::Obj(_) => {
+                    if let Some(found) = walk(v, k.eq_ignore_ascii_case("Screensaver")) {
+                        return Some(found);
+                    }
+                }
+                Kv::Str(_) => {}
+            }
+        }
+        None
+    }
+    walk(&parse_kv(config_vdf), false)
+}
+
+/// The screensaver Steam shows, the way Steam resolves it: a value that is not
+/// among `known` (or none at all) means the game slideshow.
+pub fn current_steam_id(root: &Path, known: &[String]) -> String {
+    std::fs::read_to_string(root.join("config").join("config.vdf"))
+        .ok()
+        .and_then(|t| parse_current_screensaver(&t))
+        .filter(|id| known.iter().any(|k| k == id))
+        .unwrap_or_else(|| STEAM_SLIDESHOW_ID.to_string())
+}
+
+/// Screensaver names from the Steam interface catalog (the language of the Steam client).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SteamNames {
+    pub slideshow: Option<String>,
+    pub bouncing: Option<String>,
+    /// With `%1$s` in place of the folder name.
+    pub user: Option<String>,
+}
+
+const NAME_KEYS: [&str; 3] = [
+    "Settings_Customization_ScreensaverGameSlideshow",
+    "Settings_Customization_ScreensaverBouncingLogo",
+    "Settings_Customization_ScreensaverUser",
+];
+
+/// The value of `"key":"…"` from a Steam interface catalog (JSON inside a script).
+pub fn steamui_string(js: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\":\"");
+    let start = js.find(&needle)? + needle.len();
+    let rest = &js[start..];
+    let mut end = None;
+    let mut escaped = false;
+    for (i, c) in rest.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            '"' => {
+                end = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let raw = &rest[..end?];
+    serde_json::from_str::<String>(&format!("\"{raw}\"")).ok().filter(|s| !s.is_empty())
+}
+
+/// Names in the Steam client language `steam_lang` (`russian`, `german`…);
+/// what that catalog lacks is taken from the English one.
+pub fn steam_names(root: &Path, steam_lang: &str) -> SteamNames {
+    let dir = root.join("steamui").join("localization");
+    let read = |lang: &str| std::fs::read_to_string(dir.join(format!("steamui_{lang}-json.js"))).unwrap_or_default();
+    let own = read(steam_lang);
+    let english = if steam_lang == "english" { String::new() } else { read("english") };
+    let get = |key: &str| steamui_string(&own, key).or_else(|| steamui_string(&english, key));
+    SteamNames { slideshow: get(NAME_KEYS[0]), bouncing: get(NAME_KEYS[1]), user: get(NAME_KEYS[2]) }
+}
+
+/// `decodeURIComponent` with `+` as a space — how Steam turns a folder id into a name.
+fn decode_folder_name(raw: &str) -> String {
+    let bytes = raw.replace('+', " ").into_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("");
+            if let Ok(b) = u8::from_str_radix(hex, 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| raw.to_string())
+}
+
+/// The name of a Steam screensaver exactly as the Steam list shows it.
+pub fn steam_title(id: &str, names: &SteamNames) -> String {
+    if id == STEAM_SLIDESHOW_ID {
+        return names.slideshow.clone().unwrap_or_else(|| tr("Game Slideshow"));
+    }
+    if id == STEAM_BOUNCING_ID {
+        return names.bouncing.clone().unwrap_or_else(|| tr("Bouncing Logo"));
+    }
+    if let Some(folder) = id.strip_prefix(STEAM_USER_PREFIX) {
+        let name = decode_folder_name(folder);
+        return match &names.user {
+            Some(fmt) if fmt.contains("%1$s") => fmt.replace("%1$s", &name),
+            // TRANSLATORS: %1 is the folder name of a screensaver the person added to Steam themselves.
+            _ => trf("%1 (User Created)", &[&name]),
+        };
+    }
+    id.to_string()
+}
+
+/// Source label of a card.
+pub fn origin_badge(origin: Origin) -> String {
+    match origin {
+        Origin::Steam => "Steam".into(),
+        // TRANSLATORS: card badge of a screensaver the person put into Steam themselves (not built into Steam).
+        Origin::User => tr("Added by you"),
+        Origin::Rexon => "Rexon".into(),
+    }
+}
+
+/// The whole catalog. `root` is the Steam root (None — Steam was not found:
+/// only the Rexon modes), `installed` is the state of the Rexon screensaver
+/// there.
+pub fn catalog(root: Option<&Path>, steam_lang: &str, installed: Option<&Status>) -> Vec<Entry> {
+    let mut steam: Vec<(String, Origin, PreviewKind, String)> = Vec::new();
+    let mut names = SteamNames::default();
+    if let Some(root) = root {
+        names = steam_names(root, steam_lang);
+        steam.push((STEAM_SLIDESHOW_ID.into(), Origin::Steam, PreviewKind::Slideshow, String::new()));
+        for (id, page) in steam_builtin_pages(root) {
+            steam.push((id, Origin::Steam, PreviewKind::Html, page.display().to_string()));
+        }
+        for (id, page) in steam_user_pages(root) {
+            steam.push((id, Origin::User, PreviewKind::Html, page.display().to_string()));
+        }
+    }
+    let ours_installed = installed.filter(|s| s.installed);
+    let our_dir = root.and_then(installed_dir);
+    let our_id = our_dir
+        .as_ref()
+        .and_then(|d| d.file_name())
+        .map(|n| format!("{STEAM_USER_PREFIX}{}", n.to_string_lossy()));
+    let current = root.map(|r| {
+        let mut known: Vec<String> = steam.iter().map(|(id, ..)| id.clone()).collect();
+        known.extend(our_id.clone());
+        current_steam_id(r, &known)
+    });
+    let ours_current = our_id.is_some() && current == our_id;
+
+    let mut out = Vec::new();
+    for c in mode_choices() {
+        let mode = if c.key == "bounce" { Mode::Bounce } else { Mode::Slideshow };
+        let is_installed = ours_installed.is_some_and(|s| s.options.mode == mode);
+        let is_current = is_installed && ours_current;
+        out.push(Entry {
+            key: format!("rexon:{}", c.key),
+            origin: Origin::Rexon,
+            preview: if mode == Mode::Bounce { PreviewKind::Bounce } else { PreviewKind::Slideshow },
+            title: c.label,
+            badge: origin_badge(Origin::Rexon),
+            page: String::new(),
+            current: is_current,
+            installed: is_installed,
+            state: state_text(is_current, is_installed),
+        });
+    }
+    for (id, origin, preview, page) in steam {
+        let is_current = current.as_deref() == Some(id.as_str());
+        out.push(Entry {
+            title: steam_title(&id, &names),
+            badge: origin_badge(origin),
+            key: id,
+            origin,
+            preview,
+            page,
+            current: is_current,
+            installed: false,
+            state: state_text(is_current, false),
+        });
+    }
+    out
+}
+
+fn state_text(current: bool, installed: bool) -> String {
+    if current {
+        tr("✅ Selected in Steam")
+    } else if installed {
+        tr("Installed in Steam")
+    } else {
+        String::new()
+    }
+}
+
+/// The explanation under the large card of a screensaver Steam shows itself:
+/// Rexon does not install or choose it.
+pub fn steam_choice_hint(title: &str, current: bool) -> String {
+    if current {
+        return tr("Steam is showing this screensaver now. Rexon doesn't change your choice in Steam.");
+    }
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them. %1 is the screensaver name as Steam lists it.
+    trf("Steam shows this screensaver itself — there is nothing to install. To use it, open Steam Big Picture → \
+         Settings → Customization → Screensaver and choose «%1».", &[&title])
+}
+
+/// The explanation under the large card of a Rexon mode. `steam_name` — how
+/// the Steam list names the Rexon screensaver (in the Steam client language).
+pub fn rexon_card_hint(mode_hint: &str, steam_name: &str, current: bool, installed: bool) -> String {
+    let state = if current {
+        tr("Steam is showing this screensaver now.")
+    } else if installed {
+        // TRANSLATORS: %1 is the name of the Rexon screensaver in the Steam list, e.g. «rexon (User Created)».
+        trf("Installed — choose «%1» in Steam to see it there.", &[&steam_name])
+    } else {
+        tr("Press «Install Screensaver» — Rexon puts it into Steam.")
+    };
+    format!("{mode_hint} {state}")
+}
+
+/// Refusal of the full-screen look when the page viewer is missing.
+pub fn preview_host_missing() -> String {
+    tr("There's nothing to show the screensaver with: the rexon-wallpaper-host program wasn't found. \
+        It's installed together with Rexon — reinstall Rexon.")
+}
+
+/// Message when there is no browser to take a snapshot of a page.
+pub fn no_snapshot_browser() -> String {
+    tr("No preview picture: install Firefox or Chromium so Rexon can take one.")
+}
+
+/// Cache folder of the subtab: page snapshots, the Rexon logo, the preview page.
+pub fn cache_dir(home: &str) -> PathBuf {
+    let base = std::env::var("XDG_CACHE_HOME")
+        .ok()
+        .filter(|v| v.starts_with('/'))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(home).join(".cache"));
+    base.join("rexon").join("steam-screensavers")
+}
+
+/// The newest change time among the files of a page folder (seconds).
+fn folder_stamp(dir: &Path) -> u64 {
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| e.metadata().ok()?.modified().ok())
+                .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+}
+
+/// Snapshot file of a page in the cache: the name changes when the page folder
+/// changes (a Steam update, a new version of a user screensaver).
+pub fn snapshot_file(cache: &Path, page: &Path) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    page.hash(&mut h);
+    folder_stamp(page.parent().unwrap_or(page)).hash(&mut h);
+    SNAPSHOT_SIZE.hash(&mut h);
+    cache.join("snapshots").join(format!("{:016x}.png", h.finish()))
+}
+
+/// Command line of a windowless browser snapshot: `browser` is the program name
+/// from [`SNAPSHOT_BROWSERS`], `bin` its path, `profile` an empty throwaway folder.
+pub fn snapshot_argv(browser: &str, bin: &str, profile: &Path, out: &Path, page: &Path) -> Vec<String> {
+    let url = format!("file://{}", page.display());
+    let (w, h) = SNAPSHOT_SIZE;
+    if browser == "firefox" {
+        vec![
+            bin.into(),
+            "--headless".into(),
+            "--no-remote".into(),
+            "--profile".into(),
+            profile.display().to_string(),
+            "--screenshot".into(),
+            out.display().to_string(),
+            format!("--window-size={w},{h}"),
+            url,
+        ]
+    } else {
+        vec![
+            bin.into(),
+            "--headless=new".into(),
+            "--hide-scrollbars".into(),
+            "--mute-audio".into(),
+            "--no-first-run".into(),
+            format!("--user-data-dir={}", profile.display()),
+            format!("--screenshot={}", out.display()),
+            format!("--window-size={w},{h}"),
+            "--virtual-time-budget=1500".into(),
+            url,
+        ]
+    }
+}
+
+/// The first snapshot browser found in `PATH`: (name, path).
+pub fn find_snapshot_browser() -> Option<(&'static str, String)> {
+    let path = std::env::var_os("PATH")?;
+    SNAPSHOT_BROWSERS.iter().find_map(|name| {
+        std::env::split_paths(&path)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+            .map(|p| (*name, p.display().to_string()))
+    })
+}
+
+/// Take a snapshot of `page` into `out` with a windowless browser. Blocks for
+/// seconds — call from a worker thread. The throwaway profile is removed.
+pub fn take_snapshot(browser: (&str, &str), page: &Path, out: &Path) -> Result<(), String> {
+    let parent = out.parent().ok_or("no snapshot folder")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let profile = parent.join(format!(".profile-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&profile);
+    std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
+    let tmp = parent.join(format!(".shot-{}.png", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    let argv = snapshot_argv(browser.0, browser.1, &profile, &tmp, page);
+    let result = (|| {
+        let mut child = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .env("MOZ_HEADLESS", "1")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(SNAPSHOT_TIMEOUT_S);
+        loop {
+            if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{} took longer than {SNAPSHOT_TIMEOUT_S} s", browser.0));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if !tmp.is_file() {
+            return Err(format!("{} made no picture", browser.0));
+        }
+        std::fs::rename(&tmp, out).map_err(|e| e.to_string())
+    })();
+    let _ = std::fs::remove_dir_all(&profile);
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
+/// The Rexon logo as a file in the cache (for the live preview of the bouncing logo).
+pub fn logo_file(cache: &Path) -> Option<PathBuf> {
+    let path = cache.join(REXON_LOGO_NAME);
+    let same = std::fs::metadata(&path).is_ok_and(|m| m.len() == REXON_LOGO_PNG.len() as u64);
+    if !same {
+        std::fs::create_dir_all(cache).ok()?;
+        std::fs::write(&path, REXON_LOGO_PNG).ok()?;
+    }
+    Some(path)
+}
+
+/// Pictures a slideshow card can show large: game art first, then screenshots.
+pub fn viewer_pictures(games: &[GameArt], shots: &[ShotFile], opts: &Options) -> Vec<(String, PathBuf)> {
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    if opts.game_art {
+        for g in games.iter().take(opts.max_games) {
+            if let Some(p) = g.art.hero.as_ref().or(g.art.portrait.as_ref()).or(g.art.header.as_ref()) {
+                out.push((g.title.clone(), PathBuf::from(p)));
+            }
+        }
+    }
+    if opts.screenshots {
+        out.extend(shots.iter().take(opts.max_screenshots).map(|s| (s.title.clone(), s.path.clone())));
+    }
+    out.truncate(VIEWER_PICTURES_MAX);
+    out
+}
+
+/// Build the Rexon screensaver page with `opts` into the cache (`<cache>/preview`)
+/// to show it before installing. `root` — the Steam root to take pictures from
+/// (None — without pictures: the page shows the bouncing logo). Returns the
+/// path of `index.html`. Blocks while the pictures are scaled down.
+pub fn build_preview(root: Option<&Path>, cache: &Path, opts: &Options, steam_lang: &str, locale: &str) -> Result<PathBuf, String> {
+    let (games, shots) = root.map(|r| collect(r, steam_lang)).unwrap_or_default();
+    let plan = build_plan(&games, &shots, opts, locale);
+    let dir = cache.join("preview");
+    let _ = std::fs::remove_dir_all(&dir);
+    let marker = Marker { owner: "rexon-preview".into(), layout: LAYOUT_VERSION, options: opts.clone(), ..Marker::default() };
+    write_folder(&dir, &plan, &marker)?;
+    Ok(dir.join("index.html"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1518,5 +2042,171 @@ mod tests {
         assert!(!installed_message(&[rep], &[]).contains("boom"));
         assert_eq!(removed_message(1, std::slice::from_ref(&err)), "boom");
         assert_ne!(removed_message(0, &[]), removed_message(1, &[]));
+    }
+
+    /// Fake Steam client parts: built-in screensavers, a localization catalog, a
+    /// user screensaver and the chosen one in `config.vdf`.
+    fn fake_client(root: &Path, current: Option<&str>) {
+        let builtin = root.join("steamui/screensavers/bouncinglogo");
+        std::fs::create_dir_all(&builtin).unwrap();
+        std::fs::write(builtin.join("index.html"), "<html><body>logo</body></html>").unwrap();
+        // A folder without a page is not a screensaver.
+        std::fs::create_dir_all(root.join("steamui/screensavers/empty")).unwrap();
+        let loc = root.join("steamui/localization");
+        std::fs::create_dir_all(&loc).unwrap();
+        std::fs::write(
+            loc.join("steamui_english-json.js"),
+            "\"use strict\";(()=>{e.exports=JSON.parse(`{\"Settings_Customization_ScreensaverGameSlideshow\":\"Game Slideshow\",\
+             \"Settings_Customization_ScreensaverBouncingLogo\":\"Bouncing Logo\",\
+             \"Settings_Customization_ScreensaverUser\":\"%1$s (User Created)\"}`)})",
+        )
+        .unwrap();
+        std::fs::write(
+            loc.join("steamui_russian-json.js"),
+            "x=JSON.parse(`{\"Settings_Customization_ScreensaverBouncingLogo\":\"\\u0042\\u006F\\u0075\\u006E\\u0063\\u0065\",\
+             \"Settings_Customization_ScreensaverUser\":\"%1$s (\\u0055\\u0073\\u0065\\u0072)\"}`)",
+        )
+        .unwrap();
+        let user = screensavers_dir(root).join("Night+Sky");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(user.join("index.html"), "<html></html>").unwrap();
+        std::fs::create_dir_all(screensavers_dir(root).join(".rexon.new-1")).unwrap();
+        std::fs::write(screensavers_dir(root).join(".rexon.new-1/index.html"), "x").unwrap();
+        if let Some(id) = current {
+            std::fs::write(
+                root.join("config/config.vdf"),
+                format!("\"InstallConfigStore\" {{ \"Customization\" {{ \"Screensaver\" {{ \"CurrentScreensaver\" \"{id}\" }} }} }}"),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn catalog_without_steam_has_only_rexon_modes() {
+        let c = catalog(None, "english", None);
+        let keys: Vec<&str> = c.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys, [REXON_SLIDESHOW_KEY, REXON_BOUNCE_KEY]);
+        assert!(c.iter().all(|e| e.origin == Origin::Rexon && !e.current && !e.installed && e.page.is_empty()));
+        assert_eq!(c[1].preview, PreviewKind::Bounce);
+    }
+
+    #[test]
+    fn catalog_lists_steam_builtin_user_and_reads_current() {
+        let root = fake_steam("catalog");
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        fake_client(&root, Some("steam-bouncinglogo"));
+        let c = catalog(Some(&root), "english", None);
+        let keys: Vec<&str> = c.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [REXON_SLIDESHOW_KEY, REXON_BOUNCE_KEY, STEAM_SLIDESHOW_ID, STEAM_BOUNCING_ID, "uioverride-Night+Sky"]
+        );
+        let by = |k: &str| c.iter().find(|e| e.key == k).unwrap().clone();
+        assert_eq!(by(STEAM_SLIDESHOW_ID).title, "Game Slideshow");
+        assert_eq!(by(STEAM_BOUNCING_ID).title, "Bouncing Logo");
+        assert_eq!(by("uioverride-Night+Sky").title, "Night Sky (User Created)");
+        assert_eq!(by("uioverride-Night+Sky").origin, Origin::User);
+        assert!(by(STEAM_BOUNCING_ID).current && !by(STEAM_SLIDESHOW_ID).current);
+        assert!(by(STEAM_BOUNCING_ID).page.ends_with("bouncinglogo/index.html"));
+        assert_eq!(by(STEAM_SLIDESHOW_ID).preview, PreviewKind::Slideshow);
+
+        // Steam language: what the language catalog has, the rest from English.
+        let ru = catalog(Some(&root), "russian", None);
+        let t = |k: &str| ru.iter().find(|e| e.key == k).unwrap().title.clone();
+        assert_eq!(t(STEAM_BOUNCING_ID), "Bounce");
+        assert_eq!(t(STEAM_SLIDESHOW_ID), "Game Slideshow");
+        assert_eq!(t("uioverride-Night+Sky"), "Night Sky (User)");
+
+        // An unknown choice falls back to the game slideshow, as in Steam.
+        fake_client(&root, Some("uioverride-gone"));
+        let c = catalog(Some(&root), "english", None);
+        assert!(c.iter().find(|e| e.key == STEAM_SLIDESHOW_ID).unwrap().current);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn catalog_marks_installed_rexon_mode_and_hides_our_folder() {
+        let root = fake_steam("catalog-ours");
+        let opts = Options { mode: Mode::Bounce, ..Options::default() };
+        install(&root, &opts, "english", "en").unwrap();
+        fake_client(&root, Some(STEAM_ID));
+        let st = status(&root);
+        let c = catalog(Some(&root), "english", Some(&st));
+        assert!(c.iter().all(|e| e.key != STEAM_ID), "our folder is the Rexon card, not a user card");
+        let bounce = c.iter().find(|e| e.key == REXON_BOUNCE_KEY).unwrap();
+        assert!(bounce.installed && bounce.current && !bounce.state.is_empty());
+        let slides = c.iter().find(|e| e.key == REXON_SLIDESHOW_KEY).unwrap();
+        assert!(!slides.installed && !slides.current && slides.state.is_empty());
+        assert_eq!(c.iter().filter(|e| e.current).count(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn current_screensaver_parsing() {
+        assert_eq!(
+            parse_current_screensaver(
+                "\"InstallConfigStore\" { \"Software\" { } \"Customization\" { \"Screensaver\" { \"CurrentScreensaver\" \"uioverride-x\" } } }"
+            )
+            .as_deref(),
+            Some("uioverride-x")
+        );
+        // The key outside a Screensaver block is something else.
+        assert_eq!(parse_current_screensaver("\"a\" { \"CurrentScreensaver\" \"y\" }"), None);
+        assert_eq!(parse_current_screensaver(""), None);
+    }
+
+    #[test]
+    fn steamui_string_and_folder_names() {
+        let js = r#"{"A":"x\"y","B":"Ab","C":""}"#;
+        assert_eq!(steamui_string(js, "A").as_deref(), Some("x\"y"));
+        assert_eq!(steamui_string(js, "B").as_deref(), Some("Ab"));
+        assert_eq!(steamui_string(js, "C"), None);
+        assert_eq!(steamui_string(js, "D"), None);
+        assert_eq!(decode_folder_name("a%20b+c%"), "a b c%");
+        assert_eq!(steam_title("steam-matrix", &SteamNames::default()), "steam-matrix");
+        assert!(steam_title("uioverride-q", &SteamNames::default()).contains('q'));
+    }
+
+    #[test]
+    fn snapshot_plan_is_cached_per_folder_version() {
+        let dir = scratch("snap");
+        let page = dir.join("ss/index.html");
+        std::fs::create_dir_all(page.parent().unwrap()).unwrap();
+        std::fs::write(&page, "x").unwrap();
+        let cache = dir.join("cache");
+        let a = snapshot_file(&cache, &page);
+        assert_eq!(a, snapshot_file(&cache, &page));
+        assert!(a.starts_with(cache.join("snapshots")) && a.extension().unwrap() == "png");
+        let other = dir.join("tt/index.html");
+        assert_ne!(a, snapshot_file(&cache, &other));
+
+        let ff = snapshot_argv("firefox", "/usr/bin/firefox", Path::new("/p"), Path::new("/o.png"), &page);
+        assert!(ff.contains(&"--headless".to_string()) && ff.contains(&"--no-remote".to_string()));
+        assert!(ff.last().unwrap().starts_with("file:///"));
+        let cr = snapshot_argv("chromium", "/usr/bin/chromium", Path::new("/p"), Path::new("/o.png"), &page);
+        assert!(cr.contains(&"--screenshot=/o.png".to_string()) && cr.contains(&"--user-data-dir=/p".to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn preview_page_is_built_in_cache_not_in_steam() {
+        let root = fake_steam("preview");
+        let cache = scratch("preview-cache");
+        let opts = Options { mode: Mode::Slideshow, ..Options::default() };
+        let page = build_preview(Some(&root), &cache, &opts, "english", "en").unwrap();
+        assert!(page.starts_with(&cache) && page.is_file());
+        assert!(page.parent().unwrap().join("manifest.js").is_file());
+        assert!(!target_dir(&root).exists(), "preview does not install anything into Steam");
+        assert!(!root.join("config/config.vdf").exists(), "the Steam choice is not touched");
+        // Without Steam: a page without pictures (it falls back to the logo).
+        let page = build_preview(None, &cache, &opts, "english", "en").unwrap();
+        assert!(page.is_file());
+        assert!(logo_file(&cache).unwrap().is_file());
+        let (g, s) = collect(&root, "english");
+        assert_eq!(viewer_pictures(&g, &s, &opts).len(), 2);
+        let none = Options { game_art: false, screenshots: false, ..opts };
+        assert!(viewer_pictures(&g, &s, &none).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&cache);
     }
 }

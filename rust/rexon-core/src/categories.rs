@@ -935,7 +935,15 @@ pub fn lock_themes_supported(de_id: &str) -> bool {
 ///
 /// The text is taken from the translation catalog in the interface language.
 pub fn category_condition(cat_key: &str, de_id: &str) -> Option<String> {
-    crate::de_customization::condition_note_id(category_kind(cat_key)?, de_id)
+    category_condition_on(cat_key, de_id, false)
+}
+
+/// [`category_condition`] on a machine where a desktop with its own Qt
+/// integration is (or is not) installed — the caveat for window managers
+/// without session variables then names another file
+/// ([`crate::de_customization::condition_note_id_on`]).
+pub fn category_condition_on(cat_key: &str, de_id: &str, qt_desktop_installed: bool) -> Option<String> {
+    crate::de_customization::condition_note_id_on(category_kind(cat_key)?, de_id, qt_desktop_installed)
 }
 
 /// Why the section is absent on this desktop — text for the person (rule #13:

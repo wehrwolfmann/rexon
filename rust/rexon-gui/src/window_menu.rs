@@ -433,7 +433,7 @@ impl qobject::WindowMenuModel {
         map(&[
             ("title", qstr(&wm::uninstall_title())),
             ("text", qstr(&wm::uninstall_text())),
-            ("informative", qstr(&wm::uninstall_informative(&listing.program, &listing.user_data))),
+            ("informative", qstr(&wm::uninstall_informative(&listing.program, &listing.user_data, &listing.kept_fixes))),
             ("files", QVariant::from(&list)),
             ("keepLabel", qstr(&wm::uninstall_keep_label())),
             ("deleteLabel", qstr(&wm::uninstall_delete_label())),

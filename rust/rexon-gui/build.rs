@@ -17,6 +17,8 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 /// Pages and controls baked into the module's static resource.
 const QML_FILES: &[&str] = &[
     "qml/LayerShellProbe.qml",
+    // Idle screensaver overlay bench (`layer_shell_selftest::overlay`).
+    "qml/OverlayProbe.qml",
     // Live models in real QML (the Discover grid, the wallpaper property
     // editor, hiding the banner) — scenarios of `rexon-gui-selftest`.
     "qml/LiveModelsProbe.qml",
@@ -84,6 +86,7 @@ const QML_FILES: &[&str] = &[
     // The "Profile showcases" sub-tab of the same tab — as a separate
     // component with its own action object.
     "qml/SteamShowcaseSection.qml",
+    "qml/SteamMediaCard.qml",
     // The "Screensaver" sub-tab: a Rexon screensaver for the Big Picture idle
     // screen.
     "qml/SteamScreensaverSection.qml",

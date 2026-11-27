@@ -8,7 +8,7 @@ quel gestionnaire de fichiers ouvre les dossiers, quels programmes ouvrent
 les fichiers par défaut, le fond d'écran à partir d'une image ou d'une vidéo,
 les sons d'ambiance et les sons d'événements. Les sections se suivent de haut
 en bas sur une seule page ; certaines n'apparaissent que là où elles ont un
-sens (par exemple la protection du panneau, seulement avec KDE Plasma).
+sens (par exemple la protection du panneau, seulement sur les bureaux dont Rexon sait copier le panneau).
 
 ![L'onglet « Paramètres » : langue, habillage de l'interface, visite guidée](../images/settings-top.png)
 
@@ -27,7 +27,7 @@ sens (par exemple la protection du panneau, seulement avec KDE Plasma).
 | 📚 **Bibliothèque de fonds d'écran** | Les paquets de fonds d'écran Rexon (.rxn) |
 | 🪟 **Importer des thèmes Windows** | Reprendre l'apparence de votre ancien ordinateur sous Windows |
 | 🔒 **Protection des applications par défaut** | Empêcher un nouveau bureau de remplacer vos programmes |
-| 🛡️ **Protection du panneau KDE Plasma** | Seulement avec Plasma : copies du panneau, des widgets et des raccourcis clavier |
+| 🛡️ **Protection du panneau** | Copies des panneaux, des applets et des raccourcis clavier de tout bureau |
 | 🪟 **Apparence du bureau** | Seulement si une apparence dérivée de Plasma est installée (AeroShell, etc.) |
 
 L'animation, les polices, les boutons de la barre de titre, le retour visuel
@@ -147,17 +147,26 @@ pour un thème sombre, texte foncé sur fond clair pour un thème clair.
   l'onglet « Apparence » (ou **« ↩️ Rétablir comme avant »** pour une allure
   « Comme dans une distribution ») les rétablit aussi.
 
-## Sauvegardes du panneau KDE Plasma
+## Copies du panneau
 
-La section **🛡️ Protection du panneau KDE Plasma** est visible quand Plasma
-fonctionne ou qu'il en reste des copies.
+**🛡️ Protection du panneau** enregistre l'apparence du panneau, les applets et
+les raccourcis clavier de votre bureau, et les rétablit si quelque chose s'est
+cassé après l'installation d'un autre bureau. Elle fonctionne sur tous les
+bureaux que Rexon connaît.
 
-1. Cliquez sur **« 📦 Enregistrer une copie »** : Rexon sauvegarde l'aspect du
-   panneau, les widgets et les raccourcis clavier.
-2. Les copies apparaissent dans la liste « Copies enregistrées ».
-3. Si le panneau est cassé après l'installation d'un autre bureau, cliquez
-   sur **« Restaurer »** à côté de la copie voulue et confirmez. L'aspect
-   actuel du panneau sera remplacé.
+1. Cliquez sur **« 📦 Enregistrer une copie »**. L'indication au-dessus du
+   bouton dit ce qui est copié sur ce bureau.
+2. Jusqu'à 10 copies sont gardées par bureau ; la toute première
+   (**« ⭐ l'originale, avant Rexon »**) n'est jamais effacée.
+3. Avant d'installer ou de changer de bureau, Rexon copie de lui-même les
+   panneaux de **tous les bureaux installés**.
+4. Si un panneau est cassé, cliquez sur **« Rétablir »** à côté de la copie
+   voulue. Les copies des autres bureaux sont dans le bloc replié **« Copies
+   d'autres bureaux »** ; ce bureau la reprendra à la prochaine ouverture de
+   session.
+
+GNOME, Budgie et Pantheon partagent une partie des raccourcis : Rexon nomme
+dans la question les bureaux qui changeront aussi.
 
 ## Fond d'écran, sons et le reste
 

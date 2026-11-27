@@ -1754,6 +1754,7 @@ mod tests {
             home: crate::shell_palette::PaletteHome::from_env(get),
             data_dirs: vec![root.join("none").to_string_lossy().into_owned()],
             session_platform_theme: String::new(),
+            qt_desktop_installed: false,
         };
         (root, AccentCtx { de: de.into(), scheme })
     }

@@ -770,6 +770,7 @@ fn scheme_home(tag: &str, de: &str) -> (PathBuf, sp::SchemeCtx) {
         // There are no system schemes in the mock home.
         data_dirs: vec![root.join("no-system").to_string_lossy().to_string()],
         session_platform_theme: String::new(),
+        qt_desktop_installed: false,
     };
     (root, ctx)
 }
@@ -884,6 +885,27 @@ fn layer_outside_plasma_writes_kde_qt_and_env_and_reverts_bit_for_bit() {
     assert!(read(&root.join(".config/qt6ct/colors/Day.conf")).is_some());
 
     // Restore — bit for bit, no memo remains.
+    sp::revert_scheme_layer(&ctx.home).unwrap();
+    assert_eq!(snapshot(&root), before);
+}
+
+/// With Plasma (or LXQt, Deepin) installed the variable must not go into the
+/// shared `environment.d`, which Plasma imports: it goes into Rexon's
+/// desktop-bound file, as the Qt style's does, and the revert removes it.
+#[test]
+fn layer_keeps_the_variable_out_of_plasma_when_plasma_is_installed() {
+    let (root, mut ctx) = scheme_home("bound", "gnome");
+    ctx.qt_desktop_installed = true;
+    put(&root.join(".config/qt6ct/qt6ct.conf"), "[Appearance]\nstyle=Fusion\n");
+    let before = snapshot(&root);
+    let io = FakeIo::new(&["qt6ct"]);
+    let (ok, msg, out) = sp::apply_scheme(&io, &ctx, "Night");
+    assert!(ok && out.env_added, "{msg} {out:?}");
+    assert!(read(&root.join(".config/environment.d/rexon-qt-style.conf")).is_none(), "переменная ушла в общий environment.d");
+    assert_eq!(
+        read(&root.join(".config/rexon/session-env/rexon-qt-style.conf")).as_deref(),
+        Some("QT_QPA_PLATFORMTHEME=qt6ct\n")
+    );
     sp::revert_scheme_layer(&ctx.home).unwrap();
     assert_eq!(snapshot(&root), before);
 }

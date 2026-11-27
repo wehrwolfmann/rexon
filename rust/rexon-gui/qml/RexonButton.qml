@@ -81,6 +81,27 @@ Button {
     // is `font-weight: 600` in its style sheet.
     font.bold: control.activeTone !== null && control.activeTone.bold === true
 
+    // Accessibility: a label made only of symbols ("🔍", "✕", "🗑️") tells a
+    // screen reader nothing, or only the emoji name. Such buttons carry a
+    // tooltip that is already translated — it becomes the accessible name. A
+    // disabled button does not catch hover, so the tooltip often hangs on the
+    // wrapper item around it: that one counts too. A label with letters or
+    // digits stays the name, as Qt sets it. The label is tested FIRST: reading
+    // `ToolTip` creates the attached object, and only symbol-only buttons
+    // need it. Found by `rexon-a11y-robot` (docs/testing.md); the same
+    // function lives in RexonButton.qml and RexonDangerButton.qml.
+    function accessibleLabel() {
+        if (/[0-9A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0590-\u06FF\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/.test(control.text))
+            return control.text;
+        if (control.ToolTip.text !== "")
+            return control.ToolTip.text;
+        const wrapper = control.parent;
+        if (wrapper && wrapper.ToolTip && wrapper.ToolTip.text !== "")
+            return wrapper.ToolTip.text;
+        return control.text;
+    }
+    Accessible.name: control.accessibleLabel()
+
     implicitHeight: 40
     // Warning: a disabled button is dimmed through its LABEL, not through the
     // opacity of the whole button. Opacity 0.45 used to be here in order "not
